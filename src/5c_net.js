@@ -35,7 +35,7 @@ const lerpAng = (a, b, k) => a + angDiff(a, b) * k;
    on a random one. Each side sends its whole connection offer in one message (ICE gathered first), so a join
    costs about three messages. (PeerJS's public server stopped relaying messages in Oct 2026.) */
 const P2P_PREFIX = 'militiamayhem-';
-const P2P_SIG = () => (typeof window !== 'undefined' && window.__MM_SIG) || 'https://ntfy.sh';
+const P2P_SIGS = () => (typeof window !== 'undefined' && window.__MM_SIG) ? [].concat(window.__MM_SIG) : ['https://ntfy.sh', 'https://ntfy.envs.net', 'https://ntfy.adminforge.de'];
 const P2P_TOPIC = id => 'mm1-' + id;
 const P2P_ICE = () => (typeof window !== 'undefined' && window.__MM_ICE) || [
   { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }];
@@ -109,40 +109,64 @@ function netFail(code, extra) {
   try { console.warn('[net] E' + code, E[0], lines.join(' | ')); } catch (e) { }
 }
 let SIG_MSG = '';
+/* Every browser listens on all the relays; a message goes out on the first one that takes it. ntfy.sh allows 250
+   messages a day per internet address (a household, or a whole phone carrier's shared address), so when it says no
+   the next relay carries the introduction instead. */
 function sigOpen(id) {
   return new Promise((res, rej) => {
-    let ws;
-    const base = P2P_SIG().replace(/\/$/, ''), wsBase = base.replace(/^http/, 'ws');
-    let opened = false, fails = 0;
+    const bases = P2P_SIGS().map(b => b.replace(/\/$/, ''));
+    let opened = false, failed = 0;
+    const seen = new Set();
     const S = {
-      id, ws: null, on: null, onclose: null, onsenderr: null, dead: false, last: '',
+      id, on: null, onclose: null, onsenderr: null, dead: false, good: 0, subs: [],
       send(m) {
-        if (!m.dst || S.dead) return; m.src = id;
-        fetch(base + '/' + P2P_TOPIC(m.dst), { method: 'POST', body: JSON.stringify(m) })
-          .then(r => { if (!r.ok && S.onsenderr) S.onsenderr(r.status === 429 ? 'RATE LIMITED' : 'HTTP ' + r.status); })
-          .catch(() => { if (S.onsenderr) S.onsenderr('SEND FAILED'); });
+        if (!m.dst || S.dead) return; m.src = id; m.mid = m.mid || Math.random().toString(36).slice(2, 10);
+        // a relay that refuses passes it on at once; one that is slow to answer gets company after 1.2 s (the far end ignores repeats)
+        const body = JSON.stringify(m), errs = [], first = S.good; let next = 0, done = false;
+        const tryNext = () => {
+          if (done) return;
+          const k = next++;
+          if (k >= bases.length) { if (errs.length >= bases.length && S.onsenderr) S.onsenderr(errs.includes('RATE LIMITED') ? 'RATE LIMITED' : errs[0] || 'SEND FAILED'); return; }
+          const i = (first + k) % bases.length; let moved = false;
+          const on = () => { if (!moved) { moved = true; tryNext(); } };
+          const tm = setTimeout(on, 1200);
+          fetch(bases[i] + '/' + P2P_TOPIC(m.dst), { method: 'POST', body })
+            .then(r => { clearTimeout(tm); if (r.ok) { done = true; S.good = i; return; } errs.push(r.status === 429 ? 'RATE LIMITED' : 'HTTP ' + r.status); on(); if (errs.length >= bases.length) tryNext(); })
+            .catch(() => { clearTimeout(tm); errs.push('SEND FAILED'); on(); if (errs.length >= bases.length) tryNext(); });
+        };
+        tryNext();
       },
-      close() { S.dead = true; try { S.ws && S.ws.close(); } catch (e) { } }
+      close() { S.dead = true; for (const u of S.subs) { try { u.ws && u.ws.close(); } catch (e) { } } }
     };
     const t = setTimeout(() => { if (!opened) { rej('timeout'); S.close(); } }, 9000);
-    const deliver = x => { if (x && x.src && x.src !== id && S.on) S.on(x); };
-    const connect = () => {
-      let ws; try { ws = new WebSocket(wsBase + '/' + P2P_TOPIC(id) + '/ws' + (S.last ? '?since=' + S.last : '')); } catch (e) { clearTimeout(t); rej('network'); return; }
-      S.ws = ws;
-      ws.onmessage = e => {
-        let m; try { m = JSON.parse(e.data); } catch (er) { return; }
-        if (m.event === 'open') { fails = 0; if (!opened) { opened = true; clearTimeout(t); res(S); } return; }
-        if (m.event !== 'message') return;
-        S.last = m.id;
-        // a message too long for the relay arrives as an attachment
-        if (m.attachment && m.attachment.url) { fetch(m.attachment.url).then(r => r.json()).then(deliver).catch(() => { }); return; }
-        try { deliver(JSON.parse(m.message)); } catch (er) { }
+    const deliver = x => { if (!x || !x.src || x.src === id || !S.on) return; if (x.mid) { if (seen.has(x.mid)) return; seen.add(x.mid); } S.on(x); };
+    bases.forEach(base => {
+      const u = { ws: null, last: '', fails: 0, up: false }; S.subs.push(u);
+      const wsBase = base.replace(/^http/, 'ws');
+      const connect = () => {
+        let ws; try { ws = new WebSocket(wsBase + '/' + P2P_TOPIC(id) + '/ws' + (u.last ? '?since=' + u.last : '')); } catch (e) { gone(); return; }
+        u.ws = ws;
+        ws.onmessage = e => {
+          let m; try { m = JSON.parse(e.data); } catch (er) { return; }
+          if (m.event === 'open') { u.fails = 0; u.up = true; if (!opened) { opened = true; clearTimeout(t); res(S); } return; }
+          if (m.event !== 'message') return;
+          u.last = m.id;
+          // a message too long for the relay arrives as an attachment
+          if (m.attachment && m.attachment.url) { fetch(m.attachment.url).then(r => r.json()).then(deliver).catch(() => { }); return; }
+          try { deliver(JSON.parse(m.message)); } catch (er) { }
+        };
+        ws.onerror = () => { if (!u.up) gone(); };
+        // the relay drops idle sockets now and then: reconnect, catching up on anything missed
+        ws.onclose = () => {
+          if (S.dead || !u.up) return;
+          if (++u.fails === 3 && S.subs.every(o => o.fails >= 3 || !o.up) && S.onclose) S.onclose();
+          setTimeout(() => { if (!S.dead) connect(); }, Math.min(10000, 1000 * u.fails));
+        };
       };
-      ws.onerror = () => { if (!opened) { clearTimeout(t); S.dead = true; rej('network'); } };
-      // the relay drops idle sockets now and then: reconnect, catching up on anything missed
-      ws.onclose = () => { if (S.dead || !opened) return; if (++fails === 3 && S.onclose) S.onclose(); setTimeout(() => { if (!S.dead) connect(); }, Math.min(10000, 1000 * fails)); };
-    };
-    connect();
+      // a relay that can't be reached at all is just left out; only all of them failing is an error
+      const gone = () => { if (u.dead) return; u.dead = true; if (++failed === bases.length && !opened) { clearTimeout(t); S.dead = true; rej('network'); } };
+      connect();
+    });
   });
 }
 /* wait (briefly) until a connection has found its addresses, so they all go in one message */
@@ -687,8 +711,10 @@ function netClientUpdate(dt) {
     const I = NET.lastI; netCount(I);
     if (NET.auth && s.alive && !s.veh) netLocalMove(s, I, dt);
     else if (NET.vauth && s.alive && s.veh === NET.vauth && s.seat === 0) netLocalDrive(NET.vauth, I, dt);
+    if (s.alive) netPredictShot(s, I, dt);
   }
   else {
+    NET.pred = 0;
     if (!s.alive && !M.over) { if (s.deathT > 0) { s.deathT -= dt; trackKiller(s); } else if (state === 'play') deployInput(s, dt); }
   }
   netCosmetics(dt);
@@ -850,6 +876,8 @@ function netApplySnaps(now, dt) {
   }
   if (me.veh && (!I || typeof I.aimA !== 'number')) me.veh.aimT = undefined;
   // shots fire once everyone is in place
+  // our own shots already played when we pulled the trigger: the host's echo of them is skipped
+  while (me._sfx > 0 && NET.pred > 0) { me._sfx--; NET.pred--; NET.predT = performance.now(); }
   for (const s of M.sol) while (s._sfx > 0) { s._sfx--; netShotFx(s); }
   for (const v of M.vehicles) { if (v._cfx) { v._cfx = false; netCannonFx(v); } while (v._mfx > 0) { v._mfx--; netMgFx(v); } }
   // ---- projectiles (others' timeline)
@@ -939,6 +967,16 @@ function netLocalDrive(v, I, dt) {
   syncMounts(v);
   vehTrackFx(v, Math.hypot(v.x - ox, v.y - oy) + Math.abs(angDiff(oa, v.a)) * 20);
   for (const s of v.seats) if (s) updateSeatedPos(s);        // everyone aboard rides with it this same frame
+}
+/* joiner: a rifle shot shows (flash, sound, tracer) the moment we fire, by the same rules the host fires it by.
+   The host still fires the real bullet; any we showed that it didn't fire are forgotten after a moment */
+function netPredictShot(s, I, dt) {
+  NET.pfCd = (NET.pfCd || 0) - dt;
+  if (NET.pred && performance.now() - NET.predT > 700) NET.pred = 0;
+  const st = s.w && s.w[s.wi], W_ = st && WPN[st.id];
+  if (!I.fire || !W_ || W_.rocket || s.torch || s.swim || s.reloadT > 0 || NET.pfCd > 0 || st.mag - (NET.pred | 0) <= 0) return;
+  if (s.veh && s.veh.T.seats[s.seat].role !== 'rifle') return;
+  NET.pfCd = W_.rate; NET.pred = (NET.pred | 0) + 1; NET.predT = performance.now(); netShotFx(s);
 }
 function netShotFx(s) {
   if (!s.alive || (s.veh && s.veh.T.seats[s.seat].role !== 'rifle')) return;
