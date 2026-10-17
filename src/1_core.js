@@ -70,7 +70,7 @@ const WPN = {
 };
 const KITS = [
   { id: 'rifleman', n: 'RIFLEMAN', p: ['ar', 'br'], s: 'pistol', secs: ['pistol', 'mp'], nades: 3, g: 'medbag', gn: 'MEDIC BAG', desc: 'Front-line all-rounder. Drops bags that heal everyone nearby.' },
-  { id: 'engineer', n: 'ENGINEER', p: ['ak', 'smg', 'shotgun'], s: 'rpg', secs: ['rpg'], nades: 1, g: 'torch', gn: 'REPAIR TORCH', desc: 'Kills armor with rockets. Hold the gadget to repair vehicles.' },
+  { id: 'engineer', n: 'ENGINEER', p: ['ak', 'smg', 'shotgun'], s: 'rpg', secs: ['rpg'], nades: 1, g: 'torch', gn: 'REPAIR WRENCH', desc: 'Kills armor with rockets. Hold the gadget to repair vehicles.' },
   { id: 'support', n: 'SUPPORT', p: ['lmg', 'hmg'], s: 'pistol', secs: ['pistol', 'mp'], nades: 2, g: 'ammo', gn: 'AMMO BOX', desc: 'Suppress from cover. Drops boxes that refill ammo and grenades.' },
   { id: 'recon', n: 'RECON', p: ['sniper', 'dmr'], s: 'pistol', secs: ['pistol', 'mp'], nades: 1, g: 'mine', gn: 'AT MINES', desc: 'Long-range kills. Spots enemies for the team. Mines roads.' }];
 
@@ -102,9 +102,14 @@ function resize() {
 }
 addEventListener('resize', resize);
 const portrait = () => H > W * 1.05;
+const isFS = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+function toggleFullscreen() {
+  if (!isFS()) { goFullscreen(); return; }
+  try { const ex = document.exitFullscreen || document.webkitExitFullscreen, p = ex && ex.call(document); if (p && p.catch) p.catch(() => { }); } catch (e) { }
+}
 function goFullscreen() {
-  const el = document.documentElement;
-  try { const p = el.requestFullscreen && el.requestFullscreen({ navigationUI: 'hide' }); if (p && p.then) p.then(() => { try { const o = screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape'); if (o && o.catch) o.catch(() => { }); } catch (e) { } }).catch(() => { }); } catch (e) { }
+  const el = document.documentElement, rq = el.requestFullscreen || el.webkitRequestFullscreen;
+  try { const p = rq && rq.call(el, { navigationUI: 'hide' }); if (p && p.then) p.then(() => { try { const o = screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape'); if (o && o.catch) o.catch(() => { }); } catch (e) { } }).catch(() => { }); } catch (e) { }
 }
 
 /* ---------------- assets ---------------- */
@@ -345,7 +350,7 @@ function sfx(name, x, y, mul) {
     case 'crack': noise({ t: 0.4, v: 0.3 * v, ft: 'bandpass', f: 900, f2: 200, q: 1.5, out }); tone({ type: 'square', f: 70, t: 0.15, v: 0.1 * v, out }); break;
     case 'clang': if (!thr('clang', 90)) return; tone({ type: 'square', f: 300, f2: 120, t: 0.12, v: 0.12 * v, out }); noise({ t: 0.1, v: 0.15 * v, f: 2000, out }); break;
     case 'horn': if (!thr('horn', 250)) return; tone({ type: 'square', f: 392, t: 0.28, v: 0.09 * v, out }); tone({ type: 'square', f: 494, t: 0.28, v: 0.07 * v, out }); break;
-    case 'torch': if (!thr('torch', 110)) return; noise({ t: 0.12, v: 0.1 * v, ft: 'highpass', f: 4000, out }); break;
+    case 'torch': if (!thr('torch', 150)) return; tone({ type: 'square', f: 2300 + Math.random() * 400, f2: 1500, t: 0.025, v: 0.05 * v, out }); noise({ t: 0.04, v: 0.07 * v, ft: 'bandpass', f: 3200, q: 3, out }); break;     // wrench ratchet
     case 'beep': tone({ type: 'square', f: 1800, t: 0.05, v: 0.05 * v, out }); break;
     case 'splash': if (!thr('splash', 200)) return; noise({ t: 0.25, v: 0.12 * v, ft: 'bandpass', f: 1200, f2: 400, q: 1, out }); break;
     case 'drop': tone({ type: 'square', f: 200, f2: 120, t: 0.08, v: 0.08 * v, out }); break;
@@ -424,7 +429,7 @@ cv.addEventListener('contextmenu', e => e.preventDefault());
 /* touch (CoD Mobile / PUBG style): floating move stick on the left (push to the rim to sprint), a fixed fire stick
    bottom-right (drag to aim + fire, tap to fire ahead), free drag on the right aims without firing,
    action buttons arc around the fire stick, contextual buttons (enter vehicle, seats) only appear when usable. */
-const TOUCH = { active: false, pts: new Map(), taps: [], btn: {}, hold: {} };
+const TOUCH = { active: false, pts: new Map(), taps: [], btn: {}, hold: {}, scoreOn: false };
 const TB = {}; let TB_ON = [];            // buttons drawn this frame (only these can be pressed)
 function hitB(x, y, b) { if (!b) return false; if (b.w) return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h; return (x - b.x) ** 2 + (y - b.y) ** 2 < (b.r + 8) ** 2; }
 cv.addEventListener('pointerdown', e => {
@@ -550,7 +555,8 @@ function touchState() {
   if (T.sprintLock && !T.pts.size) T.sprintLock = false;
   if (T.sprintLock && [...T.pts.values()].some(t => t.role === 'move')) sprint = true;
   const b = T.btn, seatIdx = ['seat0', 'seat1', 'seat2', 'seat3'].findIndex(k => b[k]), pickW = b.w0 ? 0 : b.w1 ? 1 : -1;
-  const s = { touch: true, mx, my, aim, aimMag, fire, ads, alt: !!b.nade, gadget: !!T.hold.gadget, gadgetP: !!b.gadget, swapW: false, pickW, interact: !!(b.enter || b.exit), jump: !!b.jump, melee: !!b.melee, spot: false, reload: !!b.reload, variant: false, stanceCycle: !!b.stance, sprint, seatNext: false, seatDir: -1, seatIdx, pause: !!b.pause, score: false, navX: 0, navY: 0, confirm: false, back: false, join: false, deploy: false, tabL: false, tabR: false, opt: false, mapT: !!b.map, nadeCyc: b.nadeCyc ? 1 : 0, dpX: 0, dpY: 0, stX: 0, stY: 0 };
+  if (b.score) T.scoreOn = !T.scoreOn; if (state !== 'play') T.scoreOn = false;     // the scoreboard button flips it open and shut
+  const s = { touch: true, mx, my, aim, aimMag, fire, ads, alt: !!b.nade, gadget: !!T.hold.gadget, gadgetP: !!b.gadget, swapW: false, pickW, interact: !!(b.enter || b.exit), jump: !!b.jump, melee: !!b.melee, spot: false, reload: !!b.reload, variant: false, stanceCycle: !!b.stance, sprint, seatNext: false, seatDir: -1, seatIdx, pause: !!b.pause, score: T.scoreOn, navX: 0, navY: 0, confirm: false, back: false, join: false, deploy: false, tabL: false, tabR: false, opt: false, mapT: !!b.map, nadeCyc: b.nadeCyc ? 1 : 0, dpX: 0, dpY: 0, stX: 0, stY: 0 };
   T.btn = {};
   return s;
 }
@@ -563,7 +569,7 @@ function rumble(pl, s, d) {
 function touchPlayer() { return PLAYERS.find(p => p.dev.type === 'touch'); }
 
 /* ---------------- settings ---------------- */
-const CFG = Object.assign({ mode: 0, map: 0, bots: 5, limit: 1, skill: 1, ff: false, board: false, camera: 'split', style: 'classic', weather: 'clear', soldiers: 'ramp', teamColors: 'player', fog: 'los', sound: 'exp' }, store.get('cfg3', {}));
+const CFG = Object.assign({ mode: 0, map: 0, bots: 5, limit: 1, skill: 1, ff: false, board: false, midjoin: true, camera: 'split', style: 'classic', weather: 'clear', soldiers: 'ramp', teamColors: 'player', fog: 'los', sound: 'exp' }, store.get('cfg3', {}));
 /* soldier art sets: classic = original sheets; ramp = new design with the green ramp recoloured; marks = new design with white markings recoloured.
    New sets cover stand / unarmed / rocket / seated; every other pose falls back to the classic frames. */
 /* soldier team display: classic sheets, or the new design as full colour / armband only / grey uniform + coloured armband */

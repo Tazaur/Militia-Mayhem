@@ -4,17 +4,17 @@
    ===================================================================== */
 const VT = {
   tank: {
-    drive: true, hl: 52, hw: 28, maxF: 82, maxR: 50, acc: 90, brake: 160, drag: 70, turn: 1.3, mass: 5, hp: 900, respawn: 24,
+    drive: true, hl: 52, hw: 28, maxF: 82, maxR: 50, acc: 90, brake: 160, drag: 70, turn: 1.3, mass: 5, hp: 1350, respawn: 24,
     circles: [[-34, 0, 27], [0, 0, 28], [34, 0, 27]],
     seats: [
-      { n: 'DRIVER', anchor: [70, 0], pos: [20, 0], exposed: false, role: 'drive' },
-      { n: 'GUNNER', anchor: [-72, 0], pos: 'turret', exposed: true, role: 'mg' },
-      { n: 'LEFT RIDER', anchor: [0, -48], pos: [-30, -17], exposed: true, role: 'rifle' },
-      { n: 'RIGHT RIDER', anchor: [0, 48], pos: [-30, 17], exposed: true, role: 'rifle' }],
+      { n: 'DRIVER', anchor: [-76, 0], pos: [20, 0], exposed: false, role: 'drive' },
+      { n: 'GUNNER', anchor: [0, -50], alts: [[0, 50]], pos: 'turret', exposed: true, role: 'mg' },
+      { n: 'LEFT RIDER', anchor: [-58, -44], pos: [-30, -17], exposed: true, role: 'rifle' },
+      { n: 'RIGHT RIDER', anchor: [-58, 44], pos: [-30, 17], exposed: true, role: 'rifle' }],
     dpad: [0, 3, 1, 2]
   },
   jeep: {
-    drive: true, hl: 41, hw: 19, maxF: 205, maxR: 85, acc: 210, brake: 380, drag: 120, turn: 2.6, mass: 1.4, hp: 260, respawn: 18,
+    drive: true, hl: 41, hw: 19, maxF: 205, maxR: 85, acc: 210, brake: 380, drag: 120, turn: 2.6, mass: 1.4, hp: 390, respawn: 18,
     circles: [[-25, 0, 19], [0, 0, 20], [25, 0, 19]],
     seats: [
       { n: 'DRIVER', anchor: [2, -36], pos: [-1, -8], exposed: true, role: 'drive' },
@@ -404,7 +404,9 @@ function vehicleCollide(v, local, auth) {
         v.x -= dx / d * push * wa; v.y -= dy / d * push * wa;
         if (o.T.drive) { shove(o, bx, by, dx / d * push * wb, dy / d * push * wb, local); hitV = Math.max(hitV, wa); } else { v.x -= dx / d * push * wb; v.y -= dy / d * push * wb; hit = 1; }
         if (local) continue;
-        const rel = Math.hypot(v.vx - o.vx, v.vy - o.vy);
+        const tch = v.tch || (v.tch = new Map()), last = tch.get(o); tch.set(o, M.time);
+        if (last !== undefined && M.time - last < 0.4) continue;     // still leaning on it: pushing isn't a crash
+        const rel = ((v.vx - o.vx) * dx + (v.vy - o.vy) * dy) / d;
         if (rel > 70 && v.crashCd <= 0) { v.crashCd = 0.5; sfx('clang', v.x, v.y); const dm = (rel - 60) * 0.25; hurtVehicle(v, dm * Math.min(3, o.T.mass / v.T.mass), null); hurtVehicle(o, dm * (v.T.mass / Math.min(5, o.T.mass)), v.seats[0] && isEnemy(vehTeam(v), vehTeam(o)) ? v.seats[0] : null); }
       }
     }
@@ -430,7 +432,7 @@ function enterCandidate(s) {
     if (vt >= 0 && isEnemy(vt, s.team) && !(M.cfg.board && s.player)) continue;     // enemy boarding (players only) is a match option
     const [lx, ly] = toLocal(v, s.x, s.y);
     if (Math.abs(lx) > v.T.hl + 30 || Math.abs(ly) > v.T.hw + 30) continue;
-    const order = v.T.seats.map((sd, i) => ({ i, d: Math.hypot(lx - sd.anchor[0], ly - sd.anchor[1]) })).sort((a, b) => a.d - b.d);
+    const order = v.T.seats.map((sd, i) => { const an = nearAnchor(sd, lx, ly); return { i, d: Math.hypot(lx - an[0], ly - an[1]) }; }).sort((a, b) => a.d - b.d);
     if (!best || order[0].d < best.order[0].d) best = { v, order };
   }
   if (!best) return null;
@@ -441,6 +443,12 @@ function enterCandidate(s) {
   }
   return { v: best.v, seat: -1, want: best.order[0].i };
 }
+/* a seat can have more than one door (the tank gunner climbs up from either side): the one nearest a local point */
+function nearAnchor(sd, lx, ly) {
+  let an = sd.anchor; if (sd.alts) for (const b of sd.alts) if (Math.hypot(lx - b[0], ly - b[1]) < Math.hypot(lx - an[0], ly - an[1])) an = b;
+  return an;
+}
+function seatAnchor(v, i, x, y) { const [lx, ly] = toLocal(v, x, y); return nearAnchor(v.T.seats[i], lx, ly); }
 function enterVehicle(s, c, instant) {
   const v = c.v; if (c.seat < 0) { if (s.player) s.msg = { t: 1.2, txt: 'VEHICLE FULL' }; return false; }
   if (c.bump) { const b = c.bump, free = v.seats.findIndex((o, i) => !o && i !== c.seat); if (free >= 0) moveSeat(b, free); else exitVehicle(b, true); }
@@ -465,7 +473,7 @@ function exitVehicle(s, forced) {
   const v = s.veh; if (!v) return;
   const order = [s.seat, ...v.T.seats.map((_, i) => i).filter(i => i !== s.seat)];
   const tries = [];
-  for (const i of order) tries.push(v.T.seats[i].anchor);
+  for (const i of order) { const sd = v.T.seats[i]; tries.push(sd.anchor); if (sd.alts) tries.push(...sd.alts); }
   if (!v.T.drive) tries.push([-30, 20], [-30, -20], [0, 32], [0, -32]);
   for (const [ax, ay] of tries) {
     const [wx, wy] = toWorld(v, ax * 0.95, ay * 0.95);
@@ -587,7 +595,7 @@ function mgFx(v, px, py, x, y) {
 function useGadget(s, I, dt) {
   const K = KITS[s.kit];
   s.torch = false;
-  if (K.g === 'torch') {
+  if (K.g === 'torch') {     // (the repair wrench; the id is older than the tool)
     if (!I.gadget) return;
     let best = null, bd = 1e9;
     for (const v of M.vehicles) { if (!v.active || v.dead || v.hp >= v.T.hp) continue; const vt = vehTeam(v); if (isEnemy(vt, s.team)) continue; const [lx, ly] = toLocal(v, s.x, s.y); if (Math.abs(lx) < v.T.hl + 26 && Math.abs(ly) < v.T.hw + 26) { const d = Math.hypot(v.x - s.x, v.y - s.y); if (d < bd) { bd = d; best = v; } } }
@@ -595,8 +603,8 @@ function useGadget(s, I, dt) {
       s.torch = true; s.a = Math.atan2(best.y - s.y, best.x - s.x);
       const amt = Math.min(best.T.hp - best.hp, (best.type === 'tank' ? 110 : 70) * dt); best.hp += amt; s.rep += amt;
       s.repAcc = (s.repAcc || 0) + amt; if (s.repAcc >= 50) { s.repAcc -= 50; addPts(s, 10, 'REPAIR'); }
-      sfx('torch', s.x, s.y); const [tx, ty] = muzzle(s, 16);
-      if (Math.random() < 0.8) part({ k: 'spark', x: tx, y: ty, vx: rnd(-140, 140), vy: rnd(-140, 140), life: 0.15, max: 0.15, sz: 1.4, drag: 6 });
+      sfx('torch', s.x, s.y); const [tx, ty] = muzzle(s, 20);
+      if (Math.random() < 0.12) part({ k: 'spark', x: tx, y: ty, vx: rnd(-140, 140), vy: rnd(-140, 140), life: 0.15, max: 0.15, sz: 1.4, drag: 6 });
       if (best.hp > best.T.hp * 0.25) best.burn = 0;
     } else if (I.gadgetP && s.player) s.msg = { t: 1, txt: 'NOTHING TO REPAIR HERE' };
     return;

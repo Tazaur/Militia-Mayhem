@@ -237,14 +237,12 @@ function drawSoldier(s, vw) {
     solDraw(s, solSpr(s.color, pose), s.x, s.y, s.a + (s.meleeT > 0 ? Math.sin(s.meleeT / 0.18 * Math.PI) * 0.5 : 0), bob, bob, al);
   }
   if (rocket && s.stance === 0 && CFG.soldiers === 'classic') { worldT(); ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.a); ctx.fillStyle = '#3e4a30'; ctx.fillRect(-8, 3, 26, 5); ctx.fillStyle = '#222'; ctx.fillRect(16, 2, 4, 7); if (cw(s).mag > 0) { ctx.fillStyle = '#6a7a50'; ctx.fillRect(19, 3.5, 5, 4); } ctx.restore(); }
-  // what's in the soldier's hands: the repair torch, a grenade mid-throw, or the gadget being set down
+  // what's in the soldier's hands: the repair wrench (cranking back and forth), a grenade mid-throw, or the gadget being set down
   if (s.torch) {
-    worldT(); ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.a);
-    ctx.fillStyle = '#2a2a26'; ctx.fillRect(5, -2.6, 11, 5.2); ctx.fillStyle = '#6a6a64'; ctx.fillRect(6, -2, 9, 4); ctx.fillStyle = '#c8843a'; ctx.fillRect(15, -1.4, 4, 2.8);
-    const fl = 5 + Math.random() * 4; ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = 'rgba(110,200,255,0.85)'; ctx.beginPath(); ctx.moveTo(19, -2); ctx.lineTo(19 + fl, 0); ctx.lineTo(19, 2); ctx.fill();
-    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.moveTo(19, -0.8); ctx.lineTo(19 + fl * 0.55, 0); ctx.lineTo(19, 0.8); ctx.fill(); ctx.globalCompositeOperation = 'source-over'; ctx.restore();
-    const [tx, ty] = muzzle(s, 21 + Math.random() * 3); flashAt(tx, ty, 4 + Math.random() * 4);
-    if (Math.random() < 0.5) { worldT(); ctx.fillStyle = '#ffd27a'; for (let i = 0; i < 3; i++) ctx.fillRect(tx + rnd(-6, 6), ty + rnd(-6, 6), 1.2, 1.2); }
+    worldT(); ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.a); ctx.translate(6, 0); ctx.rotate(Math.sin(M.time * 13 + s.id) * 0.45);
+    ctx.fillStyle = '#2a2a26'; ctx.fillRect(-1, -2.4, 14, 4.8); ctx.fillStyle = '#9a9c96'; ctx.fillRect(0, -1.6, 12, 3.2);
+    ctx.fillStyle = '#2a2a26'; ctx.fillRect(10.5, -5.4, 9, 10.8); ctx.fillStyle = '#b4b6b0'; ctx.fillRect(11.5, -4.4, 7, 2.8); ctx.fillRect(11.5, 1.6, 7, 2.8); ctx.fillRect(11.5, -4.4, 2.6, 8.8);
+    ctx.restore();
   } else if (s.throwT > 0.12) { worldT(); const [hx, hy] = muzzle(s, 9 + (0.35 - s.throwT) * 20); icon(s.thrownSmoke ? 'smoke' : 'frag', hx, hy, 7); }
   else if (s.handT > 0 && s.handK) { worldT(); const [hx, hy] = muzzle(s, 11); icon(gadgetIconKind(s.handK), hx, hy, 9); }
   if (s.flash > 0 && !gunless) { const [gx, gy] = gunTip(s), r = W_ && W_.dmg >= 40 ? 14 : 10, c = Math.cos(s.a), sn = Math.sin(s.a); flashAt(gx + c * r * 0.55, gy + sn * r * 0.55, r); }
@@ -469,7 +467,7 @@ function drawViewHUD(vw) {
     if (c) {
       const nm = c.seat >= 0 ? c.v.T.seats[c.seat].n : '', y = B - 40 * u;
       hintRow([{ a: 'use', icon: c.seat >= 0 ? 'seat' : 'skull' }, ...(nm ? [{ t: nm }] : []), ...(c.bump ? [{ icon: 'swap' }, { t: c.bump.name }] : [])], vw.x + vw.w / 2, y, 20 * u, dev, c.seat >= 0 ? '#fff' : '#ff8a70');
-      worldT(); const sdd = c.v.T.seats[c.seat >= 0 ? c.seat : c.want]; const [ax, ay] = toWorld(c.v, sdd.anchor[0] * 0.7, sdd.anchor[1] * 0.7);
+      worldT(); const an = seatAnchor(c.v, c.seat >= 0 ? c.seat : c.want, s.x, s.y); const [ax, ay] = toWorld(c.v, an[0] * 0.7, an[1] * 0.7);
       ctx.strokeStyle = CHEX[p.color]; ctx.lineWidth = 2 / VZ * 1.5; ctx.beginPath(); ctx.arc(ax, ay, 7 + Math.sin(M.time * 8) * 1.5, 0, TAU); ctx.stroke(); screenT();
     } else if (!tc && cw(s).mag === 0 && cw(s).res > 0 && s.reloadT <= 0) { let x = R - 50 * u; if (dev !== 'touch') x += 0; const bw2 = badge('reload', dev, x, B - 12 * u, hb); icon('reload', x + bw2 + 14 * u, B - 12 * u, hb, '#fff'); }
     else if (s.torch) icon('torch', vw.x + vw.w / 2, B - 40 * u, 28 * u, '#9fe0ff', 0.6 + 0.4 * Math.sin(M.time * 14));
@@ -653,6 +651,7 @@ function drawTouch(s) {
   if (!v) btn('sprint', SAFE.l + 118 * k, H - SAFE.b - 196 * k, 22 * k, 'run', { fill: TOUCH.sprintLock ? 'rgba(255,224,138,0.5)' : undefined });
   // top-left: pause, and the minimap opens the full map
   btn('pause', SAFE.l + 26 * k, SAFE.t + 26 * k, 19 * k, 'pause');
+  btn('score', SAFE.l + 72 * k, SAFE.t + 26 * k, 19 * k, 'score', { fill: TOUCH.scoreOn ? 'rgba(255,224,138,0.5)' : undefined });
   { const mr = miniRect(); if (!mr.many) reg('map', { x: mr.mx, y: mr.my, w: mr.mw, h: mr.mh }); }
   // move stick: floats under the left thumb; a faint ring shows where to put it
   const mt = [...TOUCH.pts.values()].find(t => t.role === 'move');

@@ -19,7 +19,7 @@ function icon(kind, cx, cy, s, col, al) {
     case 'smoke': ctx.fillStyle = col || '#9aa0a0'; R(-4, -2, 8, 10); ctx.fillStyle = '#2a2e22'; R(-4, -3, 8, 2); ctx.fillStyle = 'rgba(220,224,224,0.9)'; C(-4, -7, 3.5); C(1, -9, 4); C(5, -6, 3); break;
     case 'medbag': ctx.fillStyle = '#f0f0e8'; ctx.beginPath(); rr(ctx, -8, -6, 16, 13, 2); ctx.fill(); ctx.fillStyle = '#d42a22'; R(-1.5, -4, 3, 9); R(-5, -1, 10, 3); R(-3, -8, 6, 2); break;
     case 'ammo': ctx.fillStyle = '#6b6a3a'; R(-9, -3, 18, 11); ctx.fillStyle = '#d6b04a'; for (const x of [-6, -1, 4]) { R(x, -8, 3, 6); } ctx.fillStyle = '#3c3c22'; R(-9, 1, 18, 2); break;
-    case 'torch': ctx.fillStyle = '#c8c8c0'; R(-9, -3, 11, 6); ctx.fillStyle = '#e09040'; R(2, -1.5, 3, 3); ctx.fillStyle = '#7ad8ff'; P([[5, -3], [11, 0], [5, 3]]); ctx.fillStyle = '#fff'; P([[5, -1.2], [8.5, 0], [5, 1.2]]); break;
+    case 'torch': ctx.rotate(-0.7); ctx.fillStyle = '#c8c8c0'; R(-10, -2, 14, 4); C(-10, 0, 2.6); R(3, -6, 3.5, 12); R(3, -6, 8, 3.4); R(3, 2.6, 8, 3.4); break;     // the repair wrench
     case 'mine': ctx.fillStyle = '#3e4232'; C(0, 1, 8); ctx.fillStyle = '#5c6048'; C(0, 1, 5); ctx.fillStyle = '#ff3a2a'; C(0, 1, 1.8); break;
     case 'reload': ctx.lineWidth = 2.6; ctx.beginPath(); ctx.arc(0, 0, 6.5, -0.4, Math.PI * 1.45); ctx.stroke(); P([[6.5, -6], [8.5, 1], [1.5, -1.5]]); break;
     case 'seat': R(-5, -8, 4, 13); R(-5, 2, 11, 4); R(4, 2, 3, 7); R(-5, 5, 3, 4); break;
@@ -43,6 +43,7 @@ function icon(kind, cx, cy, s, col, al) {
     case 'run': C(3, -7, 2.6); P([[1, -4], [5, -4], [3, 2], [7, 6], [5, 8], [1, 3], [-3, 8], [-6, 6], [-1, 0], [-4, -1], [-7, 1], [-8, -1], [-3, -4]]); break;
     case 'jump': ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-7, 3); ctx.lineTo(0, -5); ctx.lineTo(7, 3); ctx.stroke(); R(-8, 6, 16, 2.5); break;
     case 'pause': R(-6, -7, 4, 14); R(2, -7, 4, 14); break;
+    case 'score': R(-8, -7, 3, 3); R(-3, -7, 11, 3); R(-8, -1.5, 3, 3); R(-3, -1.5, 11, 3); R(-8, 4, 3, 3); R(-3, 4, 11, 3); break;
     case 'flag': R(-6, -9, 2, 18); P([[-4, -9], [8, -5], [-4, -1]]); break;
     case 'gear': ctx.restore(); gearIcon(cx, cy, s * 0.42, c); return;
     case 'nades': break;

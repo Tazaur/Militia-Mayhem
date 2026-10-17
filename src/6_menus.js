@@ -57,7 +57,11 @@ function iconButton(x, y, s, kind, fn, sel) {
   const cx = x + s / 2, cy = y + s / 2, col = sel ? '#ffe08a' : '#f0f0e0';
   if (kind === 'gear') gearIcon(cx, cy, s * 0.3, col);
   else if (kind === 'close') { ctx.strokeStyle = col; ctx.lineWidth = Math.max(2, s * 0.08); ctx.beginPath(); ctx.moveTo(cx - s * 0.2, cy - s * 0.2); ctx.lineTo(cx + s * 0.2, cy + s * 0.2); ctx.moveTo(cx + s * 0.2, cy - s * 0.2); ctx.lineTo(cx - s * 0.2, cy + s * 0.2); ctx.stroke(); }
-  else if (kind === 'full') { ctx.strokeStyle = col; ctx.lineWidth = Math.max(2, s * 0.07); const k = s * 0.22, q = s * 0.1; ctx.beginPath(); for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { ctx.moveTo(cx + sx * k, cy + sy * (k - q)); ctx.lineTo(cx + sx * k, cy + sy * k); ctx.lineTo(cx + sx * (k - q), cy + sy * k); } ctx.stroke(); }
+  else if (kind === 'full') {     // corners pointing out to go fullscreen, in to leave it
+    ctx.strokeStyle = col; ctx.lineWidth = Math.max(2, s * 0.07); const k = s * 0.22, q = s * 0.1, fs = isFS(); ctx.beginPath();
+    for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { const c = fs ? k - q : k, o = fs ? k : k - q; ctx.moveTo(cx + sx * c, cy + sy * o); ctx.lineTo(cx + sx * c, cy + sy * c); ctx.lineTo(cx + sx * o, cy + sy * c); }
+    ctx.stroke();
+  }
 }
 /* shadows for UI soldiers go through the same opaque-layer-then-fade path as the game */
 function uiShadowLayer(draw, alpha) {
@@ -128,7 +132,7 @@ function drawMenu() {
   txt('TANKS · JEEPS · BOOTS ON THE GROUND', W / 2, T + fpx(46, u, 28) + fpx(22, u, 16), fpx(13, u, 11), 'rgba(242,230,196,0.6)', 'center', 'alphabetic', FD);
   const ib = Math.max(44, 44 * u);
   iconButton(R - ib, T, ib, 'gear', () => openSettings('menu'), MENU.sel === 2); UIB[UIB.length - 1].focus = 2;
-  iconButton(R - ib * 2 - 10 * u, T, ib, 'full', () => goFullscreen());
+  iconButton(R - ib * 2 - 10 * u, T, ib, 'full', toggleFullscreen);
   const top = T + fpx(46, u, 28) + fpx(40, u, 26), foot = fpx(26, u, 22), avH = B - foot - top;
   const cw = Math.min((R - L - 24 * u) / 2, avH * 1.05, 430 * u), ch = Math.min(avH, cw * 0.98), y0 = top + (avH - ch) / 2;
   for (let i = 0; i < 2; i++) {
@@ -151,7 +155,7 @@ function drawMenu() {
 const NETM = { sel: 0, entry: null };
 const CODE_KEYS = 'abcdefghjkmnpqrstuvwxyz23456789'.split('').concat(['DEL', 'JOIN']);
 function openNetMenu(dev) { NET.err = null; NETM.sel = 0; NETM.entry = null; NETM.dev = dev && dev.type ? dev : { type: 'kb' }; setState('netmenu'); sfx('ui'); }
-function netRows() { return NET.hosts.filter(h => h.st === 'lobby' && h.n < MAXP); }
+function netRows() { return netAllHosts().filter(h => h.n < MAXP && (h.st === 'lobby' || h.mj)); }
 function netAct(i, dev) {
   if (dev && dev.type) NETM.dev = dev;
   if (!NET.avail || NET.busy) { sfx('leave'); return; }
@@ -180,7 +184,10 @@ function padNav(E, dx, dy) {
   E.sel = cur.k;
 }
 /* the name step: shown before hosting and after typing a code; the name is remembered on this device */
-function askName(next, code) { NETM.entry = { mode: 'name', name: NET.name || '', sel: 'OK', next, code }; sfx('ui'); }
+function askName(next, code) {
+  // a name this device already used goes straight through (the name button on the online menu changes it)
+  if (next && NET.name) { sfx('ui'); if (next === 'host') netHost(NETM.dev); else netJoin({ c: code }, NETM.dev); return; }
+  NETM.entry = { mode: 'name', name: NET.name || '', sel: 'OK', next, code }; sfx('ui'); }
 function codeKey(k, kb) {
   const E = NETM.entry; if (!E) return;
   if (E.mode === 'name') {
@@ -219,7 +226,11 @@ function updateCodeEntry(ins) {
 function updateNetMenu(ins, dt) {
   MENU.spin += dt * 0.35;
   if (NET.err) {
-    if (performance.now() - NET.err.t > 600) for (const { st } of ins) if (st.confirm || st.back || st.pause) { NET.err = null; sfx('ui'); return; }
+    const E = NET.err;
+    if (performance.now() - E.t > 600) for (const { st } of ins) {
+      if (E.re) { if (st.navX || st.navY) { E.sel = 1 - E.sel; sfx('ui'); } if (st.confirm) { if (E.sel === 0) netReconnect(); else { NET.err = null; sfx('ui'); } return; } if (st.back) { NET.err = null; sfx('ui'); return; } }
+      else if (st.confirm || st.back || st.pause) { NET.err = null; sfx('ui'); return; }
+    }
     runClicks(); return;
   }
   if (NETM.entry) { updateCodeEntry(ins); return; }
@@ -260,16 +271,22 @@ function netToast(u) {
 /* a failed connection: code, what broke, what to try, and the trace (kept until dismissed) */
 function drawNetErr(u) {
   const E = NET.err; if (!E) return;
-  UIB = [{ x: 0, y: 0, w: W, h: H, fn: () => { if (performance.now() - E.t > 600) { NET.err = null; sfx('ui'); } } }];
+  UIB = E.re ? [] : [{ x: 0, y: 0, w: W, h: H, fn: () => { if (performance.now() - E.t > 600) { NET.err = null; sfx('ui'); } } }];
   ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, W, H);
   const pw = Math.min(W - SAFE.l - SAFE.r - 24, 720 * u), ls = fpx(12, u, 10), lh = ls * 1.5;
-  const ph = Math.min(H - SAFE.t - SAFE.b - 24, fpx(150, u, 120) + E.lines.length * lh + (E.hint ? fpx(54, u, 46) : 0)), px = W / 2 - pw / 2, py = H / 2 - ph / 2;
+  const bh = Math.max(44, 46 * u), ph = Math.min(H - SAFE.t - SAFE.b - 24, fpx(150, u, 120) + E.lines.length * lh + (E.hint ? fpx(54, u, 46) : 0) + (E.re ? bh + 14 * u : 0)), px = W / 2 - pw / 2, py = H / 2 - ph / 2;
   panel(px, py, pw, ph); ctx.fillStyle = '#c0392b'; ctx.fillRect(px, py, pw, 4);
   let y = py + fpx(30, u, 24);
   fitTxtC('CONNECTION FAILED · ERROR E' + E.code, W / 2, y, pw - 30, fpx(14, u, 12), '#ff9a8a', FD); y += fpx(30, u, 24);
   fitTxtC(E.title, W / 2, y, pw - 30, fpx(22, u, 16), '#ffe08a', FD); y += fpx(30, u, 24);
   if (E.hint) { wrapCenter(E.hint, W / 2, y, pw - 40, fpx(13, u, 11), '#c8d0b8'); y += fpx(54, u, 46); }
   for (const l of E.lines) { fitTxtC(l, W / 2, y, pw - 24, ls, 'rgba(242,230,196,0.75)', FB); y += lh; }
+  if (E.re) {     // lost the link mid-game: try to get back in (the host keeps the soldier for you), or close
+    const bw = Math.min((pw - 40 * u) / 2, 240 * u), by = py + ph - bh - 14 * u, ok = performance.now() - E.t > 600;
+    button({ x: W / 2 - bw - 6 * u, y: by, w: bw, h: bh, label: 'RECONNECT', primary: true, sel: E.sel === 0, off: !ok, fn: () => { if (ok) netReconnect(); }, size: fpx(16, u, 13) });
+    button({ x: W / 2 + 6 * u, y: by, w: bw, h: bh, label: 'CLOSE', sel: E.sel === 1, off: !ok, fn: () => { if (ok) { NET.err = null; sfx('ui'); } }, size: fpx(16, u, 13) });
+    return;
+  }
   fitTxtC(devOf(null) === 'touch' ? 'TAP TO CLOSE' : 'PRESS ANY BUTTON TO CLOSE', W / 2, py + ph - fpx(18, u, 15), pw - 30, fpx(11, u, 10), 'rgba(242,230,196,0.45)', FD);
 }
 /* a client's join in progress: each step and how far it got */
@@ -311,7 +328,7 @@ function drawNetMenu() {
     }
     netToast(u); return;
   }
-  const room = !!NET.room && NET.hosts.length > 0, gap = 14 * u;
+  const room = NET.mode === 'p2p' || (!!NET.room && NET.hosts.length > 0), gap = 14 * u;
   const card = (i, x, y, w, h, title, sub, art) => {
     const sel = NETM.sel === i; panel(x, y, w, h, 0.94);
     if (sel) { ctx.strokeStyle = '#ffe08a'; ctx.lineWidth = 3; ctx.strokeRect(x + 1.5, y + 1.5, w - 3, h - 3); }
@@ -330,16 +347,16 @@ function drawNetMenu() {
   if (room) {
     const rx = L + (cw + gap) * 2, rw = R - rx;
     panel(rx, top, rw, bodyH, 0.94);
-    txt('OPEN ON THIS PAGE', rx + 14 * u, top + fpx(22, u, 17), fpx(16, u, 13), '#f2e6c4', 'left', 'middle', FD);
-    const rows = netRows(), busy = NET.hosts.filter(h => !rows.includes(h)), rh = Math.max(44, 50 * u);
+    txt('OPEN GAMES', rx + 14 * u, top + fpx(22, u, 17), fpx(16, u, 13), '#f2e6c4', 'left', 'middle', FD);
+    const rows = netRows(), busy = netAllHosts().filter(h => !rows.includes(h)), rh = Math.max(44, 50 * u);
     let y = top + fpx(42, u, 34);
-    if (!rows.length && !busy.length) wrapCenter('Games hosted by people viewing this page show up here.', rx + rw / 2, top + bodyH * 0.42, rw - 30 * u, fpx(12, u, 11), '#a8b098');
+    if (!rows.length && !busy.length) wrapCenter('Public games show up here. A host can hide theirs in the lobby.', rx + rw / 2, top + bodyH * 0.42, rw - 30 * u, fpx(12, u, 11), '#a8b098');
     rows.forEach((h, i) => {
       if (y + rh > top + bodyH - 8) return;
       const sel = NETM.sel === i + 2;
       button({ x: rx + 10 * u, y, w: rw - 20 * u, h: rh, sel, fn: d => netAct(i + 2, d), focus: i + 2 });
-      txt('GAME ' + h.c.toUpperCase(), rx + 24 * u, y + rh * 0.36, fpx(15, u, 13), sel ? '#ffe08a' : '#f0f0e0', 'left', 'middle', FD);
-      txt(`${h.md} · ${h.mp}`, rx + 24 * u, y + rh * 0.72, fpx(11, u, 10), '#a8b098', 'left', 'middle', FB);
+      fitTxt((h.nm ? h.nm + ' · ' : 'GAME ') + h.c.toUpperCase(), rx + 24 * u, y + rh * 0.36, rw - 90 * u, fpx(15, u, 13), sel ? '#ffe08a' : '#f0f0e0', FD);
+      txt(`${h.st === 'play' ? 'IN BATTLE · ' : ''}${h.md} · ${h.mp}`, rx + 24 * u, y + rh * 0.72, fpx(11, u, 10), '#a8b098', 'left', 'middle', FB);
       txt(`${h.n}/${MAXP} ›`, rx + rw - 22 * u, y + rh / 2, fpx(14, u, 12), sel ? '#ffe08a' : '#d1aa55', 'right', 'middle', FD);
       y += rh + 6 * u;
     });
@@ -415,7 +432,7 @@ function setLabel(k) {
     case 'sound': return ['SOUND STYLE', CFG.sound === 'classic' ? 'CLASSIC' : 'EXPERIMENTAL'];
     case 'sfx': return ['SOUND EFFECTS', AU.sfxOn ? 'ON' : 'OFF'];
     case 'mus': return ['MUSIC', AU.musOn ? 'ON' : 'OFF'];
-    case 'fullscreen': return ['FULLSCREEN', document.fullscreenElement ? 'ON' : 'OFF'];
+    case 'fullscreen': return ['FULLSCREEN', isFS() ? 'ON' : 'OFF'];
   }
 }
 function setChange(k, d) {
@@ -427,7 +444,7 @@ function setChange(k, d) {
   if (k === 'sound') { CFG.sound = CFG.sound === 'classic' ? 'exp' : 'classic'; engineKillAll(); }
   if (k === 'sfx') { AU.sfxOn = !AU.sfxOn; store.set('sfx', AU.sfxOn); applyMute(); }
   if (k === 'mus') { AU.musOn = !AU.musOn; store.set('mus', AU.musOn); applyMute(); }
-  if (k === 'fullscreen') { if (document.fullscreenElement) { try { document.exitFullscreen(); } catch (e) { } } else goFullscreen(); }
+  if (k === 'fullscreen') toggleFullscreen();
   saveCfg(); sfx('ui');
 }
 function updateSettings(ins) {
@@ -489,7 +506,8 @@ function drawSettings() {
 
 /* ================= local lobby ================= */
 const LOBBY = { sel: 0 };
-const MATCH_ROWS = ['mode', 'map', 'bots', 'limit', 'skill', 'ff', 'board', 'weather'];
+const MATCH_ROWS_ = ['mode', 'map', 'bots', 'limit', 'skill', 'ff', 'board', 'weather'], MATCH_ROWS_NET = [...MATCH_ROWS_, 'midjoin', 'pub'];
+const matchRows = () => NET.role ? MATCH_ROWS_NET : MATCH_ROWS_;      // online games also choose whether people can join mid-match
 function deviceKey(d) { return d.type + (d.index !== undefined ? d.index : '') + (d.peer || ''); }
 function devName(d) { return d.type === 'net' ? (d.peer ? 'ONLINE' : 'HOST') : d.type === 'kb' ? 'KEYBOARD + MOUSE' : d.type === 'pad' ? 'CONTROLLER ' + (d.index + 1) : 'TOUCH'; }
 function lobbyJoin(dev) {
@@ -518,6 +536,8 @@ function changeSetting(key, d) {
   if (key === 'skill') C.skill = (C.skill + d + 3) % 3;
   if (key === 'ff') C.ff = !C.ff;
   if (key === 'board') C.board = !C.board;
+  if (key === 'midjoin') C.midjoin = !C.midjoin;
+  if (key === 'pub') C.pub = C.pub === false;
   if (key === 'weather') { const W3 = ['clear', 'rain', 'snow']; C.weather = W3[(W3.indexOf(C.weather) + d + 3) % 3]; }
   if (MODES[C.mode].id === 'ffa') C.bots = Math.min(C.bots, 6);
   saveCfg(); sfx('ui');
@@ -533,6 +553,8 @@ function settingLabel(key) {
     case 'skill': return ['BOT SKILL', SKILL[C.skill].name];
     case 'ff': return ['FRIENDLY FIRE', C.ff ? 'ON' : 'OFF'];
     case 'board': return ['ENEMY BOARDING', C.board ? 'ON' : 'OFF'];
+    case 'midjoin': return ['JOIN MID-MATCH', C.midjoin ? 'ON' : 'OFF'];
+    case 'pub': return ['SERVER LIST', C.pub === false ? 'HIDDEN' : 'SHOWN'];
     case 'weather': return ['WEATHER', C.weather === 'clear' ? 'CLEAR' : C.weather === 'snow' ? 'SNOW' : MAPNAMES[C.map][0] === 'snowfield' ? 'STORM' : 'RAIN'];
   }
 }
@@ -548,7 +570,7 @@ function startBattle() {
 function toLobby() { engineKillAll(); SET.open = false; for (const p of PLAYERS) { p.ready = false; p.sol = null; } demoMatch(); setState('lobby'); Music.mode = 'menu'; }
 function updateLobby(ins) {
   if (NET.role === 'client') { updateNetLobby(ins); return; }
-  const nRows = MATCH_ROWS.length + 1;
+  const nRows = matchRows().length + 1;
   for (const { dev, st } of ins) {
     const p = PLAYERS.find(q => deviceKey(q.dev) === deviceKey(dev));
     if (!p) {
@@ -562,9 +584,9 @@ function updateLobby(ins) {
     const dc = st.tabR ? 1 : st.tabL ? -1 : 0;
     if (dc) cycleColor(p, dc);
     if (st.navY) { LOBBY.sel = (LOBBY.sel + st.navY + nRows) % nRows; sfx('ui'); }
-    if (st.navX && LOBBY.sel < MATCH_ROWS.length) changeSetting(MATCH_ROWS[LOBBY.sel], st.navX);
+    if (st.navX && LOBBY.sel < matchRows().length) changeSetting(matchRows()[LOBBY.sel], st.navX);
     if ((dev.type === 'pad' ? st.interact : st.nadeCyc) && MODES[CFG.mode].team) toggleTeam(p);
-    if (st.confirm && stateT > 0.3) { if (LOBBY.sel === MATCH_ROWS.length) { p.ready = true; tryStart(); } else toggleReady(p); }
+    if (st.confirm && stateT > 0.3) { if (LOBBY.sel === matchRows().length) { p.ready = true; tryStart(); } else toggleReady(p); }
     if (st.pause) { p.ready = true; tryStart(); }
     if (st.back) { if (p.ready) { p.ready = false; sfx('leave'); } else leaveLobby(p); }
   }
@@ -645,7 +667,7 @@ function drawMatchPanel(x, y, w, h, u) {
   txt('MATCH', x + pad, y + fpx(18, u, 15), fpx(17, u, 14), '#f2e6c4', 'left', 'middle', FD);
   txt(MODES[CFG.mode].n, x + w - pad, y + fpx(18, u, 15), fpx(13, u, 11), '#9a9a8a', 'right', 'middle', FD);
   // map preview of the live demo battlefield
-  const startH = Math.max(44, 46 * u), minRows = MATCH_ROWS.length * Math.max(28, 32 * u), head = fpx(34, u, 28);
+  const startH = Math.max(44, 46 * u), minRows = matchRows().length * Math.max(28, 32 * u), head = fpx(34, u, 28);
   const mw = w - pad * 2, mh0 = Math.min(mw * WH / WW, h - head - minRows - startH - pad * 2 - 12 * u), mh = mh0 < 46 ? 0 : mh0, mx = x + pad, my = y + head;
   const k = Math.min(mw / WW, mh / WH), dw = WW * k, dh = WH * k, dx = mx + (mw - dw) / 2;
   if (mh) ctx.drawImage(ground, 0, 0, WW, WH, dx, my, dw, dh);
@@ -655,8 +677,8 @@ function drawMatchPanel(x, y, w, h, u) {
   ctx.strokeStyle = 'rgba(242,230,196,0.3)'; ctx.strokeRect(dx + 0.5, my + 0.5, dw - 1, dh - 1);
   if (!cl) UIB.push({ x: dx, y: my, w: dw, h: dh, fn: () => changeSetting('map', 1) }); }
   // rows
-  const rowsTop = my + dh + 8 * u, rowsH = y + h - pad - startH - 8 * u - rowsTop, rh = clamp(rowsH / MATCH_ROWS.length, 28, 44 * u);
-  MATCH_ROWS.forEach((key, i) => {
+  const rowsTop = my + dh + 8 * u, rowsH = y + h - pad - startH - 8 * u - rowsTop, rh = clamp(rowsH / matchRows().length, 28, 44 * u);
+  matchRows().forEach((key, i) => {
     const ry = rowsTop + i * rh, sel = navOn && LOBBY.sel === i, [lab, val] = settingLabel(key);
     if (sel) { ctx.fillStyle = 'rgba(255,224,138,0.13)'; ctx.fillRect(x + 4, ry + 1, w - 8, rh - 2); ctx.fillStyle = '#ffe08a'; ctx.fillRect(x + 4, ry + 1, 3, rh - 2); }
     txt(lab, x + pad + 4, ry + rh / 2, fpx(12.5, u, 11.5), '#a8b098', 'left', 'middle', FD);
@@ -665,7 +687,7 @@ function drawMatchPanel(x, y, w, h, u) {
     UIB.push({ x: x + 4, y: ry, w: (w - 8) * 0.5, h: rh, fn: () => { LOBBY.sel = i; changeSetting(key, -1); } });
     UIB.push({ x: x + 4 + (w - 8) * 0.5, y: ry, w: (w - 8) * 0.5, h: rh, fn: () => { LOBBY.sel = i; changeSetting(key, 1); } });
   });
-  const ok = canStart(), sel = navOn && LOBBY.sel === MATCH_ROWS.length;
+  const ok = canStart(), sel = navOn && LOBBY.sel === matchRows().length;
   if (cl) { button({ x: x + pad, y: y + h - pad - startH, w: w - pad * 2, h: startH, label: 'THE HOST STARTS THE BATTLE', off: true, size: fpx(14, u, 12) }); return; }
   button({ x: x + pad, y: y + h - pad - startH, w: w - pad * 2, h: startH, label: !PLAYERS.length ? 'JOIN TO START' : ok ? 'START BATTLE' : 'WAITING FOR READY', primary: true, off: !ok, sel, fn: () => tryStart(), size: fpx(17, u, 13) });
 }
@@ -698,7 +720,9 @@ function drawPause() {
   screenT(); UIB = [];
   ctx.fillStyle = 'rgba(4,6,3,0.74)'; ctx.fillRect(0, 0, W, H);
   const u = uiU(), bw = Math.min(360 * u, W - 40), bh = Math.max(44, 46 * u), gap = 8 * u, items = pauseItems(), tot = items.length * (bh + gap);
-  const y0 = Math.max(SAFE.t + fpx(90, u, 70), H / 2 - tot / 2 + 20 * u);
+  const hc = NET.role === 'host' && NET.code ? fpx(40, u, 30) : 0, y0 = Math.max(SAFE.t + fpx(90, u, 70) + hc, H / 2 - tot / 2 + 20 * u);
+  if (hc) { txt('GAME CODE', W / 2, SAFE.t + fpx(16, u, 13), fpx(12, u, 11), 'rgba(242,230,196,0.6)', 'center', 'middle', FD); stxt(NET.code.toUpperCase(), W / 2, SAFE.t + fpx(40, u, 31), fpx(28, u, 21), '#ffe08a', 'center', 'middle', FD); }
+  const ib = Math.max(44, 44 * u); iconButton(W - SAFE.r - 14 * u - ib, SAFE.t + 12 * u, ib, 'full', toggleFullscreen);
   stxt(NET.role ? 'MENU' : 'PAUSED', W / 2, y0 - fpx(50, u, 40), fpx(44, u, 30), '#f2e6c4', 'center', 'middle', FD);
   if (NET.role) txt('ONLINE — THE BATTLE CARRIES ON', W / 2, y0 - fpx(18, u, 14) + (PAUSE.by && PAUSE.by.sol ? fpx(18, u, 14) : 0), fpx(12, u, 11), 'rgba(242,230,196,0.6)', 'center', 'middle', FD);
   if (PAUSE.by && PAUSE.by.sol) stxt('by ' + PAUSE.by.sol.name, W / 2, y0 - fpx(18, u, 14), fpx(14, u, 12), CHEX[PAUSE.by.color], 'center', 'middle', FD);

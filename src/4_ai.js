@@ -13,14 +13,16 @@ function enemiesOf(s, out) {
   for (const o of M.sol) if (o.alive && isEnemy(s.team, o.team) && (!o.veh || o.veh.T.seats[o.seat].exposed) && o.protect <= 0) out.push(o);
   return out;
 }
+/* a gun nest only swings so far: anything outside its arc isn't a target for whoever is on it */
+function inNestArc(s, x, y) { const v = s.veh; return !v || v.T.drive || !v.T.arc || Math.abs(angDiff(v.a, Math.atan2(y - s.y, x - s.x))) <= v.T.arc + 0.08; }
 function findTarget(s, range) {
   let best = null, bd = range;
   enemiesOf(s, _en);
-  for (const o of _en) { const d = Math.hypot(o.x - s.x, o.y - s.y); if (d < bd && visibleTo(s, o, d) && los(s.x, s.y, o.x, o.y) && !smokeBlocks(s.x, s.y, o.x, o.y)) { bd = d; best = { o, x: o.x, y: o.y, vx: o.vx || 0, vy: o.vy || 0, d, veh: null }; } }
+  for (const o of _en) { const d = Math.hypot(o.x - s.x, o.y - s.y); if (d < bd && inNestArc(s, o.x, o.y) && visibleTo(s, o, d) && los(s.x, s.y, o.x, o.y) && !smokeBlocks(s.x, s.y, o.x, o.y)) { bd = d; best = { o, x: o.x, y: o.y, vx: o.vx || 0, vy: o.vy || 0, d, veh: null }; } }
   const wantV = (s.veh && s.veh.type === 'tank' && s.seat === 0) || (s.w && s.w[1] && WPN[s.w[1].id].rocket && s.w[1].mag + s.w[1].res > 0) || (s.veh && s.veh.T.seats[s.seat].role === 'mg');
   for (const v of M.vehicles) {
     if (!v.active || v.dead) continue; const vt = vehTeam(v); if (!isEnemy(s.team, vt)) continue;
-    const d = Math.hypot(v.x - s.x, v.y - s.y); if (d > range) continue;
+    const d = Math.hypot(v.x - s.x, v.y - s.y); if (d > range || !inNestArc(s, v.x, v.y)) continue;
     if ((wantV || !best) && los(s.x, s.y, v.x, v.y)) { if (!best || wantV || d < bd * 0.7) { best = { o: null, veh: v, x: v.x, y: v.y, vx: v.vx, vy: v.vy, d }; bd = d; } }
   }
   return best;
@@ -128,7 +130,7 @@ function botControl(s, dt) {
   if (!v) {
     let fighting = false;
     if (B.wantSeat) {
-      const w = B.wantSeat.w, an = w.T.seats[B.wantSeat.seat].anchor, [ax, ay] = toWorld(w, an[0] * 0.92, an[1] * 0.92);
+      const w = B.wantSeat.w, an = seatAnchor(w, B.wantSeat.seat, s.x, s.y), [ax, ay] = toWorld(w, an[0] * 0.92, an[1] * 0.92);
       const dx = ax - s.x, dy = ay - s.y, d = Math.hypot(dx, dy);
       if (d < 22) { const c = enterCandidate(s); if (c && c.v === w && c.seat >= 0) enterVehicle(s, c); B.wantSeat = null; }
       else { I.mx = dx / d; I.my = dy / d; I.sprint = !T; }
@@ -196,7 +198,7 @@ function botControl(s, dt) {
     if (vt.type === 'jeep' && B.goal && B.goal.flag && B.goal.flag.owner === s.team && Math.hypot(vt.x - B.goal.x, vt.y - B.goal.y) < 120 && Math.abs(vt.spd) < 30 && B.exitCd <= 0 && Math.random() < dt * 0.3) { B.exitCd = 5; I.enter = true; }
     return I;
   }
-  if (T) {
+  if (T && inNestArc(s, T.x, T.y)) {
     B.burst -= dt; if (B.burst <= 0) { B.rest -= dt; if (B.rest <= 0) { B.burst = rnd(0.5, 1.3) * sk.rate; B.rest = rnd(0.2, 0.6) / sk.rate; } }
     I.fire = aimed && B.burst > 0;
   } else I.aimA = sd.role === 'mg' && !vt.T.drive ? vt.a + Math.sin(M.time * 0.6 + s.id) * vt.T.arc * 0.7 : vt.a + (sd.role === 'mg' ? Math.PI * (vt.type === 'jeep' ? 1 : 0) + Math.sin(M.time * 0.7 + s.id) * 0.9 : (s.seat === 2 ? -1.4 : 1.4));

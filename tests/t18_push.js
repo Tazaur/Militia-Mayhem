@@ -26,11 +26,12 @@ setImmediate(()=>{
     else { tgt=M.vehicles.find(v=>v.type===bt&&!v.dead&&v!==va&&!v.seats.some(Boolean)); tgt.active=true; tgt.x=P[0]+va.T.hl+tgt.T.hl+6; tgt.y=P[1]; tgt.a=0; tgt.vx=tgt.vy=tgt.spd=0; tgt.hp=tgt.T.hp; }
     me.x=va.x; me.y=va.y+40; G.enterVehicle(me,{v:va,seat:0,bump:null},true); step(5);
     const x0=tgt.x, y0=tgt.y, a0=tgt.a; pads[0].axes[0]=1; if(process.env.DBG&&a+'>'+b===process.env.DBG){for(let f=0;f<40;f++){step(1);if(f%4==0)console.log(f,'v',va.x.toFixed(1),va.y.toFixed(1),va.spd.toFixed(0),'t',tgt.x.toFixed(1),tgt.y.toFixed(1),M.wrecks.length,M.vehicles.filter(v=>v.active).map(v=>v.type[0]+v.x.toFixed(0)).join(','));}} step(60*3); pads[0].axes[0]=0; step(5);
-    res[a+'>'+b]={moved:Math.round(Math.hypot(tgt.x-x0,tgt.y-y0)),pxPerS:Math.round(Math.hypot(tgt.x-x0,tgt.y-y0)/3),contact:Math.round(Math.hypot(tgt.x-va.x,tgt.y-va.y)-va.T.hl-(tgt.T&&tgt.T.hl?tgt.T.hl:tgt.hl)),turned:+(tgt.a-a0).toFixed(2),pusherSpd:Math.round(va.spd)};
+    res[a+'>'+b]={moved:Math.round(Math.hypot(tgt.x-x0,tgt.y-y0)),pxPerS:Math.round(Math.hypot(tgt.x-x0,tgt.y-y0)/3),contact:Math.round(Math.hypot(tgt.x-va.x,tgt.y-va.y)-va.T.hl-(tgt.T&&tgt.T.hl?tgt.T.hl:tgt.hl)),turned:+(tgt.a-a0).toFixed(2),pusherSpd:Math.round(va.spd),dmgSelf:Math.round(va.T.hp-va.hp),dmgTgt:tgt.T&&tgt.hp!==undefined?Math.round(tgt.T.hp-tgt.hp):0};
     va.__used=0;
   }
   console.log(JSON.stringify(res));
   const r=k=>res[k]?res[k].pxPerS:0;
+  for(const k in res) if(res[k].dmgSelf>0) { console.log('push hurt the pusher',k); errs++; }
   if(!(r('jeep>tank')>3&&r('jeep>tank')<r('jeep>jeep')&&r('tank>jeep')>r('tank>tank')&&r('jeep>wreck-tank')<r('jeep>tank')&&r('tank>wreck-tank')>2)) errs++;
   console.log('errs',errs);
 });
