@@ -294,7 +294,9 @@ function updateMatch(dt) {
     for (let j = i + 1; j < M.sol.length; j++) {
       const b = M.sol[j]; if (!b.alive || b.veh) continue;
       const dx = b.x - a.x, dy = b.y - a.y; if (Math.abs(dx) > 16 || Math.abs(dy) > 16) continue;
-      const d = Math.hypot(dx, dy), m = 13; if (d < m && d > 0.01) { const p = (m - d) / 2; a.x -= dx / d * p; a.y -= dy / d * p; b.x += dx / d * p; b.y += dy / d * p; }
+      // an online joiner places themselves, so whoever they bump into steps aside the whole way
+      const d = Math.hypot(dx, dy), m = 13, fa = a.netAuthT === M.time ? 0 : 1, fb = b.netAuthT === M.time ? 0 : 1;
+      if (d < m && d > 0.01 && fa + fb) { const p = (m - d) / (fa + fb); a.x -= dx / d * p * fa; a.y -= dy / d * p * fa; b.x += dx / d * p * fb; b.y += dy / d * p * fb; }
     }
   }
   for (const v of M.vehicles) updateVehicle(v, sdt);

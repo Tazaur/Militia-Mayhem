@@ -8,7 +8,7 @@
 const NET = {
   room: null, avail: null, mode: null, busy: '', role: null, code: '', game: null, myPeer: null, hosts: [], msg: '', msgT: 0,
   // host
-  matchId: 0, seq: 0, evId: 0, evLog: [], t0: performance.now(), sendT: 0, lastPres: '', lastMM: '', pid: 0, kicked: new Set(), bn: {}, L: null, maxSnap: 0, hdr: null, roster: '',
+  matchId: 0, seq: 0, seqS: 0, slowT: 0, gs: null, slow: null, evId: 0, evLog: [], t0: performance.now(), sendT: 0, lastPres: '', lastMM: '', pid: 0, kicked: new Set(), bn: {}, L: null, maxSnap: 0, hdr: null, roster: '',
   // client
   hostPeer: null, dev: null, myPid: -1, joined: false, wasJoined: false, curMatch: -1, lastSeq: -1, buf: [], off: null, lastEv: 0, evq: [], lobby: null, me: null,
   cc: new Array(14).fill(0), sd: 0, si: 0, pw: 0, dep: null, depN: 0, want: { c: '', t: -1, r: 0 }, lastI: null, pmap: new Map(), bul: [], lastHostT: 0, lastSnapT: 0, joinT: 0, lastA: null, demoMap: -1, selfD: null
@@ -152,12 +152,16 @@ const iceGathered = (pc, ms) => new Promise(r => {
 });
 const sdpCands = d => ((d && d.sdp) || '').split(/\r?\n/).filter(l => l.startsWith('a=candidate:')).map(l => ({ candidate: l.slice(2) }));
 /* the same calls the game uses on a room (presence, onPeers, leave), over direct links */
+function netWire(dc, t) { try { dc.send(t); } catch (e) { } }
 function p2pRoom(sig, hostId, trace) {
-  const R = { mine: {}, links: new Map(), hs: [], pend: {}, onFail: null, onJoinFail: null, dead: false };
+  const R = { mine: {}, per: {}, q: 0, links: new Map(), hs: [], pend: {}, onFail: null, onJoinFail: null, dead: false };
   const self = () => ({ peer: sig.id, sameTab: true, isMe: true, kind: 'viewer', presence: R.mine });
   const list = () => [self(), ...[...R.links.values()].filter(l => l.open).map(l => ({ peer: l.id, sameTab: false, isMe: false, kind: 'viewer', presence: l.pres }))];
   const fire = (joined, left) => { const ch = { peers: list(), joined, left, updated: [] }; for (const h of R.hs) { try { h(ch); } catch (e) { console.error(e); } } };
-  const txt = () => JSON.stringify(R.mine);
+  // a message carries only the keys that changed (plus a running number, so a late packet never overwrites a newer one);
+  // anything addressed to one peer only (their own HUD numbers) rides in R.per
+  const txt = (L, patch) => JSON.stringify(Object.assign({ _q: ++R.q }, patch || R.mine, patch ? (R.perP && R.perP[L.id]) || {} : R.per[L.id] || {}));
+  const dsend = (L, t) => { L.sentT = performance.now(); netWire(L.dc, t); };
   function drop(L, why) {
     if (!R.links.has(L.id)) return; R.links.delete(L.id); try { L.pc.close(); } catch (e) { }
     if (L.open) fire([], [{ peer: L.id }]); else if (hostId && R.onFail) R.onFail(why || 'failed'); else if (!hostId && R.onJoinFail) R.onJoinFail(L.tr, why || 'failed');
@@ -165,7 +169,7 @@ function p2pRoom(sig, hostId, trace) {
   function mkLink(id, initiator) {
     const PC = RTC(), pc = new PC({ iceServers: P2P_ICE() });
     const tr = (hostId && trace) || mkTrace();
-    const L = { id, pc, dc: null, pres: {}, open: false, last: performance.now(), tr };
+    const L = { id, pc, dc: null, pres: {}, kq: {}, open: false, last: performance.now(), sentT: 0, tr };
     // addresses found before the offer/answer goes out ride along in it; only late ones are sent separately
     pc.onicecandidate = e => { if (e.candidate) { traceCand(tr.lc, 'lmdns', tr, e.candidate); if (L.sent) sig.send({ type: 'CANDIDATE', dst: id, payload: { c: e.candidate.toJSON ? e.candidate.toJSON() : e.candidate } }); } };
     pc.onicecandidateerror = e => { if (/^turns?:/.test(e.url || '')) tr.turn = String(e.errorCode || '?'); };
@@ -174,8 +178,13 @@ function p2pRoom(sig, hostId, trace) {
     pc.onconnectionstatechange = () => { tr.conn = pc.connectionState; if (pc.connectionState === 'failed' || pc.connectionState === 'closed') drop(L, 'failed'); };
     const wire = dc => {
       L.dc = dc;
-      dc.onopen = () => { tr.dc = performance.now(); L.open = true; L.last = performance.now(); try { dc.send(txt()); } catch (e) { } fire([{ peer: id }], []); };
-      dc.onmessage = e => { try { L.pres = JSON.parse(e.data) || {}; L.last = performance.now(); tr.data = tr.data || L.last; fire([], []); } catch (er) { } };
+      dc.onopen = () => { tr.dc = performance.now(); L.open = true; L.last = performance.now(); dsend(L, txt(L)); fire([{ peer: id }], []); };
+      dc.onmessage = e => {
+        let m; try { m = JSON.parse(e.data) || {}; } catch (er) { return; }
+        const q = m._q | 0; L.last = performance.now(); tr.data = tr.data || L.last;
+        for (const k in m) { if (k === '_q' || q <= (L.kq[k] | 0)) continue; L.kq[k] = q; if (m[k] === null) delete L.pres[k]; else L.pres[k] = m[k]; }
+        fire([], []);
+      };
       dc.onclose = () => drop(L, 'closed');
     };
     // game traffic is state that is resent constantly, so a lost packet is never waited for
@@ -204,11 +213,11 @@ function p2pRoom(sig, hostId, trace) {
   };
   sig.onclose = () => { if (!R.dead && R.onSigLost) R.onSigLost(); };
   if (hostId && trace) sig.onsenderr = e => { trace.err = e; };
-  // keep links warm: resend our state four times a second, drop links that go quiet
+  // keep links warm: a quiet link gets our whole state four times a second; drop links that go silent
   R.tick = setInterval(() => {
-    const now = performance.now(), t = txt();
+    const now = performance.now();
     for (const L of [...R.links.values()]) {
-      if (L.open && L.dc.readyState === 'open') { try { L.dc.send(t); } catch (e) { } }
+      if (L.open && L.dc.readyState === 'open' && now - L.sentT > 240) dsend(L, txt(L));
       if (hostId && L.tr.offer && !L.tr.ack && now - L.tr.offer > 8000) drop(L, 'nohost');   // nobody is listening on that code
       else if (now - L.last > (L.open ? 10000 : 22000)) drop(L, 'timeout');
     }
@@ -224,11 +233,13 @@ function p2pRoom(sig, hostId, trace) {
   })();
   return {
     name: sig.id,
-    presence(patch) {
+    presence(patch, per) {
       for (const k in patch) { if (patch[k] === null) delete R.mine[k]; else R.mine[k] = patch[k]; }
-      const t = txt(); for (const L of R.links.values()) if (L.open && L.dc.readyState === 'open') { try { L.dc.send(t); } catch (e) { } }
+      R.perP = per || null; if (per) for (const id in per) R.per[id] = Object.assign(R.per[id] || {}, per[id]);
+      for (const L of R.links.values()) if (L.open && L.dc.readyState === 'open') dsend(L, txt(L, patch));
       return Promise.resolve();
     },
+    perPeer: true,
     onPeers(h) { R.hs.push(h); setTimeout(() => { if (!R.dead) fire([], []); }, 0); return () => { }; },
     peers: list, connected: () => !R.dead,
     set onFail(f) { R.onFail = f; }, set onSigLost(f) { R.onSigLost = f; }, set onJoinFail(f) { R.onJoinFail = f; }, set onJoinTry(f) { R.onJoinTry = f; },
@@ -283,7 +294,7 @@ async function netHost(dev) {
 }
 async function netJoin(h, dev) {
   if (!NET.avail || NET.role || !h) return;
-  Object.assign(NET, { role: 'client', hostPeer: h.peer, code: h.c, dev: dev && dev.type !== 'net' ? dev : { type: 'kb' }, myPid: -1, joined: false, wasJoined: false, curMatch: -1, lastSeq: -1, buf: [], off: null, lobby: null, want: { c: '', t: -1, r: 0 }, dep: null, lastHostT: performance.now(), joinT: performance.now(), lastPres: '', game: null, demoMap: -1 });
+  Object.assign(NET, { role: 'client', hostPeer: h.peer, code: h.c, dev: dev && dev.type !== 'net' ? dev : { type: 'kb' }, myPid: -1, joined: false, wasJoined: false, curMatch: -1, lastSeq: -1, buf: [], off: null, lobby: null, want: { c: '', t: -1, r: 0 }, dep: null, lastHostT: performance.now(), joinT: performance.now(), lastPres: '', game: null, demoMap: -1, gs: null, gsRaw: null, slow: null, snapN: 0 });
   NET.busy = 'CONNECTING TO GAME ' + h.c.toUpperCase() + '…'; NET.err = null; NET.trace = mkTrace();
   try {
     let sig = null;
@@ -303,7 +314,7 @@ async function netJoin(h, dev) {
 /* leave whatever online game we are in; back to the network menu with an optional message */
 function netShutdown(msg) {
   const g = NET.game; NET.game = null;
-  if (g) { try { g.presence({ L: null, g: null, j: null, i: null, d: null }).catch(() => { }); } catch (e) { } try { g.leave().catch(() => { }); } catch (e) { } }
+  if (g) { try { g.presence({ L: null, g: null, gs: null, j: null, i: null, d: null }).catch(() => { }); } catch (e) { } try { g.leave().catch(() => { }); } catch (e) { } }
   if (NET.role === 'host' && NET.room) NET.room.presence({ mm: null }).catch(() => { });
   NET.role = null; NET.curMatch = -1; NET.me = null; NET.buf = []; NET.evq = []; NET.pmap.clear(); NET.bul = []; NET.lastI = null;
   if (msg) netSay(msg);
@@ -333,6 +344,7 @@ function netHostSee(pr) {
     if (!P.j || NET.kicked.has(pr.peer) || state !== 'lobby' || PLAYERS.length >= MAXP) return;
     lobbyJoin({ type: 'net', peer: pr.peer }); p = PLAYERS.find(q => isNet(q) && q.dev.peer === pr.peer); if (!p) return;
   }
+  if ((P.i || null) !== p.netIn) p.netInT = performance.now();
   p.netIn = P.i || null; p.netDep = P.d || null;
   if (state === 'lobby') {
     if (!P.j) { leaveLobby(p); return; }
@@ -369,7 +381,26 @@ function netInputHost(p) {
   I.jump = e(0); I.reload = e(1); I.alt = e(2); I.nadeCyc = e(3); I.gadgetP = e(4); I.enter = e(5); I.melee = e(6); I.spot = e(7); I.stanceCycle = e(8); I.swapW = e(9); I.seatNext = e(10);
   I.seatDir = e(11) ? clamp(q.sd | 0, 0, 3) : -1; I.seatIdx = e(12) ? clamp(q.si | 0, 0, 3) : -1; I.pickW = e(13) ? clamp(q.pw | 0, 0, 1) : -1;
   p.netC = c.slice();
+  // on foot, the joiner says where they are; the host takes it if it's believable, otherwise it corrects them
+  const s = p.sol, rp = q.p;
+  if (s && s.alive && !s.veh && Array.isArray(rp) && (q.ca | 0) === (s.netCorr | 0) && performance.now() - (p.netInT || 0) < 300) {
+    if (p.netInQ !== q) {
+      p.netInQ = q; const x = +rp[0] || 0, y = +rp[1] || 0;
+      if (Math.hypot(x - s.x, y - s.y) > 110 || MAP.buildings.some(b => inRect(x, y, b, 2))) { netCorrect(s); p.netRep = null; }
+      else p.netRep = { x, y, vx: clamp(+rp[2] || 0, -300, 300), vy: clamp(+rp[3] || 0, -300, 300), jt: clamp(+rp[4] || 0, 0, 0.42), t: p.netInT, ca: s.netCorr | 0 };
+    }
+    if (p.netRep && p.netRep.ca === (s.netCorr | 0)) I.netPos = p.netRep;
+  }
   return I;
+}
+function netCorrect(s) { s.netCorr = ((s.netCorr | 0) + 1) % 64; }
+/* host: follow a joiner's own position (a touch ahead, by their speed), then make sure it's somewhere they can be */
+function netAuthMove(s, r, dt) {
+  const e = Math.min(0.12, (performance.now() - r.t) / 1000), k = 1 - Math.exp(-dt * 25);
+  s.jumpT = Math.max(0, r.jt - e);                  // their vault, on their clock: so we agree when they're over a sandbag
+  s.x += (r.x + r.vx * e - s.x) * k; s.y += (r.y + r.vy * e - s.y) * k; s.vx = r.vx; s.vy = r.vy; s.netAuthT = M.time;
+  const bx = s.x, by = s.y; soldierCollide(s);
+  if (Math.hypot(s.x - bx, s.y - by) > 6) netCorrect(s);
 }
 function netDeployHost(s) {
   const p = s.player, d = p.netDep;
@@ -420,23 +451,29 @@ function netSnap() {
     const k = p.k === 'rocket' ? 0 : p.k === 'shell' ? 1 : p.smoke ? 3 : 2;
     P += pk(k, 1) + pk(p.nid, 2) + pk(p.x, 2) + pk(p.y, 2) + (k < 2 ? angE(Math.atan2(p.vy, p.vx)) : pk(p.vx / 14 + 32, 1) + pk(p.vy / 14 + 32, 1) + pk(p.h, 1) + pk(p.life * 20, 1));
   }
-  let I = '', ni = 0;
-  for (const it of M.items) { if (ni++ >= 40) break; I += pk(['med', 'ammo', 'mine', 'pouch'].indexOf(it.k), 1) + pk(it.x, 2) + pk(it.y, 2) + pk(it.team < 0 ? 4095 : it.team, 2); }
-  let C = ''; for (let i = 0; i < M.crates.length; i += 6) { let b = 0; for (let j = 0; j < 6 && i + j < M.crates.length; j++) if (M.crates[i + j].live) b |= 1 << j; C += B64[b]; }
-  const Wr = M.wrecks.map(w => pk(w.type === 'tank' ? 0 : 1, 1) + pk(w.x, 2) + pk(w.y, 2) + angE(w.a) + angE(w.ta || 0) + pk(w.t * 10, 2)).join('');
   const F = M.flags.map(f => pk((f.owner + 1) | (f.contested ? 4 : 0), 1) + pk((f.prog + 1) * 31.5, 1)).join('');
-  const R = M.sol.map(s => pk(s.pts, 3) + pk(s.k, 2) + pk(s.d, 2) + pk(s.caps, 1) + pk(s.vk, 1)).join('');
   const pv = {};
   for (const p of PLAYERS) if (isNet(p) && p.sol) {
     const s = p.sol, w = s.w || [{ id: WPNK[0], mag: 0, res: 0 }, { id: WPNK[0], mag: 0, res: 0 }];
     pv[p.id] = [Math.ceil(Math.max(0, s.hp)), Math.max(0, Math.round(s.respawnT * 10)), s.wi, WPNK.indexOf(w[0].id), w[0].mag, w[0].res, WPNK.indexOf(w[1].id), w[1].mag, w[1].res, s.nades, s.smokes || 0, s.mines, Math.max(0, Math.round(s.gcd * 10)), Math.round(s.gmax || 0), Math.max(0, Math.round(s.reloadT * 10)), Math.round((s.reloadMax || 0) * 10), s.throwSel || 0,
-      Math.max(0, Math.round(s.hitT * 100)), Math.max(0, Math.round(s.hurtT * 100)), Math.max(0, Math.round(s.seatT * 100)), Math.round((s.seatMax || 0.5) * 100), s.msg ? String(s.msg.txt).slice(0, 40) : '', s.msg ? Math.round(s.msg.t * 10) : 0];
+      Math.max(0, Math.round(s.hitT * 100)), Math.max(0, Math.round(s.hurtT * 100)), Math.max(0, Math.round(s.seatT * 100)), Math.round((s.seatMax || 0.5) * 100), s.msg ? String(s.msg.txt).slice(0, 40) : '', s.msg ? Math.round(s.msg.t * 10) : 0, s.netCorr | 0];
   }
-  const E = []; for (const e of NET.evLog) if (now - e.t < 700) E.push([e.id, Math.round((now - e.t) / 10), ...e.a]);
-  const g = { id: NET.matchId, q: ++NET.seq, t: now, h: NET.hdr, ro: NET.roster, nm: NET.names, S: S.join(''), V, P, I, C, W: Wr, F, T: [M.tickets[0], M.tickets[1]], o: M.over ? [M.winner, M.winnerSol ? M.sol.indexOf(M.winnerSol) : -1] : 0, R, pv, E };
-  if (NET.bn && Object.keys(NET.bn).length) g.bn = NET.bn;
-  if (M.over) g.A = M.sol.map(s => pk(s.heal, 2) + pk(s.rep, 2) + pk(s.longest / 2, 2) + pk(s.rk, 1)).join('');
-  return g;
+  // each event rides in four snapshots in a row: a lost packet or two never loses it, and it doesn't bloat every packet
+  const E = []; for (const e of NET.evLog) if ((e.n | 0) < 4 && now - e.t < 700) { e.n = (e.n | 0) + 1; E.push([e.id, Math.round((now - e.t) / 10), ...e.a]); }
+  const g = { id: NET.matchId, q: ++NET.seq, t: now, S: S.join(''), V, P, F, T: [M.tickets[0], M.tickets[1]], o: M.over ? [M.winner, M.winnerSol ? M.sol.indexOf(M.winnerSol) : -1] : 0, E };
+  return { g, pv };
+}
+/* what changes slowly (or never): sent four times a second beside the fast snapshots */
+function netSnapSlow() {
+  let I = '', ni = 0;
+  for (const it of M.items) { if (ni++ >= 40) break; I += pk(['med', 'ammo', 'mine', 'pouch'].indexOf(it.k), 1) + pk(it.x, 2) + pk(it.y, 2) + pk(it.team < 0 ? 4095 : it.team, 2); }
+  let C = ''; for (let i = 0; i < M.crates.length; i += 6) { let b = 0; for (let j = 0; j < 6 && i + j < M.crates.length; j++) if (M.crates[i + j].live) b |= 1 << j; C += B64[b]; }
+  const Wr = M.wrecks.map(w => pk(w.type === 'tank' ? 0 : 1, 1) + pk(w.x, 2) + pk(w.y, 2) + angE(w.a) + angE(w.ta || 0) + pk(w.t * 10, 2)).join('');
+  const R = M.sol.map(s => pk(s.pts, 3) + pk(s.k, 2) + pk(s.d, 2) + pk(s.caps, 1) + pk(s.vk, 1)).join('');
+  const gs = { id: NET.matchId, q: ++NET.seqS, h: NET.hdr, ro: NET.roster, nm: NET.names, I, C, W: Wr, R };
+  if (NET.bn && Object.keys(NET.bn).length) gs.bn = NET.bn;
+  if (M.over) gs.A = M.sol.map(s => pk(s.heal, 2) + pk(s.rep, 2) + pk(s.longest / 2, 2) + pk(s.rk, 1)).join('');
+  return gs;
 }
 function netHostTick(now) {
   if (!NET.game) return;
@@ -444,15 +481,27 @@ function netHostTick(now) {
   const L = netLobbyInfo();
   const mm = { c: NET.code, n: PLAYERS.length, st: L.st, md: MODES[CFG.mode].n, mp: MAPNAMES[CFG.map][1] }, mj = JSON.stringify(mm);
   if (mj !== NET.lastMM && NET.room) { NET.lastMM = mj; NET.room.presence({ mm }).catch(netErr); }
-  if (now - NET.sendT < 45) return; NET.sendT = now;
-  const pres = { L, g: inMatch && PLAYERS.some(isNet) ? netSnap() : null };
-  let js = JSON.stringify(pres);
-  // stay under the 4 KiB presence cap: shed old events, then items, then projectiles
-  while (pres.g && js.length > 3950) {
-    const g = pres.g;
-    if (g.E.length > 4) g.E.splice(0, Math.ceil(g.E.length / 4)); else if (g.I) g.I = ''; else if (g.P) g.P = ''; else if (g.E.length) g.E = []; else break;
-    js = JSON.stringify(pres);
-  }
+  if (now - NET.sendT < 33) return; NET.sendT = now;
+  const live = inMatch && PLAYERS.some(isNet), slow = !live || now - NET.slowT > 240;
+  const pres = {};
+  if (live) {
+    const { g, pv } = netSnap(); pres.g = g;
+    if (slow) { pres.gs = netSnapSlow(); pres.L = L; NET.slowT = now; }
+    if (NET.game.perPeer) {
+      // direct links: each joiner gets only their own HUD numbers
+      const per = {}; for (const p of PLAYERS) if (isNet(p) && pv[p.id]) per[p.dev.peer] = { pv: [p.id, pv[p.id]] };
+      // the slow half goes in its own message, so the fast one always fits in a single packet
+      if (pres.gs) { NET.game.presence({ L: pres.L, gs: pres.gs }).catch(netErr); delete pres.L; delete pres.gs; }
+      NET.maxSnap = Math.max(NET.maxSnap, JSON.stringify(pres).length + 160);
+      NET.game.presence(pres, per).catch(netErr); return;
+    }
+    g.pv = pv;
+    // the claude.ai room keeps a 4 KiB cap: shed events, then projectiles
+    let js = JSON.stringify(Object.assign({ L, gs: NET.gs }, pres));
+    while (js.length > 3950 && (g.E.length || g.P)) { if (g.E.length) g.E.splice(0, Math.ceil(g.E.length / 2)); else g.P = ''; js = JSON.stringify(Object.assign({ L, gs: NET.gs }, pres)); }
+    if (pres.gs) NET.gs = pres.gs;
+  } else { pres.L = L; pres.g = null; }
+  const js = JSON.stringify(pres);
   if (js === NET.lastPres) return;
   NET.lastPres = js; NET.maxSnap = Math.max(NET.maxSnap, js.length);
   NET.game.presence(pres).catch(netErr);
@@ -462,7 +511,8 @@ function netHostTick(now) {
 function netClientSee(P) {
   NET.lastHostT = performance.now();
   if (P.L) netClientLobby(P.L);
-  if (P.g) netRecvSnap(P.g);
+  if (P.gs && P.gs !== NET.gsRaw) netRecvSlow(P.gs);
+  if (P.g) netRecvSnap(P.g, Array.isArray(P.pv) && P.pv[0] === NET.myPid ? P.pv[1] : null);
 }
 function netClientLobby(L) {
   NET.lobby = L;
@@ -470,6 +520,9 @@ function netClientLobby(L) {
   NET.joined = !!mine; if (mine) { NET.myPid = mine[0]; NET.wasJoined = true; }
   if (state === 'lobby') {
     PLAYERS = pl.map(e => ({ id: e[0], dev: e[1] === NET.myPeer ? NET.dev : { type: 'net', peer: e[1], kind: e[5] }, color: e[2], team: e[3], ready: !!e[4], mine: e[1] === NET.myPeer, kit: 0, var: 0, name: cleanName(e[6]).trim() }));
+    // our own picks show at once; lobby updates sent before the host saw them would otherwise flip them back (then forward again)
+    const me = PLAYERS.find(p => p.mine), W8 = NET.want, nw = performance.now(), hold = (k, v, set) => { if (!W8[k]) return; if (v() || nw - W8[k] > 2000) W8[k] = 0; else set(); };
+    if (me) { hold('cT', () => me.color === W8.c, () => me.color = W8.c); hold('tT', () => me.team === W8.t, () => me.team = W8.t); hold('rT', () => me.ready === !!W8.r, () => me.ready = !!W8.r); }
     if (L.cfg && L.cfg[1] !== NET.demoMap) { NET.demoMap = L.cfg[1]; withHostCfg(() => demoMatch()); }
     if (NET.wasJoined && !mine) { netFail(504); return; }
     if (!mine && performance.now() - NET.joinT > 2500) { if (L.st === 'play') { netFail(503); return; } if (pl.length >= MAXP) { netFail(502); return; } }
@@ -488,17 +541,33 @@ function withHostCfg(fn) {
   Object.assign(CFG, { mode: clamp(c[0] | 0, 0, MODES.length - 1), map: clamp(c[1] | 0, 0, MAPNAMES.length - 1), bots: c[2] | 0, limit: c[3] | 0, skill: c[4] | 0, ff: !!c[5], weather: ['clear', 'rain', 'snow'][c[6]] || 'clear', teamColors: c[7] ? 'player' : 'classic', board: !!c[8] });
   try { return fn(); } finally { Object.assign(CFG, keep); }
 }
-function netRecvSnap(g) {
+/* the slow half: match header and roster (to start the match), scoreboard, items, crates, wrecks */
+function netRecvSlow(gs) {
+  NET.gsRaw = gs;
+  if (typeof gs.q !== 'number' || (NET.gs && gs.id === NET.gs.id && gs.q <= NET.gs.q)) return;
+  NET.gs = gs; NET.slow = null;
+}
+function netSlowApply() {
+  const gs = NET.gs; if (!gs || gs.id !== NET.curMatch) return null;
+  if (NET.slow) return NET.slow;
+  // players who left: their soldier is a bot now, under its stand-in name
+  if (gs.bn) for (const i in gs.bn) { const s = M.sol[i | 0]; if (s && s.player && s !== (NET.me && NET.me.sol)) { PLAYERS = PLAYERS.filter(p => p !== s.player); s.player = null; } if (s) s.name = cleanName(gs.bn[i]).trim() ? String(gs.bn[i]).slice(0, 18) : s.name; }
+  const I = [], ri = new Rd(gs.I);
+  while (!ri.end) { const k = ri.u(1), x = ri.u(2), y = ri.u(2), t = ri.u(2); I.push({ k: ['med', 'ammo', 'mine', 'pouch'][k] || 'pouch', x, y, team: t === 4095 ? -1 : t, t: 9 }); }
+  const W2 = [], rw = new Rd(gs.W);
+  while (!rw.end) { const k = rw.u(1), x = rw.u(2), y = rw.u(2), a = angD(rw.u(2)), ta = angD(rw.u(2)), t = rw.u(2) / 10, T = VT[k ? 'jeep' : 'tank']; W2.push({ type: k ? 'jeep' : 'tank', x, y, a, ta, t, T: 180, burn: t - 166, hl: T.hl * 0.92, hw: T.hw * 0.9 }); }
+  return NET.slow = { I, W: W2, C: String(gs.C || ''), R: String(gs.R || ''), A: gs.A };
+}
+function netRecvSnap(g, pv) {
   if (typeof g.q !== 'number' || g.q === NET.lastSeq) return;
   if (g.id === NET.curMatch && g.q < NET.lastSeq) return;
+  if (g.id !== NET.curMatch && (!NET.gs || NET.gs.id !== g.id)) return;      // a new match starts once its roster is here
   NET.lastSeq = g.q;
   const now = performance.now(), o = g.t - now;
   if (NET.off === null || o > NET.off || g.id !== NET.curMatch) NET.off = o; else NET.off += (o - NET.off) * 0.02;
-  if (g.id !== NET.curMatch) { if (!(state === 'lobby' || state === 'play' || state === 'pause' || state === 'end') || !netClientStart(g)) return; }
-  NET.lastSnapT = now;
-  // players who left: their soldier is a bot now, under its stand-in name
-  if (g.bn) for (const i in g.bn) { const s = M.sol[i | 0]; if (s && s.player && s !== (NET.me && NET.me.sol)) { PLAYERS = PLAYERS.filter(p => p !== s.player); s.player = null; } if (s) s.name = cleanName(g.bn[i]).trim() ? String(g.bn[i]).slice(0, 18) : s.name; }
-  const snap = netDecode(g); NET.buf.push(snap); if (NET.buf.length > 14) NET.buf.shift();
+  if (g.id !== NET.curMatch) { if (!(state === 'lobby' || state === 'play' || state === 'pause' || state === 'end') || !netClientStart(NET.gs)) return; }
+  NET.lastSnapT = now; NET.snapN = (NET.snapN | 0) + 1;
+  const snap = netDecode(g, pv || (g.pv ? g.pv[NET.myPid] : null)); NET.buf.push(snap); if (NET.buf.length > 14) NET.buf.shift();
   if (Array.isArray(g.E)) for (const e of g.E) if (e[0] > NET.lastEv) { NET.lastEv = e[0]; NET.evq.push({ t: g.t - e[1] * 10, a: e.slice(2) }); }
   if (NET.evq.length > 300) NET.evq.splice(0, NET.evq.length - 300);
 }
@@ -524,7 +593,7 @@ function netClientStart(g) {
   layoutViews(); SET.open = false; setState('play'); Music.mode = 'battle'; sfx('join');
   return true;
 }
-function netDecode(g) {
+function netDecode(g, pv) {
   const prev = NET.buf[NET.buf.length - 1], pdt = prev ? Math.max(0.01, (g.t - prev.t) / 1000) : 0;
   const S = [], r = new Rd(g.S);
   for (let i = 0; i < M.sol.length; i++) {
@@ -547,11 +616,8 @@ function netDecode(g) {
     if (k < 2) { const a = angD(rp.u(2)), sp = k ? 760 : 480; P.push({ k, id, x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp }); }
     else P.push({ k, id, x, y, vx: (rp.u(1) - 32) * 14, vy: (rp.u(1) - 32) * 14, h: rp.u(1), life: rp.u(1) / 20 });
   }
-  const I = [], ri = new Rd(g.I);
-  while (!ri.end) { const k = ri.u(1), x = ri.u(2), y = ri.u(2), t = ri.u(2); I.push({ k: ['med', 'ammo', 'mine', 'pouch'][k] || 'pouch', x, y, team: t === 4095 ? -1 : t, t: 9 }); }
-  const W2 = [], rw = new Rd(g.W);
-  while (!rw.end) { const k = rw.u(1), x = rw.u(2), y = rw.u(2), a = angD(rw.u(2)), ta = angD(rw.u(2)), t = rw.u(2) / 10, T = VT[k ? 'jeep' : 'tank']; W2.push({ type: k ? 'jeep' : 'tank', x, y, a, ta, t, T: 180, burn: t - 166, hl: T.hl * 0.92, hw: T.hw * 0.9 }); }
-  return { t: g.t, S, V, P, I, W: W2, C: String(g.C || ''), F: String(g.F || ''), T: g.T, o: g.o, R: String(g.R || ''), A: g.A, pv: g.pv ? g.pv[NET.myPid] : null };
+  const sl = netSlowApply() || { I: [], W: [], C: '', R: '', A: null };
+  return { t: g.t, S, V, P, I: sl.I, W: sl.W, C: sl.C, F: String(g.F || ''), T: g.T, o: g.o, R: sl.R, A: sl.A, pv: pv || null };
 }
 function netPair(T) {
   const B = NET.buf; if (!B.length) return null;
@@ -566,11 +632,12 @@ function netClientUpdate(dt) {
   if (!NET.buf.length) { updateCams(dt); return; }
   const To = now + NET.off - NET_DELAY;
   netApplyEvents(To);
-  netApplySnaps(now, dt);
   const me = NET.me, s = me.sol;
-  if (state === 'play' && s.alive && !M.over) { const I = humanInput(me); NET.lastI = I; netCount(I); }
+  // read the controls first: our own aim and (on foot) our own movement answer them this frame, not a round trip later
+  NET.lastI = state === 'play' && s.alive && !M.over ? humanInput(me) : null;
+  netApplySnaps(now, dt);
+  if (NET.lastI) { const I = NET.lastI; netCount(I); if (NET.auth && s.alive && !s.veh) netLocalMove(s, I, dt); }
   else {
-    NET.lastI = null;
     if (!s.alive && !M.over) { if (s.deathT > 0) { s.deathT -= dt; trackKiller(s); } else if (state === 'play') deployInput(s, dt); }
   }
   netCosmetics(dt);
@@ -600,6 +667,8 @@ function netClientTick(now) {
   if (now - NET.sendT < 33) return; NET.sendT = now;
   const I = NET.lastI;
   const i = I ? { m: [Math.round(I.mx * 100), Math.round(I.my * 100)], a: typeof I.aimA === 'number' ? Math.round(I.aimA * 1000) : null, f: I.fire ? 1 : 0, ad: I.ads ? 1 : 0, sp: I.sprint ? 1 : 0, g: I.gadget ? 1 : 0, ds: Math.round(I.altDist || 0), is: I.interactSwap ? 1 : 0, c: NET.cc, sd: NET.sd, si: NET.si, pw: NET.pw } : { c: NET.cc };
+  const ms = NET.me && NET.me.sol; i.ca = NET.corr | 0;
+  if (I && NET.auth && ms && ms.alive && !ms.veh) i.p = [ms.x, ms.y, ms.vx, ms.vy, Math.max(0, ms.jumpT)].map(v => Math.round(v * 100) / 100);
   const pres = { j: { c: NET.want.c, t: NET.want.t, tn: NET.want.tn | 0, r: NET.want.r, n: NET.name }, i, d: NET.dep };
   const js = JSON.stringify(pres); if (js === NET.lastPres) return; NET.lastPres = js;
   NET.game.presence(pres).catch(netErr);
@@ -677,17 +746,20 @@ function netApplySnaps(now, dt) {
       if (s._deadT !== undefined && a.t <= s._deadT) return;            // the kill already played; wait for the next life
       s.alive = true; s.deathT = 0; s.walkT = 0; s._n = ra.sh; s.x = ra.x; s.y = ra.y; s.vx = s.vy = 0; s.firstDeploy = false; s.hp = 100; s.netPos = false;
     }
-    const px = s.x, py = s.y, lr = rb && rb !== ra && rb.vi === ra.vi && Math.hypot(rb.x - ra.x, rb.y - ra.y) < 150 ? rb : null;
+    const px = s.x, py = s.y, ovx = s.vx, ovy = s.vy, ojt = s.jumpT, lr = rb && rb !== ra && rb.vi === ra.vi && Math.hypot(rb.x - ra.x, rb.y - ra.y) < 150 ? rb : null;
     let tx, ty;
     if (lr) { tx = lerp(ra.x, lr.x, k); ty = lerp(ra.y, lr.y, k); s.a = lerpAng(ra.a, lr.a, k); s.vx = lerp(ra.vx, lr.vx, k); s.vy = lerp(ra.vy, lr.vy, k); }
     else { tx = ra.x + ra.vx * ext; ty = ra.y + ra.vy * ext; s.a = ra.a; s.vx = ra.vx; s.vy = ra.vy; }
-    if (mine && s.netPos && ra.vi < 0 && Math.hypot(tx - px, ty - py) < 60) { const q = 1 - Math.exp(-dt * 22); s.x = lerp(px, tx, q); s.y = lerp(py, ty, q); } else { s.x = tx; s.y = ty; }
+    const own = mine && netOwnPos(s, i, nb, ra);
+    if (own === true) { s.x = px; s.y = py; s.vx = ovx; s.vy = ovy; }
+    else if (own) { /* just corrected: netOwnPos put us where the host says */ }
+    else if (mine && s.netPos && ra.vi < 0 && Math.hypot(tx - px, ty - py) < 60) { const q = 1 - Math.exp(-dt * 22); s.x = lerp(px, tx, q); s.y = lerp(py, ty, q); } else { s.x = tx; s.y = ty; }
     s.netPos = true;
     s.stance = ra.fA & 2 ? 2 : 0; s.swim = !!(ra.fA & 4); s.torch = !!(ra.fA & 8); s.ads = !!(ra.fA & 16); s.protect = ra.fA & 32 ? 1 : 0;
     s.thrownSmoke = !!(ra.fB & 1); s.handT = ra.fB & 2 ? 0.3 : 0; s.kit = ra.kit; s.handK = KITS[s.kit].g;
     if (ra.fB & 4) { if (!s._mel) { s.meleeT = 0.18; s._mel = 1; } } else s._mel = 0;
     s.spotT = (myTeam === 0 && ra.fB & 8) || (myTeam === 1 && ra.fB & 16) ? 1 : 0; s.spotTeam = myTeam;
-    s.throwT = ra.thr; s.jumpT = ra.jmp;
+    s.throwT = ra.thr; s.jumpT = mine && NET.auth ? ojt : ra.jmp;
     if (!mine || !a.pv) { s.w = [{ id: ra.w, mag: ra.fB & 32 ? 1 : 0, res: 0 }, { id: ra.w, mag: 0, res: 0 }]; s.wi = 0; }
     const v = ra.vi >= 0 ? M.vehicles[ra.vi] : null;
     if (v && v.active) { s.veh = v; s.seat = clamp(ra.seat, 0, v.seats.length - 1); v.seats[s.seat] = s; s.seatT = 0; } else { s.veh = null; s.seat = -1; }
@@ -745,6 +817,43 @@ function netApplySnaps(now, dt) {
   M.proj = NET.bul.concat([...NET.pmap.values()]);
 }
 /* a shot someone fired, as the host reported it: sound, flash, casing and a tracer that stops at walls */
+/* joiner: on foot we place ourselves. The host's position only wins when it says so (its correction counter moved:
+   a respawn, a wall we shouldn't be in, a move it didn't believe), and then we carry on from there */
+function netOwnPos(s, i, nb, ra) {
+  const rl = nb.S[i], cn = nb.pv ? nb.pv[23] | 0 : -1;
+  if (cn < 0 || !rl || rl.vi >= 0 || ra.vi >= 0 || M.over) { NET.auth = false; return false; }
+  if (NET.auth && cn === NET.corr) return true;
+  NET.corr = cn; NET.auth = true; s.x = rl.x; s.y = rl.y; s.vx = s.vy = 0; s.jumpT = 0; NET.corrN = (NET.corrN | 0) + 1;
+  return 'snap';
+}
+const _vcL = [];
+/* the movement half of controlSoldier, for our own soldier on a joiner's screen */
+function netLocalMove(s, I, dt) {
+  s.swim = inWater(s.x, s.y);
+  let mx = I.mx, my = I.my; const m = Math.hypot(mx, my); if (m > 1) { mx /= m; my /= m; }
+  if (I.jump && s.jumpT <= 0 && !s.swim) { let dx = mx, dy = my; const l = Math.hypot(dx, dy); if (l < 0.2) { dx = Math.cos(s.a); dy = Math.sin(s.a); } else { dx /= l; dy /= l; } s.jumpT = 0.42; s.jdx = dx; s.jdy = dy; }
+  const sprint = I.sprint && m > 0.3 && !I.fire && s.stance === 0 && !s.swim, ads = !!I.ads && !sprint && !s.swim, ice = onIce(s.x, s.y);
+  const spd = (s.swim ? 40 : s.stance === 2 ? 34 : sprint ? 128 : s.torch ? 30 : 82) * (ads ? 0.6 : 1), k = 1 - Math.exp(-dt * (ice ? 3 : 14));
+  s.vx = lerp(s.vx, mx * spd, k); s.vy = lerp(s.vy, my * spd, k);
+  if (s.jumpT > 0) {
+    s.jumpT -= dt; const along = s.vx * s.jdx + s.vy * s.jdy; if (along < 110) { s.vx += s.jdx * (110 - along); s.vy += s.jdy * (110 - along); }
+    if (s.jumpT <= 0.04) { staticsNear(s.x, s.y, 20, _near); if (_near.some(o => LOW[o.type] && Math.hypot(o.x - s.x, o.y - s.y) < o.r + s.r) && s.jumpT > -0.4) s.jumpT = 0.05; else if (s.jumpT <= 0) s.jumpT = 0; }
+  }
+  if (I.melee && !s.swim && !(s.meleeL > M.time)) { s.meleeL = M.time + 0.7; s.vx += Math.cos(s.a) * 90; s.vy += Math.sin(s.a) * 90; }
+  const x0 = s.x, y0 = s.y;
+  s.x += s.vx * dt; s.y += s.vy * dt;
+  soldierCollide(s);
+  // other soldiers and vehicles: we step aside (the host does the same for them)
+  for (const o of M.sol) { if (o === s || !o.alive || o.veh) continue; const dx = s.x - o.x, dy = s.y - o.y; if (Math.abs(dx) > 14 || Math.abs(dy) > 14) continue; const d = Math.hypot(dx, dy); if (d < 13 && d > 0.01) { s.x = o.x + dx / d * 13; s.y = o.y + dy / d * 13; } }
+  for (const v of M.vehicles) {
+    if (!v.active || Math.abs(s.x - v.x) > 80 || Math.abs(s.y - v.y) > 80) continue;
+    for (const [cx, cy, r] of vehCircles(v, _vcL)) { const dx = s.x - cx, dy = s.y - cy, d = Math.hypot(dx, dy), mm = r + s.r; if (d < mm && d > 0.01) { s.x = cx + dx / d * mm; s.y = cy + dy / d * mm; } }
+  }
+  const v = Math.hypot(s.x - x0, s.y - y0) / Math.max(dt, 1e-3); s.moving = v > (s.stance === 2 ? 6 : 18); s.walkT += v * dt;
+  if (s.moving && !s.swim && !(s.jumpT > 0)) { s.stepAcc += v * dt; if (s.stepAcc > (s.stance === 2 ? 10 : 9)) { s.stepAcc = 0; s.stepSide = -s.stepSide; footprint(s.x, s.y, Math.atan2(s.vy, s.vx), s.stance === 2 ? 0 : s.stepSide, s.stance === 2); } }
+  if (s.stance === 2 && s.moving && Math.random() < dt * 3) sfx('rustle', s.x, s.y, 0.5);
+  if (s.swim && s.moving && Math.random() < dt * 4) { sfx('splash', s.x, s.y, 0.5); part({ k: 'ripple', x: s.x, y: s.y, vx: 0, vy: 0, life: 0.9, max: 0.9, sz: 14, drag: 0 }); }
+}
 function netShotFx(s) {
   if (!s.alive || (s.veh && s.veh.T.seats[s.seat].role !== 'rifle')) return;
   const W_ = WPN[cw(s).id]; if (!W_) return;

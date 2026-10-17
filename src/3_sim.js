@@ -169,7 +169,7 @@ function spawnSoldier(s, opt) {
     [x, y] = freeSpot(opt.x, opt.y);
   } else if (opt.kind === 'mate') { [x, y] = freeSpot(opt.o.x + rnd(-14, 14), opt.o.y + rnd(-14, 14)); }
   else [x, y] = freeSpot(opt.x + rnd(-30, 30), opt.y + rnd(-30, 30));
-  s.x = x; s.y = y;
+  s.x = x; s.y = y; netCorrect(s);
   s.a = M.ffa ? Math.atan2(WH / 2 - y, WW / 2 - x) : s.team === 0 ? 0 : Math.PI;
   afterSpawn(s);
 }
@@ -763,6 +763,8 @@ function controlSoldier(s, I, dt) {
   if (I.sprint && m > 0.3 && s.stance) { s.stance = 0; s.stanceT = 0.2; }
   const sprint = I.sprint && m > 0.3 && !I.fire && s.stance === 0 && !s.swim;
   s.ads = !!I.ads && !sprint && !s.swim;
+  if (I.netPos) netAuthMove(s, I.netPos, dt);        // an online joiner moves themselves; the host checks it
+  else {
   const ice = onIce(s.x, s.y);
   const spd = (s.swim ? 40 : s.stance === 2 ? 34 : s.stance === 1 ? 52 : sprint ? 128 : s.torch ? 30 : 82) * (s.ads ? 0.6 : 1), k = 1 - Math.exp(-dt * (ice ? 3 : 14));
   s.vx = lerp(s.vx, mx * spd, k); s.vy = lerp(s.vy, my * spd, k);
@@ -773,6 +775,7 @@ function controlSoldier(s, I, dt) {
   }
   s.x += s.vx * dt; s.y += s.vy * dt;
   soldierCollide(s);
+  }
   const v = Math.hypot(s.vx, s.vy); s.moving = v > (s.stance === 2 ? 6 : 18); s.walkT += v * dt;
   // footprints that fade over a couple of minutes
   if (s.moving && !s.swim && s.jumpT <= 0) { s.stepAcc += v * dt; if (s.stepAcc > (s.stance === 2 ? 10 : 9)) { s.stepAcc = 0; s.stepSide = -s.stepSide; footprint(s.x, s.y, Math.atan2(s.vy, s.vx), s.stance === 2 ? 0 : s.stepSide, s.stance === 2); } }

@@ -504,10 +504,10 @@ function lobbyJoin(dev) {
 }
 function leaveLobby(p) { PLAYERS = PLAYERS.filter(q => q !== p); sfx('leave'); }
 function cycleColor(p, d) {
-  if (NET.role === 'client') { const used = new Set(PLAYERS.filter(q => q !== p).map(q => q.color)); let i = COLORS.indexOf(p.color); for (let k = 0; k < COLORS.length; k++) { i = (i + d + COLORS.length) % COLORS.length; if (!used.has(COLORS[i])) { NET.want.c = COLORS[i]; p.color = COLORS[i]; break; } } sfx('ui'); return; }
+  if (NET.role === 'client') { const used = new Set(PLAYERS.filter(q => q !== p).map(q => q.color)); let i = COLORS.indexOf(p.color); for (let k = 0; k < COLORS.length; k++) { i = (i + d + COLORS.length) % COLORS.length; if (!used.has(COLORS[i])) { NET.want.c = COLORS[i]; NET.want.cT = performance.now(); p.color = COLORS[i]; break; } } sfx('ui'); return; }
   const used = new Set(PLAYERS.filter(q => q !== p).map(q => q.color)); let i = COLORS.indexOf(p.color); for (let k = 0; k < COLORS.length; k++) { i = (i + d + COLORS.length) % COLORS.length; if (!used.has(COLORS[i])) { p.color = COLORS[i]; break; } } sfx('ui'); }
-function toggleTeam(p) { if (!MODES[CFG.mode].team) return; if (NET.role === 'client') { NET.want.t = 1 - p.team; NET.want.tn = (NET.want.tn || 0) + 1; p.team = NET.want.t; } else p.team = 1 - p.team; sfx('ui'); }
-function toggleReady(p) { if (NET.role === 'client') { NET.want.r = NET.want.r ? 0 : 1; p.ready = !!NET.want.r; sfx(p.ready ? 'join' : 'leave'); return; } p.ready = !p.ready; sfx(p.ready ? 'join' : 'leave'); }
+function toggleTeam(p) { if (!MODES[CFG.mode].team) return; if (NET.role === 'client') { NET.want.t = 1 - p.team; NET.want.tn = (NET.want.tn || 0) + 1; NET.want.tT = performance.now(); p.team = NET.want.t; } else p.team = 1 - p.team; sfx('ui'); }
+function toggleReady(p) { if (NET.role === 'client') { NET.want.r = NET.want.r ? 0 : 1; NET.want.rT = performance.now(); p.ready = !!NET.want.r; sfx(p.ready ? 'join' : 'leave'); return; } p.ready = !p.ready; sfx(p.ready ? 'join' : 'leave'); }
 function saveCfg() { store.set('cfg3', CFG); }
 function changeSetting(key, d) {
   const C = CFG, prevMap = C.map, prevWeather = C.weather;

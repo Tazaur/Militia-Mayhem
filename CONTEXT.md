@@ -73,3 +73,13 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - CFG.board (ENEMY BOARDING): players may board enemy vehicles; colour/team = lowest occupied seat.
 - Map skirt: SKIRT=480 px playable ring outside WW x WH; outOfBounds() > OOB_T (5s) kills ('OUT OF BOUNDS'); empty vehicles wrecked after 10s. drawSkirt in 2_maps.js, countdown in drawViewHUD.
 - tests/t17_oob.js covers the OOB kill. Lobby START row is now index 8 (tests press down 8x).
+
+## Netcode round (transport + joiner-owned movement)
+- p2pRoom messages are patches `{_q, ...changed keys}`; receiver merges per key and ignores older `_q`. Quiet links get a full resend every 240 ms. `presence(patch, per)` adds per-peer keys (each joiner's own `pv`).
+- Host sends fast `g` (S, V, P, F, T, o, E) every 33 ms, about 650 B so it fits in one packet, and slow `gs` (h, ro, nm, bn, I, C, W, R, A) plus `L` every 240 ms as a separate message. Each event is sent in 4 snapshots.
+- The client starts a match only once `gs` for that match id has arrived (netRecvSlow / netSlowApply).
+- Joiner on foot owns its position: netLocalMove on the client; inputs carry `p:[x,y,vx,vy,jumpT]` and `ca` (correction ack).
+  - The host (netInputHost → I.netPos → netAuthMove) follows the report unless it jumps more than 110 px or lands in a building, or host collision pushes it more than 6 px. Then netCorrect bumps s.netCorr (also on every spawn), sent as pv[23].
+  - The client snaps to the host position when pv[23] changes (netOwnPos). In vehicles the host stays authoritative.
+- Lobby picks (colour/team/ready) are held locally for up to 2 s until the host echoes them (want.cT/tT/rT).
+- Lag harness: scratchpad pw/lag.js, stress.js, tele.js, veh.js, clag.js (wraps RTCDataChannel.send for delay/jitter/loss per 1.1 KB packet).
