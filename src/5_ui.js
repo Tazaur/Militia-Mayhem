@@ -12,6 +12,7 @@ function drawWorld(vw) {
   worldT(); ctx.imageSmoothingEnabled = false;
   const fogPolys = applyFog(vw, vis, x0, y0, x1, y1), fogged = !!fogPolys;
   // ---- layer 0: ground + fading footprints
+  drawSkirt(x0, y0, x1, y1);
   const gx0 = Math.max(0, Math.floor(x0)), gy0 = Math.max(0, Math.floor(y0)), gx1 = Math.min(WW, Math.ceil(x1)), gy1 = Math.min(WH, Math.ceil(y1));
   if (gx1 > gx0 && gy1 > gy0) { ctx.drawImage(ground, gx0, gy0, gx1 - gx0, gy1 - gy0, gx0, gy0, gx1 - gx0, gy1 - gy0); ctx.drawImage(decals, gx0, gy0, gx1 - gx0, gy1 - gy0, gx0, gy0, gx1 - gx0, gy1 - gy0); ctx.drawImage(prints, gx0, gy0, gx1 - gx0, gy1 - gy0, gx0, gy0, gx1 - gx0, gy1 - gy0); }
   if (MAP.water.length) { ctx.globalAlpha = 0.18; ctx.fillStyle = CFG.style === 'grit' ? '#7a8a82' : '#9fd0f0'; for (const w of MAP.water) { if (!vis(w.x + w.w / 2, w.y + w.h / 2, Math.max(w.w, w.h))) continue; for (let i = 0; i < 26; i++) { const y = w.y + ((i * 97 + M.time * 14) % w.h), x = w.x + ((i * 53) % (w.w - 20)) + Math.sin(M.time + i) * 6; ctx.fillRect(x, y, 12, 1); } } ctx.globalAlpha = 1; }
@@ -389,6 +390,16 @@ function drawViewHUD(vw) {
     g.addColorStop(0, 'rgba(200,0,0,0)'); g.addColorStop(1, `rgba(200,0,0,${Math.min(0.55, a)})`); ctx.fillStyle = g; ctx.fillRect(vw.x, vw.y, vw.w, vw.h);
   }
   if (!s.alive) { if (s.deathT > 0 && !M.over) drawDeathCam(vw, p, u); else drawDeploy(vw, p); ctx.restore(); return; }
+  { // out-of-bounds warning (timed locally so online clients see it too)
+    const ox = s.veh ? s.veh.x : s.x, oy = s.veh ? s.veh.y : s.y, now = performance.now() / 1000;
+    if (outOfBounds(ox, oy) && !M.over) {
+      if (!p.oobAt) p.oobAt = now - (s.oobT || 0);
+      const left = Math.max(0, OOB_T - (now - p.oobAt)), cx = vw.x + vw.w / 2, cy = vw.y + vw.h * 0.3;
+      ctx.fillStyle = 'rgba(60,6,2,0.6)'; ctx.fillRect(cx - 190 * u, cy - 30 * u, 380 * u, 62 * u);
+      stxt('RETURN TO THE BATTLEFIELD', cx, cy - 6 * u, 18 * u, '#ff7a5a', 'center', 'middle', FD);
+      stxt(left.toFixed(1), cx, cy + 18 * u, 20 * u, '#fff', 'center', 'middle', FD);
+    } else p.oobAt = 0;
+  }
   if (!tc) stxt(s.name, L, vw.y + 22 * u + (vw.y === 0 ? SAFE.t + 40 : 0), 15 * u, CHEX[p.color], 'left', 'alphabetic', FD);
   // health cross + bar
   const cx = L + 22 * u, cy = B - 26 * u, cs = 20 * u, ih = 22 * u, bh = 16 * u;

@@ -64,3 +64,12 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 1. Confirm push access to Tazaur/Militia-Mayhem; commit this project (source + built `index.html`) to `main`.
 2. Make sure GitHub Pages is on (main, root) and the site loads.
 3. Ask the user to test PC ↔ phone through the Pages URL and report exact messages.
+
+## Round: scaling / QWERTY / bot names / teams / boarding / skirts
+- Menus draw on a virtual surface (min 860x480) scaled by UIS via uiScaled(); UIB entries carry draw scale `k`. HUD/touch are unscaled.
+- Name/code entry is a QWERTY pad (padLayout/padNav); E.sel is a key string.
+- Leaving joiners become `BOT (NAME)` (botSubName, NET.bn synced in snapshots).
+- Host can tap a joiner's team chip; client team requests use counter `tn`.
+- CFG.board (ENEMY BOARDING): players may board enemy vehicles; colour/team = lowest occupied seat.
+- Map skirt: SKIRT=480 px playable ring outside WW x WH; outOfBounds() > OOB_T (5s) kills ('OUT OF BOUNDS'); empty vehicles wrecked after 10s. drawSkirt in 2_maps.js, countdown in drawViewHUD.
+- tests/t17_oob.js covers the OOB kill. Lobby START row is now index 8 (tests press down 8x).

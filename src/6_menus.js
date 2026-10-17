@@ -6,7 +6,19 @@ const uiU = () => clamp(Math.min(W / 900, H / 520), 0.72, 1.7);
 const fpx = (n, u, min) => Math.max(min || 12, n * u);
 const PRIME = ['red', 'blue', 'yellow', 'green'];
 
-function hitUI(x, y) { for (let i = UIB.length - 1; i >= 0; i--) { const b = UIB[i]; if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return b; } return null; }
+/* Menus are laid out for at least UI_W x UI_H. A smaller window gets that layout drawn on a virtual screen and
+   scaled down as one piece, so edges stay anchored and nothing overlaps or keeps a fixed size. */
+const UI_W = 860, UI_H = 480;
+function uiScaled(fn) {
+  const k = Math.min(1, W / UI_W, H / UI_H);
+  if (k < 1) {
+    const w0 = W, h0 = H, s0 = { ...SAFE };
+    W = w0 / k; H = h0 / k; for (const key in SAFE) SAFE[key] = s0[key] / k; UIS = k; screenT();
+    try { fn(); } finally { W = w0; H = h0; Object.assign(SAFE, s0); UIS = 1; screenT(); }
+  } else fn();
+  for (const b of UIB) if (b.k === undefined) b.k = k;     // each clickable region remembers the scale it was drawn at
+}
+function hitUI(x, y) { for (let i = UIB.length - 1; i >= 0; i--) { const b = UIB[i], k = b.k || 1, X = x / k, Y = y / k; if (X >= b.x && X <= b.x + b.w && Y >= b.y && Y <= b.y + b.h) return b; } return null; }
 function runClicks() {
   const cl = []; if (KB.mouse.lclick) cl.push({ ...KB.mouse.lclick, dev: { type: 'kb' } }); for (const t of TOUCH.taps) cl.push({ ...t, dev: { type: 'touch' } });
   for (const c of cl) { const b = hitUI(c.x, c.y); if (b && b.fn && !b.off) { b.fn(c.dev, c); break; } }
@@ -144,14 +156,31 @@ function netAct(i, dev) {
   if (dev && dev.type) NETM.dev = dev;
   if (!NET.avail || NET.busy) { sfx('leave'); return; }
   if (i === 0) { askName('host'); return; }
-  if (i === 1) { NETM.entry = { mode: 'code', code: '', sel: 0 }; sfx('ui'); return; }
+  if (i === 1) { NETM.entry = { mode: 'code', code: '', sel: 'q' }; sfx('ui'); return; }
   const h = netRows()[i - 2]; if (h) netJoin(h, NETM.dev);
 }
 const NAME_KEYS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('').concat(['SPACE', 'DEL', 'OK']);
 const padKeys = E => E.mode === 'name' ? NAME_KEYS : CODE_KEYS;
-const padCols = E => E.mode === 'name' ? 9 : 8;
+/* on-screen QWERTY in grid units (10 wide, 5 rows); letters a code can't contain (0 1 I L O) are greyed out */
+function padLayout(E) {
+  const name = E.mode === 'name', valid = padKeys(E), L = [];
+  const row = (s, y, x0) => [...s].forEach((c, i) => { const k = name ? c : c.toLowerCase(); L.push({ k, x: x0 + i, y, w: 1, off: !valid.includes(k) }); });
+  row('1234567890', 0, 0); row('QWERTYUIOP', 1, 0); row('ASDFGHJKL', 2, 0.5); row('ZXCVBNM', 3, 1.5);
+  L.push({ k: 'DEL', x: 8.5, y: 3, w: 1.5 });
+  if (name) L.push({ k: 'SPACE', x: 0, y: 4, w: 6 });
+  L.push({ k: name ? 'OK' : 'JOIN', x: name ? 6 : 3, y: 4, w: 4 });
+  return L;
+}
+/* pad / arrow movement over the keys: along the row, or to the nearest key in the next row */
+function padNav(E, dx, dy) {
+  const L = padLayout(E).filter(b => !b.off), cx = b => b.x + b.w / 2;
+  let cur = L.find(b => b.k === E.sel) || L[0];
+  if (dx) { const r = L.filter(b => b.y === cur.y).sort((a, b) => a.x - b.x); cur = r[(r.indexOf(cur) + dx + r.length) % r.length]; }
+  if (dy) { const y = (cur.y + dy + 5) % 5, r = L.filter(b => b.y === y); cur = r.reduce((a, b) => Math.abs(cx(b) - cx(cur)) < Math.abs(cx(a) - cx(cur)) ? b : a); }
+  E.sel = cur.k;
+}
 /* the name step: shown before hosting and after typing a code; the name is remembered on this device */
-function askName(next, code) { NETM.entry = { mode: 'name', name: NET.name || '', sel: NAME_KEYS.indexOf('OK'), next, code }; sfx('ui'); }
+function askName(next, code) { NETM.entry = { mode: 'name', name: NET.name || '', sel: 'OK', next, code }; sfx('ui'); }
 function codeKey(k, kb) {
   const E = NETM.entry; if (!E) return;
   if (E.mode === 'name') {
@@ -166,10 +195,10 @@ function codeKey(k, kb) {
   }
   if (k === 'DEL') { if (E.code) E.code = E.code.slice(0, -1); else if (!kb) NETM.entry = null; sfx('ui'); return; }
   if (k === 'JOIN') { if (E.code.length === 4) askName('join', E.code); else sfx('leave'); return; }
-  if (E.code.length < 4) { E.code += k; sfx('ui'); if (E.code.length === 4) E.sel = CODE_KEYS.indexOf('JOIN'); }
+  if (E.code.length < 4) { E.code += k; sfx('ui'); if (E.code.length === 4) E.sel = 'JOIN'; }
 }
 function updateCodeEntry(ins) {
-  const E = NETM.entry, K = padKeys(E), n = K.length, cols = padCols(E), name = E.mode === 'name', done = name ? 'OK' : 'JOIN';
+  const E = NETM.entry, K = padKeys(E), name = E.mode === 'name', done = name ? 'OK' : 'JOIN';
   for (const code of KB.typed) {
     const m = /^(Key|Digit|Numpad)(\w)$/.exec(code); if (m) { const ch = name ? m[2].toUpperCase() : m[2].toLowerCase(); if (K.includes(ch)) codeKey(ch); }
     if (code === 'Space' && name) codeKey('SPACE');
@@ -178,9 +207,9 @@ function updateCodeEntry(ins) {
   }
   for (const { dev, st } of ins) {
     if (dev.type !== 'pad') continue;
-    if (st.navX) { E.sel = (E.sel + st.navX + n) % n; sfx('ui'); }
-    if (st.navY) { E.sel = clamp(E.sel + st.navY * cols, 0, n - 1); sfx('ui'); }
-    if (st.confirm) { NETM.dev = dev; codeKey(K[E.sel]); }
+    if (st.navX) { padNav(E, st.navX, 0); sfx('ui'); }
+    if (st.navY) { padNav(E, 0, st.navY); sfx('ui'); }
+    if (st.confirm) { NETM.dev = dev; codeKey(E.sel); }
     else if (st.back) codeKey('DEL'); else if (st.pause) { NETM.dev = dev; codeKey(done); }
     if (NETM.entry !== E) return;
   }
@@ -324,10 +353,10 @@ function drawNetMenu() {
   drawNetErr(u);
 }
 function drawCodeEntry(u) {
-  const E = NETM.entry, name = E.mode === 'name', K = padKeys(E), cols = padCols(E); UIB = [];
+  const E = NETM.entry, name = E.mode === 'name'; UIB = [];
   ctx.fillStyle = 'rgba(3,5,2,0.82)'; ctx.fillRect(0, 0, W, H);
-  const rows = Math.ceil((K.length - (name ? 3 : 2)) / cols), kw = Math.min((W - SAFE.l - SAFE.r - 40) / cols, 66 * u), kh = Math.min(kw * 0.86, (H - SAFE.t - SAFE.b) * 0.55 / (rows + 1));
-  const gw = kw * cols, x0 = W / 2 - gw / 2, slotH = Math.min(kh * 1.5, 70 * u), y0 = SAFE.t + 20 * u;
+  const kw = Math.min((W - SAFE.l - SAFE.r - 40) / 10, 66 * u), kh = Math.min(kw * 0.86, (H - SAFE.t - SAFE.b) * 0.58 / 5);
+  const gw = kw * 10, x0 = W / 2 - gw / 2, slotH = Math.min(kh * 1.5, 70 * u), y0 = SAFE.t + 20 * u;
   txt(name ? 'YOUR NAME' + (E.next === 'join' ? ' · JOINING ' + E.code.toUpperCase() : '') : 'ENTER THE GAME CODE', W / 2, y0 + fpx(14, u, 12), fpx(18, u, 14), '#f2e6c4', 'center', 'middle', FD);
   const sy = y0 + fpx(34, u, 28);
   if (name) {
@@ -344,12 +373,10 @@ function drawCodeEntry(u) {
     }
   }
   const gy = sy + slotH + 16 * u, done = name ? 'OK' : 'JOIN', ready = name || E.code.length === 4;
-  K.forEach((k, i) => {
-    const big = k === 'DEL' || k === done || k === 'SPACE', col = i % cols, row = big ? rows : Math.floor(i / cols), y = gy + row * kh, w = big ? kw * 3 : kw;
-    const xx = k === done ? x0 + gw - kw * 3 : k === 'DEL' ? (name ? x0 + gw / 2 - kw * 1.5 : x0) : k === 'SPACE' ? x0 : x0 + col * kw;
-    const lab = k === 'JOIN' ? 'JOIN ›' : k === 'OK' ? (E.next === 'host' ? 'HOST ›' : E.next === 'join' ? 'JOIN ›' : 'OK') : k === 'DEL' ? '⌫' : k === 'SPACE' ? 'SPACE' : k.toUpperCase();
-    button({ x: xx + 3, y: y + 3, w: w - 6, h: kh - 6, label: lab, sel: E.sel === i, primary: k === done && ready, off: k === done && !ready, fn: () => codeKey(k), focus: i, size: Math.max(14, kh * 0.4) });
-  });
+  for (const b of padLayout(E)) {
+    const k = b.k, lab = k === 'JOIN' ? 'JOIN ›' : k === 'OK' ? (E.next === 'host' ? 'HOST ›' : E.next === 'join' ? 'JOIN ›' : 'OK') : k === 'DEL' ? '⌫' : k === 'SPACE' ? 'SPACE' : k.toUpperCase();
+    button({ x: x0 + b.x * kw + 3, y: gy + b.y * kh + 3, w: b.w * kw - 6, h: kh - 6, label: lab, sel: E.sel === k, primary: k === done && ready, off: b.off || (k === done && !ready), fn: () => codeKey(k), focus: k, size: Math.max(12, kh * 0.4) });
+  }
   const dv = devOf(null); if (dv !== 'touch') hintRow(dv === 'pad' ? [{ a: 'select', t: 'TYPE' }, { a: 'back', t: 'DELETE' }, { a: 'start', t: name ? 'DONE' : 'NEXT' }] : [{ t: 'TYPE ON YOUR KEYBOARD · ENTER WHEN DONE · ESC TO CANCEL' }], W / 2, H - SAFE.b - 22 * u, fpx(15, u, 13), dv);
 }
 /* a joiner's lobby: one player (you), the host's match settings shown read-only */
@@ -462,7 +489,7 @@ function drawSettings() {
 
 /* ================= local lobby ================= */
 const LOBBY = { sel: 0 };
-const MATCH_ROWS = ['mode', 'map', 'bots', 'limit', 'skill', 'ff', 'weather'];
+const MATCH_ROWS = ['mode', 'map', 'bots', 'limit', 'skill', 'ff', 'board', 'weather'];
 function deviceKey(d) { return d.type + (d.index !== undefined ? d.index : '') + (d.peer || ''); }
 function devName(d) { return d.type === 'net' ? (d.peer ? 'ONLINE' : 'HOST') : d.type === 'kb' ? 'KEYBOARD + MOUSE' : d.type === 'pad' ? 'CONTROLLER ' + (d.index + 1) : 'TOUCH'; }
 function lobbyJoin(dev) {
@@ -479,7 +506,7 @@ function leaveLobby(p) { PLAYERS = PLAYERS.filter(q => q !== p); sfx('leave'); }
 function cycleColor(p, d) {
   if (NET.role === 'client') { const used = new Set(PLAYERS.filter(q => q !== p).map(q => q.color)); let i = COLORS.indexOf(p.color); for (let k = 0; k < COLORS.length; k++) { i = (i + d + COLORS.length) % COLORS.length; if (!used.has(COLORS[i])) { NET.want.c = COLORS[i]; p.color = COLORS[i]; break; } } sfx('ui'); return; }
   const used = new Set(PLAYERS.filter(q => q !== p).map(q => q.color)); let i = COLORS.indexOf(p.color); for (let k = 0; k < COLORS.length; k++) { i = (i + d + COLORS.length) % COLORS.length; if (!used.has(COLORS[i])) { p.color = COLORS[i]; break; } } sfx('ui'); }
-function toggleTeam(p) { if (!MODES[CFG.mode].team) return; if (NET.role === 'client') { NET.want.t = 1 - p.team; p.team = NET.want.t; } else p.team = 1 - p.team; sfx('ui'); }
+function toggleTeam(p) { if (!MODES[CFG.mode].team) return; if (NET.role === 'client') { NET.want.t = 1 - p.team; NET.want.tn = (NET.want.tn || 0) + 1; p.team = NET.want.t; } else p.team = 1 - p.team; sfx('ui'); }
 function toggleReady(p) { if (NET.role === 'client') { NET.want.r = NET.want.r ? 0 : 1; p.ready = !!NET.want.r; sfx(p.ready ? 'join' : 'leave'); return; } p.ready = !p.ready; sfx(p.ready ? 'join' : 'leave'); }
 function saveCfg() { store.set('cfg3', CFG); }
 function changeSetting(key, d) {
@@ -490,6 +517,7 @@ function changeSetting(key, d) {
   if (key === 'limit') C.limit = (C.limit + d + 3) % 3;
   if (key === 'skill') C.skill = (C.skill + d + 3) % 3;
   if (key === 'ff') C.ff = !C.ff;
+  if (key === 'board') C.board = !C.board;
   if (key === 'weather') { const W3 = ['clear', 'rain', 'snow']; C.weather = W3[(W3.indexOf(C.weather) + d + 3) % 3]; }
   if (MODES[C.mode].id === 'ffa') C.bots = Math.min(C.bots, 6);
   saveCfg(); sfx('ui');
@@ -504,6 +532,7 @@ function settingLabel(key) {
     case 'limit': return ffa ? ['KILL LIMIT', String(LIMITS.ffa[C.limit])] : ['TICKETS', String(LIMITS.team[C.limit])];
     case 'skill': return ['BOT SKILL', SKILL[C.skill].name];
     case 'ff': return ['FRIENDLY FIRE', C.ff ? 'ON' : 'OFF'];
+    case 'board': return ['ENEMY BOARDING', C.board ? 'ON' : 'OFF'];
     case 'weather': return ['WEATHER', C.weather === 'clear' ? 'CLEAR' : C.weather === 'snow' ? 'SNOW' : MAPNAMES[C.map][0] === 'snowfield' ? 'STORM' : 'RAIN'];
   }
 }
@@ -607,7 +636,7 @@ function drawSlot(x, y, w, h, i, u) {
     button({ x: x + w - ab - 4, y: sy - ab / 2, w: ab, h: ab, label: '›', fn: () => cycleColor(p, 1), size: fpx(22, u, 18) });
   }
   txt(CNAME[p.color], sx, artBot + fpx(12, u, 10), fpx(15, u, 12), col, 'center', 'middle', FD);
-  if (team) { const [tc, tn] = teamChipColor(p.team); button({ x: x + pad, y: y + h - pad - readyH - chipH - 8 * u, w: w - pad * 2, h: chipH, label: 'TEAM ' + tn, fill: tc, fn: () => { if (!p.ready && ctl) toggleTeam(p); }, size: fpx(14, u, 12) }); }
+  if (team) { const [tc, tn] = teamChipColor(p.team); button({ x: x + pad, y: y + h - pad - readyH - chipH - 8 * u, w: w - pad * 2, h: chipH, label: 'TEAM ' + tn, fill: tc, fn: () => { if (NET.role === 'host' && isNet(p)) { p.team = 1 - p.team; sfx('ui'); } else if (!p.ready && ctl) toggleTeam(p); }, size: fpx(14, u, 12) }); }
   button({ x: x + pad, y: y + h - pad - readyH, w: w - pad * 2, h: readyH, label: p.ready ? '✓ READY' : 'READY', primary: !p.ready && ctl, fill: p.ready ? '#7dff7a' : undefined, fn: () => { if (ctl) toggleReady(p); }, size: fpx(17, u, 13) });
 }
 function drawMatchPanel(x, y, w, h, u) {
@@ -749,7 +778,7 @@ function drawRotate() {
 function setState(s) { state = s; stateT = 0; }
 function update(dt) {
   stateT += dt; pollPads();
-  if (state === 'boot') { if (imgReady) { toMenu(); const m = /join=([a-z0-9]{4})/i.exec(typeof location !== 'undefined' ? location.hash || '' : ''); if (m) { openNetMenu({ type: TOUCH.active ? 'touch' : 'kb' }); NETM.entry = { mode: 'code', code: m[1].toLowerCase(), sel: CODE_KEYS.indexOf('JOIN') }; } } return; }
+  if (state === 'boot') { if (imgReady) { toMenu(); const m = /join=([a-z0-9]{4})/i.exec(typeof location !== 'undefined' ? location.hash || '' : ''); if (m) { openNetMenu({ type: TOUCH.active ? 'touch' : 'kb' }); NETM.entry = { mode: 'code', code: m[1].toLowerCase(), sel: 'JOIN' }; } } return; }
   netTick();
   const front = state === 'menu' || state === 'lobby' || state === 'netmenu';
   const live = !front && M && !M.demo && !!NET.role;        // an online battle never stops for one player's menu
@@ -791,20 +820,20 @@ function render() {
   // 1) all gameplay for every view, 2) split dividers, 3) every HUD, 4) global HUD, 5) menus on top
   for (const vw of M.views) drawWorld(vw);
   screenT();
-  if (state === 'menu') drawMenu();
-  else if (state === 'netmenu') drawNetMenu();
-  else if (state === 'lobby') drawLobby();
+  if (state === 'menu') uiScaled(drawMenu);
+  else if (state === 'netmenu') uiScaled(drawNetMenu);
+  else if (state === 'lobby') uiScaled(drawLobby);
   else {
     if (M.views.length > 1) { ctx.fillStyle = '#0a0a08'; for (const vw of M.views) { if (vw.x > 0) ctx.fillRect(vw.x - 2, vw.y, 4, vw.h); if (vw.y > 0) ctx.fillRect(vw.x, vw.y - 2, vw.w, 4); } }
     for (const vw of hudViews()) drawViewHUD(vw);
     drawGlobalHUD();
-    if (M.scoreHeld && state === 'play') drawScoreboard();
-    if (state === 'pause') drawPause();
+    if (M.scoreHeld && state === 'play') uiScaled(drawScoreboard);
+    if (state === 'pause') uiScaled(drawPause);
     { const tp = touchPlayer(); if (state === 'play' && tp && tp.sol && tp.sol.alive) { screenT(); drawTouch(tp.sol); } }
-    if (state === 'end') drawEnd();
+    if (state === 'end') uiScaled(drawEnd);
     netOverlay();
   }
-  if (SET.open) drawSettings();
+  if (SET.open) uiScaled(drawSettings);
 }
 let last = performance.now();
 function frame(now) {

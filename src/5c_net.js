@@ -8,7 +8,7 @@
 const NET = {
   room: null, avail: null, mode: null, busy: '', role: null, code: '', game: null, myPeer: null, hosts: [], msg: '', msgT: 0,
   // host
-  matchId: 0, seq: 0, evId: 0, evLog: [], t0: performance.now(), sendT: 0, lastPres: '', lastMM: '', pid: 0, kicked: new Set(), L: null, maxSnap: 0, hdr: null, roster: '',
+  matchId: 0, seq: 0, evId: 0, evLog: [], t0: performance.now(), sendT: 0, lastPres: '', lastMM: '', pid: 0, kicked: new Set(), bn: {}, L: null, maxSnap: 0, hdr: null, roster: '',
   // client
   hostPeer: null, dev: null, myPid: -1, joined: false, wasJoined: false, curMatch: -1, lastSeq: -1, buf: [], off: null, lastEv: 0, evq: [], lobby: null, me: null,
   cc: new Array(14).fill(0), sd: 0, si: 0, pw: 0, dep: null, depN: 0, want: { c: '', t: -1, r: 0 }, lastI: null, pmap: new Map(), bul: [], lastHostT: 0, lastSnapT: 0, joinT: 0, lastA: null, demoMap: -1, selfD: null
@@ -338,7 +338,8 @@ function netHostSee(pr) {
     if (!P.j) { leaveLobby(p); return; }
     const j = P.j;
     if (typeof j.c === 'string' && j.c !== p.color && COLORS.includes(j.c) && !PLAYERS.some(q => q !== p && q.color === j.c)) p.color = j.c;
-    if (MODES[CFG.mode].team && (j.t === 0 || j.t === 1)) p.team = j.t;
+    // a joiner's team request counts once (so the host can still move them afterwards)
+    if (MODES[CFG.mode].team && (j.t === 0 || j.t === 1) && (j.tn | 0) !== (p.wantTn | 0)) { p.wantTn = j.tn | 0; p.team = j.t; }
     p.ready = !!j.r; p.name = cleanName(j.n).trim();
   }
 }
@@ -348,11 +349,15 @@ function netPeerLeft(peer) {
 }
 function netKick(p) { NET.kicked.add(p.dev.peer); PLAYERS = PLAYERS.filter(q => q !== p); sfx('leave'); }
 /* someone dropped out mid-match: their soldier fights on as a bot */
+const botSubName = n => 'BOT (' + String(n || '').trim().slice(0, 10) + ')';
 function netBotify(p) {
   PLAYERS = PLAYERS.filter(q => q !== p);
   const s = p.sol; if (!s) return;
+  const was = s.name;
   s.player = null; s.bot = makeSoldier({ bot: true, team: s.team }).bot; if (!s.alive) s.respawnT = Math.max(s.respawnT, 1);
-  toast(s.name + ' LEFT — A BOT TAKES OVER', '#f2e6c4', 2.8, -1, 3);
+  // the soldier and its score carry on, but under a name that says a bot is filling in
+  s.name = botSubName(was); NET.bn[M.sol.indexOf(s)] = s.name;
+  toast(was + ' LEFT — A BOT TAKES OVER', '#f2e6c4', 2.8, -1, 3);
 }
 function netInputHost(p) {
   const I = newI(), q = p.netIn;
@@ -382,14 +387,14 @@ function netEv(type, ...a) {
 }
 function netMatchStarted() {
   if (NET.role !== 'host') return;
-  NET.matchId++; NET.evLog = [];
+  NET.matchId++; NET.evLog = []; NET.bn = {};
   NET.hdr = [M.cfg.mode, M.cfg.map, M.cfg.bots, M.cfg.limit, M.cfg.skill, M.cfg.ff ? 1 : 0, Math.max(0, ['clear', 'rain', 'snow'].indexOf(M.cfg.weather)), COLORS.indexOf(M.teamColor[0]), COLORS.indexOf(M.teamColor[1]), M.cfg.teamColors === 'classic' ? 0 : 1];
   NET.names = {}; for (const s of M.sol) if (s.player) NET.names[s.player.id] = s.name;
   NET.roster = M.sol.map(s => pk(s.player ? s.player.id + 1 : 0, 1) + pk(s.player ? 0 : BOTNAMES.indexOf(s.name), 1) + pk(COLORS.indexOf(s.color), 1) + pk(s.team, 2) + pk(s.dark ? 1 : 0, 1)).join('');
 }
 function netLobbyInfo() {
   const inMatch = M && !M.demo && state !== 'lobby';
-  return { st: inMatch ? 'play' : 'lobby', c: NET.code, cfg: [CFG.mode, CFG.map, CFG.bots, CFG.limit, CFG.skill, CFG.ff ? 1 : 0, Math.max(0, ['clear', 'rain', 'snow'].indexOf(CFG.weather)), CFG.teamColors === 'classic' ? 0 : 1],
+  return { st: inMatch ? 'play' : 'lobby', c: NET.code, cfg: [CFG.mode, CFG.map, CFG.bots, CFG.limit, CFG.skill, CFG.ff ? 1 : 0, Math.max(0, ['clear', 'rain', 'snow'].indexOf(CFG.weather)), CFG.teamColors === 'classic' ? 0 : 1, CFG.board ? 1 : 0],
     pl: PLAYERS.map(p => [p.id, isNet(p) ? p.dev.peer : '', p.color, p.team, p.ready ? 1 : 0, isNet(p) ? 'net' : p.dev.type, p.name || '']) };
 }
 /* the whole match in a few kilobytes */
@@ -429,6 +434,7 @@ function netSnap() {
   }
   const E = []; for (const e of NET.evLog) if (now - e.t < 700) E.push([e.id, Math.round((now - e.t) / 10), ...e.a]);
   const g = { id: NET.matchId, q: ++NET.seq, t: now, h: NET.hdr, ro: NET.roster, nm: NET.names, S: S.join(''), V, P, I, C, W: Wr, F, T: [M.tickets[0], M.tickets[1]], o: M.over ? [M.winner, M.winnerSol ? M.sol.indexOf(M.winnerSol) : -1] : 0, R, pv, E };
+  if (NET.bn && Object.keys(NET.bn).length) g.bn = NET.bn;
   if (M.over) g.A = M.sol.map(s => pk(s.heal, 2) + pk(s.rep, 2) + pk(s.longest / 2, 2) + pk(s.rk, 1)).join('');
   return g;
 }
@@ -478,8 +484,8 @@ function netClientToLobby() {
 /* match settings shown in a joiner's lobby are the host's, without touching the joiner's own saved settings */
 function withHostCfg(fn) {
   if (NET.role !== 'client' || !NET.lobby || !NET.lobby.cfg) return fn();
-  const keep = { mode: CFG.mode, map: CFG.map, bots: CFG.bots, limit: CFG.limit, skill: CFG.skill, ff: CFG.ff, weather: CFG.weather, teamColors: CFG.teamColors }, c = NET.lobby.cfg;
-  Object.assign(CFG, { mode: clamp(c[0] | 0, 0, MODES.length - 1), map: clamp(c[1] | 0, 0, MAPNAMES.length - 1), bots: c[2] | 0, limit: c[3] | 0, skill: c[4] | 0, ff: !!c[5], weather: ['clear', 'rain', 'snow'][c[6]] || 'clear', teamColors: c[7] ? 'player' : 'classic' });
+  const keep = { mode: CFG.mode, map: CFG.map, bots: CFG.bots, limit: CFG.limit, skill: CFG.skill, ff: CFG.ff, board: CFG.board, weather: CFG.weather, teamColors: CFG.teamColors }, c = NET.lobby.cfg;
+  Object.assign(CFG, { mode: clamp(c[0] | 0, 0, MODES.length - 1), map: clamp(c[1] | 0, 0, MAPNAMES.length - 1), bots: c[2] | 0, limit: c[3] | 0, skill: c[4] | 0, ff: !!c[5], weather: ['clear', 'rain', 'snow'][c[6]] || 'clear', teamColors: c[7] ? 'player' : 'classic', board: !!c[8] });
   try { return fn(); } finally { Object.assign(CFG, keep); }
 }
 function netRecvSnap(g) {
@@ -490,6 +496,8 @@ function netRecvSnap(g) {
   if (NET.off === null || o > NET.off || g.id !== NET.curMatch) NET.off = o; else NET.off += (o - NET.off) * 0.02;
   if (g.id !== NET.curMatch) { if (!(state === 'lobby' || state === 'play' || state === 'pause' || state === 'end') || !netClientStart(g)) return; }
   NET.lastSnapT = now;
+  // players who left: their soldier is a bot now, under its stand-in name
+  if (g.bn) for (const i in g.bn) { const s = M.sol[i | 0]; if (s && s.player && s !== (NET.me && NET.me.sol)) { PLAYERS = PLAYERS.filter(p => p !== s.player); s.player = null; } if (s) s.name = cleanName(g.bn[i]).trim() ? String(g.bn[i]).slice(0, 18) : s.name; }
   const snap = netDecode(g); NET.buf.push(snap); if (NET.buf.length > 14) NET.buf.shift();
   if (Array.isArray(g.E)) for (const e of g.E) if (e[0] > NET.lastEv) { NET.lastEv = e[0]; NET.evq.push({ t: g.t - e[1] * 10, a: e.slice(2) }); }
   if (NET.evq.length > 300) NET.evq.splice(0, NET.evq.length - 300);
@@ -592,7 +600,7 @@ function netClientTick(now) {
   if (now - NET.sendT < 33) return; NET.sendT = now;
   const I = NET.lastI;
   const i = I ? { m: [Math.round(I.mx * 100), Math.round(I.my * 100)], a: typeof I.aimA === 'number' ? Math.round(I.aimA * 1000) : null, f: I.fire ? 1 : 0, ad: I.ads ? 1 : 0, sp: I.sprint ? 1 : 0, g: I.gadget ? 1 : 0, ds: Math.round(I.altDist || 0), is: I.interactSwap ? 1 : 0, c: NET.cc, sd: NET.sd, si: NET.si, pw: NET.pw } : { c: NET.cc };
-  const pres = { j: { c: NET.want.c, t: NET.want.t, r: NET.want.r, n: NET.name }, i, d: NET.dep };
+  const pres = { j: { c: NET.want.c, t: NET.want.t, tn: NET.want.tn | 0, r: NET.want.r, n: NET.name }, i, d: NET.dep };
   const js = JSON.stringify(pres); if (js === NET.lastPres) return; NET.lastPres = js;
   NET.game.presence(pres).catch(netErr);
 }
@@ -772,7 +780,7 @@ function netBullets(dt) {
       const [ax, ay] = toLocal(v, x0, y0), [bx, by] = toLocal(v, x1, y1), t = segRect(ax, ay, bx, by, { x: -v.T.hl, y: -v.T.hw, w: v.T.hl * 2, h: v.T.hw * 2 }, 0); if (t >= 0 && t < bt) { bt = t; hit = 2; }
     }
     if (hit) { const hx = lerp(x0, x1, bt), hy = lerp(y0, y1, bt); p.life = 0; if (hit === 1) sparks(hx, hy, 2); else if (hit === 2) { sfx('ting', hx, hy); sparks(hx, hy, 3); } continue; }
-    p.x = x1; p.y = y1; p.life -= dt; if (p.x < 0 || p.y < 0 || p.x > WW || p.y > WH) p.life = 0;
+    p.x = x1; p.y = y1; p.life -= dt; if (p.x < -SKIRT || p.y < -SKIRT || p.x > WW + SKIRT || p.y > WH + SKIRT) p.life = 0;
   }
   prune(NET.bul, p => p.life > 0);
 }

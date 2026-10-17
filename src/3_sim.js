@@ -222,6 +222,20 @@ function kill(s, src, kind, dx, dy, wname) {
     sfx('splat', s.x, s.y);
   }
 }
+/* out of bounds: anyone outside the battlefield (on foot or aboard) dies after OOB_T seconds; empty vehicles are wrecked after twice that */
+function updateBounds(dt) {
+  if (M.over) return;
+  for (const s of M.sol) {
+    const x = s.veh ? s.veh.x : s.x, y = s.veh ? s.veh.y : s.y;
+    if (!s.alive || !outOfBounds(x, y)) { s.oobT = 0; continue; }
+    s.oobT = (s.oobT || 0) + dt;
+    if (s.oobT >= OOB_T) { s.oobT = 0; kill(s, null, 'oob', 0, 0, 'OUT OF BOUNDS'); }
+  }
+  for (const v of M.vehicles) {
+    if (!v.active || v.dead || !v.T.drive || v.seats.some(Boolean) || !outOfBounds(v.x, v.y)) { v.oobT = 0; continue; }
+    v.oobT = (v.oobT || 0) + dt; if (v.oobT >= OOB_T * 2) { v.oobT = 0; destroyVehicle(v, null); }
+  }
+}
 function feed(a, how, b) {
   netEv('f', a ? a.name : '', a ? a.color : '', how, b.name, b.color);
   M.feed.unshift({ a: a ? { n: a.name, c: a.color } : null, how, b: { n: b.name, c: b.color }, t: 6 });
@@ -335,7 +349,7 @@ function soldierCollide(s) {
   for (const w of M.wrecks) pushOutWreck(s, s.r, w);
   staticsNear(s.x, s.y, 30, _near);
   for (const o of _near) { if (s.jumpT > 0.04 && LOW[o.type]) continue; const dx = s.x - o.x, dy = s.y - o.y, d = Math.hypot(dx, dy), m = s.r + o.r; if (d < m && d > 0.01) { s.x = o.x + dx / d * m; s.y = o.y + dy / d * m; } }
-  s.x = clamp(s.x, 20, WW - 20); s.y = clamp(s.y, 20, WH - 20);
+  s.x = clamp(s.x, 20 - SKIRT, WW + SKIRT - 20); s.y = clamp(s.y, 20 - SKIRT, WH + SKIRT - 20);
 }
 function vehCircles(v, out) { out.length = 0; const c = Math.cos(v.a), s = Math.sin(v.a); for (const [ox, oy, r] of v.T.circles) out.push([v.x + ox * c - oy * s, v.y + ox * s + oy * c, r]); return out; }
 const _vc = [], _vc2 = [];
@@ -378,7 +392,7 @@ function vehicleCollide(v) {
       }
     }
   }
-  const m = 30; if (v.x < m) { v.x = m; hit = 1; } if (v.x > WW - m) { v.x = WW - m; hit = 1; } if (v.y < m) { v.y = m; hit = 1; } if (v.y > WH - m) { v.y = WH - m; hit = 1; }
+  const m = 30 - SKIRT; if (v.x < m) { v.x = m; hit = 1; } if (v.x > WW - m) { v.x = WW - m; hit = 1; } if (v.y < m) { v.y = m; hit = 1; } if (v.y > WH - m) { v.y = WH - m; hit = 1; }
   if (hit) { if (Math.abs(v.spd) > 120 && v.crashCd <= 0) { v.crashCd = 0.6; sfx('clang', v.x, v.y); if (v.type === 'jeep') hurtVehicle(v, (Math.abs(v.spd) - 110) * 0.2, null); } v.spd *= 0.6; }
 }
 function toLocal(v, x, y) { const dx = x - v.x, dy = y - v.y, c = Math.cos(-v.a), s = Math.sin(-v.a); return [dx * c - dy * s, dx * s + dy * c]; }
@@ -395,7 +409,7 @@ function enterCandidate(s) {
   for (const v of M.vehicles) {
     if (!v.active || v.dead) continue;
     const vt = vehTeam(v);
-    if (vt >= 0 && isEnemy(vt, s.team)) continue;
+    if (vt >= 0 && isEnemy(vt, s.team) && !(M.cfg.board && s.player)) continue;     // enemy boarding (players only) is a match option
     const [lx, ly] = toLocal(v, s.x, s.y);
     if (Math.abs(lx) > v.T.hl + 30 || Math.abs(ly) > v.T.hw + 30) continue;
     const order = v.T.seats.map((sd, i) => ({ i, d: Math.hypot(lx - sd.anchor[0], ly - sd.anchor[1]) })).sort((a, b) => a.d - b.d);
@@ -405,7 +419,7 @@ function enterCandidate(s) {
   for (const o of best.order) {
     const occ = best.v.seats[o.i];
     if (!occ) return { v: best.v, seat: o.i, bump: null, want: best.order[0].i };
-    if (s.player && !occ.player) return { v: best.v, seat: o.i, bump: occ, want: best.order[0].i };
+    if (s.player && !occ.player && !isEnemy(occ.team, s.team)) return { v: best.v, seat: o.i, bump: occ, want: best.order[0].i };
   }
   return { v: best.v, seat: -1, want: best.order[0].i };
 }
@@ -443,7 +457,7 @@ function exitVehicle(s, forced) {
   else if (s.player) s.msg = { t: 1, txt: 'NO ROOM TO EXIT' };
 }
 function solidAtExit(x, y, self) {
-  if (x < 20 || y < 20 || x > WW - 20 || y > WH - 20) return true;
+  if (x < 20 - SKIRT || y < 20 - SKIRT || x > WW + SKIRT - 20 || y > WH + SKIRT - 20) return true;
   for (const b of MAP.buildings) if (inRect(x, y, b, 8)) return true;
   for (const v of M.vehicles) if (v !== self && v.active && !v.dead) { const [lx, ly] = toLocal(v, x, y); if (Math.abs(lx) < v.T.hl + 6 && Math.abs(ly) < v.T.hw + 6) return true; }
   staticsNear(x, y, 20, _near); for (const s of _near) if (Math.hypot(s.x - x, s.y - y) < s.r + 6) return true;
@@ -685,7 +699,7 @@ function updateProjectiles(dt) {
       continue;
     }
     p.x = x1; p.y = y1; p.life -= dt;
-    if (p.x < 0 || p.y < 0 || p.x > WW || p.y > WH) p.life = 0;
+    if (p.x < -SKIRT || p.y < -SKIRT || p.x > WW + SKIRT || p.y > WH + SKIRT) p.life = 0;
     if (p.life <= 0 && (p.k === 'rocket' || p.k === 'shell')) explosion(p.x, p.y, p.k === 'shell' ? 78 : 62, p.k === 'shell' ? 180 : 110, p.k === 'shell' ? 60 : 50, p.src, p.team, p.k === 'shell');
     if (p.life <= 0 && p.k === 'bullet' && inWater(p.x, p.y)) part({ k: 'steam', x: p.x, y: p.y, vx: 0, vy: 0, life: 0.4, max: 0.4, sz: 4, drag: 0 });
   }
@@ -699,7 +713,7 @@ function updateNade(p, dt) {
   for (const b of MAP.buildings) if (inRect(nx, ny, b, 3)) { if (p.x < b.x - 2 || p.x > b.x + b.w + 2) p.vx *= -0.5; else p.vy *= -0.5; bounced = true; }
   if (p.h < 14) { staticsNear(nx, ny, 16, _near); for (const s of _near) if (s.type !== 'fence' && Math.hypot(nx - s.x, ny - s.y) < s.r + 3) { const dx = nx - s.x, dy = ny - s.y, d = Math.hypot(dx, dy) || 1, dot = (p.vx * dx + p.vy * dy) / d; p.vx -= 1.6 * dot * dx / d; p.vy -= 1.6 * dot * dy / d; bounced = true; } }
   if (bounced) sfx('clink', p.x, p.y); else { p.x = nx; p.y = ny; }
-  p.x = clamp(p.x, 10, WW - 10); p.y = clamp(p.y, 10, WH - 10);
+  p.x = clamp(p.x, 10 - SKIRT, WW + SKIRT - 10); p.y = clamp(p.y, 10 - SKIRT, WH + SKIRT - 10);
   if (p.h === 0) { p.vx *= Math.exp(-dt * 3); p.vy *= Math.exp(-dt * 3); }
   p.rot += dt * 12; p.life -= dt;
   if (p.life <= 0) { if (p.smoke) popSmoke(p.x, p.y); else explosion(p.x, p.y, 88, 150, 90, p.src, p.team, false); }

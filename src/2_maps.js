@@ -194,12 +194,23 @@ const ROOFS = {
   grit: { cabin: ['#2a2420', '#c4c8c4', '#adb2ad'], bunker: ['#2c2f31', '#b8bcb8', '#9fa4a0'], tar: ['#2b2a27', '#3e3c38', '#35332f'], brick: ['#3e2620', '#61392d', '#553128'], metal: ['#26302b', '#45544c', '#3b4842'], concrete: ['#3d3d3d', '#6a6a66', '#5c5c58'], barn: ['#34201a', '#5e3027', '#512820'], tin: ['#333436', '#5a5c5f', '#4d4f52'], thatch: ['#3e3420', '#6e5e38', '#615230'] }
 };
 function pattern(w, h, fn) { const c = mk(w, h), g = c.getContext('2d'); fn(g, w, h); return gx.createPattern(c, 'repeat'); }
+let SKIRT_PAT = null;
+/* the out-of-bounds ring: same grass, tinted, with a dashed line marking the battlefield edge */
+function drawSkirt(x0, y0, x1, y1) {
+  if (x0 >= 0 && y0 >= 0 && x1 <= WW && y1 <= WH) return;
+  ctx.fillStyle = SKIRT_PAT || '#2a3a1e';
+  const rs = [[x0, y0, x1 - x0, -y0], [x0, WH, x1 - x0, y1 - WH], [x0, 0, -x0, WH], [WW, 0, x1 - WW, WH]];
+  for (const r of rs) if (r[2] > 0 && r[3] > 0) ctx.fillRect(r[0], r[1], r[2], r[3]);
+  ctx.fillStyle = 'rgba(40,6,2,0.38)';
+  for (const r of rs) if (r[2] > 0 && r[3] > 0) ctx.fillRect(r[0], r[1], r[2], r[3]);
+  ctx.save(); ctx.strokeStyle = 'rgba(255,90,60,0.55)'; ctx.lineWidth = 3; ctx.setLineDash([18, 12]); ctx.strokeRect(-2, -2, WW + 4, WH + 4); ctx.restore();
+}
 function paintGround() {
   const grit = CFG.style === 'grit', P = SNOWY() ? (grit ? PALS.snowGrit : PALS.snow) : (PALS[CFG.style] || PALS.classic), RF = ROOFS[CFG.style] || ROOFS.classic;
   px_.setTransform(1, 0, 0, 1, 0, 0); px_.clearRect(0, 0, WW, WH); dgx.setTransform(1, 0, 0, 1, 0, 0); dgx.clearRect(0, 0, WW, WH); if (typeof M !== 'undefined' && M) M.fogMem = null;
   const R = mulberry(4242);
   gx.setTransform(1, 0, 0, 1, 0, 0); gx.globalAlpha = 1; gx.globalCompositeOperation = 'source-over';
-  gx.fillStyle = pattern(96, 96, (g, w, h) => {
+  gx.fillStyle = SKIRT_PAT = pattern(96, 96, (g, w, h) => {
     g.fillStyle = P.grass; g.fillRect(0, 0, w, h);
     for (let i = 0; i < 900; i++) { g.fillStyle = R() < 0.5 ? P.gA : P.gB; g.fillRect((R() * w) | 0, (R() * h) | 0, 1 + (R() < 0.3), 1); }
     for (let i = 0; i < 60; i++) { g.fillStyle = P.gC; g.fillRect((R() * w) | 0, (R() * h) | 0, 1, 2); }

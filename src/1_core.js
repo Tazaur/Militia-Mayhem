@@ -27,6 +27,9 @@ function rr(g, x, y, w, h, r) { g.beginPath(); if (g.roundRect) g.roundRect(x, y
 
 /* ---------------- game data ---------------- */
 const WW = 3000, WH = 2000;
+/* out of bounds: a band of terrain around the battlefield you can enter, but staying out for OOB_T seconds kills you */
+const SKIRT = 480, OOB_T = 5;
+const outOfBounds = (x, y) => x < 0 || y < 0 || x > WW || y > WH;
 const COLORS = ['red', 'orange', 'yellow', 'green', 'blue', 'cyan', 'magenta'];   // the playable colours (art also has white/black, unused)
 const CHEX_C = { red: '#e02c26', orange: '#f07c16', yellow: '#e8cc20', green: '#2cc036', blue: '#345cf2', cyan: '#22cce4', magenta: '#cc36cc', white: '#f0f0f0', black: '#4a4a4a' };
 const CHEX_G = { red: '#b04a3e', orange: '#bd7838', yellow: '#b9ac4c', green: '#638f48', blue: '#516fae', cyan: '#5299a6', magenta: '#8f5190', white: '#cbc6b8', black: '#4a4a44' };
@@ -213,7 +216,8 @@ function darkSpr(name) {
 /* world->screen transform for the viewport being drawn */
 let VZ = 1, VOX = 0, VOY = 0;
 function worldT() { ctx.setTransform(VZ * DPR, 0, 0, VZ * DPR, VOX * DPR, VOY * DPR); }
-function screenT() { ctx.setTransform(DPR, 0, 0, DPR, 0, 0); }
+let UIS = 1;                                     // extra scale while menus are drawn on the shrunken virtual screen (see uiScaled)
+function screenT() { ctx.setTransform(DPR * UIS, 0, 0, DPR * UIS, 0, 0); }
 function spr(n, x, y, a, sx, sy, al) {
   const m = ATLAS[n]; if (!m) return;
   const c = Math.cos(a), s = Math.sin(a), k = VZ * DPR; sx = sx || 1; sy = sy || 1;
@@ -238,13 +242,13 @@ function img(c, x, y, a, s, al) {
 }
 /* screen-space sprite with rotation, drawn from the active art style */
 function uiSprR(n, x, y, a, s, al) {
-  const m = ATLAS[n]; if (!m) return; const c = Math.cos(a) * s * DPR, sn = Math.sin(a) * s * DPR;
-  ctx.setTransform(c, sn, -sn, c, x * DPR, y * DPR); ctx.imageSmoothingEnabled = false; if (al !== undefined) ctx.globalAlpha = al;
+  const m = ATLAS[n]; if (!m) return; const D = DPR * UIS, c = Math.cos(a) * s * D, sn = Math.sin(a) * s * D;
+  ctx.setTransform(c, sn, -sn, c, x * D, y * D); ctx.imageSmoothingEnabled = false; if (al !== undefined) ctx.globalAlpha = al;
   ctx.drawImage(SRC, m[0], m[1], m[2], m[3], -m[4], -m[5], m[2], m[3]); ctx.globalAlpha = 1; screenT();
 }
 function uiSpr(n, x, y, s, al) {
   const m = ATLAS[n]; if (!m) return;
-  ctx.setTransform(DPR * s, 0, 0, DPR * s, x * DPR, y * DPR);
+  const D = DPR * UIS; ctx.setTransform(D * s, 0, 0, D * s, x * D, y * D);
   if (al !== undefined) ctx.globalAlpha = al;
   ctx.drawImage(IMG, m[0], m[1], m[2], m[3], -m[2] / 2, -m[3] / 2, m[2], m[3]);
   ctx.globalAlpha = 1; screenT();
@@ -559,7 +563,7 @@ function rumble(pl, s, d) {
 function touchPlayer() { return PLAYERS.find(p => p.dev.type === 'touch'); }
 
 /* ---------------- settings ---------------- */
-const CFG = Object.assign({ mode: 0, map: 0, bots: 5, limit: 1, skill: 1, ff: false, camera: 'split', style: 'classic', weather: 'clear', soldiers: 'ramp', teamColors: 'player', fog: 'los', sound: 'exp' }, store.get('cfg3', {}));
+const CFG = Object.assign({ mode: 0, map: 0, bots: 5, limit: 1, skill: 1, ff: false, board: false, camera: 'split', style: 'classic', weather: 'clear', soldiers: 'ramp', teamColors: 'player', fog: 'los', sound: 'exp' }, store.get('cfg3', {}));
 /* soldier art sets: classic = original sheets; ramp = new design with the green ramp recoloured; marks = new design with white markings recoloured.
    New sets cover stand / unarmed / rocket / seated; every other pose falls back to the classic frames. */
 /* soldier team display: classic sheets, or the new design as full colour / armband only / grey uniform + coloured armband */

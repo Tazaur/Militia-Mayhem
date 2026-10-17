@@ -302,6 +302,7 @@ function updateMatch(dt) {
   updateProjectiles(sdt);
   updateItems(sdt);
   updateObjectives(sdt);
+  updateBounds(sdt);
   for (const c of M.crates) if (!c.live) { c.t -= sdt; if (c.t <= 0) c.live = true; }
   for (const w of M.wrecks) { w.t -= sdt; w.burn -= sdt; }
   if (M.wrecks.some(w => w.t <= 0)) navDirty = 1;
@@ -396,6 +397,7 @@ function updateCams(dt) {
     const k = 1 - Math.exp(-dt * (vw.p && vw.p.sol && !vw.p.sol.alive && vw.p.sol.deathT > 0 ? 7 : 4.5));
     vw.cam.x = lerp(vw.cam.x, tx, k); vw.cam.y = lerp(vw.cam.y, ty, k); vw.cam.z = lerp(vw.cam.z, tz, 1 - Math.exp(-dt * 3));
     const hw = vw.w / 2 / vw.cam.z, hh = vw.h / 2 / vw.cam.z;
-    vw.cam.x = hw * 2 > WW ? WW / 2 : clamp(vw.cam.x, hw, WW - hw); vw.cam.y = hh * 2 > WH ? WH / 2 : clamp(vw.cam.y, hh, WH - hh);
+    const EW = WW + SKIRT * 2, EH = WH + SKIRT * 2;           // the camera may follow you into the out-of-bounds band
+    vw.cam.x = hw * 2 > EW ? WW / 2 : clamp(vw.cam.x, hw - SKIRT, WW + SKIRT - hw); vw.cam.y = hh * 2 > EH ? WH / 2 : clamp(vw.cam.y, hh - SKIRT, WH + SKIRT - hh);
   }
 }
