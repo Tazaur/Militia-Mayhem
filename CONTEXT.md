@@ -1,0 +1,63 @@
+# Militia Mayhem — handover notes
+
+Read this first. It is the working context from the previous Claude session (Oct 2026).
+
+## The user
+- Tazaur. Values directness; dislikes flattery and filler. Short, concrete replies.
+- Wants every round of changes deployed (previously: republish the claude.ai artifact each round; now: push to GitHub Pages each round).
+- Not a gun expert; supplies his own pixel art.
+
+## What this is
+A revival of the user's old top-down 2D combined-arms game: soldiers, tanks, jeeps, MG nests with seats; 1–4 local players
+(split / shared screen) plus bots; controller, keyboard+mouse and touch (CoD-mobile style); conquest / TDM / KotH / FFA;
+line-of-sight fog; smoke that blocks vision; wrecks as cover; experimental WebAudio sound; and (newest) online play.
+
+Single self-contained HTML (canvas, no frameworks). Source is `src/*.js`, concatenated in filename order by `build.py`.
+
+## Repo / deploy
+- GitHub: https://github.com/Tazaur/Militia-Mayhem (public). Intended site: https://tazaur.github.io/Militia-Mayhem/
+- GitHub Pages: Settings → Pages → Deploy from a branch → main → / (root). `index.html` at the repo root is the game.
+- `python3 build.py` writes `index.html` and `combined-arms.html` (identical) and auto-bumps `version.json`
+  (build number shown in the main menu and settings).
+- Old claude.ai artifact: https://claude.ai/artifact/K4Cde2vTv5iTPRtS3VSsLV (declares the `room` capability).
+  Optional to keep updating; the GitHub Pages site is now the main target.
+
+## Files
+- `src/1_core.js` — data (WPN, KITS, SLOTS, colours), canvas helpers, input (padState/kbState/touchState, TOUCH buttons), audio base, settings (CFG, store key `cfg3`), soldier art sets.
+- `src/1b_audio2.js` — experimental sound set (SFX2, ear ringing, rocket loops, tank engine, heartbeat music).
+- `src/2_maps.js` — seeded deterministic map builder (`mulberry`), decals/footprints canvases, corpses + blood pools, nav grid.
+- `src/3_sim.js` — match, spawning, damage, kill, explosion (+`explosionFx`), weapons (+`shotFx/rocketFx/cannonFx/mgFx`), seats, vehicles (+`vehTrackFx/vehDamageFx`), items, projectiles, objectives, `psfx` (per-player sounds), `toast`.
+- `src/4_ai.js` — bots, `humanInput`, deploy screen input, `updateMatch` + `fxTick` (cosmetics), cameras, `layoutViews`.
+- `src/5_ui.js` — world render, HUD, deploy screen, touch controls, kill feed, minimap, scoreboard.
+- `src/5a_icons.js` — vector icons, button badges/hint rows, tactical map.
+- `src/5b_fog.js` — line-of-sight vision polygons, remembered world, smoke masks.
+- `src/5c_net.js` — online play (see below).
+- `src/6_menus.js` — main menu, network menu (host / join-with-code keypad / name entry), settings, lobby (local + online), pause, end screen, main loop (`update`, `runMatch`, `render`).
+- `build_atlas.py` — slices the user's art (`art/orig/*` original uploads, `art/art3/sheet.png` soldier sheet, `art/art4/guns.png` weapon icons) into `atlas.png/atlas.json/atlas_extra.json`. Needs PIL, numpy, scipy. Only rerun when art changes; output is checked in.
+- `harness.js` — Node harness that runs the built game headless with stubbed canvas/pads. Run tests from repo root: `node tests/t5.js` (all maps, bots), `t6` (seats), `t7` (sandbag cover), `t12` (menu→lobby→deploy→death cam flow), `t13` (wreck cover). All should end `errs 0`.
+- `tests/net/` — Playwright two-browser tests (Chromium at `/opt/pw-browsers/...`, playwright at `/opt/npm-tools/node_modules/playwright`):
+  - `t16.js` direct WebRTC play from `index.html` via the local signalling stand-in `sigserver.js` (`node tests/net/sigserver.js &` first; uses `ws` from /opt/npm-tools).
+  - `t14.js`/`t15.js` claude.ai-room mode via `mockroom.js`; they expect `python3 -m http.server 8765` serving the repo root.
+  - Pages must be in separate browser contexts (same-context background pages get throttled); messages are relayed through Playwright.
+
+## Online play design (src/5c_net.js)
+- Host-authoritative. Host runs the real sim; remote players are `PLAYERS` entries with `dev.type === 'net'`. `LOCALS()` = non-net players (only they get views/HUD/sound/rumble).
+- Transport A (default everywhere): WebRTC data channel (unordered, no retransmits). Matchmaking via the free PeerJS public server protocol over WebSocket (`wss://0.peerjs.com/peerjs?key=peerjs`), written by hand (no library). Host id `militiamayhem-<code>`; joiner id random. ICE: Google STUN + PeerJS free TURN (`eu-0/us-0.turn.peerjs.com:3478`, peerjs/peerjsp — unverified whether still alive). `p2pRoom()` mimics the room API (presence/onPeers/leave); state resent every 250 ms, links dropped after 10 s silence. Test overrides: `window.__MM_SIG`, `window.__MM_ICE`.
+- Transport B (fallback, only inside a claude.ai artifact if matchmaking is unreachable): artifact `room` capability, named room `mm-<code>`. Games on B show "(CLAUDE.AI ONLY)" in the lobby title; A and B can't see each other.
+- Host → clients: presence `{L: lobby info, g: snapshot}` ~20 Hz. Snapshot (`netSnap`) packs soldiers/vehicles/projectiles/items/crates/wrecks/flags/stats as base-64 digit strings, a per-remote-player private block (hp, ammo, cooldowns, messages), and a 0.7 s window of id'd events (explosions, kills, feed, toasts, destroyed statics, whitelisted sounds, smoke pops, per-player pops/sounds). Kept < ~3.9 KB (≈2.2 KB with 22 soldiers).
+- Clients: render others 110 ms behind (interpolate), own soldier ~20 ms behind with smoothing and instant local aim; replay events on that timeline; cosmetic tracers from shot counters; local footprints/treads/particles. Input sent as continuous state + edge counters; deploy requests carry loadout + spawn option name.
+- Lobby: host's normal lobby; joiners pick colour/team/ready; host starts. No joining mid-match; a leaver's soldier becomes a bot. Max 4 humans total.
+- Names: entered before hosting and after typing a code (keypad works with keyboard/pad/touch), saved in localStorage (`store` key `name`), sent in join presence, used as soldier names.
+
+## Status / open issues (as of handover)
+- Two-browser tests pass locally (WebRTC from file://, and the mocked room). NOT yet proven between real devices.
+- User's real test (PC host, iPhone join, same Wi-Fi) failed because the phone had no working route: iOS Safari won't run a local HTML file; the claude.ai artifact view reported no WebRTC in Safari. Fix in progress: host on GitHub Pages and retest from `https://tazaur.github.io/Militia-Mayhem/` in Safari.
+- If it still fails on the same Wi-Fi: ask for the exact message ("NO GAME WITH CODE …" = matchmaking/ID problem; "COULD NOT CONNECT …" = ICE/NAT problem), and test phone on cellular. Likely next step then: a reliable TURN relay (e.g. Metered.ca free tier credentials in `P2P_ICE`) — the "paid relay" was explicitly put on the backburner by the user.
+- The "can't play online" screen shows a diagnostic line (WEBRTC / WEBSOCKET / CLAUDE ROOM).
+- Host tab must stay open/visible (hidden tabs throttle; a 40 ms interval keeps the sim going when hidden).
+- Waiting on the user for more art ("other stuff"), plus weapon icons for shotgun, HMG, DMR.
+
+## First steps for the new session
+1. Confirm push access to Tazaur/Militia-Mayhem; commit this project (source + built `index.html`) to `main`.
+2. Make sure GitHub Pages is on (main, root) and the site loads.
+3. Ask the user to test PC ↔ phone through the Pages URL and report exact messages.
