@@ -256,7 +256,7 @@ function destroyVehicle(v, src) {
   const occupied = v.seats.some(Boolean), vt = vehTeam(v);
   if (src && occupied && isEnemy(src.team, vt)) { src.vk++; addPts(src, v.type === 'tank' ? 300 : 200, (v.type === 'nest' ? 'NEST' : v.type.toUpperCase()) + ' DESTROYED'); }
   for (const s of [...v.seats]) if (s) { s.protect = 0; kill(s, src, 'explosion', rnd(-1, 1), rnd(-1, 1)); }
-  if (v.type !== 'nest') M.wrecks.push({ type: v.type, x: v.x, y: v.y, a: v.a, ta: v.ta, t: 180, T: 180, burn: 14, hl: v.T.hl * 0.92, hw: v.T.hw * 0.9 }) && (navDirty = 1);
+  if (v.type !== 'nest') M.wrecks.push({ type: v.type, x: v.x, y: v.y, a: v.a, ta: v.ta, t: 180, T: 180, burn: 14, hl: v.T.hl * 0.92, hw: v.T.hw * 0.9, vx: 0, vy: 0 }) && (navDirty = 1);
   else for (let i = 0; i < 10; i++) part({ k: 'dirt', x: v.x, y: v.y, vx: rnd(-90, 90), vy: rnd(-90, 90), life: 0.8, max: 0.8, sz: 3, drag: 3 });
   if (src && src.player && !occupied) src.msg = { t: 1.4, txt: 'EMPTY ' + v.type.toUpperCase() + ' DESTROYED' };
   feed(src, 'DESTROYED', { name: v.type === 'nest' ? 'MG NEST' : v.type.toUpperCase(), color: 'white' });
@@ -356,14 +356,28 @@ function soldierCollide(s) {
 }
 function vehCircles(v, out) { out.length = 0; const c = Math.cos(v.a), s = Math.sin(v.a); for (const [ox, oy, r] of v.T.circles) out.push([v.x + ox * c - oy * s, v.y + ox * s + oy * c, r]); return out; }
 const _vc = [], _vc2 = [];
-function vehicleCollide(v, local) {
-  let hit = 0;
+/* vehicles and wrecks are heavy but can be shoved: overlap is shared by mass (a jeep barely moves a tank), an
+   off-centre shove turns what's hit, and shoving costs the pusher speed in proportion to what it's pushing.
+   local = a joiner's own driving: what we shove only moves on our screen (o.po, until the host's picture catches up).
+   auth = the host replaying a joiner's driving: the joiner already shared the overlap, so what they hit takes all of it */
+const wreckMass = w => VT[w.type].mass * 1.6;
+function shove(o, cx, cy, px, py, local) {
+  if (local) { const P = o.po || (o.po = { x: 0, y: 0 }); P.x += px; P.y += py; o.x += px; o.y += py; return; }
+  const hl = o.T && o.T.hl ? o.T.hl : o.hl;
+  o.x += px; o.y += py; o.a += clamp(((cx - o.x) * py - (cy - o.y) * px) / (hl * hl) * 0.6, -0.05, 0.05);
+  if (o.T && o.T.drive) return;
+  // a wreck: keep it out of buildings, and let the bots' map know once it has moved a fair way
+  for (let k = -1; k <= 1; k++) { const c = { x: o.x + Math.cos(o.a) * o.hl * 0.6 * k, y: o.y + Math.sin(o.a) * o.hl * 0.6 * k }, bx = c.x, by = c.y; for (const b of MAP.buildings) if (pushCircleRect(c, o.hw, b)) { o.x += c.x - bx; o.y += c.y - by; } }
+  o.mv = (o.mv || 0) + Math.hypot(px, py); if (o.mv > 30) { o.mv = 0; navDirty = 1; }
+}
+function vehicleCollide(v, local, auth) {
+  let hit = 0, hitV = 0;
   for (let pass = 0; pass < 2; pass++) {
     vehCircles(v, _vc);
     for (const [cx, cy, r] of _vc) {
       const o = { x: cx, y: cy };
       for (const b of MAP.buildings) if (pushCircleRect(o, r, b)) { v.x += o.x - cx; v.y += o.y - cy; hit = 1; }
-      for (const w of M.wrecks) { const o3 = { x: cx, y: cy }; if (pushOutWreck(o3, r, w)) { v.x += o3.x - cx; v.y += o3.y - cy; hit = 1; } }
+      for (const w of M.wrecks) { const o3 = { x: cx, y: cy }; if (pushOutWreck(o3, r, w)) { const wa = auth ? 0 : wreckMass(w) / (v.T.mass + wreckMass(w)); v.x += (o3.x - cx) * wa; v.y += (o3.y - cy) * wa; shove(w, cx, cy, -(o3.x - cx) * (1 - wa), -(o3.y - cy) * (1 - wa), local); hitV = Math.max(hitV, wa); } }
       for (const w of MAP.water) { const o2 = { x: v.x + (cx - v.x), y: cy }; if (pushCircleRect(o2, r - 6, w)) { v.x += o2.x - cx; v.y += o2.y - cy; hit = 1; } }
     }
   }
@@ -386,16 +400,16 @@ function vehicleCollide(v, local) {
     for (const [ax, ay, ar] of _vc) for (const [bx, by, br] of _vc2) {
       const dx = bx - ax, dy = by - ay, d = Math.hypot(dx, dy), m = ar + br;
       if (d < m && d > 0.01) {
-        const push = m - d, wa = o.T.mass / (v.T.mass + o.T.mass), wb = 1 - wa;
-        if (local) { v.x -= dx / d * push; v.y -= dy / d * push; hit = 1; continue; }
+        const push = m - d, wa = auth ? 0 : o.T.mass / (v.T.mass + o.T.mass), wb = 1 - wa;
         v.x -= dx / d * push * wa; v.y -= dy / d * push * wa;
-        if (o.T.drive) { o.x += dx / d * push * wb; o.y += dy / d * push * wb; } else { v.x -= dx / d * push * wb; v.y -= dy / d * push * wb; }
+        if (o.T.drive) { shove(o, bx, by, dx / d * push * wb, dy / d * push * wb, local); hitV = Math.max(hitV, wa); } else { v.x -= dx / d * push * wb; v.y -= dy / d * push * wb; hit = 1; }
+        if (local) continue;
         const rel = Math.hypot(v.vx - o.vx, v.vy - o.vy);
         if (rel > 70 && v.crashCd <= 0) { v.crashCd = 0.5; sfx('clang', v.x, v.y); const dm = (rel - 60) * 0.25; hurtVehicle(v, dm * Math.min(3, o.T.mass / v.T.mass), null); hurtVehicle(o, dm * (v.T.mass / Math.min(5, o.T.mass)), v.seats[0] && isEnemy(vehTeam(v), vehTeam(o)) ? v.seats[0] : null); }
-        hit = 1;
       }
     }
   }
+  if (hitV && !auth) v.spd *= 1 - 0.05 * hitV;
   const m = 30 - SKIRT; if (v.x < m) { v.x = m; hit = 1; } if (v.x > WW - m) { v.x = WW - m; hit = 1; } if (v.y < m) { v.y = m; hit = 1; } if (v.y > WH - m) { v.y = WH - m; hit = 1; }
   if (hit) { if (Math.abs(v.spd) > 120 && v.crashCd <= 0 && !local) { v.crashCd = 0.6; sfx('clang', v.x, v.y); if (v.type === 'jeep') hurtVehicle(v, (Math.abs(v.spd) - 110) * 0.2, null); } v.spd *= 0.6; }
 }

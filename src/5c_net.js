@@ -459,7 +459,7 @@ function netDriveRep(v, driver) {
 function netAuthDrive(v, B, dt) {
   const r = netSample(B, performance.now() - NET_REP_DELAY), ox = v.x, oy = v.y, oa = v.a;
   v.x = r.x; v.y = r.y; v.a = r.a; v.vx = r.vx; v.vy = r.vy; v.spd = r.spd; v.av = r.av; if (v.type === 'tank') v.tRel = r.tr;
-  vehicleCollide(v);
+  vehicleCollide(v, false, true);
   if (Math.hypot(v.x - r.x, v.y - r.y) > 14) { netCorrect(v); v.repBuf = null; }
   v.spd = r.spd;
   syncMounts(v);
@@ -707,6 +707,7 @@ function netClientUpdate(dt) {
   // read the controls first: our own aim and (on foot) our own movement answer them this frame, not a round trip later
   NET.lastI = state === 'play' && s.alive && !M.over ? humanInput(me) : null;
   netApplySnaps(now, dt);
+  netWrecksStep(dt);
   if (NET.lastI) {
     const I = NET.lastI; netCount(I);
     if (NET.auth && s.alive && !s.veh) netLocalMove(s, I, dt);
@@ -817,6 +818,7 @@ function netApplySnaps(now, dt) {
     if (v._cN === undefined) { v._cN = ra.cN; v._mN = ra.mN; }
     if (ra.cN !== v._cN) { v._cN = ra.cN; v._cfx = true; }
     if (ra.mN !== v._mN) { v._mfx = Math.min(3, (ra.mN - v._mN + 64) % 64); v._mN = ra.mN; }
+    if (v.po) netPushOff(v, v.x, v.y, dt);
     const own = i === myVi && netOwnVeh(v, i, nb, mi);
     if (own === true && keep) Object.assign(v, keep);
     else if (v.netPos && v.T.drive && !own) vehTrackFx(v, Math.hypot(v.x - px, v.y - py) + Math.abs(angDiff(pa, v.a)) * 20);
@@ -894,7 +896,7 @@ function netApplySnaps(now, dt) {
   // ---- the slow stuff, once per new snapshot
   if (pa !== NET.lastA) {
     NET.lastA = pa;
-    M.items = pa.I; M.wrecks = pa.W;
+    M.items = pa.I; netWrecksSync(pa.W);
     for (let i = 0; i < M.crates.length; i++) M.crates[i].live = !!((B64I[pa.C[i / 6 | 0]] || 0) & (1 << (i % 6)));
     M.flags.forEach((f, i) => { const o = B64I[pa.F[i * 2]] || 0, pr = B64I[pa.F[i * 2 + 1]] || 0; f.owner = (o & 3) - 1; f.contested = !!(o & 4); f.prog = clamp(pr / 31.5 - 1, -1, 1); if (Math.abs(f.prog) > 0.985) f.prog = Math.sign(f.prog); if (Math.abs(f.prog) < 0.02) f.prog = 0; });
     if (Array.isArray(pa.T)) M.tickets = [pa.T[0] | 0, pa.T[1] | 0];
@@ -968,6 +970,28 @@ function netLocalDrive(v, I, dt) {
   syncMounts(v);
   vehTrackFx(v, Math.hypot(v.x - ox, v.y - oy) + Math.abs(angDiff(oa, v.a)) * 20);
   for (const s of v.seats) if (s) updateSeatedPos(s);        // everyone aboard rides with it this same frame
+}
+/* joiner: something we shoved shows where we shoved it until the host's (later) picture has moved it as far */
+function netPushOff(o, bx, by, dt) {
+  const P = o.po;
+  if (o._bx !== undefined) { const l = Math.hypot(P.x, P.y); if (l > 0.01) { const adv = Math.max(0, ((bx - o._bx) * P.x + (by - o._by) * P.y) / l), nl = Math.max(0, l - adv) * Math.exp(-dt / 1.5); P.x *= nl / l; P.y *= nl / l; } }
+  o._bx = bx; o._by = by; o.x = bx + P.x; o.y = by + P.y;
+  if (Math.hypot(P.x, P.y) < 0.05) { o.po = null; o._bx = undefined; }
+}
+/* joiner: wrecks are kept between the host's updates (4 a second) and glide to where it says, so a shoved wreck moves smoothly */
+function netWrecksSync(W) {
+  const old = NET.wl || [], used = new Set(), out = [];
+  for (const h of W) {
+    let best = null, bd = 80;
+    for (const w of old) { if (used.has(w) || w.type !== h.type) continue; const d = Math.hypot(w.hx - h.x, w.hy - h.y); if (d < bd) { bd = d; best = w; } }
+    const w = best || Object.assign({}, h, { sx: h.x, sy: h.y });
+    used.add(w); w.hx = h.x; w.hy = h.y; w.ha = h.a; w.ta = h.ta; w.t = h.t; w.burn = h.burn; out.push(w);
+  }
+  NET.wl = out; M.wrecks = out;
+}
+function netWrecksStep(dt) {
+  const k = 1 - Math.exp(-dt * 8);
+  for (const w of NET.wl || []) { w.sx += (w.hx - w.sx) * k; w.sy += (w.hy - w.sy) * k; w.a = lerpAng(w.a, w.ha, k); if (w.po) netPushOff(w, w.sx, w.sy, dt); else { w.x = w.sx; w.y = w.sy; } }
 }
 /* joiner: a rifle shot shows (flash, sound, tracer) the moment we fire, by the same rules the host fires it by.
    The host still fires the real bullet; any we showed that it didn't fire are forgotten after a moment */
