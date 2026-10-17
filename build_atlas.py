@@ -35,8 +35,7 @@ for col in (0,1):
 tf.sort(key=lambda t:t[0])
 for i,(tip,a,px,py) in enumerate(tf): add('tur%d'%i,a,px,py)
 # ---- mounted MG (idle / firing / wrecked) and the destroyed turret: see mounts.py
-from mounts import mount_sprites, hi_bags
-sprites.update(hi_bags(L('4948b42c-image.png')))
+from mounts import mount_sprites
 sprites.update(mount_sprites(np.array(Image.open('art/art4/mounts.png').convert('RGBA'))))
 # ---- emblem layer (black ring + chevron from the grey overlay item), aligned to hull centre
 em=crop(TANK,110,0,112,62).copy()
@@ -185,21 +184,9 @@ for c in C:
 def white_centroid(a):
     m=(a[:,:,0]>200)&(a[:,:,1]>200)&(a[:,:,2]>200)&(a[:,:,3]>0); ys,xs=np.where(m); return xs.mean(),ys.mean()
 jarr,jpx,jpy=sprites['jeep0'];sx,sy=white_centroid(jarr);EXTRA['jeepStar']=[round(sx-jpx,1),round(sy-jpy,1)]
-# sandbag crescents: full / damaged / destroyed, scaled to game size, with collision points along the curve
-SC=0.37
-bagframes=[('bagarc0',392),('bagarc1',196),('bagarc2',0)]
-full=None
-for n,x in bagframes:
-    a=crop(SB,x,0,196,196); im=Image.fromarray(a).resize((int(196*SC),int(196*SC)),Image.LANCZOS); a=np.array(im)
-    if n=='bagarc0': full=a
-    add(n,a,a.shape[1]*0.62,a.shape[0]/2)
-m=full[:,:,3]>200; ys,xs=np.where(m); pts=[]
-_,bpx,bpy=sprites['bagarc0']
-x0,y0,x1,y1=tight(full)
-for k in range(8):
-    ya=y0+(y1-y0)*k/8; yb=y0+(y1-y0)*(k+1)/8; sel=(ys>=ya)&(ys<yb)
-    if sel.sum()>3: pts.append([round(xs[sel].mean()-x0-bpx,1),round(ys[sel].mean()-y0-bpy,1)])
-EXTRA['bagPts']=pts
+# sandbag crescents: full / damaged / destroyed, with collision points along the curve (see mounts.bag_frames)
+from mounts import bag_frames
+_bags,EXTRA['bagPts']=bag_frames(SB); sprites.update(_bags)
 # fire / smoke / dust frames
 fx={'fire0':(FA,55,1,45,47),'fire1':(FA,104,1,22,23),'fire2':(FA,1,52,31,32),'fire3':(FA,54,51,39,39),'fire4':(FDd,1,1,39,39),'fire5':(FDd,44,1,22,23),
     'boom0':(FB_,68,4,52,52),'boom1':(FB_,68,64,53,49),'boom2':(FC,68,4,52,52),

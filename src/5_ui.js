@@ -57,7 +57,7 @@ function drawWorld(vw) {
   const eyes = viewEyes(vw), hidden = s => smokeHides(eyes, s, vw);
   for (const s of M.sol) if (s.alive && !s.veh && s.stance !== 0 && vis(s.x, s.y, 30) && !hidden(s)) drawSoldier(s, vw);
   // ---- layer 2: low cover (sandbags, fences, hay)
-  for (const A of MAP.arcs) { if (!vis(A.x, A.y, 50)) continue; const f = A.lost / A.bags.length; bagArc(A, f); }
+  for (const A of MAP.arcs) { if (!vis(A.x, A.y, 50)) continue; const f = A.lost / A.bags.length; spr(f < 0.25 ? 'bagarc0' : f < 0.75 ? 'bagarc1' : 'bagarc2', A.x, A.y, A.a); }
   // fences, hay
   worldT();
   for (const s of MAP.statics) {
@@ -284,8 +284,6 @@ function solDraw(s, n, x, y, a, sx, sy, al) {
   ctx.setTransform(cs * k * sx, sn * k * sx, -sn * k * sy, cs * k * sy, (x * VZ + VOX) * DPR, (y * VZ + VOY) * DPR);
   if (al !== undefined) ctx.globalAlpha = al; ctx.drawImage(c, -m[4], -m[5]); if (al !== undefined) ctx.globalAlpha = 1;
 }
-/* sandbag crescents are painted, not pixel art: a 2x copy drawn at half size with smoothing keeps them from shearing when rotated */
-function bagArc(A, f) { ctx.imageSmoothingEnabled = true; spr(f < 0.25 ? 'bagarcH0' : f < 0.75 ? 'bagarcH1' : 'bagarcH2', A.x, A.y, A.a, 0.5, 0.5); ctx.imageSmoothingEnabled = false; }
 function flashAt(x, y, r) { worldT(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.9; ctx.drawImage(SPR.flash, x - r, y - r, r * 2, r * 2); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
 function hullFrame(v) { const f = v.hp / v.T.hp; return f > 0.82 ? 0 : f > 0.66 ? 1 : f > 0.5 ? 2 : f > 0.34 ? 3 : f > 0.18 ? 4 : 5; }
 function drawVehicle(v) {

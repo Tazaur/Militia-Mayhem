@@ -28,11 +28,20 @@ def mount_sprites(S):
     out['tur_dead'] = _cut(t, (xs.min() + xs.max() + 1) / 2, (ys.min() + ys.max() + 1) / 2)
     return out
 
-def hi_bags(SB):
-    """the sandbag crescents again at 2x the game size (drawn at 0.5 with smoothing: crisp at any zoom/rotation)"""
+def bag_frames(SB, SC=0.37):
+    """sandbag crescents: full / damaged / destroyed. The sheet's cells are 171 px apart (the old 196 px crop clipped the
+    full one to 120 px and squashed it into a square: 1.6x too wide). Offsets line the damaged frames up on the full one.
+    Returns ({name: (arr, px, py)}, collision points along the full crescent, sprite-local)."""
     from PIL import Image
     out = {}
-    for n, x in (('bagarcH0', 392), ('bagarcH1', 196), ('bagarcH2', 0)):
-        a = np.array(Image.fromarray(SB[0:196, x:x + 196].copy()).resize((144, 144), Image.LANCZOS))
-        out[n] = _cut(a, 144 * 0.62, 144 / 2)
-    return out
+    for n, cx, dy in (('bagarc0', 390, 0), ('bagarc1', 219, 2), ('bagarc2', 24, 3)):
+        cell = np.zeros((200, 171, 4), np.uint8); part = SB[0:200, cx:cx + 171]; cell[:, :part.shape[1]] = part
+        w, h = round(171 * SC), round(200 * SC)
+        a = np.array(Image.fromarray(cell).resize((w, h), Image.LANCZOS))
+        out[n] = _cut(a, 88 * w / 171, (98 + dy) * h / 200)       # pivot: bags' centre 15 px behind it, as before
+    arr, bpx, bpy = out['bagarc0']; m = arr[:, :, 3] > 200; ys, xs = np.where(m); pts = []
+    y0, y1 = ys.min(), ys.max() + 1
+    for k in range(8):
+        ya = y0 + (y1 - y0) * k / 8; yb = y0 + (y1 - y0) * (k + 1) / 8; sel = (ys >= ya) & (ys < yb)
+        if sel.sum() > 3: pts.append([round(float(xs[sel].mean() - bpx), 1), round(float(ys[sel].mean() - bpy), 1)])
+    return out, pts
