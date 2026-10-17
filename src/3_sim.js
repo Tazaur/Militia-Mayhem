@@ -185,7 +185,7 @@ function hurtSoldier(s, dmg, src, kind, dx, dy, wname) {
   if (src && !canHurt(src, s)) return;
   if (kind === 'explosion' || kind === 'mine') dmg *= [1, 0.8, 0.6][s.stance];
   s.hp -= dmg; s.lastHurt = M.time; s.hurtT = 0.35;
-  if (src && src.player && src !== s) { src.hitT = 0.15; psfx(src.player, 'hit'); }
+  if (src && src.player && src !== s) { src.hitT = 0.15; src.hitV = false; psfx(src.player, 'hit'); }
   if (s.player) rumble(s.player, Math.min(1, dmg / 60), 0.15);
   if (kind === 'bullet' || kind === 'mg') { for (let i = 0; i < 2; i++) blood(s.x, s.y, dx, dy); sfx('hurt', s.x, s.y); netEv('b', s.x | 0, s.y | 0, Math.round(dx || 0), Math.round(dy || 0)); }
   if (s.hp <= 0) kill(s, src, kind, dx, dy, wname);
@@ -246,7 +246,7 @@ function hurtVehicle(v, dmg, src) {
   const vt = vehTeam(v);
   if (src && vt >= 0 && src.team === vt && !M.ff) return;
   v.hp -= dmg; v.lastHit = src; v.hitFlash = 0.08;
-  if (src && src.player) { src.hitT = 0.15; psfx(src.player, 'hit'); }
+  if (src && src.player) { src.hitT = 0.15; src.hitV = true; psfx(src.player, 'hit'); }      // hit marker shows chevrons for vehicles / nests
   for (const s of v.seats) if (s && s.player) rumble(s.player, Math.min(1, dmg / 200), 0.2);
   if (v.hp <= 0) destroyVehicle(v, src);
 }
@@ -337,10 +337,21 @@ const LOW = { bag: 1, fence: 1, hay: 1 };
 function wreckLocal(w, x, y) { const dx = x - w.x, dy = y - w.y, c = Math.cos(-w.a), s = Math.sin(-w.a); return [dx * c - dy * s, dx * s + dy * c]; }
 function pushOutWreck(o, r, w) {
   if (Math.abs(o.x - w.x) > w.hl + r + 4 || Math.abs(o.y - w.y) > w.hl + r + 4) return false;
-  const [lx, ly] = wreckLocal(w, o.x, o.y), cx = clamp(lx, -w.hl, w.hl), cy = clamp(ly, -w.hw, w.hw), dx = lx - cx, dy = ly - cy, d = Math.hypot(dx, dy);
+  return pushOutBox(o, r, w.x, w.y, w.a, w.hl, w.hw);
+}
+/* push a circle (o, radius r) out of an oriented box (centre bx,by, angle ba, half sizes hl x hw) along the shortest way */
+function pushOutBox(o, r, bx, by, ba, hl, hw) {
+  const ddx = o.x - bx, ddy = o.y - by, c0 = Math.cos(-ba), s0 = Math.sin(-ba), lx = ddx * c0 - ddy * s0, ly = ddx * s0 + ddy * c0;
+  const cx = clamp(lx, -hl, hl), cy = clamp(ly, -hw, hw), dx = lx - cx, dy = ly - cy, d = Math.hypot(dx, dy);
   if (d >= r) return false;
-  let nx, ny; if (d > 0.01) { nx = cx + dx / d * r; ny = cy + dy / d * r; } else { const px = w.hl - Math.abs(lx), py = w.hw - Math.abs(ly); if (px < py) { nx = Math.sign(lx || 1) * (w.hl + r); ny = ly; } else { nx = lx; ny = Math.sign(ly || 1) * (w.hw + r); } }
-  const c = Math.cos(w.a), s = Math.sin(w.a); o.x = w.x + nx * c - ny * s; o.y = w.y + nx * s + ny * c; return true;
+  let nx, ny; if (d > 0.01) { nx = cx + dx / d * r; ny = cy + dy / d * r; } else { const px = hl - Math.abs(lx), py = hw - Math.abs(ly); if (px < py) { nx = Math.sign(lx || 1) * (hl + r); ny = ly; } else { nx = lx; ny = Math.sign(ly || 1) * (hw + r); } }
+  const c = Math.cos(ba), s = Math.sin(ba); o.x = bx + nx * c - ny * s; o.y = by + nx * s + ny * c; return true;
+}
+/* someone on foot against a vehicle: out of the hull box (tank / jeep) or the round nest. One shape, so nothing to
+   fight over: the hit circles overlap, and being pushed out of one used to shove you into the next */
+function pushOutVeh(o, r, v) {
+  if (v.type === 'nest') { const R = v.T.circles[0][2] + r, dx = o.x - v.x, dy = o.y - v.y, d = Math.hypot(dx, dy); if (d >= R) return false; if (d < 0.01) { o.x += R; return true; } o.x = v.x + dx / d * R; o.y = v.y + dy / d * R; return true; }
+  return pushOutBox(o, r, v.x, v.y, v.a, v.T.hl, v.T.hw);
 }
 function segWreck(x0, y0, x1, y1, w) {
   if (Math.abs((x0 + x1) / 2 - w.x) > 160 || Math.abs((y0 + y1) / 2 - w.y) > 160) return -1;
@@ -892,6 +903,7 @@ function updateSeatedPos(s) {
 }
 
 /* ---------------- vehicles ---------------- */
+const _po = { x: 0, y: 0 };
 function updateVehicle(v, dt) {
   if (!v.active) {
     v.respawnT -= dt;
@@ -917,22 +929,15 @@ function updateVehicle(v, dt) {
       syncMounts(v);
       vehTrackFx(v, Math.hypot(v.x - ox, v.y - oy) + Math.abs(v.av) * dt * 20);
     }
-    // run-over
-    const sp = Math.hypot(v.vx, v.vy);
-    vehCircles(v, _vc);
-    for (const s of M.sol) {
-      if (!s.alive || s.veh) continue;
-      if (Math.abs(s.x - v.x) > 80 || Math.abs(s.y - v.y) > 80) continue;
-      for (const [cx, cy, r] of _vc) {
-        const dx = s.x - cx, dy = s.y - cy, d = Math.hypot(dx, dy), mm = r + s.r;
-        if (d >= mm) continue;
-        const vt = vehTeam(v), drv = v.seats[0];
-        if (sp > 50 && drv && (isEnemy(vt, s.team) || (M.ff && vt === s.team))) { s.protect = 0; hurtSoldier(s, 999, drv, 'crush', v.vx, v.vy, 'ROADKILL'); if (drv.player) rumble(drv.player, 0.5, 0.15); break; }
-        if (d > 0.01) { s.x = cx + dx / d * mm; s.y = cy + dy / d * mm; } else s.x += 2;
-        soldierCollide(s);
-        break;
-      }
-    }
+  }
+  // soldiers on foot: run over if it's moving fast, otherwise stepped out of the hull
+  const sp = Math.hypot(v.vx, v.vy), drv = v.seats[0], vt = vehTeam(v);
+  for (const s of M.sol) {
+    if (!s.alive || s.veh) continue;
+    if (Math.abs(s.x - v.x) > 80 || Math.abs(s.y - v.y) > 80) continue;
+    _po.x = s.x; _po.y = s.y; if (!pushOutVeh(_po, s.r, v)) continue;
+    if (T.drive && sp > 50 && drv && (isEnemy(vt, s.team) || (M.ff && vt === s.team))) { s.protect = 0; hurtSoldier(s, 999, drv, 'crush', v.vx, v.vy, 'ROADKILL'); if (drv.player) rumble(drv.player, 0.5, 0.15); continue; }
+    s.x = _po.x; s.y = _po.y; soldierCollide(s);
   }
   // MG swings toward the gunner's aim, but stays bolted to its mount
   const gunner = v.seats.find((o, i) => o && T.seats[i].role === 'mg');

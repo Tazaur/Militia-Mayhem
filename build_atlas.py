@@ -34,6 +34,10 @@ for col in (0,1):
         tf.append((tip,a,px,py))
 tf.sort(key=lambda t:t[0])
 for i,(tip,a,px,py) in enumerate(tf): add('tur%d'%i,a,px,py)
+# ---- mounted MG (idle / firing / wrecked) and the destroyed turret: see mounts.py
+from mounts import mount_sprites, hi_bags
+sprites.update(hi_bags(L('4948b42c-image.png')))
+sprites.update(mount_sprites(np.array(Image.open('art/art4/mounts.png').convert('RGBA'))))
 # ---- emblem layer (black ring + chevron from the grey overlay item), aligned to hull centre
 em=crop(TANK,110,0,112,62).copy()
 dark=(em[:,:,0]<24)&(em[:,:,1]<24)&(em[:,:,2]<24)&(em[:,:,3]>0)

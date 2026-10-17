@@ -566,7 +566,7 @@ function netEv(type, ...a) {
 function netMatchStarted() {
   if (NET.role !== 'host') return;
   NET.matchId++; NET.evLog = []; NET.bn = {}; NET.left = {};
-  NET.hdr = [M.cfg.mode, M.cfg.map, M.cfg.bots, M.cfg.limit, M.cfg.skill, M.cfg.ff ? 1 : 0, Math.max(0, ['clear', 'rain', 'snow'].indexOf(M.cfg.weather)), COLORS.indexOf(M.teamColor[0]), COLORS.indexOf(M.teamColor[1]), M.cfg.teamColors === 'classic' ? 0 : 1];
+  NET.hdr = [M.cfg.mode, M.cfg.map, M.cfg.bots, M.cfg.limit, M.cfg.skill, M.cfg.ff ? 1 : 0, Math.max(0, ['clear', 'rain', 'snow'].indexOf(M.cfg.weather)), COLORS.indexOf(M.teamColor[0]), COLORS.indexOf(M.teamColor[1]), M.cfg.teamColors === 'classic' ? 0 : 1, M.cfg.fog === 'off' ? 0 : 1];
   netRoster();
 }
 /* who is who: a player number (or a bot name), colour and team for every soldier, in order */
@@ -576,7 +576,7 @@ function netRoster() {
 }
 function netLobbyInfo() {
   const inMatch = M && !M.demo && state !== 'lobby';
-  return { st: inMatch ? 'play' : 'lobby', c: NET.code, mj: CFG.midjoin ? 1 : 0, cfg: [CFG.mode, CFG.map, CFG.bots, CFG.limit, CFG.skill, CFG.ff ? 1 : 0, Math.max(0, ['clear', 'rain', 'snow'].indexOf(CFG.weather)), CFG.teamColors === 'classic' ? 0 : 1, CFG.board ? 1 : 0, CFG.midjoin ? 1 : 0, CFG.pub === false ? 0 : 1],
+  return { st: inMatch ? 'play' : 'lobby', c: NET.code, mj: CFG.midjoin ? 1 : 0, cfg: [CFG.mode, CFG.map, CFG.bots, CFG.limit, CFG.skill, CFG.ff ? 1 : 0, Math.max(0, ['clear', 'rain', 'snow'].indexOf(CFG.weather)), CFG.teamColors === 'classic' ? 0 : 1, CFG.board ? 1 : 0, CFG.midjoin ? 1 : 0, CFG.pub === false ? 0 : 1, CFG.fog === 'off' ? 0 : 1],
     pl: PLAYERS.map(p => [p.id, isNet(p) ? p.dev.peer : '', p.color, p.team, p.ready ? 1 : 0, isNet(p) ? 'net' : p.dev.type, p.name || '']) };
 }
 /* the whole match in a few kilobytes */
@@ -607,7 +607,7 @@ function netSnap() {
   for (const p of PLAYERS) if (isNet(p) && p.sol) {
     const s = p.sol, w = s.w || [{ id: WPNK[0], mag: 0, res: 0 }, { id: WPNK[0], mag: 0, res: 0 }];
     pv[p.id] = [Math.ceil(Math.max(0, s.hp)), Math.max(0, Math.round(s.respawnT * 10)), s.wi, WPNK.indexOf(w[0].id), w[0].mag, w[0].res, WPNK.indexOf(w[1].id), w[1].mag, w[1].res, s.nades, s.smokes || 0, s.mines, Math.max(0, Math.round(s.gcd * 10)), Math.round(s.gmax || 0), Math.max(0, Math.round(s.reloadT * 10)), Math.round((s.reloadMax || 0) * 10), s.throwSel || 0,
-      Math.max(0, Math.round(s.hitT * 100)), Math.max(0, Math.round(s.hurtT * 100)), Math.max(0, Math.round(s.seatT * 100)), Math.round((s.seatMax || 0.5) * 100), s.msg ? String(s.msg.txt).slice(0, 40) : '', s.msg ? Math.round(s.msg.t * 10) : 0, s.netCorr | 0, s.veh ? s.veh.netCorr | 0 : 0];
+      Math.max(0, Math.round(s.hitT * 100)) + (s.hitT > 0 && s.hitV ? 100 : 0), Math.max(0, Math.round(s.hurtT * 100)), Math.max(0, Math.round(s.seatT * 100)), Math.round((s.seatMax || 0.5) * 100), s.msg ? String(s.msg.txt).slice(0, 40) : '', s.msg ? Math.round(s.msg.t * 10) : 0, s.netCorr | 0, s.veh ? s.veh.netCorr | 0 : 0];
   }
   // each event rides in four snapshots in a row: a lost packet or two never loses it, and it doesn't bloat every packet
   const E = []; for (const e of NET.evLog) if ((e.n | 0) < 4 && now - e.t < 700) { e.n = (e.n | 0) + 1; E.push([e.id, Math.round((now - e.t) / 10), ...e.a]); }
@@ -693,8 +693,8 @@ function netClientToLobby() {
 /* match settings shown in a joiner's lobby are the host's, without touching the joiner's own saved settings */
 function withHostCfg(fn) {
   if (NET.role !== 'client' || !NET.lobby || !NET.lobby.cfg) return fn();
-  const keep = { mode: CFG.mode, map: CFG.map, bots: CFG.bots, limit: CFG.limit, skill: CFG.skill, ff: CFG.ff, board: CFG.board, weather: CFG.weather, teamColors: CFG.teamColors, midjoin: CFG.midjoin, pub: CFG.pub }, c = NET.lobby.cfg;
-  Object.assign(CFG, { mode: clamp(c[0] | 0, 0, MODES.length - 1), map: clamp(c[1] | 0, 0, MAPNAMES.length - 1), bots: c[2] | 0, limit: c[3] | 0, skill: c[4] | 0, ff: !!c[5], weather: ['clear', 'rain', 'snow'][c[6]] || 'clear', teamColors: c[7] ? 'player' : 'classic', board: !!c[8], midjoin: c[9] === undefined ? true : !!c[9], pub: c[10] !== 0 });
+  const keep = { mode: CFG.mode, map: CFG.map, bots: CFG.bots, limit: CFG.limit, skill: CFG.skill, ff: CFG.ff, board: CFG.board, weather: CFG.weather, teamColors: CFG.teamColors, midjoin: CFG.midjoin, pub: CFG.pub, fog: CFG.fog }, c = NET.lobby.cfg;
+  Object.assign(CFG, { mode: clamp(c[0] | 0, 0, MODES.length - 1), map: clamp(c[1] | 0, 0, MAPNAMES.length - 1), bots: c[2] | 0, limit: c[3] | 0, skill: c[4] | 0, ff: !!c[5], weather: ['clear', 'rain', 'snow'][c[6]] || 'clear', teamColors: c[7] ? 'player' : 'classic', board: !!c[8], midjoin: c[9] === undefined ? true : !!c[9], pub: c[10] !== 0, fog: c[11] === 0 ? 'off' : 'los' });
   try { return fn(); } finally { Object.assign(CFG, keep); }
 }
 /* the slow half: match header and roster (to start the match), scoreboard, items, crates, wrecks */
@@ -752,7 +752,7 @@ function netClientStart(g) {
   const h = g.h || [], ro = new Rd(g.ro), roster = [];
   while (!ro.end) { const kind = ro.u(1), ni = ro.u(1), ci = ro.u(1), team = ro.u(2), dark = ro.u(1); roster.push({ pid: kind - 1, ni, color: COLORS[ci] || 'red', team, dark: !!dark }); }
   if (NET.myPid < 0 || !roster.some(r => r.pid === NET.myPid)) return false;            // we're not in this match (yet)
-  const cfg = { mode: clamp(h[0] | 0, 0, MODES.length - 1), map: clamp(h[1] | 0, 0, MAPNAMES.length - 1), bots: h[2] | 0, limit: h[3] | 0, skill: h[4] | 0, ff: !!h[5], weather: ['clear', 'rain', 'snow'][h[6]] || 'clear', teamColors: h[9] ? 'player' : 'classic', camera: CFG.camera };
+  const cfg = { mode: clamp(h[0] | 0, 0, MODES.length - 1), map: clamp(h[1] | 0, 0, MAPNAMES.length - 1), bots: h[2] | 0, limit: h[3] | 0, skill: h[4] | 0, ff: !!h[5], weather: ['clear', 'rain', 'snow'][h[6]] || 'clear', teamColors: h[9] ? 'player' : 'classic', camera: CFG.camera, fog: h[10] === 0 ? 'off' : 'los' };
   PLAYERS = roster.filter(r => r.pid >= 0).map(r => r.pid === NET.myPid ? { id: r.pid, dev: NET.dev, color: r.color, team: r.team, ready: true, kit: 0, var: 0 } : { id: r.pid, dev: { type: 'net', peer: '' }, color: r.color, team: r.team, ready: true });
   NET.me = PLAYERS.find(p => p.id === NET.myPid);
   newMatch(cfg, false);
@@ -1031,7 +1031,7 @@ function netApplySnaps(now, dt) {
     if (me.alive) me.hp = pv[0]; me.respawnT = pv[1] / 10;
     if (me.alive) { me.wi = pv[2] ? 1 : 0; me.w = [{ id: WPNK[pv[3]] || WPNK[0], mag: pv[4], res: pv[5] }, { id: WPNK[pv[6]] || WPNK[0], mag: pv[7], res: pv[8] }]; }
     me.nades = pv[9]; me.smokes = pv[10]; me.mines = pv[11]; me.gcd = pv[12] / 10; me.gmax = pv[13]; me.reloadT = pv[14] / 10; me.reloadMax = pv[15] / 10; me.throwSel = pv[16];
-    if (pv[17]) me.hitT = Math.max(me.hitT, pv[17] / 100); if (pv[18]) me.hurtT = Math.max(me.hurtT, pv[18] / 100);
+    if (pv[17]) { me.hitT = Math.max(me.hitT, (pv[17] % 100) / 100); me.hitV = pv[17] >= 100; } if (pv[18]) me.hurtT = Math.max(me.hurtT, pv[18] / 100);
     // the seat-change countdown runs here between the host's numbers (so the glide is smooth); a big disagreement takes the host's
     if (pv !== NET.lastPv) { NET.lastPv = pv; const st = pv[19] / 100; me.seatMax = pv[20] / 100 || 0.5; if (st <= 0 || Math.abs(st - me.seatT) > 0.15) me.seatT = st; }
     if (pv[21]) { if (!me.msg || me.msg.txt !== pv[21]) me.msg = { txt: String(pv[21]), t: pv[22] / 10 }; }
@@ -1048,7 +1048,6 @@ function netOwnPos(s, i, nb, ra) {
   NET.corr = cn; NET.auth = true; s.x = rl.x; s.y = rl.y; s.vx = s.vy = 0; s.jumpT = 0; NET.corrN = (NET.corrN | 0) + 1;
   return 'snap';
 }
-const _vcL = [];
 /* the movement half of controlSoldier, for our own soldier on a joiner's screen */
 function netLocalMove(s, I, dt) {
   s.swim = inWater(s.x, s.y);
@@ -1069,7 +1068,7 @@ function netLocalMove(s, I, dt) {
   for (const o of M.sol) { if (o === s || !o.alive || o.veh) continue; const dx = s.x - o.x, dy = s.y - o.y; if (Math.abs(dx) > 14 || Math.abs(dy) > 14) continue; const d = Math.hypot(dx, dy); if (d < 13 && d > 0.01) { s.x = o.x + dx / d * 13; s.y = o.y + dy / d * 13; } }
   for (const v of M.vehicles) {
     if (!v.active || Math.abs(s.x - v.x) > 80 || Math.abs(s.y - v.y) > 80) continue;
-    for (const [cx, cy, r] of vehCircles(v, _vcL)) { const dx = s.x - cx, dy = s.y - cy, d = Math.hypot(dx, dy), mm = r + s.r; if (d < mm && d > 0.01) { s.x = cx + dx / d * mm; s.y = cy + dy / d * mm; } }
+    pushOutVeh(s, s.r, v);
   }
   const v = Math.hypot(s.x - x0, s.y - y0) / Math.max(dt, 1e-3); s.moving = v > (s.stance === 2 ? 6 : 18); s.walkT += v * dt;
   if (s.moving && !s.swim && !(s.jumpT > 0)) { s.stepAcc += v * dt; if (s.stepAcc > (s.stance === 2 ? 10 : 9)) { s.stepAcc = 0; s.stepSide = -s.stepSide; footprint(s.x, s.y, Math.atan2(s.vy, s.vx), s.stance === 2 ? 0 : s.stepSide, s.stance === 2); } }

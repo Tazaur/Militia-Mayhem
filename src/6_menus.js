@@ -44,7 +44,14 @@ function button(o) {
   ctx.fillStyle = o.off ? 'rgba(255,255,255,0.05)' : o.fill ? o.fill : gold ? (o.sel ? '#ffe08a' : '#d1aa55') : o.sel ? 'rgba(255,224,138,0.2)' : 'rgba(32,42,26,0.97)';
   ctx.fillRect(x, y, w, h);
   ctx.strokeStyle = o.sel ? '#ffe08a' : 'rgba(242,230,196,0.22)'; ctx.lineWidth = o.sel ? 2.5 : 1; ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
-  if (o.label) txt(o.label, x + w / 2, y + h / 2 + 1, o.size || clamp(h * 0.42, 12, 22), o.off ? 'rgba(255,255,255,0.32)' : o.ink ? o.ink : gold || o.fill ? '#141a10' : o.sel ? '#ffe08a' : '#f0f0e0', 'center', 'middle', FD);
+  const fs = o.size || clamp(h * 0.42, 12, 22), kin = o.key && keyDev(o.key[1]) && !o.keyAt;
+  let lx = x + w / 2;
+  if (kin) {          // label moves left if the prompt would cover it
+    const kw = keyTag(o.key[0], o.key[1], o), kx = x + w - kw - clamp(h * 0.46, 15, 22) * (o.key[1] === 'pad' ? 1.2 : 1) * 0.4;
+    ctx.font = `${fs}px ${FD}`; const lw = o.label ? ctx.measureText(o.label).width : 0;
+    if (lx + lw / 2 > kx - 6) lx = Math.max(x + lw / 2 + 6, (x + kx) / 2);
+  } else if (o.key) keyTag(o.key[0], o.key[1], o, o.keyAt);
+  if (o.label) txt(o.label, lx, y + h / 2 + 1, fs, o.off ? 'rgba(255,255,255,0.32)' : o.ink ? o.ink : gold || o.fill ? '#141a10' : o.sel ? '#ffe08a' : '#f0f0e0', 'center', 'middle', FD);
   UIB.push({ x, y, w, h, fn: o.fn, off: o.off, focus: o.focus });
 }
 function gearIcon(cx, cy, r, col) {
@@ -52,8 +59,8 @@ function gearIcon(cx, cy, r, col) {
   for (let i = 0; i < 16; i++) { const a = i / 16 * TAU, rr2 = i % 2 ? r : r * 0.78; ctx.lineTo(cx + Math.cos(a - 0.1) * rr2, cy + Math.sin(a - 0.1) * rr2); ctx.lineTo(cx + Math.cos(a + 0.1) * rr2, cy + Math.sin(a + 0.1) * rr2); }
   ctx.closePath(); ctx.fill(); ctx.fillStyle = '#141a10'; ctx.beginPath(); ctx.arc(cx, cy, r * 0.34, 0, TAU); ctx.fill();
 }
-function iconButton(x, y, s, kind, fn, sel) {
-  button({ x, y, w: s, h: s, fn, sel });
+function iconButton(x, y, s, kind, fn, sel, key, keyAt) {
+  button({ x, y, w: s, h: s, fn, sel, key, keyAt: keyAt || 'left' });
   const cx = x + s / 2, cy = y + s / 2, col = sel ? '#ffe08a' : '#f0f0e0';
   if (kind === 'gear') gearIcon(cx, cy, s * 0.3, col);
   else if (kind === 'close') { ctx.strokeStyle = col; ctx.lineWidth = Math.max(2, s * 0.08); ctx.beginPath(); ctx.moveTo(cx - s * 0.2, cy - s * 0.2); ctx.lineTo(cx + s * 0.2, cy + s * 0.2); ctx.moveTo(cx + s * 0.2, cy - s * 0.2); ctx.lineTo(cx - s * 0.2, cy + s * 0.2); ctx.stroke(); }
@@ -131,7 +138,8 @@ function drawMenu() {
   stxt('MILITIA MAYHEM', W / 2, T + fpx(46, u, 28), fpx(52, u, 30), '#f2e6c4', 'center', 'alphabetic', FD);
   txt('TANKS · JEEPS · BOOTS ON THE GROUND', W / 2, T + fpx(46, u, 28) + fpx(22, u, 16), fpx(13, u, 11), 'rgba(242,230,196,0.6)', 'center', 'alphabetic', FD);
   const ib = Math.max(44, 44 * u);
-  iconButton(R - ib, T, ib, 'gear', () => openSettings('menu'), MENU.sel === 2); UIB[UIB.length - 1].focus = 2;
+  const dv = devOf(null);
+  iconButton(R - ib, T, ib, 'gear', () => openSettings('menu'), MENU.sel === 2, ['settings', dv], 'below'); UIB[UIB.length - 1].focus = 2;
   iconButton(R - ib * 2 - 10 * u, T, ib, 'full', toggleFullscreen);
   const top = T + fpx(46, u, 28) + fpx(40, u, 26), foot = fpx(26, u, 22), avH = B - foot - top;
   const cw = Math.min((R - L - 24 * u) / 2, avH * 1.05, 430 * u), ch = Math.min(avH, cw * 0.98), y0 = top + (avH - ch) / 2;
@@ -145,9 +153,9 @@ function drawMenu() {
     const ly = y0 + ch - fpx(46, u, 34);
     txt(i === 0 ? 'LOCAL PLAY' : 'NETWORK PLAY', x + cw / 2, ly, fpx(26, u, 18), off ? 'rgba(240,240,224,0.4)' : sel ? '#ffe08a' : '#f2e6c4', 'center', 'middle', FD);
     txt(i === 0 ? '1–4 PLAYERS · SPLIT OR SHARED SCREEN' : NET.avail === false ? 'OPEN THE PAGE ON CLAUDE.AI' : 'HOST OR JOIN · UP TO 4 PLAYERS', x + cw / 2, ly + fpx(24, u, 18), fpx(12, u, 11), off ? 'rgba(240,240,224,0.35)' : '#c8d0b8', 'center', 'middle', FB);
+    if (sel && !off) { ctx.font = `${fpx(26, u, 18)}px ${FD}`; const tw2 = ctx.measureText(i === 0 ? 'LOCAL PLAY' : 'NETWORK PLAY').width; keyTag('select', dv, { x: x + cw / 2 - tw2 / 2, y: ly - 17, w: 0, h: 34 }, 'left'); }
   }
   netToast(u);
-  const dv = devOf(null); if (dv !== 'touch') hintRow([{ a: 'select', icon: 'check' }, { a: 'settings', icon: 'gear' }], W / 2, B - foot / 2, fpx(17, u, 15), dv);
   txt(`v${VERSION.build}  ·  ${VERSION.date}`, L, B - foot / 2, fpx(11, u, 10), 'rgba(242,230,196,0.45)', 'left', 'middle', FD);
 }
 
@@ -313,9 +321,10 @@ function drawNetMenu() {
   const u = uiU(), L = SAFE.l + 16 * u, R = W - SAFE.r - 16 * u, T = SAFE.t + 12 * u, B = H - SAFE.b - 10 * u;
   ctx.fillStyle = 'rgba(5,8,4,0.74)'; ctx.fillRect(0, 0, W, H);
   const hb = Math.max(42, 42 * u), bw0 = Math.max(96, 104 * u);
-  button({ x: L, y: T, w: bw0, h: hb, label: '‹  MENU', fn: () => toMenu(), size: fpx(15, u, 13) });
+  const dv = devOf(null);
+  button({ x: L, y: T, w: bw0, h: hb, label: '‹  MENU', fn: () => toMenu(), size: fpx(15, u, 13), key: ['back', dv] });
   txt('NETWORK PLAY', L + bw0 + 16 * u, T + hb / 2 + 1, fpx(26, u, 18), '#f2e6c4', 'left', 'middle', FD);
-  iconButton(R - hb, T, hb, 'gear', () => openSettings('menu'));
+  iconButton(R - hb, T, hb, 'gear', () => openSettings('menu'), false, ['settings', dv], 'below');
   if (NET.avail) { const nw = Math.max(150, 190 * u); button({ x: R - hb - 10 * u - nw, y: T, w: nw, h: hb, label: (NET.name || 'SET NAME') + '  ✎', fn: () => askName(null), size: fpx(14, u, 12) }); }
   const top = T + hb + 14 * u, foot = fpx(24, u, 20), bodyH = B - foot - top;
   if (!NET.avail) {
@@ -336,6 +345,7 @@ function drawNetMenu() {
     art(x + w / 2, y + h * 0.42, Math.min(w, h * 0.9));
     txt(title, x + w / 2, y + h - fpx(56, u, 40), fpx(24, u, 17), sel ? '#ffe08a' : '#f2e6c4', 'center', 'middle', FD);
     txt(sub, x + w / 2, y + h - fpx(30, u, 22), fpx(12, u, 11), '#c8d0b8', 'center', 'middle', FB);
+    if (sel) { ctx.font = `${fpx(24, u, 17)}px ${FD}`; const tw2 = ctx.measureText(title).width; keyTag('select', dv, { x: x + w / 2 - tw2 / 2, y: y + h - fpx(56, u, 40) - 17, w: 0, h: 34 }, 'left'); }
   };
   // two big cards, plus (on claude.ai) a list of games open on this page
   const cw = room ? clamp((R - L) * 0.3, 180, 330 * u) : (R - L - gap) / 2;
@@ -355,6 +365,7 @@ function drawNetMenu() {
       if (y + rh > top + bodyH - 8) return;
       const sel = NETM.sel === i + 2;
       button({ x: rx + 10 * u, y, w: rw - 20 * u, h: rh, sel, fn: d => netAct(i + 2, d), focus: i + 2 });
+      if (sel) keyTag('select', dv, { x: rx + 10 * u, y, w: rw - 20 * u - fpx(44, u, 38), h: rh });
       fitTxt((h.nm ? h.nm + ' · ' : 'GAME ') + h.c.toUpperCase(), rx + 24 * u, y + rh * 0.36, rw - 90 * u, fpx(15, u, 13), sel ? '#ffe08a' : '#f0f0e0', FD);
       txt(`${h.st === 'play' ? 'IN BATTLE · ' : ''}${h.md} · ${h.mp}`, rx + 24 * u, y + rh * 0.72, fpx(11, u, 10), '#a8b098', 'left', 'middle', FB);
       txt(`${h.n}/${MAXP} ›`, rx + rw - 22 * u, y + rh / 2, fpx(14, u, 12), sel ? '#ffe08a' : '#d1aa55', 'right', 'middle', FD);
@@ -362,8 +373,7 @@ function drawNetMenu() {
     });
     busy.forEach(h => { if (y + rh > top + bodyH - 8) return; txt('GAME ' + h.c.toUpperCase() + (h.st === 'play' ? ' · IN BATTLE' : ' · FULL'), rx + 24 * u, y + rh / 2, fpx(13, u, 11), 'rgba(240,240,224,0.4)', 'left', 'middle', FD); y += rh * 0.7; });
   }
-  txt('The host’s tab runs the battle — keep it open and in front.', W / 2, B - foot / 2 - fpx(14, u, 12), fpx(11, u, 10), 'rgba(242,230,196,0.5)', 'center', 'middle', FB);
-  const dv = devOf(null); if (dv !== 'touch') hintRow([{ a: 'nav', t: 'PICK' }, { a: 'select', icon: 'check' }, { a: 'back', icon: 'exit' }], W / 2, B - foot / 2 + 4, fpx(15, u, 13), dv);
+  txt('The host’s tab runs the battle — keep it open and in front.', W / 2, B - foot / 2 + 2, fpx(11, u, 10), 'rgba(242,230,196,0.5)', 'center', 'middle', FB);
   if (NETM.entry) drawCodeEntry(u);
   if (NET.busy) { panel(W / 2 - 200 * u, H / 2 - 30 * u, 400 * u, 60 * u); txt(NET.busy, W / 2, H / 2, fpx(17, u, 14), '#ffe08a', 'center', 'middle', FD); }
   netToast(u);
@@ -392,9 +402,10 @@ function drawCodeEntry(u) {
   const gy = sy + slotH + 16 * u, done = name ? 'OK' : 'JOIN', ready = name || E.code.length === 4;
   for (const b of padLayout(E)) {
     const k = b.k, lab = k === 'JOIN' ? 'JOIN ›' : k === 'OK' ? (E.next === 'host' ? 'HOST ›' : E.next === 'join' ? 'JOIN ›' : 'OK') : k === 'DEL' ? '⌫' : k === 'SPACE' ? 'SPACE' : k.toUpperCase();
-    button({ x: x0 + b.x * kw + 3, y: gy + b.y * kh + 3, w: b.w * kw - 6, h: kh - 6, label: lab, sel: E.sel === k, primary: k === done && ready, off: b.off || (k === done && !ready), fn: () => codeKey(k), focus: k, size: Math.max(12, kh * 0.4) });
+    const dv = devOf(null), kk = k === done ? ['start', dv] : k === 'DEL' ? [dv === 'pad' ? 'back' : 'del', dv] : null;
+    button({ x: x0 + b.x * kw + 3, y: gy + b.y * kh + 3, w: b.w * kw - 6, h: kh - 6, label: lab, sel: E.sel === k, primary: k === done && ready, off: b.off || (k === done && !ready), fn: () => codeKey(k), focus: k, size: Math.max(12, kh * 0.4), key: kk, keyAt: kk && b.w < 1.4 ? 'below' : undefined });
   }
-  const dv = devOf(null); if (dv !== 'touch') hintRow(dv === 'pad' ? [{ a: 'select', t: 'TYPE' }, { a: 'back', t: 'DELETE' }, { a: 'start', t: name ? 'DONE' : 'NEXT' }] : [{ t: 'TYPE ON YOUR KEYBOARD · ENTER WHEN DONE · ESC TO CANCEL' }], W / 2, H - SAFE.b - 22 * u, fpx(15, u, 13), dv);
+  if (devOf(null) === 'kb') txt('TYPE ON YOUR KEYBOARD · ESC TO CANCEL', W / 2, H - SAFE.b - 22 * u, fpx(15, u, 13), 'rgba(240,240,224,0.7)', 'center', 'middle', FD);
 }
 /* a joiner's lobby: one player (you), the host's match settings shown read-only */
 function updateNetLobby(ins) {
@@ -414,7 +425,7 @@ function updateNetLobby(ins) {
 
 /* ================= settings (main menu corner, lobby and pause) ================= */
 const SET = { open: false, from: null, tab: 0, sel: 0 };
-const SET_ROWS = ['soldiers', 'style', 'teams', 'camera', 'fog', 'sound', 'sfx', 'mus', 'fullscreen'];
+const SET_ROWS = ['soldiers', 'style', 'teams', 'camera', 'sound', 'sfx', 'mus', 'fullscreen'];
 const CONTROLS = [['MOVE', 'LEFT STICK', 'W A S D'], ['AIM', 'RIGHT STICK', 'MOUSE'], ['FIRE', 'RT', 'LEFT CLICK'], ['AIM DOWN SIGHTS', 'LT', 'RIGHT CLICK'],
   ['SPRINT', 'L3', 'SHIFT'], ['JUMP / VAULT', 'A', 'SPACE'], ['PRONE / STAND', 'B', 'C / Z'], ['RELOAD', 'X', 'R'],
   ['USE · EXIT · SWAP', 'Y', 'E · 1 / 2'], ['GRENADE', 'RB', 'G'], ['GADGET', 'LB', 'F'], ['MELEE', 'R3', 'V'],
@@ -428,7 +439,6 @@ function setLabel(k) {
     case 'style': return ['ART STYLE', CFG.style === 'classic' ? 'CLASSIC' : 'GRIT'];
     case 'teams': return ['TEAM COLORS', (CFG.teamColors === 'classic' ? 'BLUE VS RED' : 'PLAYER COLOR') + (inMatch() ? '  (NEXT MATCH)' : '')];
     case 'camera': return ['MULTIPLAYER VIEW', CFG.camera === 'split' ? 'SPLIT SCREEN' : 'SHARED SCREEN'];
-    case 'fog': return ['VISION', CFG.fog === 'off' ? 'SEE WHOLE MAP' : 'LINE OF SIGHT'];
     case 'sound': return ['SOUND STYLE', CFG.sound === 'classic' ? 'CLASSIC' : 'EXPERIMENTAL'];
     case 'sfx': return ['SOUND EFFECTS', AU.sfxOn ? 'ON' : 'OFF'];
     case 'mus': return ['MUSIC', AU.musOn ? 'ON' : 'OFF'];
@@ -440,7 +450,6 @@ function setChange(k, d) {
   if (k === 'style') { CFG.style = CFG.style === 'classic' ? 'grit' : 'classic'; applyStyleAssets(); if (M) { if (M.demo) demoMatch(); else paintGround(); } }
   if (k === 'teams') CFG.teamColors = CFG.teamColors === 'classic' ? 'player' : 'classic';
   if (k === 'camera') { CFG.camera = CFG.camera === 'split' ? 'shared' : 'split'; if (inMatch()) { M.cfg.camera = CFG.camera; layoutViews(); } }
-  if (k === 'fog') CFG.fog = CFG.fog === 'off' ? 'los' : 'off';
   if (k === 'sound') { CFG.sound = CFG.sound === 'classic' ? 'exp' : 'classic'; engineKillAll(); }
   if (k === 'sfx') { AU.sfxOn = !AU.sfxOn; store.set('sfx', AU.sfxOn); applyMute(); }
   if (k === 'mus') { AU.musOn = !AU.musOn; store.set('mus', AU.musOn); applyMute(); }
@@ -469,11 +478,11 @@ function drawSettings() {
   const hh = Math.max(46, 50 * u), pad = 14 * u;
   txt('SETTINGS', px + pad, py + hh / 2 + 1, fpx(22, u, 17), '#f2e6c4', 'left', 'middle', FD);
   txt(`v${VERSION.build}`, px + pad, py + ph - Math.max(14, 15 * u), fpx(11, u, 10), 'rgba(242,230,196,0.4)', 'left', 'middle', FD);
-  const cs = Math.max(40, 40 * u); iconButton(px + pw - cs - 8, py + (hh - cs) / 2, cs, 'close', () => closeSettings());
+  const dv = devOf(null), cs = Math.max(40, 40 * u); iconButton(px + pw - cs - 8, py + (hh - cs) / 2, cs, 'close', () => closeSettings(), false, ['back', dv]);
   // tabs
   const tw = Math.min(170 * u, (pw - 200 * u) / 2), tx = px + pw / 2 - tw;
   ['GENERAL', 'CONTROLS'].forEach((t, i) => button({ x: tx + i * tw, y: py + (hh - cs) / 2, w: tw - 6, h: cs, label: t, sel: SET.tab === i, fn: () => { SET.tab = i; sfx('ui'); }, size: fpx(14, u, 12) }));
-  if (anyPad()) { txt('LB', tx - 8, py + hh / 2, fpx(12, u, 11), '#9a9a8a', 'right', 'middle', FD); txt('RB', tx + tw * 2 + 2, py + hh / 2, fpx(12, u, 11), '#9a9a8a', 'left', 'middle', FD); }
+  keyTag('prev', dv, { x: tx, y: py + (hh - cs) / 2, w: tw - 6, h: cs }, 'left'); keyTag('next', dv, { x: tx + tw, y: py + (hh - cs) / 2, w: tw - 6, h: cs }, 'right');
   const bodyY = py + hh + 6, bodyH = ph - hh - 6 - Math.max(28, 30 * u);
   if (SET.tab === 0) {
     const rh = clamp(bodyH / SET_ROWS.length, 34, 56 * u);
@@ -484,6 +493,7 @@ function drawSettings() {
       const aw = Math.max(40, rh * 0.95);
       txt(val, x + w - aw - 10, y + rh / 2, fpx(16, u, 13), sel ? '#ffe08a' : '#f0f0e0', 'right', 'middle', FD);
       txt('‹', x + w * 0.52, y + rh / 2, fpx(20, u, 16), 'rgba(242,230,196,0.5)', 'center', 'middle', FD);
+      if (sel) keyTag('change', dv, { x: x + w * 0.52 - 12, y: y + rh * 0.2, w: 0, h: rh * 0.6 }, 'left');
       txt('›', x + w - aw / 2, y + rh / 2, fpx(20, u, 16), 'rgba(242,230,196,0.8)', 'center', 'middle', FD);
       UIB.push({ x, y, w: w * 0.55, h: rh, focus: i, fn: () => { SET.sel = i; setChange(k, -1); } });
       UIB.push({ x: x + w * 0.55, y, w: w * 0.45, h: rh, focus: i, fn: () => { SET.sel = i; setChange(k, 1); } });
@@ -499,14 +509,12 @@ function drawSettings() {
       });
     }
   }
-  const dv = devOf(null);
   if (SET.tab === 1) txt('TOUCH: LEFT THUMB MOVES · RIGHT THUMB AIMS AND FIRES', W / 2, py + ph - Math.max(14, 15 * u), fpx(12, u, 11), 'rgba(240,240,220,0.65)', 'center', 'middle', FD);
-  else if (dv !== 'touch') hintRow([{ a: 'change', icon: 'swap' }, { a: 'back', icon: 'exit' }], W / 2, py + ph - Math.max(14, 15 * u), fpx(15, u, 13), dv);
 }
 
 /* ================= local lobby ================= */
 const LOBBY = { sel: 0 };
-const MATCH_ROWS_ = ['mode', 'map', 'bots', 'limit', 'skill', 'ff', 'board', 'weather'], MATCH_ROWS_NET = [...MATCH_ROWS_, 'midjoin', 'pub'];
+const MATCH_ROWS_ = ['mode', 'map', 'bots', 'limit', 'skill', 'ff', 'board', 'fog', 'weather'], MATCH_ROWS_NET = [...MATCH_ROWS_, 'midjoin', 'pub'];
 const matchRows = () => NET.role ? MATCH_ROWS_NET : MATCH_ROWS_;      // online games also choose whether people can join mid-match
 function deviceKey(d) { return d.type + (d.index !== undefined ? d.index : '') + (d.peer || ''); }
 function devName(d) { return d.type === 'net' ? (d.peer ? 'ONLINE' : 'HOST') : d.type === 'kb' ? 'KEYBOARD + MOUSE' : d.type === 'pad' ? 'CONTROLLER ' + (d.index + 1) : 'TOUCH'; }
@@ -536,6 +544,7 @@ function changeSetting(key, d) {
   if (key === 'skill') C.skill = (C.skill + d + 3) % 3;
   if (key === 'ff') C.ff = !C.ff;
   if (key === 'board') C.board = !C.board;
+  if (key === 'fog') C.fog = C.fog === 'off' ? 'los' : 'off';
   if (key === 'midjoin') C.midjoin = !C.midjoin;
   if (key === 'pub') C.pub = C.pub === false;
   if (key === 'weather') { const W3 = ['clear', 'rain', 'snow']; C.weather = W3[(W3.indexOf(C.weather) + d + 3) % 3]; }
@@ -553,6 +562,7 @@ function settingLabel(key) {
     case 'skill': return ['BOT SKILL', SKILL[C.skill].name];
     case 'ff': return ['FRIENDLY FIRE', C.ff ? 'ON' : 'OFF'];
     case 'board': return ['ENEMY BOARDING', C.board ? 'ON' : 'OFF'];
+    case 'fog': return ['VISION', C.fog === 'off' ? 'SEE WHOLE MAP' : 'LINE OF SIGHT'];
     case 'midjoin': return ['JOIN MID-MATCH', C.midjoin ? 'ON' : 'OFF'];
     case 'pub': return ['SERVER LIST', C.pub === false ? 'HIDDEN' : 'SHOWN'];
     case 'weather': return ['WEATHER', C.weather === 'clear' ? 'CLEAR' : C.weather === 'snow' ? 'SNOW' : MAPNAMES[C.map][0] === 'snowfield' ? 'STORM' : 'RAIN'];
@@ -587,7 +597,7 @@ function updateLobby(ins) {
     if (st.navX && LOBBY.sel < matchRows().length) changeSetting(matchRows()[LOBBY.sel], st.navX);
     if ((dev.type === 'pad' ? st.interact : st.nadeCyc) && MODES[CFG.mode].team) toggleTeam(p);
     if (st.confirm && stateT > 0.3) { if (LOBBY.sel === matchRows().length) { p.ready = true; tryStart(); } else toggleReady(p); }
-    if (st.pause) { p.ready = true; tryStart(); }
+    if (st.pause && !st.back) { p.ready = true; tryStart(); }
     if (st.back) { if (p.ready) { p.ready = false; sfx('leave'); } else leaveLobby(p); }
   }
   runClicks();
@@ -600,22 +610,17 @@ function drawLobby2() {
   ctx.fillStyle = 'rgba(5,8,4,0.74)'; ctx.fillRect(0, 0, W, H);
   // header
   const hb = Math.max(42, 42 * u);
-  button({ x: L, y: T, w: Math.max(96, 104 * u), h: hb, label: NET.role ? '‹  LEAVE' : '‹  MENU', fn: () => NET.role ? netLeave() : toMenu(), size: fpx(15, u, 13) });
+  const dv = devOf(null), local = PLAYERS.some(p => !isNet(p));      // once you have a slot, back leaves the slot (its ✕)
+  button({ x: L, y: T, w: Math.max(96, 104 * u), h: hb, label: NET.role ? '‹  LEAVE' : '‹  MENU', fn: () => NET.role ? netLeave() : toMenu(), size: fpx(15, u, 13), key: local ? null : ['back', dv] });
   txt(NET.role ? 'ONLINE · CODE ' + NET.code.toUpperCase() + (NET.game && NET.game.name && String(NET.game.name).startsWith('militia') ? '' : NET.role === 'host' ? ' (CLAUDE.AI ONLY)' : '') : 'LOCAL PLAY', L + Math.max(96, 104 * u) + 16 * u, T + hb / 2 + 1, fpx(26, u, 18), '#f2e6c4', 'left', 'middle', FD);
-  iconButton(R - hb, T, hb, 'gear', () => openSettings('lobby'));
-  const foot = fpx(24, u, 20), top = T + hb + 12 * u, bodyH = B - foot - top;
+  iconButton(R - hb, T, hb, 'gear', () => openSettings('lobby'), false, ['settings', dv]);
+  const foot = fpx(10, u, 8), top = T + hb + 12 * u, bodyH = B - foot - top;
   // match panel (right)
   const pw = clamp(W * 0.3, 240, 380 * u), px = R - pw;
   drawMatchPanel(px, top, pw, bodyH, u);
   // player slots (4 across)
   const gap = 10 * u, areaW = px - gap * 1.5 - L, cwid = (areaW - gap * 3) / 4;
   for (let i = 0; i < MAXP; i++) drawSlot(L + i * (cwid + gap), top, cwid, bodyH, i, u);
-  // footer hint
-  const dv = devOf(null), hh2 = fpx(16, u, 14);
-  if (dv !== 'touch') {
-    if (NET.role === 'client') hintRow([{ a: 'classes', t: 'COLOR' }, { a: 'team', icon: 'team' }, { a: 'select', t: 'READY' }, { a: 'back', icon: 'exit' }], W / 2, B - foot / 2, hh2, dv);
-    else hintRow([{ a: 'classes', t: 'COLOR' }, { a: 'team', icon: 'team' }, { a: 'nav', t: 'MATCH' }, { a: 'select', t: 'READY' }, { a: 'start', icon: 'flag' }, { a: 'back', icon: 'exit' }], W / 2, B - foot / 2, hh2, dv);
-  }
   if (NET.role === 'client' && !NET.joined) drawJoinSteps(u);
   netToast(u);
   if (!AU.ctx && PLAYERS.some(p => p.dev.type === 'pad')) txt('CLICK ONCE TO ENABLE SOUND', R, T + hb + 2, fpx(11, u, 10), 'rgba(240,240,220,0.5)', 'right', 'top', FD);
@@ -641,10 +646,11 @@ function drawSlot(x, y, w, h, i, u) {
   panel(x, y, w, h);
   ctx.fillStyle = col; ctx.fillRect(x, y, w, 4);
   if (p.ready) { ctx.strokeStyle = '#7dff7a'; ctx.lineWidth = 2.5; ctx.strokeRect(x + 1.5, y + 1.5, w - 3, h - 3); }
-  const pad = 8 * u, cs = Math.max(34, 32 * u);
-  fitTxt(p.name || 'P' + (i + 1), x + pad, y + pad + cs / 2, w - pad * 2 - cs - (p.mine ? 44 : 8), fpx(22, u, 16), col, FD);
-  if (ctl || NET.role === 'host') iconButton(x + w - cs - pad, y + pad, cs, 'close', () => NET.role === 'client' ? netLeave() : isNet(p) ? netKick(p) : leaveLobby(p));
-  if (p.mine) txt('YOU', x + w - cs - pad - 8, y + pad + cs / 2, fpx(12, u, 10), '#ffe08a', 'right', 'middle', FD);
+  const pad = 8 * u, cs = Math.max(34, 32 * u), pd = ctl ? (p.mine ? NET.dev && NET.dev.type : p.dev.type) : null;
+  const xk = keyDev(pd) && !p.ready ? badge('back', pd, -9999, -9999, clamp(cs * 0.46, 15, 22) * (pd === 'pad' ? 1.2 : 1)) + 7 : 0;
+  fitTxt(p.name || 'P' + (i + 1), x + pad, y + pad + cs / 2, w - pad * 2 - cs - xk - (p.mine ? 44 : 8), fpx(22, u, 16), col, FD);
+  if (ctl || NET.role === 'host') iconButton(x + w - cs - pad, y + pad, cs, 'close', () => NET.role === 'client' ? netLeave() : isNet(p) ? netKick(p) : leaveLobby(p), false, xk ? ['back', pd] : null);
+  if (p.mine) txt('YOU', x + w - cs - pad - 8 - xk, y + pad + cs / 2, fpx(12, u, 10), '#ffe08a', 'right', 'middle', FD);
   txt(devName(p.dev), x + w / 2, y + pad + cs + fpx(12, u, 11), fpx(11, u, 10), '#9a9a8a', 'center', 'middle', FD);
   // the soldier, in the current art set
   const chipH = team ? Math.max(34, 34 * u) : 0, readyH = Math.max(42, 44 * u);
@@ -654,18 +660,20 @@ function drawSlot(x, y, w, h, i, u) {
   uiSoldier(p.color, 'stand', sx, sy, Math.PI / 2, sc);
   if (!p.ready && ctl) {
     const ab = Math.max(36, 34 * u);
-    button({ x: x + 4, y: sy - ab / 2, w: ab, h: ab, label: '‹', fn: () => cycleColor(p, -1), size: fpx(22, u, 18) });
-    button({ x: x + w - ab - 4, y: sy - ab / 2, w: ab, h: ab, label: '›', fn: () => cycleColor(p, 1), size: fpx(22, u, 18) });
+    button({ x: x + 4, y: sy - ab / 2, w: ab, h: ab, label: '‹', fn: () => cycleColor(p, -1), size: fpx(22, u, 18), key: ['prev', pd], keyAt: 'below' });
+    button({ x: x + w - ab - 4, y: sy - ab / 2, w: ab, h: ab, label: '›', fn: () => cycleColor(p, 1), size: fpx(22, u, 18), key: ['next', pd], keyAt: 'below' });
   }
   txt(CNAME[p.color], sx, artBot + fpx(12, u, 10), fpx(15, u, 12), col, 'center', 'middle', FD);
-  if (team) { const [tc, tn] = teamChipColor(p.team); button({ x: x + pad, y: y + h - pad - readyH - chipH - 8 * u, w: w - pad * 2, h: chipH, label: 'TEAM ' + tn, fill: tc, fn: () => { if (NET.role === 'host' && isNet(p)) { p.team = 1 - p.team; sfx('ui'); } else if (!p.ready && ctl) toggleTeam(p); }, size: fpx(14, u, 12) }); }
-  button({ x: x + pad, y: y + h - pad - readyH, w: w - pad * 2, h: readyH, label: p.ready ? '✓ READY' : 'READY', primary: !p.ready && ctl, fill: p.ready ? '#7dff7a' : undefined, fn: () => { if (ctl) toggleReady(p); }, size: fpx(17, u, 13) });
+  if (team) { const [tc, tn] = teamChipColor(p.team); button({ x: x + pad, y: y + h - pad - readyH - chipH - 8 * u, w: w - pad * 2, h: chipH, label: 'TEAM ' + tn, fill: tc, fn: () => { if (NET.role === 'host' && isNet(p)) { p.team = 1 - p.team; sfx('ui'); } else if (!p.ready && ctl) toggleTeam(p); }, size: fpx(14, u, 12), key: p.ready ? null : ['team', pd] }); }
+  button({ x: x + pad, y: y + h - pad - readyH, w: w - pad * 2, h: readyH, label: p.ready ? '✓ READY' : 'READY', primary: !p.ready && ctl, fill: p.ready ? '#7dff7a' : undefined, fn: () => { if (ctl) toggleReady(p); }, size: fpx(17, u, 13), key: [p.ready ? 'back' : 'select', pd] });
 }
 function drawMatchPanel(x, y, w, h, u) {
   panel(x, y, w, h);
   const pad = 10 * u, cl = NET.role === 'client', navOn = !cl && PLAYERS.some(p => p.dev.type !== 'touch');
   txt('MATCH', x + pad, y + fpx(18, u, 15), fpx(17, u, 14), '#f2e6c4', 'left', 'middle', FD);
-  txt(MODES[CFG.mode].n, x + w - pad, y + fpx(18, u, 15), fpx(13, u, 11), '#9a9a8a', 'right', 'middle', FD);
+  const nd = navOn ? (PLAYERS.some(p => p.dev.type === 'pad') ? 'pad' : 'kb') : null;
+  if (nd) keyTag('nav', nd, { x: x + w - pad, y: y + fpx(18, u, 15) - 10, w: 0, h: 20 }, 'left');
+  else txt(MODES[CFG.mode].n, x + w - pad, y + fpx(18, u, 15), fpx(13, u, 11), '#9a9a8a', 'right', 'middle', FD);
   // map preview of the live demo battlefield
   const startH = Math.max(44, 46 * u), minRows = matchRows().length * Math.max(28, 32 * u), head = fpx(34, u, 28);
   const mw = w - pad * 2, mh0 = Math.min(mw * WH / WW, h - head - minRows - startH - pad * 2 - 12 * u), mh = mh0 < 46 ? 0 : mh0, mx = x + pad, my = y + head;
@@ -689,7 +697,7 @@ function drawMatchPanel(x, y, w, h, u) {
   });
   const ok = canStart(), sel = navOn && LOBBY.sel === matchRows().length;
   if (cl) { button({ x: x + pad, y: y + h - pad - startH, w: w - pad * 2, h: startH, label: 'THE HOST STARTS THE BATTLE', off: true, size: fpx(14, u, 12) }); return; }
-  button({ x: x + pad, y: y + h - pad - startH, w: w - pad * 2, h: startH, label: !PLAYERS.length ? 'JOIN TO START' : ok ? 'START BATTLE' : 'WAITING FOR READY', primary: true, off: !ok, sel, fn: () => tryStart(), size: fpx(17, u, 13) });
+  button({ x: x + pad, y: y + h - pad - startH, w: w - pad * 2, h: startH, label: !PLAYERS.length ? 'JOIN TO START' : ok ? 'START BATTLE' : 'WAITING FOR READY', primary: true, off: !ok, sel, fn: () => tryStart(), size: fpx(17, u, 13), key: ok ? ['go', nd] : null });
 }
 
 /* ================= pause ================= */

@@ -5,7 +5,7 @@ const press=(b)=>hold(b,1);
 setImmediate(()=>{
   step(30); pads[0]=mkPad(); step(2); press(0); step(25); press(0);
   G.CFG.mode=0; G.CFG.map=0; G.CFG.bots=3;
-  for(let i=0;i<8;i++)press(13); console.log('sel',G.LOBBY.sel); press(0);
+  for(let i=0;i<G.MATCH_ROWS.length;i++)press(13); console.log('sel',G.LOBBY.sel); press(0);
   console.log('state',G.state);
   const me=G.PLAYERS[0].sol; step(30);
   console.log('first deploy waiting:',!me.alive,'deployIdle',me.deployIdle.toFixed(2));

@@ -4,7 +4,7 @@
    projectiles and effects only appear inside your sight. */
 const FOGK = 0.5;
 function fogEyes(vw) {
-  if (CFG.fog === 'off' || !M || M.demo) return [];
+  if (!M || M.demo || M.cfg.fog === 'off') return [];      // a match option (host's lobby), the same for everyone
   const ps = vw.p ? [vw.p] : M.shared ? LOCALS() : [];
   return ps.map(p => p.sol).filter(s => s && s.alive).map(s => s.veh ? [s.veh.x, s.veh.y] : [s.x, s.y]);
 }
@@ -72,7 +72,7 @@ function applyFog(vw, vis, x0, y0, x1, y1) {
   const main = ctx; ctx = FOG_OUT.getContext('2d'); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR);
   worldT(); ctx.imageSmoothingEnabled = false;
   if (bw > 0 && bh > 0) { ctx.imageSmoothingEnabled = true; ctx.drawImage(m.c, bx0 * FOGK, by0 * FOGK, bw * FOGK, bh * FOGK, bx0, by0, bw, bh); ctx.imageSmoothingEnabled = false; }
-  for (const A of MAP.arcs) { if (!vis(A.x, A.y, 50)) continue; const lost = m.arc.has(A) ? m.arc.get(A) : 0, f = lost / A.bags.length; spr(f < 0.25 ? 'bagarc0' : f < 0.75 ? 'bagarc1' : 'bagarc2', A.x, A.y, A.a); }
+  for (const A of MAP.arcs) { if (!vis(A.x, A.y, 50)) continue; const lost = m.arc.has(A) ? m.arc.get(A) : 0, f = lost / A.bags.length; bagArc(A, f); }
   worldT();
   for (const s of MAP.statics) {
     if ((s.type !== 'fence' && s.type !== 'hay') || !vis(s.x, s.y, 16) || !(m.st.has(s) ? m.st.get(s) : true)) continue;

@@ -57,7 +57,7 @@ function drawWorld(vw) {
   const eyes = viewEyes(vw), hidden = s => smokeHides(eyes, s, vw);
   for (const s of M.sol) if (s.alive && !s.veh && s.stance !== 0 && vis(s.x, s.y, 30) && !hidden(s)) drawSoldier(s, vw);
   // ---- layer 2: low cover (sandbags, fences, hay)
-  for (const A of MAP.arcs) { if (!vis(A.x, A.y, 50)) continue; const f = A.lost / A.bags.length; spr(f < 0.25 ? 'bagarc0' : f < 0.75 ? 'bagarc1' : 'bagarc2', A.x, A.y, A.a); }
+  for (const A of MAP.arcs) { if (!vis(A.x, A.y, 50)) continue; const f = A.lost / A.bags.length; bagArc(A, f); }
   // fences, hay
   worldT();
   for (const s of MAP.statics) {
@@ -69,12 +69,16 @@ function drawWorld(vw) {
   for (const w of M.wrecks) {
     if (!vis(w.x, w.y, 70)) continue; const al = clamp(w.t / 2, 0, 1);   // solid cover, then gone over its last 2 s
     worldT(); ctx.globalAlpha = 0.3 * al; ctx.fillStyle = '#000'; ctx.save(); ctx.translate(w.x + 4, w.y + 5); ctx.rotate(w.a); if (w.type === 'tank') ctx.fillRect(-52, -28, 104, 56); else ctx.fillRect(-41, -19, 82, 38); ctx.restore(); ctx.globalAlpha = 1;
-    if (w.type === 'tank') { spr('hull5', w.x, w.y, w.a, 1, 1, al); spr('tur6', w.x - 4 * Math.cos(w.a), w.y - 4 * Math.sin(w.a), w.ta + 0.4, 1, 1, al * 0.9); }
-    else spr('jeep4', w.x, w.y, w.a, 1, 1, al);
+    if (w.type === 'tank') {
+      const tx = w.x - 4 * Math.cos(w.a), ty = w.y - 4 * Math.sin(w.a), c = Math.cos(w.ta), s = Math.sin(w.ta);
+      spr('hull5', w.x, w.y, w.a, 1, 1, al); spr('tur_dead', tx, ty, w.ta, 1, 1, al);
+      spr('mg_dead', tx - 6 * c + 9 * s, ty - 6 * s - 9 * c, w.ta + 0.9, 1, 1, al);
+    } else { spr('jeep4', w.x, w.y, w.a, 1, 1, al); spr('mg_dead', w.x - 27 * Math.cos(w.a), w.y - 27 * Math.sin(w.a), w.a + 2.4, 1, 1, al); }
   }
   // ---- layer 3: standing soldiers, then vehicles (taller than a person)
   for (const s of M.sol) if (s.alive && !s.veh && s.stance === 0 && vis(s.x, s.y, 30) && !hidden(s)) drawSoldier(s, vw);
-  for (const v of M.vehicles) if (v.active && vis(v.x, v.y, 80)) drawVehicle(v);
+  for (const v of M.vehicles) if (v.active && v.type === 'nest' && vis(v.x, v.y, 80)) drawVehicle(v);
+  for (const v of M.vehicles) if (v.active && v.type !== 'nest' && vis(v.x, v.y, 80)) drawVehicle(v);
   // projectiles
   worldT();
   for (const p of M.proj) {
@@ -280,6 +284,8 @@ function solDraw(s, n, x, y, a, sx, sy, al) {
   ctx.setTransform(cs * k * sx, sn * k * sx, -sn * k * sy, cs * k * sy, (x * VZ + VOX) * DPR, (y * VZ + VOY) * DPR);
   if (al !== undefined) ctx.globalAlpha = al; ctx.drawImage(c, -m[4], -m[5]); if (al !== undefined) ctx.globalAlpha = 1;
 }
+/* sandbag crescents are painted, not pixel art: a 2x copy drawn at half size with smoothing keeps them from shearing when rotated */
+function bagArc(A, f) { ctx.imageSmoothingEnabled = true; spr(f < 0.25 ? 'bagarcH0' : f < 0.75 ? 'bagarcH1' : 'bagarcH2', A.x, A.y, A.a, 0.5, 0.5); ctx.imageSmoothingEnabled = false; }
 function flashAt(x, y, r) { worldT(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.9; ctx.drawImage(SPR.flash, x - r, y - r, r * 2, r * 2); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
 function hullFrame(v) { const f = v.hp / v.T.hp; return f > 0.82 ? 0 : f > 0.66 ? 1 : f > 0.5 ? 2 : f > 0.34 ? 3 : f > 0.18 ? 4 : 5; }
 function drawVehicle(v) {
@@ -289,9 +295,9 @@ function drawVehicle(v) {
     ctx.fillStyle = CFG.style === 'grit' ? '#3e3a2c' : '#5a5236'; ctx.beginPath(); ctx.arc(v.x, v.y, 18, 0, TAU); ctx.fill();
     for (let k = -3; k <= 3; k++) { const a = v.a + k * 0.42; img(SPR.bag, v.x + Math.cos(a) * 18, v.y + Math.sin(a) * 18, a + Math.PI / 2, 1); }
     worldT();
-    const [mx, my] = mgPos(v); ctx.save(); ctx.translate(mx, my); ctx.rotate(v.mgA); ctx.fillStyle = '#1a1a1a'; ctx.fillRect(0, -2, 24, 4); ctx.fillStyle = '#4a4a44'; ctx.fillRect(-5, -4, 10, 8); ctx.restore();
+    const [mx, my] = mgPos(v);
     const g = v.seats[0]; if (g) drawSeated(g, true);
-    if (v.mgFlash > 0) flashAt(mx + Math.cos(v.mgA) * 26, my + Math.sin(v.mgA) * 26, 9);
+    drawMG(v, mx, my);
     if (v.hp < v.T.hp && v.hitFlash > -2) { const f = v.hp / v.T.hp; ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(v.x - 14, v.y - 26, 28, 3); ctx.fillStyle = f > 0.5 ? '#7dff7a' : '#ff9a30'; ctx.fillRect(v.x - 14, v.y - 26, 28 * f, 3); }
     return;
   }
@@ -302,20 +308,23 @@ function drawVehicle(v) {
     const px = v.x - 4 * Math.cos(v.a), py = v.y - 4 * Math.sin(v.a);
     sprC(vehSkin(tn, col), tm[4], tm[5], px, py, v.ta);
     const [mx, my] = mgPos(v);
-    worldT(); ctx.save(); ctx.translate(mx, my); ctx.rotate(v.mgA); ctx.fillStyle = '#1a1a1a'; ctx.fillRect(0, -1.5, 20, 3); ctx.fillStyle = '#444'; ctx.fillRect(-3, -3, 7, 6); ctx.restore();
     const g = v.seats[1]; if (g) drawSeated(g, true);
-    if (v.mgFlash > 0) flashAt(mx + Math.cos(v.mgA) * 22, my + Math.sin(v.mgA) * 22, 9);
+    drawMG(v, mx, my);
     if (v.recoil > 0.85) flashAt(px + Math.cos(v.ta) * 100, py + Math.sin(v.ta) * 100, 26);
   } else {
     const jn = 'jeep' + Math.min(3, Math.floor(hullFrame(v) * 0.7)), jm = ATLAS[jn];
     sprC(vehSkin(jn, col), jm[4], jm[5], v.x, v.y, v.a);
     for (const i of [0, 1]) { const s = v.seats[i]; if (s) drawSeated(s); }
     const [mx, my] = mgPos(v);
-    worldT(); ctx.save(); ctx.translate(mx, my); ctx.fillStyle = '#333'; ctx.beginPath(); ctx.arc(0, 0, 4, 0, TAU); ctx.fill(); ctx.rotate(v.mgA); ctx.fillStyle = '#1a1a1a'; ctx.fillRect(0, -1.5, 22, 3); ctx.fillStyle = '#555'; ctx.fillRect(-4, -3, 9, 6); ctx.restore();
     const g = v.seats[2]; if (g) drawSeated(g, true);
-    if (v.mgFlash > 0) flashAt(mx + Math.cos(v.mgA) * 24, my + Math.sin(v.mgA) * 24, 9);
+    drawMG(v, mx, my);
   }
   if (v.hitFlash > 0) { worldT(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.25; ctx.fillStyle = '#fff'; ctx.save(); ctx.translate(v.x, v.y); ctx.rotate(v.a); ctx.fillRect(-v.T.hl, -v.T.hw, v.T.hl * 2, v.T.hw * 2); ctx.restore(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
+}
+/* the mounted MG (art/art4/mounts.png): firing frame + a soft glow while it shoots; drawn over its gunner, who stands behind it */
+function drawMG(v, mx, my) {
+  const f = v.mgFlash > 0; spr(f ? 'mg_f' : 'mg', mx, my, v.mgA);
+  if (f) flashAt(mx + Math.cos(v.mgA) * 21, my + Math.sin(v.mgA) * 21, 6);
 }
 function drawSeated(s, mg) {
   const role = s.veh.T.seats[s.seat].role, jeep = s.veh.type === 'jeep';
@@ -415,7 +424,7 @@ function drawViewHUD(vw) {
     if (s.reloadT > 0) { const rx = bx + wiw + 12 * u; icon('reload', rx, ry, 17 * u, '#e8c84a'); cooldownPie(rx, ry, 9.5 * u, s.reloadT / (s.reloadMax || 1)); }
     else { stxt(String(st.mag), bx + wiw + 6 * u, ry + 5 * u, 16 * u, st.mag === 0 ? '#ff5a45' : '#f2f2e6', 'left', 'alphabetic', FD); ctx.font = `${16 * u}px ${FD}`; const mw2 = ctx.measureText(String(st.mag)).width; txt('/' + st.res, bx + wiw + 8 * u + mw2, ry + 5 * u, 11 * u, '#a8a898', 'left', 'alphabetic', FD); }
     if (!v && !tc) {
-      // equipment row: [RB] frag / smoke  ·  [LB] gadget  ·  stance
+      // equipment row: [LB] gadget  ·  [RB] frag / smoke
       const ey = cy - 26 * u; let x = bx;
       const K = KITS[s.kit];
       if (dev !== 'touch') x += badge('gadget', dev, x, ey, bh) + 5 * u;
@@ -431,7 +440,6 @@ function drawViewHUD(vw) {
         icon(k, x + ih / 2, ey, ih * 0.92, undefined, n ? 1 : 0.35); txt(String(n), x + ih + 2 * u, ey + 1, 12 * u, n ? '#f0f0e0' : '#777', 'left', 'middle', FD); x += ih + 19 * u;
       });
       if (dev === 'pad') badge('cycle', dev, x, ey, bh * 0.9);
-      icon(s.stance === 2 ? 'prone' : 'stand', bx + bw - 9 * u, ey, ih * 0.85, s.stance ? '#9fe0ff' : '#c8c8b8');
     }
   } else if (sd.role === 'mg') {
     const hot = v.over > 0;
@@ -476,7 +484,13 @@ function drawViewHUD(vw) {
     let hx, hy;
     if (p.raw && p.raw.mouse) { hx = KB.mouse.x; hy = KB.mouse.y; }
     else { let ox = s.x, oy = s.y, a = s.a; if (s.veh && s.seat === 0 && s.veh.type === 'tank') { ox = s.veh.x; oy = s.veh.y; a = s.veh.aimT === undefined ? s.veh.ta : s.veh.aimT; } const d = s.veh ? 160 : 120; hx = (ox + Math.cos(a) * d) * VZ + VOX; hy = (oy + Math.sin(a) * d) * VZ + VOY; }
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); for (const [dx, dy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) { ctx.moveTo(hx + dx * 5, hy + dy * 5); ctx.lineTo(hx + dx * 11, hy + dy * 11); } ctx.stroke();
+    // people: four diagonal ticks; vehicles and nests: four right-angle chevrons pointing in
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath();
+    for (const [dx, dy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+      if (s.hitV) { ctx.moveTo(hx + dx * 13, hy + dy * 6); ctx.lineTo(hx + dx * 6, hy + dy * 6); ctx.lineTo(hx + dx * 6, hy + dy * 13); }
+      else { ctx.moveTo(hx + dx * 5, hy + dy * 5); ctx.lineTo(hx + dx * 11, hy + dy * 11); }
+    }
+    ctx.stroke();
   }
   if (s.msg) { ctx.globalAlpha = Math.min(1, s.msg.t * 2); stxt(s.msg.txt, vw.x + vw.w / 2, vw.y + vw.h * 0.3, 18 * u, '#fff3c8', 'center', 'middle', FD); ctx.globalAlpha = 1; }
   if (p.mapOpen) drawMapOverlay(vw, p, u);

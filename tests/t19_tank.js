@@ -5,7 +5,7 @@ const press=b=>hold(b,1);
 setImmediate(()=>{
   step(30); pads[0]=mkPad(); step(2); press(0); step(25); press(0);
   G.CFG.mode=0; G.CFG.map=0; G.CFG.bots=0;
-  for(let i=0;i<8;i++)press(13); press(0);
+  for(let i=0;i<G.MATCH_ROWS.length;i++)press(13); press(0);
   const me=G.PLAYERS[0].sol; step(30); press(0); step(200);
   const M=G.M; let errs=0;
   const tank=M.vehicles.find(v=>v.type==='tank'&&!v.dead), seatAt=(lx,ly)=>{const [x,y]=G.toWorld(tank,lx,ly); me.x=x; me.y=y; const c=G.enterCandidate(me); return c&&c.v===tank?tank.T.seats[c.seat].n:'-';};

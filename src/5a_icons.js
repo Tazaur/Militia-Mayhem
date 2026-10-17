@@ -66,7 +66,8 @@ const PADCOL = { A: '#5cbf3a', B: '#d8402c', X: '#3a78d8', Y: '#e0b82a' };
 const BIND = {
   fire: ['RT', 'LMB'], ads: ['LT', 'RMB'], jump: ['A', 'SPACE'], stance: ['B', 'C'], reload: ['X', 'R'], use: ['Y', 'E'], nade: ['RB', 'G'], gadget: ['LB', 'F'],
   melee: ['R3', 'V'], spot: ['DU', 'Q'], map: ['DD', 'M'], cycle: ['DLR', 'T'], seat: ['B', 'F'], deploy: ['A', 'SPACE'], classes: ['LBRB', 'Q E'], slot: ['DUD', '↑↓'],
-  item: ['DLR', '←→'], spawn: ['LS', 'WASD'], team: ['Y', 'T'], select: ['A', 'ENTER'], back: ['B', 'ESC'], start: ['START', 'ENTER'], settings: ['VIEW', 'O'], nav: ['LS', 'ARROWS'], change: ['DLR', '←→']
+  item: ['DLR', '←→'], spawn: ['LS', 'WASD'], team: ['Y', 'T'], select: ['A', 'ENTER'], back: ['B', 'ESC'], start: ['START', 'ENTER'], settings: ['VIEW', 'O'], nav: ['LS', 'ARROWS'], change: ['DLR', '←→'],
+  prev: ['LB', 'Q'], next: ['RB', 'E'], go: ['START', 'P'], del: ['B', '⌫']
 };
 /* draws one prompt; returns its width. dev: 'pad' | 'kb' | 'touch' (touch draws nothing) */
 function badge(act, dev, x, cy, h) {
@@ -88,6 +89,12 @@ function badge(act, dev, x, cy, h) {
   } else if (dev === 'pad' && (key === 'LS' || key === 'RS' || key === 'L3' || key === 'R3')) {
     w = h; ctx.fillStyle = '#3a3e36'; ctx.beginPath(); ctx.arc(x + h / 2, cy, h / 2, 0, TAU); ctx.fill(); ctx.strokeStyle = '#f0f0e0'; ctx.lineWidth = 1.5; ctx.stroke();
     ctx.fillStyle = '#f0f0e0'; ctx.font = `${Math.round(h * 0.46)}px ${FD}`; ctx.fillText(key, x + h / 2, cy + 1);
+  } else if (dev === 'pad' && (key === 'LB' || key === 'RB')) {
+    w = h * 1.7; const l = key === 'LB', big = h * 0.62, sm = h * 0.18;
+    ctx.fillStyle = '#3a3e36'; ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, cy - h / 2, w, h, l ? [big, sm, sm, sm] : [sm, big, sm, sm]); else ctx.rect(x, cy - h / 2, w, h);
+    ctx.fill(); ctx.strokeStyle = 'rgba(240,240,224,0.55)'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = '#f0f0e0'; ctx.font = `${Math.round(h * 0.5)}px ${FD}`; ctx.fillText(key, x + w / 2 + (l ? h * 0.08 : -h * 0.08), cy + 1);
   } else if (dev === 'pad' && key === 'LBRB') {
     const w1 = badge('LB', 'pad', x, cy, h); w = w1 + 3 + badge('RB', 'pad', x + w1 + 3, cy, h); ctx.restore(); return w;
   } else {
@@ -98,6 +105,19 @@ function badge(act, dev, x, cy, h) {
     ctx.fillStyle = pad ? '#f0f0e0' : '#1a1a14'; ctx.fillText(label, x + w / 2, cy + 1);
   }
   ctx.restore(); return w;
+}
+/* the prompt pinned to an on-screen button (see button(o.key)): inside its right end, or beside / under / over it.
+   Only for a keyboard or a controller: touch players just tap, and remote players aren't at this screen */
+function keyDev(d) { return d === 'pad' || d === 'kb' ? d : null; }
+function keyTag(act, dev, b, at) {
+  const d = keyDev(dev); if (!d) return 0;
+  const kh = clamp(b.h * 0.46, 15, 22) * (d === 'pad' ? 1.2 : 1), bw = badge(act, d, -9999, -9999, kh);      // round pad buttons read smaller than key caps
+  if (at === 'below') badge(act, d, b.x + b.w / 2 - bw / 2, b.y + b.h + kh / 2 + 4, kh);
+  else if (at === 'above') badge(act, d, b.x + b.w / 2 - bw / 2, b.y - kh / 2 - 4, kh);
+  else if (at === 'left') badge(act, d, b.x - bw - 7, b.y + b.h / 2, kh);
+  else if (at === 'right') badge(act, d, b.x + b.w + 7, b.y + b.h / 2, kh);
+  else badge(act, d, b.x + b.w - bw - kh * 0.4, b.y + b.h / 2, kh);
+  return bw;
 }
 /* a row of [prompt + icon/word] pairs, centred on cx */
 function hintRow(items, cx, cy, h, dev, col) {

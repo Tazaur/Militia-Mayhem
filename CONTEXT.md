@@ -112,3 +112,15 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - Back to lobby: couldn't reproduce peers dropping (pw/flow.js lobby, lobby2 pass); hardened anyway: NET.doneMatch ignores snapshots of a finished match.
 - Server list: hosts POST {c,n,st,md,mp,nm,mj} to topic mm1-list (netListPub: on change at most every 20 s, else every 3 min; {c,gone} on shutdown or when hidden). The online menu subscribes with since=10m (netListWatch while state === 'netmenu'), netAllHosts merges with claude.ai room hosts, entries older than 400 s drop. Lobby row SERVER LIST shown/hidden (CFG.pub, cfg[10]).
 - Harness: pw/flow.js <html> lobby|lobby2|midjoin|reconnect|third|list|seatswap (MJ=0 turns mid-join off). mockntfy now replays history on since= and stamps time.
+
+## Feedback round (build 51, not pushed yet)
+- Soldiers vs vehicles: pushOutVeh() pushes a soldier on foot out of the hull box (T.hl x T.hw; nests: the circle), host (updateVehicle, now for nests too) and joiner (netLocalMove). The old per-circle push stopped at the first overlapping circle and shoved you into the next one: a persistent walk reached the hull centre. tests/t21_phase.js (16 directions, standing/prone, against a wall).
+- Art: art/art4/mounts.png → mounts.py cuts mg / mg_f (firing) / mg_dead / tur_dead, plus bagarcH0-2 (sandbag crescents at 2x). atlas_add.py appends them to atlas.png/json without re-packing (re-runnable; '_strip' in atlas.json marks where the strip starts). build_atlas.py also includes them, but a full rebuild with current Pillow changes pixels, so prefer atlas_add.py.
+- drawMG() draws every mounted MG (nest, tank, jeep) over its gunner; wrecks show tur_dead and mg_dead. Nests draw before tanks/jeeps so turrets stay on top.
+- Sandbag crescents draw from the 2x copy at 0.5 scale with smoothing (bagArc): nearest-neighbour rotation sheared them.
+- VISION (line of sight) is a match option now: lobby row 'fog', L.cfg[11], match header h[10] → M.cfg.fog; fogViews reads M.cfg.fog only. Removed from Settings.
+- Hit markers: hurtVehicle sets src.hitV; vehicles/nests draw four inward right-angle chevrons instead of the diagonal ticks. Online: pv[17] = hitT*100 + 100 when hitV.
+- Menus: no bottom hint bars. button({key: [action, dev], keyAt}) / iconButton(..., key, keyAt) / keyTag() pin the key or pad button on the control itself (inside its right end, or left/right/below/above). Lobby slots use that player's own device. Pad LB/RB draw as bumper shapes. New binds prev/next (LB/Q, RB/E), go (START/P), del.
+- Lobby fix: Esc on a keyboard is both pause and back; the pause branch used to ready up and start the battle. Now pause only starts when it isn't also back (keyboard start = P).
+- Equipment HUD: stance icon removed.
+- Tests navigate the lobby with G.MATCH_ROWS.length downs (the row count changed).
