@@ -287,7 +287,9 @@ function updateMatch(dt) {
       continue;
     }
     const I = s.player ? (isNet(s.player) ? netInputHost(s.player) : humanInput(s.player)) : botControl(s, sdt);
+    const n0 = M.proj.length;
     controlSoldier(s, I, sdt);
+    if (M.proj.length > n0 && s.player && isNet(s.player)) netTagShots(s.player, s, n0);
   }
   for (let i = 0; i < M.sol.length; i++) {
     const a = M.sol[i]; if (!a.alive || a.veh) continue;
@@ -301,6 +303,7 @@ function updateMatch(dt) {
   }
   for (const v of M.vehicles) updateVehicle(v, sdt);
   for (const s of M.sol) if (s.alive && s.veh) updateSeatedPos(s);
+  if (NET.role === 'host') lagRecord();
   updateProjectiles(sdt);
   updateItems(sdt);
   updateObjectives(sdt);

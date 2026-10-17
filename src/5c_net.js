@@ -380,27 +380,74 @@ function netInputHost(p) {
   const c = Array.isArray(q.c) ? q.c : [], pc = p.netC || c, e = k => c[k] !== pc[k];
   I.jump = e(0); I.reload = e(1); I.alt = e(2); I.nadeCyc = e(3); I.gadgetP = e(4); I.enter = e(5); I.melee = e(6); I.spot = e(7); I.stanceCycle = e(8); I.swapW = e(9); I.seatNext = e(10);
   I.seatDir = e(11) ? clamp(q.sd | 0, 0, 3) : -1; I.seatIdx = e(12) ? clamp(q.si | 0, 0, 3) : -1; I.pickW = e(13) ? clamp(q.pw | 0, 0, 1) : -1;
-  p.netC = c.slice();
+  p.netC = c.slice(); p.netVt = typeof q.vt === 'number' ? q.vt : null;
+  // when they sent it, on our clock: their timestamp plus the smallest gap we've seen (so network jitter doesn't become position jitter)
+  if (p.netInQt !== q) { p.netInQt = q; if (typeof q.ct === 'number') { const o = p.netInT - q.ct; p.ctOff = p.ctOff === undefined || o < p.ctOff ? o : p.ctOff + (o - p.ctOff) * 0.01; p.netRepT = q.ct + p.ctOff; } else p.netRepT = p.netInT; }
   // on foot, the joiner says where they are; the host takes it if it's believable, otherwise it corrects them
   const s = p.sol, rp = q.p;
-  if (s && s.alive && !s.veh && Array.isArray(rp) && (q.ca | 0) === (s.netCorr | 0) && performance.now() - (p.netInT || 0) < 300) {
+  if (s && s.alive && !s.veh && Array.isArray(rp) && (q.ca | 0) === (s.netCorr | 0)) {
     if (p.netInQ !== q) {
-      p.netInQ = q; const x = +rp[0] || 0, y = +rp[1] || 0;
-      if (Math.hypot(x - s.x, y - s.y) > 110 || MAP.buildings.some(b => inRect(x, y, b, 2))) { netCorrect(s); p.netRep = null; }
-      else p.netRep = { x, y, vx: clamp(+rp[2] || 0, -300, 300), vy: clamp(+rp[3] || 0, -300, 300), jt: clamp(+rp[4] || 0, 0, 0.42), t: p.netInT, ca: s.netCorr | 0 };
+      p.netInQ = q; const x = +rp[0] || 0, y = +rp[1] || 0, B = p.repBuf = p.repBuf && p.repBuf.ca === (s.netCorr | 0) ? p.repBuf : Object.assign([], { ca: s.netCorr | 0 });
+      if (Math.hypot(x - s.x, y - s.y) > 110 || MAP.buildings.some(b => inRect(x, y, b, 2))) { netCorrect(s); p.repBuf = null; }
+      else if (!B.length || p.netRepT > B[B.length - 1].t) { B.push({ x, y, vx: clamp(+rp[2] || 0, -300, 300), vy: clamp(+rp[3] || 0, -300, 300), jt: clamp(+rp[4] || 0, 0, 0.42), t: p.netRepT }); if (B.length > 10) B.shift(); }
     }
-    if (p.netRep && p.netRep.ca === (s.netCorr | 0)) I.netPos = p.netRep;
+    const B = p.repBuf;
+    if (B && B.length && B.ca === (s.netCorr | 0) && performance.now() - B[B.length - 1].t < 400) I.netPos = B;
+  }
+  // driving: the same deal for the vehicle
+  const v = s && s.alive ? s.veh : null, vp = q.vp;
+  if (v && s.seat === 0 && v.T.drive && Array.isArray(vp) && (q.vca | 0) === (v.netCorr | 0) && p.netInQv !== q) {
+    p.netInQv = q; const x = +vp[0] || 0, y = +vp[1] || 0, B = v.repBuf = v.repBuf && v.repBuf.ca === (v.netCorr | 0) && v.repBuf.drv === s ? v.repBuf : Object.assign([], { ca: v.netCorr | 0, drv: s });
+    if (Math.hypot(x - v.x, y - v.y) > 160 || MAP.buildings.some(b => inRect(x, y, b, 0))) { netCorrect(v); v.repBuf = null; }
+    else if (!B.length || p.netRepT > B[B.length - 1].t) { B.push({ x, y, a: +vp[2] || 0, vx: clamp(+vp[3] || 0, -400, 400), vy: clamp(+vp[4] || 0, -400, 400), spd: clamp(+vp[5] || 0, -400, 400), av: clamp(+vp[6] || 0, -6, 6), tr: +vp[7] || 0, t: p.netRepT }); if (B.length > 10) B.shift(); }
   }
   return I;
 }
+/* host: a joiner's new shots remember what moment the joiner was looking at (their view time on our clock), and leave
+   from where the joiner actually stood rather than where our slightly-behind replay of them has got to */
+function netTagShots(p, s, n0) {
+  if (typeof p.netVt !== 'number') return;
+  const rew = clamp(netNow() - p.netVt, 0, 400), R = s.veh ? (s.seat === 0 ? s.veh.repBuf : null) : p.repBuf, B = R && R.length ? R[R.length - 1] : null, e = s.veh || s;
+  const ok = B && performance.now() - B.t < 250 && Math.hypot(B.x - e.x, B.y - e.y) < 40, dx = ok ? B.x - e.x : 0, dy = ok ? B.y - e.y : 0;
+  for (let k = n0; k < M.proj.length; k++) {
+    const q = M.proj[k]; if (q.k === 'nade' || q.src !== s) continue;
+    q.rew = rew; q.x += dx; q.y += dy; if (q.ox !== undefined) { q.ox += dx; q.oy += dy; }
+  }
+}
+/* host: a joiner's reports are replayed a little behind (like everyone else on their screen), so arrival jitter never shows */
+const NET_REP_DELAY = 60;
+function netSample(B, T) {
+  for (let i = B.length - 1; i >= 0; i--) {
+    if (B[i].t > T) continue;
+    const a = B[i], b = B[i + 1];
+    if (!b) { const e = Math.min(0.1, (T - a.t) / 1000); return { x: a.x + a.vx * e, y: a.y + a.vy * e, a: (a.a || 0) + (a.av || 0) * e, vx: a.vx, vy: a.vy, spd: a.spd, av: a.av, tr: a.tr, jt: Math.max(0, (a.jt || 0) - e) }; }
+    const k = (T - a.t) / Math.max(1, b.t - a.t);
+    return { x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k), a: lerpAng(a.a || 0, b.a || 0, k), vx: lerp(a.vx, b.vx, k), vy: lerp(a.vy, b.vy, k), spd: lerp(a.spd || 0, b.spd || 0, k), av: lerp(a.av || 0, b.av || 0, k), tr: lerpAng(a.tr || 0, b.tr || 0, k), jt: lerp(a.jt || 0, b.jt || 0, k) };
+  }
+  const a = B[0]; return { x: a.x, y: a.y, a: a.a || 0, vx: a.vx, vy: a.vy, spd: a.spd, av: a.av, tr: a.tr, jt: a.jt || 0 };
+}
+function netDriveRep(v, driver) {
+  const B = v.repBuf;
+  if (!B || !B.length || B.drv !== driver || B.ca !== (v.netCorr | 0) || performance.now() - B[B.length - 1].t > 400) return null;
+  return B;
+}
+/* host: follow a joiner's own driving, then let the world push back (crushing, shoving and damage happen here) */
+function netAuthDrive(v, B, dt) {
+  const r = netSample(B, performance.now() - NET_REP_DELAY), ox = v.x, oy = v.y, oa = v.a;
+  v.x = r.x; v.y = r.y; v.a = r.a; v.vx = r.vx; v.vy = r.vy; v.spd = r.spd; v.av = r.av; if (v.type === 'tank') v.tRel = r.tr;
+  vehicleCollide(v);
+  if (Math.hypot(v.x - r.x, v.y - r.y) > 14) { netCorrect(v); v.repBuf = null; }
+  v.spd = r.spd;
+  syncMounts(v);
+  vehTrackFx(v, Math.hypot(v.x - ox, v.y - oy) + Math.abs(angDiff(oa, v.a)) * 20);
+}
 function netCorrect(s) { s.netCorr = ((s.netCorr | 0) + 1) % 64; }
-/* host: follow a joiner's own position (a touch ahead, by their speed), then make sure it's somewhere they can be */
-function netAuthMove(s, r, dt) {
-  const e = Math.min(0.12, (performance.now() - r.t) / 1000), k = 1 - Math.exp(-dt * 25);
-  s.jumpT = Math.max(0, r.jt - e);                  // their vault, on their clock: so we agree when they're over a sandbag
-  s.x += (r.x + r.vx * e - s.x) * k; s.y += (r.y + r.vy * e - s.y) * k; s.vx = r.vx; s.vy = r.vy; s.netAuthT = M.time;
-  const bx = s.x, by = s.y; soldierCollide(s);
-  if (Math.hypot(s.x - bx, s.y - by) > 6) netCorrect(s);
+/* host: replay a joiner's own movement, then make sure it's somewhere they can be */
+function netAuthMove(s, B, dt) {
+  const r = netSample(B, performance.now() - NET_REP_DELAY);
+  s.x = r.x; s.y = r.y; s.vx = r.vx; s.vy = r.vy; s.jumpT = r.jt; s.netAuthT = M.time;      // their vault on their clock, so we agree when they're over a sandbag
+  soldierCollide(s);
+  if (Math.hypot(s.x - r.x, s.y - r.y) > 6) { netCorrect(s); if (s.player) s.player.repBuf = null; }
 }
 function netDeployHost(s) {
   const p = s.player, d = p.netDep;
@@ -456,7 +503,7 @@ function netSnap() {
   for (const p of PLAYERS) if (isNet(p) && p.sol) {
     const s = p.sol, w = s.w || [{ id: WPNK[0], mag: 0, res: 0 }, { id: WPNK[0], mag: 0, res: 0 }];
     pv[p.id] = [Math.ceil(Math.max(0, s.hp)), Math.max(0, Math.round(s.respawnT * 10)), s.wi, WPNK.indexOf(w[0].id), w[0].mag, w[0].res, WPNK.indexOf(w[1].id), w[1].mag, w[1].res, s.nades, s.smokes || 0, s.mines, Math.max(0, Math.round(s.gcd * 10)), Math.round(s.gmax || 0), Math.max(0, Math.round(s.reloadT * 10)), Math.round((s.reloadMax || 0) * 10), s.throwSel || 0,
-      Math.max(0, Math.round(s.hitT * 100)), Math.max(0, Math.round(s.hurtT * 100)), Math.max(0, Math.round(s.seatT * 100)), Math.round((s.seatMax || 0.5) * 100), s.msg ? String(s.msg.txt).slice(0, 40) : '', s.msg ? Math.round(s.msg.t * 10) : 0, s.netCorr | 0];
+      Math.max(0, Math.round(s.hitT * 100)), Math.max(0, Math.round(s.hurtT * 100)), Math.max(0, Math.round(s.seatT * 100)), Math.round((s.seatMax || 0.5) * 100), s.msg ? String(s.msg.txt).slice(0, 40) : '', s.msg ? Math.round(s.msg.t * 10) : 0, s.netCorr | 0, s.veh ? s.veh.netCorr | 0 : 0];
   }
   // each event rides in four snapshots in a row: a lost packet or two never loses it, and it doesn't bloat every packet
   const E = []; for (const e of NET.evLog) if ((e.n | 0) < 4 && now - e.t < 700) { e.n = (e.n | 0) + 1; E.push([e.id, Math.round((now - e.t) / 10), ...e.a]); }
@@ -636,7 +683,11 @@ function netClientUpdate(dt) {
   // read the controls first: our own aim and (on foot) our own movement answer them this frame, not a round trip later
   NET.lastI = state === 'play' && s.alive && !M.over ? humanInput(me) : null;
   netApplySnaps(now, dt);
-  if (NET.lastI) { const I = NET.lastI; netCount(I); if (NET.auth && s.alive && !s.veh) netLocalMove(s, I, dt); }
+  if (NET.lastI) {
+    const I = NET.lastI; netCount(I);
+    if (NET.auth && s.alive && !s.veh) netLocalMove(s, I, dt);
+    else if (NET.vauth && s.alive && s.veh === NET.vauth && s.seat === 0) netLocalDrive(NET.vauth, I, dt);
+  }
   else {
     if (!s.alive && !M.over) { if (s.deathT > 0) { s.deathT -= dt; trackKiller(s); } else if (state === 'play') deployInput(s, dt); }
   }
@@ -668,7 +719,10 @@ function netClientTick(now) {
   const I = NET.lastI;
   const i = I ? { m: [Math.round(I.mx * 100), Math.round(I.my * 100)], a: typeof I.aimA === 'number' ? Math.round(I.aimA * 1000) : null, f: I.fire ? 1 : 0, ad: I.ads ? 1 : 0, sp: I.sprint ? 1 : 0, g: I.gadget ? 1 : 0, ds: Math.round(I.altDist || 0), is: I.interactSwap ? 1 : 0, c: NET.cc, sd: NET.sd, si: NET.si, pw: NET.pw } : { c: NET.cc };
   const ms = NET.me && NET.me.sol; i.ca = NET.corr | 0;
+  if (I && ms && ms.alive) { i.ct = Math.round(performance.now()); if (NET.off !== null) i.vt = Math.round(performance.now() + NET.off - NET_DELAY); }
   if (I && NET.auth && ms && ms.alive && !ms.veh) i.p = [ms.x, ms.y, ms.vx, ms.vy, Math.max(0, ms.jumpT)].map(v => Math.round(v * 100) / 100);
+  const vv = NET.vauth;
+  if (I && vv && ms && ms.alive && ms.veh === vv && ms.seat === 0) { i.vp = [vv.x, vv.y, vv.a, vv.vx, vv.vy, vv.spd, vv.av || 0, vv.tRel || 0].map(v => Math.round(v * 100) / 100); i.vca = NET.vcorr | 0; }
   const pres = { j: { c: NET.want.c, t: NET.want.t, tn: NET.want.tn | 0, r: NET.want.r, n: NET.name }, i, d: NET.dep };
   const js = JSON.stringify(pres); if (js === NET.lastPres) return; NET.lastPres = js;
   NET.game.presence(pres).catch(netErr);
@@ -722,21 +776,27 @@ function netApplySnaps(now, dt) {
   // ---- vehicles
   for (const v of M.vehicles) v.seats.fill(null);
   M.vehicles.forEach((v, i) => {
-    const [a, b, k, ext] = i === myVi ? ps : po, ra = a.V[i], rb = b.V[i];
-    if (!ra) { v.active = false; return; }
+    // riding along: the same smooth, slightly-behind picture as everything else; only a driver without their own control uses the newest one
+    const [a, b, k, ext] = i === myVi && myRec.seat === 0 && NET.vauth !== v ? ps : po, ra = a.V[i], rb = b.V[i];
+    if (!ra) { v.active = false; if (NET.vauth === v) NET.vauth = null; return; }
+    const keep = NET.vauth === v ? { x: v.x, y: v.y, a: v.a, ta: v.ta, tRel: v.tRel, vx: v.vx, vy: v.vy, spd: v.spd, av: v.av, rev: v.rev } : null;
     if (!v.active) { v.active = true; v.netPos = false; if (v.netSeen) for (let j = 0; j < 12; j++) part({ k: 'dust', x: ra.x + rnd(-40, 40), y: ra.y + rnd(-25, 25), vx: rnd(-30, 30), vy: rnd(-30, 30), life: 1, max: 1, sz: 16, drag: 2 }); }
     v.netSeen = true;
     const px = v.x, py = v.y, pa = v.a, lr = rb && rb !== ra && Math.hypot(rb.x - ra.x, rb.y - ra.y) < 200 ? rb : null;
     if (lr) { v.x = lerp(ra.x, lr.x, k); v.y = lerp(ra.y, lr.y, k); v.a = lerpAng(ra.a, lr.a, k); v.ta = lerpAng(ra.ta, lr.ta, k); v.mgA = lerpAng(ra.mgA, lr.mgA, k); }
     else { v.x = ra.x + ra.vx * ext; v.y = ra.y + ra.vy * ext; v.a = ra.a; v.ta = ra.ta; v.mgA = ra.mgA; }
     v.dead = !!(ra.fl & 2); v.hp = ra.hp; v.recoil = ra.rec; v.heat = ra.heat; v.cd = ra.cd; v.spd = ra.spd * v.T.maxF; v.over = ra.fl & 8 ? 1 : 0; if (ra.fl & 4) v.hitFlash = 0.08;
-    v.vx = lr ? lerp(ra.vx, lr.vx, k) : ra.vx; v.vy = lr ? lerp(ra.vy, lr.vy, k) : ra.vy; v.tRel = angDiff(v.a, v.ta); v.mgRel = 0;
+    v.vx = lr ? lerp(ra.vx, lr.vx, k) : ra.vx; v.vy = lr ? lerp(ra.vy, lr.vy, k) : ra.vy; v.tRel = angDiff(v.a, v.ta); v.mgRel = angDiff(v.type === 'tank' ? v.ta : v.a, v.mgA);
     if (v._cN === undefined) { v._cN = ra.cN; v._mN = ra.mN; }
     if (ra.cN !== v._cN) { v._cN = ra.cN; v._cfx = true; }
     if (ra.mN !== v._mN) { v._mfx = Math.min(3, (ra.mN - v._mN + 64) % 64); v._mN = ra.mN; }
-    if (v.netPos && v.T.drive) vehTrackFx(v, Math.hypot(v.x - px, v.y - py) + Math.abs(angDiff(pa, v.a)) * 20);
+    const own = i === myVi && netOwnVeh(v, i, nb, mi);
+    if (own === true && keep) Object.assign(v, keep);
+    else if (v.netPos && v.T.drive && !own) vehTrackFx(v, Math.hypot(v.x - px, v.y - py) + Math.abs(angDiff(pa, v.a)) * 20);
+    if (own) syncMounts(v);
     v.netPos = true;
   });
+  if (myVi < 0 && NET.vauth) NET.vauth = null;
   // ---- soldiers
   const myTeam = me.team;
   M.sol.forEach((s, i) => {
@@ -777,7 +837,16 @@ function netApplySnaps(now, dt) {
   const I = NET.lastI;
   if (me.alive && I && typeof I.aimA === 'number') {
     if (!me.veh && me.stance !== 2) me.a = I.aimA;
-    else if (me.veh) { const role = me.veh.T.seats[me.seat].role; if (role === 'rifle') me.a = I.aimA; if (role === 'drive' && me.veh.type === 'tank') me.veh.aimT = I.aimA; }
+    else if (me.veh) {
+      const v = me.veh, role = v.T.seats[me.seat].role; if (role === 'rifle') me.a = I.aimA; if (role === 'drive' && v.type === 'tank') v.aimT = I.aimA;
+      if (role === 'mg') {
+        // the gun swings toward our hand here and now, at the host's turning speed, within its arc
+        const base = v.type === 'tank' ? v.ta : v.a;
+        if (NET.mgV !== v) { NET.mgV = v; NET.mgRel = angDiff(base, v.mgA); }
+        NET.mgRel += clamp(angDiff(base + NET.mgRel, I.aimA), -7 * dt, 7 * dt); if (v.T.arc) NET.mgRel = clamp(NET.mgRel, -v.T.arc, v.T.arc);
+        v.mgRel = NET.mgRel; v.mgA = base + NET.mgRel; me.a = v.mgA;
+      } else NET.mgV = null;
+    }
   }
   if (me.veh && (!I || typeof I.aimA !== 'number')) me.veh.aimT = undefined;
   // shots fire once everyone is in place
@@ -853,6 +922,23 @@ function netLocalMove(s, I, dt) {
   if (s.moving && !s.swim && !(s.jumpT > 0)) { s.stepAcc += v * dt; if (s.stepAcc > (s.stance === 2 ? 10 : 9)) { s.stepAcc = 0; s.stepSide = -s.stepSide; footprint(s.x, s.y, Math.atan2(s.vy, s.vx), s.stance === 2 ? 0 : s.stepSide, s.stance === 2); } }
   if (s.stance === 2 && s.moving && Math.random() < dt * 3) sfx('rustle', s.x, s.y, 0.5);
   if (s.swim && s.moving && Math.random() < dt * 4) { sfx('splash', s.x, s.y, 0.5); part({ k: 'ripple', x: s.x, y: s.y, vx: 0, vy: 0, life: 0.9, max: 0.9, sz: 14, drag: 0 }); }
+}
+/* joiner driving: our vehicle answers our hands here; the host's picture only wins when its correction counter moves */
+function netOwnVeh(v, i, nb, mi) {
+  const rl = nb.S[mi], rv = nb.V[i], cn = nb.pv && nb.pv.length > 24 ? nb.pv[24] | 0 : -1;
+  if (cn < 0 || !rl || rl.vi !== i || rl.seat !== 0 || !v.T.drive || !rv || (rv.fl & 2) || M.over) { if (NET.vauth === v) NET.vauth = null; return false; }
+  if (NET.vauth === v && cn === NET.vcorr) return true;
+  NET.vauth = v; NET.vcorr = cn; NET.vcorrN = (NET.vcorrN | 0) + 1;
+  Object.assign(v, { x: rv.x, y: rv.y, a: rv.a, ta: rv.ta, tRel: angDiff(rv.a, rv.ta), vx: rv.vx, vy: rv.vy, spd: rv.spd * v.T.maxF, av: 0, rev: false });
+  return 'snap';
+}
+function netLocalDrive(v, I, dt) {
+  const ox = v.x, oy = v.y, oa = v.a;
+  vehDrive(v, I.mx, I.my, dt, true);
+  if (v.type === 'tank' && typeof I.aimA === 'number') v.tRel += clamp(angDiff(v.ta, I.aimA), -1.7 * dt, 1.7 * dt);
+  syncMounts(v);
+  vehTrackFx(v, Math.hypot(v.x - ox, v.y - oy) + Math.abs(angDiff(oa, v.a)) * 20);
+  for (const s of v.seats) if (s) updateSeatedPos(s);        // everyone aboard rides with it this same frame
 }
 function netShotFx(s) {
   if (!s.alive || (s.veh && s.veh.T.seats[s.seat].role !== 'rifle')) return;

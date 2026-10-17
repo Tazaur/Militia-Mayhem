@@ -80,6 +80,16 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - The client starts a match only once `gs` for that match id has arrived (netRecvSlow / netSlowApply).
 - Joiner on foot owns its position: netLocalMove on the client; inputs carry `p:[x,y,vx,vy,jumpT]` and `ca` (correction ack).
   - The host (netInputHost → I.netPos → netAuthMove) follows the report unless it jumps more than 110 px or lands in a building, or host collision pushes it more than 6 px. Then netCorrect bumps s.netCorr (also on every spawn), sent as pv[23].
-  - The client snaps to the host position when pv[23] changes (netOwnPos). In vehicles the host stays authoritative.
+  - The client snaps to the host position when pv[23] changes (netOwnPos).
+  - The host replays joiner reports from a timestamped buffer (p.repBuf, stamped `ct` + min clock gap) 60 ms behind (NET_REP_DELAY, netSample), so arrival jitter doesn't show.
 - Lobby picks (colour/team/ready) are held locally for up to 2 s until the host echoes them (want.cT/tT/rT).
 - Lag harness: scratchpad pw/lag.js, stress.js, tele.js, veh.js, clag.js (wraps RTCDataChannel.send for delay/jitter/loss per 1.1 KB packet).
+
+## Vehicles + lag compensation round
+- Joiner driver owns the vehicle like on foot: netLocalDrive runs vehDrive(v, mx, my, dt, local=true) (drive physics shared with the host's updateVehicle). Inputs carry `vp:[x,y,a,vx,vy,spd,av,tRel]` + `vca`.
+  - Host: v.repBuf → netDriveRep / netAuthDrive (replay 60 ms behind, then vehicleCollide). Corrects (netCorrect(v), sent as pv[24]) on a jump > 160 px, inside a building, or a collision push > 14 px. Client snaps in netOwnVeh (NET.vauth / vcorr).
+  - vehicleCollide local mode: crushables only slow, other vehicles push us, no damage/sfx (the host decides those).
+- Passengers draw the vehicle from the smooth pair (110 ms behind) like everything else; the MG gunner's swivel answers locally (NET.mgV / mgRel).
+- Lag compensation: the joiner sends `vt` (its view time on the host clock = now + NET.off - NET_DELAY). The host records ~0.6 s of positions (lagRecord, e.lh) each frame. netTagShots stamps a joiner's new projectiles with `rew = netNow() - vt` (max 400 ms) and moves their origin to the joiner's newest report. updateProjectiles tests soldiers/vehicles/exposed seats at lagAt(e, netNow() - rew). Splash damage uses current positions.
+- Harness: pw/vdrive.js (driver|passenger smoothness), pw/hit.js (hit rate: host vs joiner, leading aim). ntfy.sh rate-limits after many back-to-back runs (trace err "RATE LIMITED"); wait a few minutes.
+- Not done: the joiner's own tracers still appear after a round trip (shots are fired by the host; no local shot prediction).

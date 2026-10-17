@@ -353,7 +353,7 @@ function soldierCollide(s) {
 }
 function vehCircles(v, out) { out.length = 0; const c = Math.cos(v.a), s = Math.sin(v.a); for (const [ox, oy, r] of v.T.circles) out.push([v.x + ox * c - oy * s, v.y + ox * s + oy * c, r]); return out; }
 const _vc = [], _vc2 = [];
-function vehicleCollide(v) {
+function vehicleCollide(v, local) {
   let hit = 0;
   for (let pass = 0; pass < 2; pass++) {
     vehCircles(v, _vc);
@@ -372,7 +372,7 @@ function vehicleCollide(v) {
       if (d >= m || d < 0.01) continue;
       const sp = Math.abs(v.spd);
       const crush = v.type === 'tank' || (s.type === 'fence' && sp > 30) || ((s.type === 'bag' || s.type === 'hay') && sp > 110);
-      if (crush) { destroyStatic(s); v.spd *= v.type === 'jeep' ? 0.82 : 0.96; }
+      if (crush) { if (local) { if (!s.lcr) { s.lcr = 1; v.spd *= v.type === 'jeep' ? 0.82 : 0.96; } } else { destroyStatic(s); v.spd *= v.type === 'jeep' ? 0.82 : 0.96; } }
       else { v.x += dx / d * (m - d); v.y += dy / d * (m - d); hit = 1; }
     }
   }
@@ -384,6 +384,7 @@ function vehicleCollide(v) {
       const dx = bx - ax, dy = by - ay, d = Math.hypot(dx, dy), m = ar + br;
       if (d < m && d > 0.01) {
         const push = m - d, wa = o.T.mass / (v.T.mass + o.T.mass), wb = 1 - wa;
+        if (local) { v.x -= dx / d * push; v.y -= dy / d * push; hit = 1; continue; }
         v.x -= dx / d * push * wa; v.y -= dy / d * push * wa;
         if (o.T.drive) { o.x += dx / d * push * wb; o.y += dy / d * push * wb; } else { v.x -= dx / d * push * wb; v.y -= dy / d * push * wb; }
         const rel = Math.hypot(v.vx - o.vx, v.vy - o.vy);
@@ -393,7 +394,7 @@ function vehicleCollide(v) {
     }
   }
   const m = 30 - SKIRT; if (v.x < m) { v.x = m; hit = 1; } if (v.x > WW - m) { v.x = WW - m; hit = 1; } if (v.y < m) { v.y = m; hit = 1; } if (v.y > WH - m) { v.y = WH - m; hit = 1; }
-  if (hit) { if (Math.abs(v.spd) > 120 && v.crashCd <= 0) { v.crashCd = 0.6; sfx('clang', v.x, v.y); if (v.type === 'jeep') hurtVehicle(v, (Math.abs(v.spd) - 110) * 0.2, null); } v.spd *= 0.6; }
+  if (hit) { if (Math.abs(v.spd) > 120 && v.crashCd <= 0 && !local) { v.crashCd = 0.6; sfx('clang', v.x, v.y); if (v.type === 'jeep') hurtVehicle(v, (Math.abs(v.spd) - 110) * 0.2, null); } v.spd *= 0.6; }
 }
 function toLocal(v, x, y) { const dx = x - v.x, dy = y - v.y, c = Math.cos(-v.a), s = Math.sin(-v.a); return [dx * c - dy * s, dx * s + dy * c]; }
 function toWorld(v, lx, ly) { const c = Math.cos(v.a), s = Math.sin(v.a); return [v.x + lx * c - ly * s, v.y + lx * s + ly * c]; }
@@ -668,18 +669,21 @@ function updateProjectiles(dt) {
       if (s.type === 'bag' && p.k === 'bullet' && !bagBlocks(p, s)) continue;
       const t = segCirc(x0, y0, x1, y1, s.x, s.y, s.type === 'tree' ? 9 : s.type === 'hay' ? 12 : s.r); if (t >= 0 && t < bt) { bt = t; hit = { k: 'static', s }; }
     }
+    // a joiner's shot is judged against where things were on their screen when they pulled the trigger (lag compensation)
+    const T = p.rew ? netNow() - p.rew : 0;
     for (const s of M.sol) {
       if (!s.alive || s === p.src || !canHurt(p.src, s) || (p.src && s.team === p.src.team && !M.ff)) continue;
       if (s.veh && !s.veh.T.seats[s.seat].exposed) continue;
-      const rad = s.veh ? 7 : s.swim ? 6 : [9, 6.5, 4.5][s.stance];
-      const t = segCirc(x0, y0, x1, y1, s.x, s.y, rad); if (t >= 0 && t < bt) { bt = t; hit = { k: 'sol', s }; }
+      const rad = s.veh ? 7 : s.swim ? 6 : [9, 6.5, 4.5][s.stance], o = p.rew ? lagAt(s, T) : s;
+      const t = segCirc(x0, y0, x1, y1, o.x, o.y, rad); if (t >= 0 && t < bt) { bt = t; hit = { k: 'sol', s }; }
       else if (s.player && !p.whiz && p.k === 'bullet' && segCirc(x0, y0, x1, y1, s.x, s.y, 30) >= 0) { p.whiz = true; psfx(s.player, 'whiz'); }
     }
     for (const v of M.vehicles) {
       if (!v.active || v.dead) continue; const vt = vehTeam(v); if (vt >= 0 && p.src && vt === p.src.team && !M.ff) continue;
       if (p.src && p.src.veh === v) continue;
-      if (Math.abs(v.x - mx) > 140 || Math.abs(v.y - my) > 140) continue;
-      const [ax, ay] = toLocal(v, x0, y0), [bx, by] = toLocal(v, x1, y1);
+      const vo = p.rew ? lagAt(v, T) : v;
+      if (Math.abs(vo.x - mx) > 140 || Math.abs(vo.y - my) > 140) continue;
+      const [ax, ay] = toLocal(vo, x0, y0), [bx, by] = toLocal(vo, x1, y1);
       const t = segRect(ax, ay, bx, by, { x: -v.T.hl, y: -v.T.hw, w: v.T.hl * 2, h: v.T.hw * 2 }, 0);
       if (t >= 0 && t < bt) { bt = t; hit = { k: 'veh', v }; }
     }
@@ -692,7 +696,7 @@ function updateProjectiles(dt) {
       if (hit.k === 'sol') hurtSoldier(hit.s, p.dmg, p.src, p.mg ? 'mg' : 'bullet', p.vx, p.vy, p.wname);
       else if (hit.k === 'veh') {
         const v = hit.v; let victim = null;
-        for (const o of v.seats) if (o && v.T.seats[o.seat].exposed && canHurt(p.src, o) && Math.hypot(o.x - hx, o.y - hy) < 13) victim = o;
+        for (const o of v.seats) { if (!o || !v.T.seats[o.seat].exposed || !canHurt(p.src, o)) continue; const oo = p.rew ? lagAt(o, netNow() - p.rew) : o; if (Math.hypot(oo.x - hx, oo.y - hy) < 13) victim = o; }
         if (victim && Math.random() < 0.6) hurtSoldier(victim, p.dmg, p.src, p.mg ? 'mg' : 'bullet', p.vx, p.vy, p.wname);
         else { hurtVehicle(v, v.type === 'tank' ? p.vdmg * 0.2 : p.vdmg, p.src); sfx('ting', hx, hy); sparks(hx, hy, 3); }
       } else { sparks(hx, hy, 2); if (hit.k === 'static' && hit.s.type === 'bag') part({ k: 'dirt', x: hx, y: hy, vx: -p.vx * 0.05 + rnd(-20, 20), vy: -p.vy * 0.05 + rnd(-20, 20), life: 0.3, max: 0.3, sz: 2, drag: 4 }); }
@@ -704,6 +708,27 @@ function updateProjectiles(dt) {
     if (p.life <= 0 && p.k === 'bullet' && inWater(p.x, p.y)) part({ k: 'steam', x: p.x, y: p.y, vx: 0, vy: 0, life: 0.4, max: 0.4, sz: 4, drag: 0 });
   }
   prune(M.proj, p => p.life > 0);
+}
+/* host: the last ~0.6 s of where everyone was (host clock), so a joiner's shots can be checked against the past they saw */
+function lagRecord() {
+  const t = netNow(), rec = e => {
+    const h = e.lh || (e.lh = []);
+    if (h.length && h[h.length - 4] === t) h.length -= 4;
+    h.push(t, e.x, e.y, e.a || 0); if (h.length > 160 || (h.length > 8 && t - h[0] > 600)) h.splice(0, 4);
+  };
+  for (const s of M.sol) if (s.alive) rec(s);
+  for (const v of M.vehicles) if (v.active && !v.dead) rec(v);
+}
+const _lag = { x: 0, y: 0, a: 0 };
+function lagAt(e, T) {
+  const h = e.lh; if (!h || !h.length || T >= h[h.length - 4]) return e;
+  for (let i = h.length - 8; i >= 0; i -= 4) {
+    if (h[i] > T) continue;
+    const j = i + 4, k = (T - h[i]) / Math.max(1, h[j] - h[i]);
+    if (Math.hypot(h[j + 1] - h[i + 1], h[j + 2] - h[i + 2]) > 200) { _lag.x = h[j + 1]; _lag.y = h[j + 2]; _lag.a = h[j + 3]; return _lag; }   // a respawn or teleport: no sliding across the map
+    _lag.x = lerp(h[i + 1], h[j + 1], k); _lag.y = lerp(h[i + 2], h[j + 2], k); _lag.a = lerpAng(h[i + 3], h[j + 3], k); return _lag;
+  }
+  _lag.x = h[1]; _lag.y = h[2]; _lag.a = h[3]; return _lag;
 }
 function sparks(x, y, n) { for (let i = 0; i < n; i++) { const a = rnd(0, TAU), s = rnd(60, 200); part({ k: 'spark', x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rnd(0.08, 0.2), max: 0.2, sz: 1.5, drag: 6 }); } }
 function updateNade(p, dt) {
@@ -855,29 +880,15 @@ function updateVehicle(v, dt) {
     const driver = v.seats[0];
     const ctl = driver && driver.seatT <= 0 && v.ctl ? v.ctl : { mx: 0, my: 0 };
     v.ctl = null;
-    let mx = ctl.mx, my = ctl.my, m = Math.min(1, Math.hypot(mx, my)), throttle = 0, steer = 0;
-    if (m > 0.15) {
-      const tgt = Math.atan2(my, mx), dF = angDiff(v.a, tgt);
-      if (!v.rev && Math.abs(dF) > 2.25 && Math.abs(v.spd) < 90) v.rev = true; else if (v.rev && Math.abs(dF) < 1.3) v.rev = false;
-      const d = v.rev ? angDiff(v.a, tgt + Math.PI) : dF;
-      steer = clamp(d * 2.6, -1, 1);
-      const align = Math.cos(d);
-      throttle = (v.rev ? -1 : 1) * m * (v.type === 'tank' ? Math.pow(Math.max(0, align), 3) : Math.max(0.3, align));
+    const rep = netDriveRep(v, driver);
+    if (rep) netAuthDrive(v, rep, dt);              // an online joiner drives this one themselves; the host checks it
+    else {
+      const ox = v.x, oy = v.y;
+      vehDrive(v, ctl.mx, ctl.my, dt, false);
+      if (v.type === 'tank' && driver && v.aimT !== undefined) v.tRel += clamp(angDiff(v.ta, v.aimT), -1.7 * dt, 1.7 * dt);
+      syncMounts(v);
+      vehTrackFx(v, Math.hypot(v.x - ox, v.y - oy) + Math.abs(v.av) * dt * 20);
     }
-    const target = throttle * (throttle >= 0 ? T.maxF : T.maxR);
-    const rate = m < 0.15 ? T.drag : (Math.sign(target) !== Math.sign(v.spd) && Math.abs(v.spd) > 5 ? T.brake : T.acc);
-    v.spd = approach(v.spd, target, rate * dt);
-    v.av = v.type === 'tank' ? steer * T.turn : steer * T.turn * clamp(Math.abs(v.spd) / 80, 0, 1);
-    v.a += v.av * dt;
-    const ice = onIce(v.x, v.y), hx = Math.cos(v.a), hy = Math.sin(v.a), grip = ice ? Math.min(1, dt * (v.type === 'tank' ? 1.6 : 1.1)) : v.type === 'tank' ? 1 : Math.min(1, dt * (M.rain || M.snow ? 4 : 6));
-    v.vx = lerp(v.vx, hx * v.spd, grip); v.vy = lerp(v.vy, hy * v.spd, grip);
-    const ox = v.x, oy = v.y;
-    v.x += v.vx * dt; v.y += v.vy * dt;
-    vehicleCollide(v);
-    const moved = Math.hypot(v.x - ox, v.y - oy);
-    if (v.type === 'tank' && driver && v.aimT !== undefined) v.tRel += clamp(angDiff(v.ta, v.aimT), -1.7 * dt, 1.7 * dt);
-    syncMounts(v);
-    vehTrackFx(v, moved + Math.abs(v.av) * dt * 20);
     // run-over
     const sp = Math.hypot(v.vx, v.vy);
     vehCircles(v, _vc);
@@ -905,6 +916,28 @@ function updateVehicle(v, dt) {
   }
   vehDamageFx(v, dt);
   engineUpdate(v);
+}
+/* engine, steering and grip for one step. `local`: a joiner driving their own vehicle, where collisions only move
+   this vehicle (the host does the crushing, the shoving and the damage) */
+function vehDrive(v, mx, my, dt, local) {
+  const T = v.T, m = Math.min(1, Math.hypot(mx, my)); let throttle = 0, steer = 0;
+  if (m > 0.15) {
+    const tgt = Math.atan2(my, mx), dF = angDiff(v.a, tgt);
+    if (!v.rev && Math.abs(dF) > 2.25 && Math.abs(v.spd) < 90) v.rev = true; else if (v.rev && Math.abs(dF) < 1.3) v.rev = false;
+    const d = v.rev ? angDiff(v.a, tgt + Math.PI) : dF;
+    steer = clamp(d * 2.6, -1, 1);
+    const align = Math.cos(d);
+    throttle = (v.rev ? -1 : 1) * m * (v.type === 'tank' ? Math.pow(Math.max(0, align), 3) : Math.max(0.3, align));
+  }
+  const target = throttle * (throttle >= 0 ? T.maxF : T.maxR);
+  const rate = m < 0.15 ? T.drag : (Math.sign(target) !== Math.sign(v.spd) && Math.abs(v.spd) > 5 ? T.brake : T.acc);
+  v.spd = approach(v.spd, target, rate * dt);
+  v.av = v.type === 'tank' ? steer * T.turn : steer * T.turn * clamp(Math.abs(v.spd) / 80, 0, 1);
+  v.a += v.av * dt;
+  const ice = onIce(v.x, v.y), hx = Math.cos(v.a), hy = Math.sin(v.a), grip = ice ? Math.min(1, dt * (v.type === 'tank' ? 1.6 : 1.1)) : v.type === 'tank' ? 1 : Math.min(1, dt * (M.rain || M.snow ? 4 : 6));
+  v.vx = lerp(v.vx, hx * v.spd, grip); v.vy = lerp(v.vy, hy * v.spd, grip);
+  v.x += v.vx * dt; v.y += v.vy * dt;
+  vehicleCollide(v, local);
 }
 /* treads, dust, fire and smoke off a hurt vehicle: cosmetic, so online clients run them too */
 function vehTrackFx(v, d) {
