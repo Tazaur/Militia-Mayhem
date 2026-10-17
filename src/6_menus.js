@@ -138,7 +138,7 @@ function drawMenu() {
 /* ================= network menu: host a game, join one by code (or from the list on claude.ai) ================= */
 const NETM = { sel: 0, entry: null };
 const CODE_KEYS = 'abcdefghjkmnpqrstuvwxyz23456789'.split('').concat(['DEL', 'JOIN']);
-function openNetMenu(dev) { NETM.sel = 0; NETM.entry = null; NETM.dev = dev && dev.type ? dev : { type: 'kb' }; setState('netmenu'); sfx('ui'); }
+function openNetMenu(dev) { NET.err = null; NETM.sel = 0; NETM.entry = null; NETM.dev = dev && dev.type ? dev : { type: 'kb' }; setState('netmenu'); sfx('ui'); }
 function netRows() { return NET.hosts.filter(h => h.st === 'lobby' && h.n < MAXP); }
 function netAct(i, dev) {
   if (dev && dev.type) NETM.dev = dev;
@@ -189,6 +189,10 @@ function updateCodeEntry(ins) {
 }
 function updateNetMenu(ins, dt) {
   MENU.spin += dt * 0.35;
+  if (NET.err) {
+    if (performance.now() - NET.err.t > 600) for (const { st } of ins) if (st.confirm || st.back || st.pause) { NET.err = null; sfx('ui'); return; }
+    runClicks(); return;
+  }
   if (NETM.entry) { updateCodeEntry(ins); return; }
   const n = 2 + netRows().length;
   NETM.sel = clamp(NETM.sel, 0, n - 1);
@@ -202,11 +206,61 @@ function updateNetMenu(ins, dt) {
   hoverUpdate(v => NETM.sel = v);
   runClicks();
 }
+/* centred text that shrinks until it fits a width */
+function fitTxtC(s, x, y, maxW, size, col, font) {
+  let sz = size; ctx.font = `${sz}px ${font || FB}`;
+  while (sz > 8 && ctx.measureText(s).width > maxW) { sz -= 0.5; ctx.font = `${sz}px ${font || FB}`; }
+  txt(s, x, y, sz, col, 'center', 'middle', font || FB);
+}
+/* break a "A · B · C" status message into lines that fit */
+function dotLines(s, maxW, size, font) {
+  ctx.font = `${size}px ${font}`; const out = []; let line = '';
+  for (const part of s.split(' · ')) { const t = line ? line + ' · ' + part : part; if (line && ctx.measureText(t).width > maxW) { out.push(line); line = part; } else line = t; }
+  if (line) out.push(line); return out;
+}
 function netToast(u) {
   if (!(NET.msgT > 0) || !NET.msg) return;
-  ctx.globalAlpha = Math.min(1, NET.msgT * 2); ctx.font = `${fpx(15, u, 13)}px ${FD}`;
-  const w = Math.min(W - 40, ctx.measureText(NET.msg).width + 50 * u), y = H - SAFE.b - fpx(70, u, 56);
-  panel(W / 2 - w / 2, y - 22 * u, w, 44 * u); txt(NET.msg, W / 2, y, fpx(15, u, 13), '#ffe08a', 'center', 'middle', FD); ctx.globalAlpha = 1;
+  ctx.globalAlpha = Math.min(1, NET.msgT * 2);
+  const sz = fpx(15, u, 12), maxW = W - SAFE.l - SAFE.r - 60, lines = dotLines(NET.msg, maxW, sz, FD);
+  ctx.font = `${sz}px ${FD}`;
+  const w = Math.min(W - 40, Math.max(...lines.map(l => ctx.measureText(l).width)) + 50 * u), lh = sz * 1.45, h = lines.length * lh + 22 * u, y = H - SAFE.b - fpx(48, u, 40) - h;
+  panel(W / 2 - w / 2, y, w, h);
+  lines.forEach((l, i) => fitTxtC(l, W / 2, y + 11 * u + lh * (i + 0.5), maxW, sz, '#ffe08a', FD));
+  ctx.globalAlpha = 1;
+}
+/* a failed connection: code, what broke, what to try, and the trace (kept until dismissed) */
+function drawNetErr(u) {
+  const E = NET.err; if (!E) return;
+  UIB = [{ x: 0, y: 0, w: W, h: H, fn: () => { if (performance.now() - E.t > 600) { NET.err = null; sfx('ui'); } } }];
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, W, H);
+  const pw = Math.min(W - SAFE.l - SAFE.r - 24, 720 * u), ls = fpx(12, u, 10), lh = ls * 1.5;
+  const ph = Math.min(H - SAFE.t - SAFE.b - 24, fpx(150, u, 120) + E.lines.length * lh + (E.hint ? fpx(54, u, 46) : 0)), px = W / 2 - pw / 2, py = H / 2 - ph / 2;
+  panel(px, py, pw, ph); ctx.fillStyle = '#c0392b'; ctx.fillRect(px, py, pw, 4);
+  let y = py + fpx(30, u, 24);
+  fitTxtC('CONNECTION FAILED · ERROR E' + E.code, W / 2, y, pw - 30, fpx(14, u, 12), '#ff9a8a', FD); y += fpx(30, u, 24);
+  fitTxtC(E.title, W / 2, y, pw - 30, fpx(22, u, 16), '#ffe08a', FD); y += fpx(30, u, 24);
+  if (E.hint) { wrapCenter(E.hint, W / 2, y, pw - 40, fpx(13, u, 11), '#c8d0b8'); y += fpx(54, u, 46); }
+  for (const l of E.lines) { fitTxtC(l, W / 2, y, pw - 24, ls, 'rgba(242,230,196,0.75)', FB); y += lh; }
+  fitTxtC(devOf(null) === 'touch' ? 'TAP TO CLOSE' : 'PRESS ANY BUTTON TO CLOSE', W / 2, py + ph - fpx(18, u, 15), pw - 30, fpx(11, u, 10), 'rgba(242,230,196,0.45)', FD);
+}
+/* a client's join in progress: each step and how far it got */
+function drawJoinSteps(u) {
+  const tr = NET.trace, pw = Math.min(W - SAFE.l - SAFE.r - 24, 520 * u), rows = [];
+  const ok = 'OK', wait = '…';
+  rows.push(['MATCHMAKING', tr && tr.sig ? ok : wait]);
+  if (tr && tr.sig) {
+    rows.push(['GAME ' + NET.code.toUpperCase() + ' FOUND', tr.ack ? ok : wait]);
+    if (tr.ack) rows.push(['HOST REPLIED', tr.answer ? ok : wait]);
+    if (tr.answer) rows.push(['NETWORK PATH', tr.ice === 'connected' || tr.ice === 'completed' ? ok : tr.ice.toUpperCase()]);
+    if (tr.dc) rows.push(['GAME LINK', ok]);
+    if (tr.dc) rows.push(['LOBBY DATA', NET.lobby ? ok : wait]);
+  }
+  const rh = fpx(24, u, 20), ph = fpx(60, u, 50) + rows.length * rh + (tr && tr.offer ? fpx(34, u, 28) : 0), px = W / 2 - pw / 2, py = H / 2 - ph / 2;
+  panel(px, py, pw, ph);
+  let y = py + fpx(24, u, 20);
+  txt('JOINING GAME ' + NET.code.toUpperCase() + '…', W / 2, y, fpx(18, u, 14), '#ffe08a', 'center', 'middle', FD); y += fpx(30, u, 24);
+  for (const [k, v] of rows) { txt(k, px + 24 * u, y, fpx(14, u, 12), '#f2e6c4', 'left', 'middle', FD); txt(v, px + pw - 24 * u, y, fpx(14, u, 12), v === ok ? '#9be07a' : '#ffe08a', 'right', 'middle', FD); y += rh; }
+  if (tr && tr.offer) { fitTxtC(traceLine(tr, 'HOST'), W / 2, y + 2, pw - 20, fpx(11, u, 9), 'rgba(242,230,196,0.6)'); fitTxtC(traceLine2(tr), W / 2, y + fpx(16, u, 13), pw - 20, fpx(11, u, 9), 'rgba(242,230,196,0.6)'); }
 }
 function drawNetMenu() {
   screenT(); UIB = [];
@@ -267,6 +321,7 @@ function drawNetMenu() {
   if (NETM.entry) drawCodeEntry(u);
   if (NET.busy) { panel(W / 2 - 200 * u, H / 2 - 30 * u, 400 * u, 60 * u); txt(NET.busy, W / 2, H / 2, fpx(17, u, 14), '#ffe08a', 'center', 'middle', FD); }
   netToast(u);
+  drawNetErr(u);
 }
 function drawCodeEntry(u) {
   const E = NETM.entry, name = E.mode === 'name', K = padKeys(E), cols = padCols(E); UIB = [];
@@ -510,7 +565,8 @@ function drawLobby2() {
     if (NET.role === 'client') hintRow([{ a: 'classes', t: 'COLOR' }, { a: 'team', icon: 'team' }, { a: 'select', t: 'READY' }, { a: 'back', icon: 'exit' }], W / 2, B - foot / 2, hh2, dv);
     else hintRow([{ a: 'classes', t: 'COLOR' }, { a: 'team', icon: 'team' }, { a: 'nav', t: 'MATCH' }, { a: 'select', t: 'READY' }, { a: 'start', icon: 'flag' }, { a: 'back', icon: 'exit' }], W / 2, B - foot / 2, hh2, dv);
   }
-  if (NET.role === 'client' && !NET.joined) { panel(W / 2 - 190 * u, H / 2 - 30 * u, 380 * u, 60 * u); txt('JOINING GAME ' + NET.code.toUpperCase() + '…', W / 2, H / 2, fpx(18, u, 14), '#ffe08a', 'center', 'middle', FD); }
+  if (NET.role === 'client' && !NET.joined) drawJoinSteps(u);
+  netToast(u);
   if (!AU.ctx && PLAYERS.some(p => p.dev.type === 'pad')) txt('CLICK ONCE TO ENABLE SOUND', R, T + hb + 2, fpx(11, u, 10), 'rgba(240,240,220,0.5)', 'right', 'top', FD);
 }
 function drawSlot(x, y, w, h, i, u) {

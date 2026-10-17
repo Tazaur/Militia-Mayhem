@@ -30,54 +30,152 @@ const angE = a => pk(((((a || 0) % TAU) + TAU) % TAU) / TAU * 4096, 2), angD = n
 const lerpAng = (a, b, k) => a + angDiff(a, b) * k;
 
 /* ---------- direct play: browser-to-browser (WebRTC), for the game as a plain HTML file ----------
-   A free public matchmaking server (PeerJS's) only introduces the two browsers; after that the game data
-   flows directly between them. The host registers as "militiamayhem-<code>"; a joiner asks for that name. */
+   A free public message relay (ntfy.sh) only introduces the two browsers; after that the game data flows
+   directly between them. Every browser listens on its own topic: the host on "militiamayhem-<code>", a joiner
+   on a random one. Each side sends its whole connection offer in one message (ICE gathered first), so a join
+   costs about three messages. (PeerJS's public server stopped relaying messages in Oct 2026.) */
 const P2P_PREFIX = 'militiamayhem-';
-const P2P_SIG = () => (typeof window !== 'undefined' && window.__MM_SIG) || 'wss://0.peerjs.com:443/peerjs?key=peerjs';
+const P2P_SIG = () => (typeof window !== 'undefined' && window.__MM_SIG) || 'https://ntfy.sh';
+const P2P_TOPIC = id => 'mm1-' + id;
 const P2P_ICE = () => (typeof window !== 'undefined' && window.__MM_ICE) || [
-  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
-  { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' }];
+  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }];
 const RTC = () => typeof window !== 'undefined' ? (window.RTCPeerConnection || window.webkitRTCPeerConnection || null) : null;
 const p2pOK = () => !!RTC() && typeof WebSocket !== 'undefined';
 /* what this browser view can do, shown when online play isn't possible */
 function netDiag() { return 'WEBRTC ' + (RTC() ? 'OK' : 'MISSING') + ' · WEBSOCKET ' + (typeof WebSocket !== 'undefined' ? 'OK' : 'MISSING') + ' · CLAUDE ROOM ' + (NET.room ? 'OK' : 'NONE'); }
+
+/* ---------- connection trace and error codes: every failure names the step that broke ---------- */
+const NET_E = {
+  101: ['CAN’T REACH THE MATCHMAKING SERVER', 'This device couldn’t reach the free matchmaking relay (ntfy.sh). Check its internet; some school or work networks block it.'],
+  102: ['MATCHMAKING SERVER DIDN’T ANSWER', 'The matchmaking server is slow or down. Try again in a minute.'],
+  103: ['MATCHMAKING SERVER REFUSED', 'The free matchmaking server turned the request away (it may be overloaded). Try again.'],
+  104: ['NO FREE GAME CODE', 'Every code tried was already in use. Try again.'],
+  201: ['NO GAME WITH THAT CODE', 'Nobody answered on this code. Check the code, and that the host is still in its lobby with the tab in front.'],
+  202: ['THE HOST DIDN’T REPLY', 'The join request reached the matchmaking server but the host never answered. Bring the host’s tab to the front and try again.'],
+  301: ['NO NETWORK PATH TO THE HOST', 'Both sides found each other but no direct route worked and no relay was available. Usually a router/NAT or firewall issue; a TURN relay fixes it.'],
+  302: ['NETWORK PATH TIMED OUT', 'Route checks between the two devices never finished. Usually a router/NAT or firewall issue; a TURN relay fixes it.'],
+  303: ['NO ADDRESSES EXCHANGED', 'One side sent no network addresses, so there was nothing to try. The browser may be blocking WebRTC.'],
+  401: ['GAME LINK DIDN’T OPEN', 'A network route was found but the data channel never opened.'],
+  402: ['GAME LINK CLOSED', 'The data channel closed before any game data arrived.'],
+  501: ['HOST SENT NO GAME DATA', 'Connected, but the host’s lobby never arrived. The host’s tab may be in the background.'],
+  502: ['THAT GAME IS FULL', 'Four players are already in.'],
+  503: ['THAT MATCH HAS ALREADY STARTED', 'Join while the host is in the lobby.'],
+  504: ['YOU WERE REMOVED FROM THE GAME', ''],
+  601: ['LOST CONTACT WITH THE HOST', 'Nothing arrived from the host for 20 seconds. Keep the host’s tab in front.'],
+  602: ['THE HOST LEFT THE GAME', ''],
+  701: ['WEBRTC ERROR', 'The browser refused to set up the connection.'],
+};
+function mkTrace() { return { t0: performance.now(), sig: 0, offer: 0, answer: 0, lc: { host: 0, srflx: 0, relay: 0, prflx: 0 }, rc: { host: 0, srflx: 0, relay: 0, prflx: 0 }, lmdns: 0, rmdns: 0, gather: 'new', ice: 'new', conn: 'new', dc: 0, data: 0, turn: '', err: '' }; }
+function traceCand(o, mdnsKey, tr, c) {
+  const s = (c && c.candidate) || ''; if (!s) return;
+  const m = / typ (\w+)/.exec(s), t = m ? m[1] : 'host'; if (t in o) o[t]++;
+  if (/\.local /.test(s)) tr[mdnsKey]++;
+}
+const tSum = o => 'H' + o.host + ' S' + o.srflx + ' R' + o.relay;
+function traceLine(tr, other) {
+  return 'YOU ' + tSum(tr.lc) + (tr.lmdns ? ' (' + tr.lmdns + ' MDNS)' : '') + ' · ' + other + ' ' + tSum(tr.rc) + (tr.rmdns ? ' (' + tr.rmdns + ' MDNS)' : '') +
+    ' · ICE ' + tr.ice.toUpperCase() + ' · ' + ((performance.now() - tr.t0) / 1000).toFixed(1) + 'S';
+}
+function traceLine2(tr) { return 'RELAY ' + (tr.lc.relay ? 'OK' : tr.turn ? 'ERR ' + tr.turn : 'NONE') + ' · GATHER ' + tr.gather.toUpperCase() + ' · LINK ' + tr.conn.toUpperCase() + (tr.err ? ' · ' + tr.err : ''); }
+function browserTag() {
+  const u = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '', ios = /iPhone|iPad|iPod/.test(u);
+  let m;
+  if ((m = /CriOS\/(\d+)/.exec(u))) return 'CHROME ' + m[1] + ' iOS';
+  if ((m = /Edg\/(\d+)/.exec(u))) return 'EDGE ' + m[1];
+  if ((m = /Firefox\/(\d+)|FxiOS\/(\d+)/.exec(u))) return 'FIREFOX ' + (m[1] || m[2]) + (ios ? ' iOS' : '');
+  if ((m = /Chrome\/(\d+)/.exec(u))) return 'CHROME ' + m[1] + (/Android/.test(u) ? ' ANDROID' : '');
+  if ((m = /Version\/(\d+(\.\d+)?).*Safari/.exec(u))) return 'SAFARI ' + m[1] + (ios ? ' iOS' : '');
+  return u ? 'OTHER' : 'NODE';
+}
+/* the reason a join attempt stalled, from how far it got */
+function traceCode(tr) {
+  if (tr.ice === 'failed' || tr.conn === 'failed') return 301;
+  if (!tr.ack) return 201;
+  if (!tr.answer) return 202;
+  if (!(tr.rc.host + tr.rc.srflx + tr.rc.relay + tr.rc.prflx) || !(tr.lc.host + tr.lc.srflx + tr.lc.relay + tr.lc.prflx)) return 303;
+  if (tr.ice !== 'connected' && tr.ice !== 'completed') return 302;
+  if (!tr.dc) return 401;
+  return 501;
+}
+/* show a failure: the player lands on the network screen with a panel naming the code, the step and the trace */
+function netFail(code, extra) {
+  const tr = NET.trace, E = NET_E[code] || ['CONNECTION ERROR', ''];
+  const lines = [];
+  if (tr && tr.offer) { lines.push(traceLine(tr, NET.role === 'host' ? 'THEM' : 'HOST')); lines.push(traceLine2(tr)); }
+  if (extra) lines.push(String(extra).toUpperCase().slice(0, 90));
+  lines.push('BUILD ' + VERSION.build + ' · ' + browserTag() + ' · ' + netDiag());
+  if (NET.role) netLeave(); else NET.busy = '';
+  NET.err = { code, title: E[0], hint: E[1], lines, t: performance.now() };
+  try { console.warn('[net] E' + code, E[0], lines.join(' | ')); } catch (e) { }
+}
+let SIG_MSG = '';
 function sigOpen(id) {
   return new Promise((res, rej) => {
     let ws;
-    try { ws = new WebSocket(P2P_SIG() + '&id=' + encodeURIComponent(id) + '&token=' + Math.random().toString(36).slice(2, 12) + '&version=1.5.4'); } catch (e) { rej('network'); return; }
-    const S = { id, ws, on: null, hb: null, send(m) { if (ws.readyState === 1) ws.send(JSON.stringify(m)); }, close() { clearInterval(S.hb); try { ws.close(); } catch (e) { } } };
-    const t = setTimeout(() => { rej('timeout'); S.close(); }, 9000);
-    ws.onmessage = e => {
-      let m; try { m = JSON.parse(e.data); } catch (er) { return; }
-      if (m.type === 'OPEN') { clearTimeout(t); S.hb = setInterval(() => S.send({ type: 'HEARTBEAT' }), 5000); res(S); }
-      else if (m.type === 'ID-TAKEN') { clearTimeout(t); rej('taken'); S.close(); }
-      else if (m.type === 'ERROR') { clearTimeout(t); rej('error'); S.close(); }
-      else if (S.on) S.on(m);
+    const base = P2P_SIG().replace(/\/$/, ''), wsBase = base.replace(/^http/, 'ws');
+    let opened = false, fails = 0;
+    const S = {
+      id, ws: null, on: null, onclose: null, onsenderr: null, dead: false, last: '',
+      send(m) {
+        if (!m.dst || S.dead) return; m.src = id;
+        fetch(base + '/' + P2P_TOPIC(m.dst), { method: 'POST', body: JSON.stringify(m) })
+          .then(r => { if (!r.ok && S.onsenderr) S.onsenderr(r.status === 429 ? 'RATE LIMITED' : 'HTTP ' + r.status); })
+          .catch(() => { if (S.onsenderr) S.onsenderr('SEND FAILED'); });
+      },
+      close() { S.dead = true; try { S.ws && S.ws.close(); } catch (e) { } }
     };
-    ws.onerror = () => { clearTimeout(t); rej('network'); };
-    ws.onclose = () => { clearInterval(S.hb); if (S.onclose) S.onclose(); };
+    const t = setTimeout(() => { if (!opened) { rej('timeout'); S.close(); } }, 9000);
+    const deliver = x => { if (x && x.src && x.src !== id && S.on) S.on(x); };
+    const connect = () => {
+      let ws; try { ws = new WebSocket(wsBase + '/' + P2P_TOPIC(id) + '/ws' + (S.last ? '?since=' + S.last : '')); } catch (e) { clearTimeout(t); rej('network'); return; }
+      S.ws = ws;
+      ws.onmessage = e => {
+        let m; try { m = JSON.parse(e.data); } catch (er) { return; }
+        if (m.event === 'open') { fails = 0; if (!opened) { opened = true; clearTimeout(t); res(S); } return; }
+        if (m.event !== 'message') return;
+        S.last = m.id;
+        // a message too long for the relay arrives as an attachment
+        if (m.attachment && m.attachment.url) { fetch(m.attachment.url).then(r => r.json()).then(deliver).catch(() => { }); return; }
+        try { deliver(JSON.parse(m.message)); } catch (er) { }
+      };
+      ws.onerror = () => { if (!opened) { clearTimeout(t); S.dead = true; rej('network'); } };
+      // the relay drops idle sockets now and then: reconnect, catching up on anything missed
+      ws.onclose = () => { if (S.dead || !opened) return; if (++fails === 3 && S.onclose) S.onclose(); setTimeout(() => { if (!S.dead) connect(); }, Math.min(10000, 1000 * fails)); };
+    };
+    connect();
   });
 }
+/* wait (briefly) until a connection has found its addresses, so they all go in one message */
+const iceGathered = (pc, ms) => new Promise(r => {
+  if (pc.iceGatheringState === 'complete') return r();
+  const t = setTimeout(r, ms); pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete') { clearTimeout(t); r(); } });
+});
+const sdpCands = d => ((d && d.sdp) || '').split(/\r?\n/).filter(l => l.startsWith('a=candidate:')).map(l => ({ candidate: l.slice(2) }));
 /* the same calls the game uses on a room (presence, onPeers, leave), over direct links */
-function p2pRoom(sig, hostId) {
-  const R = { mine: {}, links: new Map(), hs: [], pend: {}, onFail: null, dead: false };
+function p2pRoom(sig, hostId, trace) {
+  const R = { mine: {}, links: new Map(), hs: [], pend: {}, onFail: null, onJoinFail: null, dead: false };
   const self = () => ({ peer: sig.id, sameTab: true, isMe: true, kind: 'viewer', presence: R.mine });
   const list = () => [self(), ...[...R.links.values()].filter(l => l.open).map(l => ({ peer: l.id, sameTab: false, isMe: false, kind: 'viewer', presence: l.pres }))];
   const fire = (joined, left) => { const ch = { peers: list(), joined, left, updated: [] }; for (const h of R.hs) { try { h(ch); } catch (e) { console.error(e); } } };
   const txt = () => JSON.stringify(R.mine);
   function drop(L, why) {
     if (!R.links.has(L.id)) return; R.links.delete(L.id); try { L.pc.close(); } catch (e) { }
-    if (L.open) fire([], [{ peer: L.id }]); else if (hostId && R.onFail) R.onFail(why || 'failed');
+    if (L.open) fire([], [{ peer: L.id }]); else if (hostId && R.onFail) R.onFail(why || 'failed'); else if (!hostId && R.onJoinFail) R.onJoinFail(L.tr, why || 'failed');
   }
   function mkLink(id, initiator) {
     const PC = RTC(), pc = new PC({ iceServers: P2P_ICE() });
-    const L = { id, pc, dc: null, pres: {}, open: false, last: performance.now() };
-    pc.onicecandidate = e => { if (e.candidate) sig.send({ type: 'CANDIDATE', dst: id, payload: { c: e.candidate.toJSON ? e.candidate.toJSON() : e.candidate } }); };
-    pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed' || pc.connectionState === 'closed') drop(L, 'failed'); };
+    const tr = (hostId && trace) || mkTrace();
+    const L = { id, pc, dc: null, pres: {}, open: false, last: performance.now(), tr };
+    // addresses found before the offer/answer goes out ride along in it; only late ones are sent separately
+    pc.onicecandidate = e => { if (e.candidate) { traceCand(tr.lc, 'lmdns', tr, e.candidate); if (L.sent) sig.send({ type: 'CANDIDATE', dst: id, payload: { c: e.candidate.toJSON ? e.candidate.toJSON() : e.candidate } }); } };
+    pc.onicecandidateerror = e => { if (/^turns?:/.test(e.url || '')) tr.turn = String(e.errorCode || '?'); };
+    pc.onicegatheringstatechange = () => { tr.gather = pc.iceGatheringState; };
+    pc.oniceconnectionstatechange = () => { tr.ice = pc.iceConnectionState; if (tr.ice === 'failed') drop(L, 'failed'); };
+    pc.onconnectionstatechange = () => { tr.conn = pc.connectionState; if (pc.connectionState === 'failed' || pc.connectionState === 'closed') drop(L, 'failed'); };
     const wire = dc => {
       L.dc = dc;
-      dc.onopen = () => { L.open = true; L.last = performance.now(); try { dc.send(txt()); } catch (e) { } fire([{ peer: id }], []); };
-      dc.onmessage = e => { try { L.pres = JSON.parse(e.data) || {}; L.last = performance.now(); fire([], []); } catch (er) { } };
+      dc.onopen = () => { tr.dc = performance.now(); L.open = true; L.last = performance.now(); try { dc.send(txt()); } catch (e) { } fire([{ peer: id }], []); };
+      dc.onmessage = e => { try { L.pres = JSON.parse(e.data) || {}; L.last = performance.now(); tr.data = tr.data || L.last; fire([], []); } catch (er) { } };
       dc.onclose = () => drop(L, 'closed');
     };
     // game traffic is state that is resent constantly, so a lost packet is never waited for
@@ -90,27 +188,39 @@ function p2pRoom(sig, hostId) {
     try {
       if (m.type === 'OFFER' && !hostId && P.sdp) {
         if (R.links.has(src)) drop(R.links.get(src));
-        const L = mkLink(src, false);
+        sig.send({ type: 'ACK', dst: src });          // "a game with this code exists" before the slower answer
+        const L = mkLink(src, false); L.tr.offer = L.tr.ack = performance.now();
+        if (R.onJoinTry) R.onJoinTry();
+        for (const c of [...sdpCands(P.sdp), ...(R.pend[src] || [])]) traceCand(L.tr.rc, 'rmdns', L.tr, c);
         await L.pc.setRemoteDescription(P.sdp); flush(src, L);
         await L.pc.setLocalDescription(await L.pc.createAnswer());
-        sig.send({ type: 'ANSWER', dst: src, payload: { sdp: L.pc.localDescription } });
-      } else if (m.type === 'ANSWER' && P.sdp) { const L = R.links.get(src); if (L) { await L.pc.setRemoteDescription(P.sdp); flush(src, L); } }
-      else if (m.type === 'CANDIDATE' && P.c) { const L = R.links.get(src); if (L && L.pc.remoteDescription) L.pc.addIceCandidate(P.c).catch(() => { }); else (R.pend[src] = R.pend[src] || []).push(P.c); }
-      else if (m.type === 'EXPIRE' || m.type === 'LEAVE') { const L = R.links.get(src); if (L) drop(L, 'nohost'); else if (hostId && src === hostId && R.onFail) R.onFail('nohost'); }
-    } catch (e) { console.warn('p2p', e); }
+        await iceGathered(L.pc, 2500); if (!R.links.has(src)) return;
+        sig.send({ type: 'ANSWER', dst: src, payload: { sdp: L.pc.localDescription } }); L.sent = true; L.tr.answer = performance.now();
+      } else if (m.type === 'ACK') { const L = R.links.get(src); if (L && !L.tr.ack) L.tr.ack = performance.now(); }
+      else if (m.type === 'ANSWER' && P.sdp) { const L = R.links.get(src); if (L && !L.tr.answer) { L.tr.answer = performance.now(); L.tr.ack = L.tr.ack || L.tr.answer; for (const c of sdpCands(P.sdp)) traceCand(L.tr.rc, 'rmdns', L.tr, c); await L.pc.setRemoteDescription(P.sdp); flush(src, L); } }
+      else if (m.type === 'CANDIDATE' && P.c) { const L = R.links.get(src); if (L) traceCand(L.tr.rc, 'rmdns', L.tr, P.c); if (L && L.pc.remoteDescription) L.pc.addIceCandidate(P.c).catch(e => { L.tr.err = 'BAD CANDIDATE'; }); else (R.pend[src] = R.pend[src] || []).push(P.c); }
+      else if (m.type === 'LEAVE') { const L = R.links.get(src); if (L) drop(L, hostId ? 'nohost' : 'left'); }
+    } catch (e) { console.warn('p2p', e); const L = R.links.get(src); if (L) { L.tr.err = String(e && (e.name || e.message) || e).toUpperCase().slice(0, 40); drop(L, 'setup'); } }
   };
   sig.onclose = () => { if (!R.dead && R.onSigLost) R.onSigLost(); };
+  if (hostId && trace) sig.onsenderr = e => { trace.err = e; };
   // keep links warm: resend our state four times a second, drop links that go quiet
   R.tick = setInterval(() => {
     const now = performance.now(), t = txt();
     for (const L of [...R.links.values()]) {
       if (L.open && L.dc.readyState === 'open') { try { L.dc.send(t); } catch (e) { } }
-      if (now - L.last > (L.open ? 10000 : 15000)) drop(L, 'timeout');
+      if (hostId && L.tr.offer && !L.tr.ack && now - L.tr.offer > 8000) drop(L, 'nohost');   // nobody is listening on that code
+      else if (now - L.last > (L.open ? 10000 : 22000)) drop(L, 'timeout');
     }
   }, 250);
   if (hostId) (async () => {
-    try { const L = mkLink(hostId, true); await L.pc.setLocalDescription(await L.pc.createOffer()); sig.send({ type: 'OFFER', dst: hostId, payload: { sdp: L.pc.localDescription } }); }
-    catch (e) { if (R.onFail) R.onFail('failed'); }
+    let L = null;
+    try {
+      L = mkLink(hostId, true); await L.pc.setLocalDescription(await L.pc.createOffer());
+      await iceGathered(L.pc, 2500); if (!R.links.has(hostId)) return;
+      sig.send({ type: 'OFFER', dst: hostId, payload: { sdp: L.pc.localDescription } }); L.sent = true; L.tr.offer = performance.now();
+    }
+    catch (e) { if (L) L.tr.err = String(e && (e.name || e.message) || e).toUpperCase().slice(0, 40); if (R.onFail) R.onFail('setup'); }
   })();
   return {
     name: sig.id,
@@ -121,8 +231,8 @@ function p2pRoom(sig, hostId) {
     },
     onPeers(h) { R.hs.push(h); setTimeout(() => { if (!R.dead) fire([], []); }, 0); return () => { }; },
     peers: list, connected: () => !R.dead,
-    set onFail(f) { R.onFail = f; }, set onSigLost(f) { R.onSigLost = f; },
-    leave() { R.dead = true; clearInterval(R.tick); for (const L of R.links.values()) { try { L.pc.close(); } catch (e) { } } R.links.clear(); sig.send({ type: 'LEAVE' }); setTimeout(() => sig.close(), 100); return Promise.resolve(); }
+    set onFail(f) { R.onFail = f; }, set onSigLost(f) { R.onSigLost = f; }, set onJoinFail(f) { R.onJoinFail = f; }, set onJoinTry(f) { R.onJoinTry = f; },
+    leave() { R.dead = true; clearInterval(R.tick); for (const L of R.links.values()) { try { L.pc.close(); } catch (e) { } } R.links.clear(); if (hostId) sig.send({ type: 'LEAVE', dst: hostId }); setTimeout(() => sig.close(), 100); return Promise.resolve(); }
   };
 }
 
@@ -139,7 +249,8 @@ function netErr(e) {
   console.warn('room', e && e.code, e && e.message);
   if (e && (e.code === 'not_granted' || e.code === 'revoked' || e.code === 'capability_disabled' || e.code === 'capability_removed')) { NET.room = null; if (NET.mode === 'room') { NET.mode = null; NET.avail = false; if (NET.role) netShutdown('ONLINE PLAY IS NOT AVAILABLE HERE'); } }
 }
-function netSay(m) { NET.msg = m; NET.msgT = 3.5; }
+function netSay(m, t) { NET.msg = m; NET.msgT = t || 3.5; }
+const sigCode = e => e === 'network' ? 101 : e === 'timeout' ? 102 : e === 'error' ? 103 : e === 'taken' ? 104 : 701;
 function netLobbyPeers(ch) {
   const me = ch.peers.find(p => p.sameTab); if (me) NET.myPeer = me.peer;
   NET.hosts = ch.peers.filter(p => !p.sameTab && p.kind !== 'agent' && p.presence && p.presence.mm && /^[a-z0-9]{4}$/.test(p.presence.mm.c || '')).map(p => {
@@ -150,16 +261,21 @@ function netLobbyPeers(ch) {
 function netCode() { const A = 'abcdefghjkmnpqrstuvwxyz23456789'; let s = ''; for (let i = 0; i < 4; i++) s += A[Math.floor(Math.random() * A.length)]; return s; }
 async function netHost(dev) {
   if (!NET.avail || NET.role) return;
-  NET.role = 'host'; NET.code = netCode(); NET.kicked = new Set(); NET.evLog = []; NET.lastPres = ''; NET.lastMM = ''; NET.game = null; NET.busy = 'OPENING A GAME…';
+  NET.role = 'host'; NET.code = netCode(); NET.kicked = new Set(); NET.evLog = []; NET.lastPres = ''; NET.lastMM = ''; NET.game = null; NET.busy = 'OPENING A GAME…'; NET.trace = null; NET.err = null;
   try {
     let sig = null;
     if (NET.mode === 'p2p') {
       try { for (let k = 0; k < 4 && !sig; k++) { try { sig = await sigOpen(P2P_PREFIX + NET.code); } catch (e) { if (e !== 'taken') throw e; NET.code = netCode(); } } if (!sig) throw 'taken'; }
       catch (e) { if (!NET.room) throw e; }       // matchmaking unreachable from here: use the claude.ai room instead
     }
-    if (sig) { NET.game = p2pRoom(sig, null); NET.myPeer = sig.id; NET.game.onSigLost = () => { if (NET.role === 'host') netSay('MATCHMAKING SERVER DROPPED — NEW PLAYERS CAN’T JOIN'); }; }
+    if (sig) {
+      NET.game = p2pRoom(sig, null); NET.myPeer = sig.id;
+      NET.game.onSigLost = () => { if (NET.role === 'host') netSay('E801 MATCHMAKING SERVER DROPPED — NEW PLAYERS CAN’T JOIN', 12); };
+      NET.game.onJoinTry = () => { if (NET.role === 'host') netSay('A PLAYER IS CONNECTING…', 4); };
+      NET.game.onJoinFail = (tr, why) => { if (NET.role === 'host' && why !== 'left') netSay('JOIN FAILED E' + (why === 'closed' ? 402 : traceCode(tr)) + ' · ' + traceLine(tr, 'THEM') + ' · ' + traceLine2(tr), 15); };
+    }
     else NET.game = await NET.room.join('mm-' + NET.code);
-  } catch (e) { NET.role = null; NET.busy = ''; netSay(e === 'network' || e === 'timeout' ? 'CAN’T REACH THE MATCHMAKING SERVER — CHECK YOUR CONNECTION' : 'COULD NOT OPEN A GAME — TRY AGAIN'); return; }
+  } catch (e) { NET.role = null; netFail(sigCode(e), e === 'error' ? SIG_MSG : ''); return; }
   NET.busy = '';
   NET.game.onPeers(netGamePeers, netErr);
   enterLobby(dev && dev.type !== 'net' ? dev : { type: 'kb' });
@@ -168,17 +284,18 @@ async function netHost(dev) {
 async function netJoin(h, dev) {
   if (!NET.avail || NET.role || !h) return;
   Object.assign(NET, { role: 'client', hostPeer: h.peer, code: h.c, dev: dev && dev.type !== 'net' ? dev : { type: 'kb' }, myPid: -1, joined: false, wasJoined: false, curMatch: -1, lastSeq: -1, buf: [], off: null, lobby: null, want: { c: '', t: -1, r: 0 }, dep: null, lastHostT: performance.now(), joinT: performance.now(), lastPres: '', game: null, demoMap: -1 });
-  NET.busy = 'CONNECTING TO GAME ' + h.c.toUpperCase() + '…';
+  NET.busy = 'CONNECTING TO GAME ' + h.c.toUpperCase() + '…'; NET.err = null; NET.trace = mkTrace();
   try {
     let sig = null;
     if (NET.mode === 'p2p' && !h.peer) { try { sig = await sigOpen(P2P_PREFIX + 'j-' + Math.random().toString(36).slice(2, 10)); } catch (e) { if (!NET.room) throw e; } }
     if (!sig) NET.game = await NET.room.join('mm-' + h.c);
     else {
+      NET.trace.sig = performance.now();
       NET.hostPeer = P2P_PREFIX + h.c; NET.myPeer = sig.id;
-      NET.game = p2pRoom(sig, NET.hostPeer);
-      NET.game.onFail = why => { if (NET.role === 'client' && !NET.joined) netLeave(why === 'nohost' ? 'NO GAME WITH CODE ' + h.c.toUpperCase() : 'COULD NOT CONNECT TO GAME ' + h.c.toUpperCase()); };
+      NET.game = p2pRoom(sig, NET.hostPeer, NET.trace);
+      NET.game.onFail = why => { if (NET.role === 'client' && !NET.joined) netFail(why === 'nohost' ? 201 : why === 'closed' ? 402 : why === 'setup' && !NET.trace.offer ? 701 : traceCode(NET.trace)); };
     }
-  } catch (e) { NET.role = null; NET.busy = ''; netSay(e === 'network' || e === 'timeout' ? 'CAN’T REACH THE MATCHMAKING SERVER — CHECK YOUR CONNECTION' : 'COULD NOT JOIN THAT GAME'); return; }
+  } catch (e) { NET.role = null; netFail(sigCode(e), e === 'error' ? SIG_MSG : ''); return; }
   NET.busy = '';
   NET.game.onPeers(netGamePeers, netErr);
   PLAYERS = []; LOBBY.sel = 0; setState('lobby'); sfx('join');
@@ -192,7 +309,7 @@ function netShutdown(msg) {
   if (msg) netSay(msg);
 }
 function netLeave(msg) { netShutdown(msg); engineKillAll(); PLAYERS = []; SET.open = false; demoMatch(); setState('netmenu'); Music.mode = 'menu'; }
-function netHostGone(msg) { if (NET.role !== 'client') return; netLeave(msg || 'THE HOST LEFT THE GAME'); }
+function netHostGone(code) { if (NET.role !== 'client') return; netFail(code || 602); }
 
 function netGamePeers(ch) {
   const me = ch.peers.find(p => p.sameTab); if (me) NET.myPeer = me.peer;
@@ -348,8 +465,8 @@ function netClientLobby(L) {
   if (state === 'lobby') {
     PLAYERS = pl.map(e => ({ id: e[0], dev: e[1] === NET.myPeer ? NET.dev : { type: 'net', peer: e[1], kind: e[5] }, color: e[2], team: e[3], ready: !!e[4], mine: e[1] === NET.myPeer, kit: 0, var: 0, name: cleanName(e[6]).trim() }));
     if (L.cfg && L.cfg[1] !== NET.demoMap) { NET.demoMap = L.cfg[1]; withHostCfg(() => demoMatch()); }
-    if (NET.wasJoined && !mine) { netLeave('YOU WERE REMOVED FROM THE GAME'); return; }
-    if (!mine && performance.now() - NET.joinT > 2500) { if (L.st === 'play') { netLeave('THAT MATCH HAS ALREADY STARTED'); return; } if (pl.length >= MAXP) { netLeave('THAT GAME IS FULL'); return; } }
+    if (NET.wasJoined && !mine) { netFail(504); return; }
+    if (!mine && performance.now() - NET.joinT > 2500) { if (L.st === 'play') { netFail(503); return; } if (pl.length >= MAXP) { netFail(502); return; } }
   }
   if (L.st === 'lobby' && (state === 'play' || state === 'pause' || state === 'end')) netClientToLobby();
 }
@@ -466,8 +583,12 @@ function netDeployReq(s, opt) {
 }
 function netClientTick(now) {
   if (!NET.game) return;
-  if (now - NET.lastHostT > 20000) { netHostGone('LOST CONTACT WITH THE HOST'); return; }
-  if (!NET.joined && !NET.wasJoined && now - NET.joinT > 15000) { netLeave('COULD NOT CONNECT TO GAME ' + NET.code.toUpperCase()); return; }
+  if (!NET.joined && !NET.wasJoined) {
+    // a join that stalls fails with the step it stalled at: no answer from the host after 15 s, anything else after 22 s
+    const tr = NET.trace, el = now - NET.joinT;
+    if (tr && tr.ack && !tr.answer && el > 15000) { netFail(202); return; }
+    if (el > 22000) { netFail(tr ? traceCode(tr) : 501); return; }
+  } else if (now - NET.lastHostT > 20000) { netHostGone(601); return; }
   if (now - NET.sendT < 33) return; NET.sendT = now;
   const I = NET.lastI;
   const i = I ? { m: [Math.round(I.mx * 100), Math.round(I.my * 100)], a: typeof I.aimA === 'number' ? Math.round(I.aimA * 1000) : null, f: I.fire ? 1 : 0, ad: I.ads ? 1 : 0, sp: I.sprint ? 1 : 0, g: I.gadget ? 1 : 0, ds: Math.round(I.altDist || 0), is: I.interactSwap ? 1 : 0, c: NET.cc, sd: NET.sd, si: NET.si, pw: NET.pw } : { c: NET.cc };
