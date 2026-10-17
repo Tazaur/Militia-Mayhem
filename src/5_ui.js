@@ -67,7 +67,7 @@ function drawWorld(vw) {
   }
   // wrecks
   for (const w of M.wrecks) {
-    if (!vis(w.x, w.y, 70)) continue; const al = Math.pow(clamp(w.t / (w.T || 32), 0, 1), 0.7);
+    if (!vis(w.x, w.y, 70)) continue; const al = clamp(w.t / 2, 0, 1);   // solid cover, then gone over its last 2 s
     worldT(); ctx.globalAlpha = 0.3 * al; ctx.fillStyle = '#000'; ctx.save(); ctx.translate(w.x + 4, w.y + 5); ctx.rotate(w.a); if (w.type === 'tank') ctx.fillRect(-52, -28, 104, 56); else ctx.fillRect(-41, -19, 82, 38); ctx.restore(); ctx.globalAlpha = 1;
     if (w.type === 'tank') { spr('hull5', w.x, w.y, w.a, 1, 1, al); spr('tur6', w.x - 4 * Math.cos(w.a), w.y - 4 * Math.sin(w.a), w.ta + 0.4, 1, 1, al * 0.9); }
     else spr('jeep4', w.x, w.y, w.a, 1, 1, al);

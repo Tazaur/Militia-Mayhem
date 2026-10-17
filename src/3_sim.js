@@ -264,16 +264,19 @@ function destroyVehicle(v, src) {
   v.active = false; v.respawnT = v.T.respawn;
   scorch(v.x, v.y, v.type === 'tank' ? 90 : 70);
 }
+let EXP_REW = 0;                                  // a joiner's rocket/shell: its blast is judged where things were on their screen
 function explosion(x, y, r, dmgS, dmgV, src, team, big, kind) {
   explosionFx(x, y, r, big); netEv('x', x | 0, y | 0, r | 0, big ? 1 : 0);
+  const T = EXP_REW ? netNow() - EXP_REW : 0;
   for (const s of M.sol) {
     if (!s.alive) continue; if (s.veh && !s.veh.T.seats[s.seat].exposed) continue;
-    const d = Math.hypot(s.x - x, s.y - y); if (d > r) continue;
-    hurtSoldier(s, dmgS * Math.pow(1 - d / r, 0.6), src, kind || 'explosion', s.x - x + rnd(-1, 1), s.y - y + rnd(-1, 1));
+    const o = EXP_REW ? lagAt(s, T) : s, d = Math.hypot(o.x - x, o.y - y); if (d > r) continue;
+    hurtSoldier(s, dmgS * Math.pow(1 - d / r, 0.6), src, kind || 'explosion', o.x - x + rnd(-1, 1), o.y - y + rnd(-1, 1));
   }
   for (const v of M.vehicles) {
     if (!v.active || v.dead) continue;
-    let dmin = 1e9; for (const [ox, oy, cr] of v.T.circles) { const c = Math.cos(v.a), sn = Math.sin(v.a); const cx = v.x + ox * c - oy * sn, cy = v.y + ox * sn + oy * c; dmin = Math.min(dmin, Math.hypot(cx - x, cy - y) - cr); }
+    const vo = EXP_REW ? lagAt(v, T) : v, vx = vo.x, vy = vo.y, va = vo.a;
+    let dmin = 1e9; for (const [ox, oy, cr] of v.T.circles) { const c = Math.cos(va), sn = Math.sin(va); const cx = vx + ox * c - oy * sn, cy = vy + ox * sn + oy * c; dmin = Math.min(dmin, Math.hypot(cx - x, cy - y) - cr); }
     if (dmin > r * 0.6) continue;
     const f = clamp(1 - Math.max(0, dmin) / (r * 0.6), 0.25, 1);
     hurtVehicle(v, dmgV * f, src);
@@ -657,7 +660,9 @@ function bagBlocks(p, s) {
 function updateProjectiles(dt) {
   PRONE = M.sol.filter(s => s.alive && s.stance >= 1 && !s.veh);
   for (const p of M.proj) {
+    EXP_REW = 0;
     if (p.k === 'nade') { updateNade(p, dt); continue; }
+    EXP_REW = p.rew || 0;
     const x0 = p.x, y0 = p.y, x1 = x0 + p.vx * dt, y1 = y0 + p.vy * dt;
     let bt = 2, hit = null;
     for (const b of MAP.buildings) { const t = segRect(x0, y0, x1, y1, b, 0); if (t >= 0 && t < bt) { bt = t; hit = { k: 'wall' }; } }
@@ -707,6 +712,7 @@ function updateProjectiles(dt) {
     if (p.life <= 0 && (p.k === 'rocket' || p.k === 'shell')) explosion(p.x, p.y, p.k === 'shell' ? 78 : 62, p.k === 'shell' ? 180 : 110, p.k === 'shell' ? 60 : 50, p.src, p.team, p.k === 'shell');
     if (p.life <= 0 && p.k === 'bullet' && inWater(p.x, p.y)) part({ k: 'steam', x: p.x, y: p.y, vx: 0, vy: 0, life: 0.4, max: 0.4, sz: 4, drag: 0 });
   }
+  EXP_REW = 0;
   prune(M.proj, p => p.life > 0);
 }
 /* host: the last ~0.6 s of where everyone was (host clock), so a joiner's shots can be checked against the past they saw */

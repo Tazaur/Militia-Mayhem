@@ -717,6 +717,7 @@ function netClientUpdate(dt) {
     NET.pred = 0;
     if (!s.alive && !M.over) { if (s.deathT > 0) { s.deathT -= dt; trackKiller(s); } else if (state === 'play') deployInput(s, dt); }
   }
+  for (const w of M.wrecks) w.t -= dt;              // the fade runs smoothly between the host's wreck updates
   netCosmetics(dt);
   updateCams(dt);
 }
