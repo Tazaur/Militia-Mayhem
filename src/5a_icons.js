@@ -15,7 +15,13 @@ function artIcon(kind, col) {
   } catch (e) { }
   ICONS.set(key, fill); return fill;
 }
+const SHADED_IC = { frag: 1, smoke: 1 };
 function icon(kind, cx, cy, s, col, al) {
+  if (ATLAS['ic_' + kind] && SHADED_IC[kind]) {          // the artist's shaded icons (grenade, smoke) draw as painted, filling the 32 px cell
+    const m = ATLAS['ic_' + kind], k = s / 30;
+    ctx.save(); ctx.translate(cx, cy); ctx.scale(k, k); ctx.imageSmoothingEnabled = false; if (al !== undefined) ctx.globalAlpha *= al;
+    ctx.drawImage(BASE, m[0], m[1], m[2], m[3], -m[4], -m[5], m[2], m[3]); ctx.restore(); return;
+  }
   if (ATLAS['ic_' + kind]) {
     const m = ATLAS['ic_' + kind], k = s / 26;           // art is drawn on a 32 px grid, glyphs ~26 px across
     ctx.save(); ctx.translate(cx, cy); ctx.scale(k, k); ctx.imageSmoothingEnabled = false; if (al !== undefined) ctx.globalAlpha *= al;

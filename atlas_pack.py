@@ -62,9 +62,9 @@ for pose, (x, y, w, h) in CELLS.items():
         o = old('ab_%s_red' % pose)[0]; assert o.shape == b.shape and (o == b).all() and [round(float(v), 1) for v in S['sol_' + pose][1:]] == meta['ab_%s_red' % pose][4:], pose
 # ---- weapon icons
 for n in ['wi_ar', 'wi_lmg', 'wi_br', 'wi_sniper', 'wi_smg', 'wi_rpg', 'wi_ak', 'wi_pistol', 'wi_mp']: S[n] = old(n)
-# ---- HUD icons (art/art4/icons.png, 32px cells): white fill + dark outline; the game tints the fill per use
+# ---- HUD icons (art/art4/icons.png, 32px cells): white fill + dark outline, the game tints the fill per use; frag / smoke are shaded and drawn as-is
 IC = np.array(Image.open('art/art4/icons.png').convert('RGBA'))
-for n, (cx, cy) in {'enter': (0, 0), 'exit': (32, 0), 'wheel': (0, 32), 'horn': (32, 32)}.items():
+for n, (cx, cy) in {'enter': (0, 0), 'exit': (32, 0), 'wheel': (0, 32), 'horn': (32, 32), 'frag': (64, 0), 'smoke': (64, 32)}.items():
     c = IC[cy:cy + 32, cx:cx + 32]; ys, xs = np.where(c[:, :, 3] > 0); x0, y0, x1, y1 = xs.min(), ys.min(), xs.max() + 1, ys.max() + 1
     S['ic_' + n] = old('ic_' + n) if 'ic_' + n in meta else (c[y0:y1, x0:x1].copy(), (x1 - x0) / 2, (y1 - y0) / 2)
     if SYNC and 'ic_' + n in meta: a = old('ic_' + n)[0]; IC[cy + y0:cy + y0 + a.shape[0], cx + x0:cx + x0 + a.shape[1]] = a
