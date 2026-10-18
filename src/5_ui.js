@@ -471,13 +471,13 @@ function drawViewHUD(vw) {
       if (o === s) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(sx, sy, 7 * u, 0, TAU); ctx.stroke(); }
     });
     ctx.restore();
-    if (s.seatT > 0) { const k = 1 - s.seatT / s.seatMax, w2 = 120 * u; icon('seat', vw.x + vw.w / 2 - w2 / 2 - 14 * u, B - 30 * u, 16 * u, '#fff'); ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(vw.x + vw.w / 2 - w2 / 2, B - 32 * u, w2, 5 * u); ctx.fillStyle = '#e8c84a'; ctx.fillRect(vw.x + vw.w / 2 - w2 / 2, B - 32 * u, w2 * k, 5 * u); }
+    if (s.seatT > 0) { const k = 1 - s.seatT / s.seatMax, w2 = 120 * u; icon(v.T.seats[s.seat].role === 'drive' ? 'wheel' : 'seat', vw.x + vw.w / 2 - w2 / 2 - 14 * u, B - 30 * u, 16 * u, '#fff'); ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(vw.x + vw.w / 2 - w2 / 2, B - 32 * u, w2, 5 * u); ctx.fillStyle = '#e8c84a'; ctx.fillRect(vw.x + vw.w / 2 - w2 / 2, B - 32 * u, w2 * k, 5 * u); }
     else if (dev !== 'touch') hintRow([...(v.seats.length > 1 ? [{ a: 'seat', icon: 'seat' }] : []), { a: 'use', icon: 'exit' }], vw.x + vw.w / 2, B - hb / 2, hb, dev);
   } else {
     const c = tc ? null : enterCandidate(s);
     if (c) {
       const nm = c.seat >= 0 ? c.v.T.seats[c.seat].n : '', y = B - 40 * u;
-      hintRow([{ a: 'use', icon: c.seat >= 0 ? 'seat' : 'skull' }, ...(nm ? [{ t: nm }] : []), ...(c.bump ? [{ icon: 'swap' }, { t: c.bump.name }] : [])], vw.x + vw.w / 2, y, 20 * u, dev, c.seat >= 0 ? '#fff' : '#ff8a70');
+      hintRow([{ a: 'use', icon: c.seat >= 0 ? 'enter' : 'skull' }, ...(nm ? [{ t: nm }] : []), ...(c.bump ? [{ icon: 'swap' }, { t: c.bump.name }] : [])], vw.x + vw.w / 2, y, 20 * u, dev, c.seat >= 0 ? '#fff' : '#ff8a70');
       worldT(); const an = seatAnchor(c.v, c.seat >= 0 ? c.seat : c.want, s.x, s.y); const [ax, ay] = toWorld(c.v, an[0] * 0.7, an[1] * 0.7);
       ctx.strokeStyle = CHEX[p.color]; ctx.lineWidth = 2 / VZ * 1.5; ctx.beginPath(); ctx.arc(ax, ay, 7 + Math.sin(M.time * 8) * 1.5, 0, TAU); ctx.stroke(); screenT();
     } else if (!tc && cw(s).mag === 0 && cw(s).res > 0 && s.reloadT <= 0) { let x = R - 50 * u; if (dev !== 'touch') x += 0; const bw2 = badge('reload', dev, x, B - 12 * u, hb); icon('reload', x + bw2 + 14 * u, B - 12 * u, hb, '#fff'); }
@@ -637,7 +637,7 @@ function drawTouch(s) {
     // contextual: knife when an enemy is in reach, vehicle seat when standing at a door
     enemiesOf(s, _en); if (_en.some(o => !o.veh && Math.hypot(o.x - s.x, o.y - s.y) < 46)) btn('melee', ...at(160, 182), 28 * k, 'knife', { fill: 'rgba(160,30,20,0.45)' });
     const c = enterCandidate(s);
-    if (c && c.seat >= 0) { const ex = F.x - 210 * k, ey = F.y - 118 * k; btn('enter', ex, ey, 32 * k, 'seat', { fill: 'rgba(40,90,40,0.55)' }); stxt(c.v.T.seats[c.seat].n, ex, ey + 46 * k, 12 * k, '#fff', 'center', 'middle', FD); }
+    if (c && c.seat >= 0) { const ex = F.x - 210 * k, ey = F.y - 118 * k; btn('enter', ex, ey, 32 * k, 'enter', { fill: 'rgba(40,90,40,0.55)' }); stxt(c.v.T.seats[c.seat].n, ex, ey + 46 * k, 12 * k, '#fff', 'center', 'middle', FD); }
   } else {
     btn('exit', ...at(200, 118), 28 * k, 'exit', { fill: 'rgba(160,30,20,0.4)' });
     if (rifle) { btn('reload', ...at(214, 112), 24 * k, 'reload'); btn('nade', ...at(286, 114), 26 * k, s.throwSel ? 'smoke' : 'frag'); }
@@ -647,7 +647,7 @@ function drawTouch(s) {
       const y = sy0 + i * 44 * k, o = v.seats[i], me = o === s;
       reg('seat' + i, { x: sx, y, r: 20 * k });
       disc(sx, y, 20 * k, TOUCH.hold['seat' + i], o ? (me ? 'rgba(255,224,138,0.45)' : 'rgba(0,0,0,0.55)') : 'rgba(0,0,0,0.3)');
-      icon('seat', sx - 2 * k, y, 18 * k, o ? CHEX[o.color] : 'rgba(255,255,255,0.75)');
+      icon(S.role === 'drive' ? 'wheel' : 'seat', sx - 2 * k, y, 18 * k, o ? CHEX[o.color] : 'rgba(255,255,255,0.75)');
       txt(S.n, sx - 26 * k, y, 10 * k, me ? '#ffe08a' : 'rgba(255,255,255,0.75)', 'right', 'middle', FD);
     });
     if (s.seatT > 0) { const i = s.seat, y = sy0 + i * 44 * k; ctx.strokeStyle = '#ffe08a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(sx, y, 23 * k, -Math.PI / 2, -Math.PI / 2 + TAU * (1 - s.seatT / s.seatMax)); ctx.stroke(); }

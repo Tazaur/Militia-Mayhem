@@ -3,7 +3,7 @@ Colours are NOT baked in: soldiers ship one dark-green base per pose (white armb
 in white, and the game recolours them once at load (src/1_core.js buildTeamSprites) and caches the result.
 
 Sprites are copied pixel-for-pixel from the current atlas (no resampling), so re-running is safe and idempotent.
-Sources: soldier bases + shadows from art/art3/sheet.png; MG / dead turret / sandbag crescents from mounts.py."""
+Sources: soldier bases + shadows from art/art3/sheet.png; HUD icons from art/art4/icons.png; MG / dead turret / sandbag crescents from mounts.py."""
 from PIL import Image
 import numpy as np, json, os
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
@@ -52,10 +52,15 @@ for pose, (x, y, w, h) in CELLS.items():
         o = old('ab_%s_red' % pose)[0]; assert o.shape == b.shape and (o == b).all() and [round(float(v), 1) for v in S['sol_' + pose][1:]] == meta['ab_%s_red' % pose][4:], pose
 # ---- weapon icons
 for n in ['wi_ar', 'wi_lmg', 'wi_br', 'wi_sniper', 'wi_smg', 'wi_rpg', 'wi_ak', 'wi_pistol', 'wi_mp']: S[n] = old(n)
+# ---- HUD icons (art/art4/icons.png, 32px cells): white fill + dark outline; the game tints the fill per use
+IC = np.array(Image.open('art/art4/icons.png').convert('RGBA'))
+for n, (cx, cy) in {'enter': (0, 0), 'exit': (32, 0), 'wheel': (0, 32), 'horn': (32, 32)}.items():
+    c = IC[cy:cy + 32, cx:cx + 32]; ys, xs = np.where(c[:, :, 3] > 0); x0, y0, x1, y1 = xs.min(), ys.min(), xs.max() + 1, ys.max() + 1
+    S['ic_' + n] = (c[y0:y1, x0:x1].copy(), (x1 - x0) / 2, (y1 - y0) / 2)
 # ---- cover: sandbag crescents (full / damaged / destroyed)
 bags, bagPts = bag_frames(np.array(Image.open('art/orig/4948b42c-image.png').convert('RGBA'))); S.update(bags); extra['bagPts'] = bagPts
 
-GROUPS = [['hull', 'jeep', 'tur', 'mg', 'bar', 'decal'], ['smoke', 'boom', 'dust', 'fire'], ['sol_', 'nsh_'], ['wi_'], ['bagarc']]
+GROUPS = [['hull', 'jeep', 'tur', 'mg', 'bar', 'decal'], ['smoke', 'boom', 'dust', 'fire'], ['sol_', 'nsh_'], ['wi_'], ['ic_'], ['bagarc']]
 def group(n):
     for i, G in enumerate(GROUPS):
         if any(n.startswith(p) for p in G): return i

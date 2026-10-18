@@ -1,6 +1,26 @@
 /* ================= icons, button prompts, tactical map =================
    Everything here draws in screen space. Icons are flat vector glyphs sized to a square box `s`. */
+/* the artist's HUD icons (enter / exit / wheel / horn): dark outline kept, white fill painted in the requested colour; cached */
+const ICONS = new Map();
+function artIcon(kind, col) {
+  const key = kind + '|' + col; let c = ICONS.get(key); if (c) return c;
+  const m = ATLAS['ic_' + kind], fill = mk(m[2], m[3]), line = mk(m[2], m[3]), fg = fill.getContext('2d'), lg = line.getContext('2d');
+  fg.drawImage(BASE, m[0], m[1], m[2], m[3], 0, 0, m[2], m[3]); lg.drawImage(BASE, m[0], m[1], m[2], m[3], 0, 0, m[2], m[3]);
+  try {
+    const fd = fg.getImageData(0, 0, m[2], m[3]), ld = lg.getImageData(0, 0, m[2], m[3]);
+    for (let i = 0; i < fd.data.length; i += 4) { if (fd.data[i] > 128) ld.data[i + 3] = 0; else fd.data[i + 3] = 0; }
+    fg.putImageData(fd, 0, 0); lg.putImageData(ld, 0, 0);
+    fg.globalCompositeOperation = 'source-in'; fg.fillStyle = col; fg.fillRect(0, 0, m[2], m[3]);
+    fg.globalCompositeOperation = 'destination-over'; fg.drawImage(line, 0, 0);
+  } catch (e) { }
+  ICONS.set(key, fill); return fill;
+}
 function icon(kind, cx, cy, s, col, al) {
+  if (ATLAS['ic_' + kind]) {
+    const m = ATLAS['ic_' + kind], k = s / 26;           // art is drawn on a 32 px grid, glyphs ~26 px across
+    ctx.save(); ctx.translate(cx, cy); ctx.scale(k, k); ctx.imageSmoothingEnabled = false; if (al !== undefined) ctx.globalAlpha *= al;
+    ctx.drawImage(artIcon(kind, col || '#fffff0'), -m[4], -m[5]); ctx.restore(); return;
+  }
   if (kind && kind.startsWith('w:')) {     // the artist's weapon icons from the atlas, fitted to the box height (pixel crisp)
     const m = ATLAS['wi_' + kind.slice(2)]; if (!m) return; const k = iconW(kind, s) / m[2];
     ctx.save(); ctx.translate(cx, cy); ctx.scale(k, k); ctx.imageSmoothingEnabled = false; if (al !== undefined) ctx.globalAlpha *= al;
@@ -23,7 +43,6 @@ function icon(kind, cx, cy, s, col, al) {
     case 'mine': ctx.fillStyle = '#3e4232'; C(0, 1, 8); ctx.fillStyle = '#5c6048'; C(0, 1, 5); ctx.fillStyle = '#ff3a2a'; C(0, 1, 1.8); break;
     case 'reload': ctx.lineWidth = 2.6; ctx.beginPath(); ctx.arc(0, 0, 6.5, -0.4, Math.PI * 1.45); ctx.stroke(); P([[6.5, -6], [8.5, 1], [1.5, -1.5]]); break;
     case 'seat': R(-5, -8, 4, 13); R(-5, 2, 11, 4); R(4, 2, 3, 7); R(-5, 5, 3, 4); break;
-    case 'exit': ctx.lineWidth = 2.2; ctx.strokeRect(-8, -8, 9, 16); P([[2, -5], [9, 0], [2, 5]]); R(-3, -1.5, 6, 3); break;
     case 'map': P([[-9, -6], [-3, -8], [3, -6], [9, -8], [9, 6], [3, 8], [-3, 6], [-9, 8]]); ctx.fillStyle = 'rgba(0,0,0,0.45)'; R(-3.5, -8, 1.2, 14); R(2.4, -6, 1.2, 14); ctx.fillStyle = '#ff4a3a'; C(5, -1, 2); break;
     case 'eye': ctx.beginPath(); ctx.moveTo(-10, 0); ctx.quadraticCurveTo(0, -10, 10, 0); ctx.quadraticCurveTo(0, 10, -10, 0); ctx.fill(); ctx.fillStyle = '#141a10'; C(0, 0, 3.6); break;
     case 'shell': R(-8, -3, 11, 6); P([[3, -3], [9, 0], [3, 3]]); ctx.fillStyle = 'rgba(0,0,0,0.35)'; R(-8, -3, 2, 6); break;
@@ -38,7 +57,6 @@ function icon(kind, cx, cy, s, col, al) {
     case 'swap': P([[-9, -3], [3, -3], [3, -7], [9, -1], [3, 5], [3, 1], [-9, 1]].map(([x, y]) => [x, y - 1])); P([[9, 3], [-3, 3], [-3, 7], [-9, 2], [-3, -3], [-3, -1], [9, -1]].map(([x, y]) => [x, y + 4])); break;
     case 'team': C(-4, -5, 3); R(-7, -1, 6, 8); C(5, -5, 3); R(2, -1, 6, 8); break;
     case 'check': ctx.lineWidth = 3.2; ctx.beginPath(); ctx.moveTo(-8, 0); ctx.lineTo(-2, 6); ctx.lineTo(8, -6); ctx.stroke(); break;
-    case 'horn': P([[-8, -3], [-2, -3], [6, -8], [6, 8], [-2, 3], [-8, 3]]); break;
     case 'cross': ctx.lineWidth = 2.4; C(0, 0, 5.5, false); ctx.beginPath(); ctx.moveTo(-10, 0); ctx.lineTo(-4, 0); ctx.moveTo(4, 0); ctx.lineTo(10, 0); ctx.moveTo(0, -10); ctx.lineTo(0, -4); ctx.moveTo(0, 4); ctx.lineTo(0, 10); ctx.stroke(); C(0, 0, 1.6); break;
     case 'run': C(3, -7, 2.6); P([[1, -4], [5, -4], [3, 2], [7, 6], [5, 8], [1, 3], [-3, 8], [-6, 6], [-1, 0], [-4, -1], [-7, 1], [-8, -1], [-3, -4]]); break;
     case 'jump': ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-7, 3); ctx.lineTo(0, -5); ctx.lineTo(7, 3); ctx.stroke(); R(-8, 6, 16, 2.5); break;
