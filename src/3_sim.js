@@ -32,11 +32,11 @@ const VT = {
 
 function newMatch(cfg, demo) {
   engineKillAll();
-  const mode = MODES[cfg.mode] || MODES[0];
-  const ffa = mode.id === 'ffa';
+  const mode = (MODES[cfg.mode] || MODES[0]).coop && demo ? MODES[1] : MODES[cfg.mode] || MODES[0];   // behind a co-op lobby the title battle is a plain team fight
+  const ffa = mode.id === 'ffa', coop = !!mode.coop;
   const teamColor = pickTeamColors(cfg, demo, ffa);
   TEAMHEX = teamColor.map(c => CHEX[c]);
-  TEAMNAME = (!demo && !ffa && cfg.teamColors !== 'classic') ? teamColor.map(c => CNAME[c]) : ['WEST', 'EAST'];
+  TEAMNAME = teamNames(cfg, demo, ffa, teamColor);
   buildRings();
   buildMap(MAPNAMES[cfg.map % MAPNAMES.length][0]); paintGround(); buildNav();
   MAP.statics.forEach((s, i) => s.idx = i);
@@ -44,11 +44,12 @@ function newMatch(cfg, demo) {
   M = {
     cfg, demo: !!demo, mode: mode.id, ffa, time: 0, sol: [], vehicles: [], wrecks: [], proj: [], parts: [], flings: [], corpses: [], smokes: [], crates: [], items: [], feed: [], toasts: [],
     flags: [], tickets: [tk, tk], limit: ffa ? LIMITS.ffa[cfg.limit] : 0, bleedT: 0, over: false, overT: 0, winner: -1, views: [], skill: SKILL[cfg.skill] || SKILL[1],
-    scoreHeld: false, lowWarn: [false, false], ff: !!cfg.ff && !demo, rain: cfg.weather === 'rain' && MAPNAMES[cfg.map][0] !== 'snowfield', snow: cfg.weather === 'snow' || (cfg.weather === 'rain' && MAPNAMES[cfg.map][0] === 'snowfield'), teamColor
+    scoreHeld: false, lowWarn: [false, false], ff: !!cfg.ff && !demo, rain: cfg.weather === 'rain' && MAPNAMES[cfg.map][0] !== 'snowfield', snow: cfg.weather === 'snow' || (cfg.weather === 'rain' && MAPNAMES[cfg.map][0] === 'snowfield'), teamColor,
+    coop, wv: coop ? { n: 0, queue: 0, left: 0, brk: 8, spT: 0, lim: LIMITS.surv[cfg.limit] || 0 } : null
   };
   if (mode.id === 'conquest') M.flags = MAP.flags.map(f => ({ ...f, r: 96, owner: -1, prog: 0, contested: false, wave: rnd(0, 6), cnt: [0, 0] }));
   if (mode.id === 'koth') M.flags = [{ ...MAP.flags[1], name: 'HILL', r: 120, owner: -1, prog: 0, contested: false, wave: 0, cnt: [0, 0] }];
-  if (demo) M.tickets = [99999, 99999];
+  if (demo || coop) M.tickets = [99999, 99999];
   if (mode.id === 'conquest') { M.flags[0].owner = 0; M.flags[0].prog = -1; M.flags[2].owner = 1; M.flags[2].prog = 1; }
   for (const s of MAP.vehSpawns) M.vehicles.push(makeVehicle(s));
   for (const c of MAP.crateSpots) M.crates.push({ x: c.x, y: c.y, a: rnd(-0.4, 0.4), live: true, t: 0 });
@@ -57,6 +58,7 @@ function newMatch(cfg, demo) {
   let nameI = rint(0, BOTNAMES.length - 1);
   const nextName = () => BOTNAMES[(nameI++) % BOTNAMES.length];
   humans.forEach((p, i) => {
+    if (coop) p.team = 0; else if (!ffa) p.color = teamColor[p.team];      // teammates wear the team's colour
     const s = makeSoldier({ team: ffa ? 100 + i : p.team, color: p.color, name: p.name || 'P' + (p.id + 1), player: p });
     s.kit = p.kit || 0; s.var = p.var || 0; s.sec = p.sec || 0; s.nt = p.nt || 0; s.respawnT = 0; s.firstDeploy = true; s.deployIdle = 0;
     p.sol = s; M.sol.push(s);
@@ -65,28 +67,33 @@ function newMatch(cfg, demo) {
     const free = COLORS.filter(c => !used.has(c));
     const nb = Math.min(cfg.bots, COLORS.length - humans.length, free.length);
     for (let i = 0; i < nb; i++) M.sol.push(makeSoldier({ team: 200 + i, color: free[i], name: nextName(), bot: true }));
+  } else if (coop) {
+    // a fixed pool of raiders the waves draw from (the roster never changes mid-match, so online clients keep up)
+    for (let i = 0; i < 24; i++) { const b = makeSoldier({ team: 1, color: teamColor[1], name: nextName(), bot: true }); b.dark = true; b.respawnT = 1e9; M.sol.push(b); }
   } else {
     for (const t of [0, 1]) { const nb = demo ? 7 : cfg.bots; for (let i = 0; i < nb; i++) { const b = makeSoldier({ team: t, color: teamColor[t], name: nextName(), bot: true }); b.dark = !demo && cfg.teamColors !== 'classic'; M.sol.push(b); } }
   }
-  for (const s of M.sol) if (s.bot) s.respawnT = rnd(0, 0.8);
+  for (const s of M.sol) if (s.bot && !coop) s.respawnT = rnd(0, 0.8);
   rainAudio(M.rain && !demo || (M.rain && demo));
   layoutViews();
   if (!demo) netMatchStarted();
 }
 /* each team wears its first player's colour; bots on that team wear a darker shade of it */
 function pickTeamColors(cfg, demo, ffa) {
-  const tc = ['blue', 'red'];
-  if (demo || ffa || cfg.teamColors === 'classic') return tc;
-  const humans = PLAYERS.slice().sort((a, b) => a.id - b.id);
-  const lead = [humans.find(p => p.team === 0), humans.find(p => p.team === 1)];
-  const used = new Set(humans.map(p => p.color));
-  for (const t of [0, 1]) if (lead[t]) tc[t] = lead[t].color;
-  for (const t of [0, 1]) if (!lead[t]) { const other = tc[1 - t]; tc[t] = ['blue', 'red', 'green', 'orange', 'cyan', 'magenta', 'yellow'].find(c => c !== other && (!used.has(c) || !lead[1 - t])) || (other === 'red' ? 'blue' : 'red'); if (tc[t] === other) tc[t] = other === 'red' ? 'blue' : 'red'; }
-  return tc;
+  if (!demo && MODES[cfg.mode] && MODES[cfg.mode].coop) {        // co-op: the raiders take a colour no player wears
+    const used = new Set(PLAYERS.map(p => p.color));
+    return [PLAYERS[0] ? PLAYERS[0].color : 'blue', ['red', 'orange', 'magenta', 'yellow', 'green', 'cyan', 'blue'].find(c => !used.has(c)) || 'red'];
+  }
+  if (demo || ffa || cfg.teamColors === 'classic') return ['blue', 'red'];
+  return lobbyTeamCols();
+}
+function teamNames(cfg, demo, ffa, tc) {
+  if (!demo && MODES[cfg.mode] && MODES[cfg.mode].coop) return ['SURVIVORS', 'RAIDERS'];
+  return (!demo && !ffa && cfg.teamColors !== 'classic') ? tc.map(c => CNAME[c]) : ['WEST', 'EAST'];
 }
 function makeSoldier(o) {
   return {
-    id: ++UID, x: 0, y: 0, a: 0, vx: 0, vy: 0, r: 7, hp: 100, team: o.team, color: o.color, name: o.name, player: o.player || null,
+    id: ++UID, x: 0, y: 0, a: 0, vx: 0, vy: 0, r: 7, hp: 100, mhp: o.player && M && M.coop ? 200 : 100, team: o.team, color: o.color, name: o.name, player: o.player || null,
     bot: o.bot ? { thinkT: 0, goal: null, goalT: 0, path: null, pathI: 0, pathT: 0, target: null, burst: 0, rest: 0, strafe: 1, strafeT: 0, stuckT: 0, lx: 0, ly: 0, nadeCd: 3, vehCd: rnd(2, 6), react: 0, err: 0, wantSeat: null, exitCd: 0, gadCd: rnd(4, 10), proneT: 0 } : null,
     alive: false, respawnT: 1, kit: 0, var: 0, w: null, wi: 0, nades: 2, mines: 0, gcd: 0, fireCd: 0, reloadT: 0, nadeCd: 0, lastHurt: -9, protect: 0,
     stance: 0, throwT: 0, stanceT: 0, swim: false, torch: false, ads: false, bloom: 0, jumpT: 0, jdx: 0, jdy: 0, meleeCd: 0, meleeT: 0, spotCd: 0, stepAcc: 0, stepSide: 1,
@@ -130,7 +137,7 @@ function spawnOptions(s) {
   if (M.mode === 'conquest') { for (const f of M.flags) if (f.owner === s.team && !f.contested) out.push({ name: 'FLAG ' + f.name, x: f.x, y: f.y, kind: 'flag' }); }
   else out.push({ name: 'FORWARD CAMP', x: MAP.fwd[s.team].x, y: MAP.fwd[s.team].y, kind: 'pt' });
   for (const o of M.sol) {
-    if (o === s || !o.player || !o.alive || o.team !== s.team) continue;
+    if (o === s || !o.player || !o.alive || o.down || o.team !== s.team) continue;
     if (o.veh) { const free = o.veh.seats.findIndex(q => !q); if (free >= 0 && o.veh.T.drive) out.push({ name: `${o.name}'S ${o.veh.type.toUpperCase()}`, x: o.veh.x, y: o.veh.y, kind: 'veh', v: o.veh }); }
     else if (M.time - o.lastHurt > 3) out.push({ name: 'ON ' + o.name, x: o.x, y: o.y, kind: 'mate', o });
   }
@@ -149,6 +156,7 @@ function solidAt(x, y, r) {
   for (const v of M.vehicles) if (v.active && !v.dead && Math.hypot(v.x - x, v.y - y) < v.T.hl + r) return true;
   return false;
 }
+const canDeploy = s => M.ffa || (M.coop ? M.wv.brk > 0 : M.tickets[s.team] > 0);   // co-op: the fallen get back in between waves
 function spawnSoldier(s, opt) {
   if (!opt) {
     const pts = spawnOptions(s);
@@ -157,7 +165,7 @@ function spawnSoldier(s, opt) {
   }
   if (s.bot) { s.kit = pickKit(); s.var = rint(0, 1); s.sec = rint(0, 1); s.nt = 0; }
   giveLoadout(s);
-  Object.assign(s, { hp: 100, alive: true, reloadT: 0, fireCd: 0.3, protect: 1.6, veh: null, seat: -1, seatT: 0, lastHurt: -9, stance: 0, stanceT: 0, swim: false, vx: 0, vy: 0, deployIdle: 0, firstDeploy: false });
+  Object.assign(s, { hp: s.mhp || 100, down: false, alive: true, reloadT: 0, fireCd: 0.3, protect: 1.6, veh: null, seat: -1, seatT: 0, lastHurt: -9, stance: 0, stanceT: 0, swim: false, vx: 0, vy: 0, deployIdle: 0, firstDeploy: false });
   let x, y;
   if (opt.kind === 'rand') {
     let best = null, bd = -1;
@@ -181,24 +189,24 @@ function pickKit() { const r = Math.random(); return r < 0.35 ? 0 : r < 0.6 ? 1 
 
 /* ---------------- damage & death ---------------- */
 function hurtSoldier(s, dmg, src, kind, dx, dy, wname) {
-  if (!s.alive || s.protect > 0 || M.over) return;
+  if (!s.alive || s.down || s.protect > 0 || M.over) return;
   if (src && !canHurt(src, s)) return;
   if (kind === 'explosion' || kind === 'mine') dmg *= [1, 0.8, 0.6][s.stance];
   s.hp -= dmg; s.lastHurt = M.time; s.hurtT = 0.35;
   if (src && src.player && src !== s) { src.hitT = 0.15; src.hitV = false; psfx(src.player, 'hit'); }
   if (s.player) rumble(s.player, Math.min(1, dmg / 60), 0.15);
   if (kind === 'bullet' || kind === 'mg') { for (let i = 0; i < 2; i++) blood(s.x, s.y, dx, dy); sfx('hurt', s.x, s.y); netEv('b', s.x | 0, s.y | 0, Math.round(dx || 0), Math.round(dy || 0)); }
-  if (s.hp <= 0) kill(s, src, kind, dx, dy, wname);
+  if (s.hp <= 0) { if (M.coop && s.player && !s.swim) goDown(s, src, wname); else kill(s, src, kind, dx, dy, wname); }
 }
 function blood(x, y, dx, dy) {
   const a = Math.atan2(dy || rnd(-1, 1), dx || rnd(-1, 1)) + rnd(-0.6, 0.6), sp = rnd(40, 140);
   part({ k: 'blood', x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rnd(0.25, 0.5), max: 0.5, sz: rnd(0.25, 0.45), rot: rnd(0, TAU), drag: 5 });
 }
 function kill(s, src, kind, dx, dy, wname) {
-  s.alive = false; s.hp = 0; s.d++; s.respawnT = s.player ? 5 : 6; s.torch = false;
+  s.alive = false; s.down = false; s.hp = 0; s.d++; s.respawnT = s.player ? 5 : 6; s.torch = false;
   if (s.veh) leaveSeat(s);
   if (s.player) { rumble(s.player, 1, 0.4); s.deployIdle = 0; s.deathT = 2.2; s.killer = src && src !== s ? { sol: src, veh: src.veh || null, x: src.veh ? src.veh.x : src.x, y: src.veh ? src.veh.y : src.y, name: src.name, color: src.color } : null; }
-  if (!M.ffa && !M.demo) M.tickets[s.team] = Math.max(0, M.tickets[s.team] - 1);
+  if (!M.ffa && !M.demo && !M.coop) M.tickets[s.team] = Math.max(0, M.tickets[s.team] - 1);
   let how = wname || (kind === 'crush' ? 'ROADKILL' : kind === 'explosion' ? 'BLAST' : kind === 'burn' ? 'WRECK' : kind === 'mine' ? 'MINE' : 'RIFLE');
   if (src && src !== s && isEnemy(src.team, s.team)) {
     src.k++;
@@ -207,6 +215,7 @@ function kill(s, src, kind, dx, dy, wname) {
     if (src.player) src.msg = { t: 1.4, txt: (kind === 'crush' ? 'ROADKILL  ' : 'KILLED  ') + s.name };
   } else if (src && src !== s && src.team === s.team) { src.pts = Math.max(0, src.pts - 100); how = 'TEAMKILL'; }
   feed(src && src !== s ? src : null, how, s);
+  if (M.coop && s.player) survCheckWipe();
   if (Math.random() < 0.35 && !s.swim) M.items.push({ k: 'pouch', x: s.x, y: s.y, t: 20, team: -1 });
   const ang = Math.atan2(dy || 0, dx || 1), ki = src && src !== s ? M.sol.indexOf(src) : -1, si = M.sol.indexOf(s);
   if (kind === 'crush' || kind === 'explosion' || kind === 'burn' || kind === 'mine') {
@@ -221,6 +230,69 @@ function kill(s, src, kind, dx, dy, wname) {
     for (let i = 0; i < 6; i++) blood(s.x, s.y, dx, dy);
     sfx('splat', s.x, s.y);
   }
+}
+/* ---------------- co-op survival ---------------- */
+/* out of health a player goes down instead of dying: a teammate standing over them for 3 s gets them back up; after 30 s they bleed out */
+function goDown(s, src, wname) {
+  if (s.veh) { leaveSeat(s); [s.x, s.y] = freeSpot(s.x, s.y); }
+  Object.assign(s, { down: true, hp: 0, bleed: 30, rev: 0, torch: false, reloadT: 0, stance: 0, vx: 0, vy: 0, ads: false });
+  if (src && src !== s && isEnemy(src.team, s.team)) src.k++;
+  feed(src && src !== s ? src : null, wname || 'DOWNED', s);
+  toast(s.name + ' IS DOWN', CHEX[s.color], 2.4, 0, 2); sfx('lost');
+  if (s.player) rumble(s.player, 1, 0.4);
+  for (let i = 0; i < 6; i++) blood(s.x, s.y, 0, 0);
+  sfx('hurt', s.x, s.y);
+  survCheckWipe();
+}
+function reviveSoldier(s, f) { s.down = false; s.hp = s.mhp * f; s.rev = 0; s.protect = 1.2; s.lastHurt = M.time; if (s.player) psfx(s.player, 'spawn'); }
+function downTick(s, dt) {
+  s.vx = s.vy = 0; s.bleed -= dt;
+  const mate = M.sol.find(o => o !== s && o.alive && !o.down && !o.veh && o.team === s.team && Math.hypot(o.x - s.x, o.y - s.y) < 28);
+  s.rev = mate ? s.rev + dt / 3 : Math.max(0, s.rev - dt * 0.5);
+  if (mate && s.rev >= 1) { reviveSoldier(s, 0.5); addPts(mate, 100, 'REVIVED ' + s.name); mate.heal = (mate.heal || 0) + 1; toast(mate.name + ' REVIVED ' + s.name, CHEX[mate.color], 2, -1, 3); }
+  else if (s.bleed <= 0) kill(s, null, 'bleed', 0, 0, 'BLED OUT');
+}
+function survCheckWipe() { if (!M.over && M.sol.some(o => o.player) && !M.sol.some(o => o.player && o.alive && !o.down)) endMatch(1); }
+/* waves: bots start with pistols and bring heavier guns, grenades, rockets, then vehicles; they get sharper each wave */
+const WAVE_GUNS = [['pistol'], ['pistol', 'mp', 'mp'], ['mp', 'smg', 'shotgun'], ['smg', 'shotgun', 'ak', 'ak'], ['ak', 'ar', 'shotgun', 'br'], ['ar', 'br', 'lmg', 'ak', 'dmr'], ['ar', 'br', 'lmg', 'hmg', 'dmr', 'sniper']];
+const waveHumans = () => Math.max(1, M.sol.filter(s => s.player).length);
+function waveSize(n) { return Math.round((5 + n * 3) * (1 + 0.5 * (waveHumans() - 1))); }
+function updateWaves(dt) {
+  const W = M.wv;
+  if (W.brk > 0) { W.brk -= dt; if (W.brk <= 0) startWave(); return; }
+  const foes = M.sol.filter(s => s.team === 1 && !s.player), up = foes.filter(s => s.alive).length;
+  W.spT -= dt;
+  if (W.queue > 0 && W.spT <= 0 && up < Math.min(foes.length, 4 + W.n * 2 + 2 * (waveHumans() - 1))) {
+    const s = foes.find(q => !q.alive); if (s) { spawnWaveBot(s); W.queue--; }
+    W.spT = rnd(0.3, 1.0);
+  }
+  W.left = W.queue + up;
+  if (!W.left) waveCleared();
+}
+function startWave() {
+  const W = M.wv; W.n++; W.queue = W.left = waveSize(W.n); W.spT = 0;
+  const k = Math.min(1, (W.n - 1) / 9), b = SKILL[M.cfg.skill] || SKILL[1];
+  M.skill = { name: b.name, react: b.react * (1 - 0.5 * k), err: b.err * (1 - 0.5 * k), rate: Math.min(1, b.rate + 0.3 * k) };
+  for (const s of M.sol) if (s.player && !s.alive) spawnSoldier(s);      // anyone still picking a loadout goes in now
+  toast('WAVE ' + W.n + (W.lim ? ' OF ' + W.lim : ''), '#ff7a60', 2.6, 1, 2); sfx('lost');
+}
+function waveCleared() {
+  const W = M.wv;
+  if (W.lim && W.n >= W.lim) { endMatch(0); return; }
+  W.brk = 12;
+  for (const s of M.sol) if (s.player) { if (!s.alive) s.respawnT = 0; else if (s.down) reviveSoldier(s, 1); else s.hp = s.mhp; }
+  toast('WAVE ' + W.n + ' CLEARED', '#7dff7a', 3, 0, 1); sfx('cap');
+}
+function spawnWaveBot(s) {
+  const ps = M.sol.filter(o => o.player && o.alive), C = [...MAP.ffaSpawns, MAP.bases[1], MAP.fwd[1]];
+  const md = c => ps.reduce((m, o) => Math.min(m, Math.hypot(o.x - c.x, o.y - c.y)), 1e9);
+  const far = C.filter(c => md(c) > 520), c = far.length ? pick(far) : C.reduce((a, b) => md(b) > md(a) ? b : a);
+  spawnSoldier(s, { kind: 'pt', x: c.x, y: c.y, name: '' });
+  const n = M.wv.n, p = pick(WAVE_GUNS[Math.min(n, WAVE_GUNS.length) - 1]);
+  const sec = n >= 5 && Math.random() < Math.min(0.35, 0.1 + 0.03 * n) ? 'rpg' : n >= 2 ? pick(['pistol', 'mp']) : 'pistol';
+  s.kit = sec === 'rpg' ? 1 : Math.max(0, KITS.findIndex(K => K.p.includes(p)));
+  s.w = [{ id: p, mag: WPN[p].mag, res: WPN[p].res }, { id: sec, mag: WPN[sec].mag, res: WPN[sec].res }]; s.wi = 0;
+  s.nades = n < 3 ? 0 : Math.min(3, (n - 1) >> 1); s.smokes = n < 4 ? 0 : 1; s.mines = 0; s.throwSel = s.nades ? 0 : 1;
 }
 /* out of bounds: anyone outside the battlefield (on foot or aboard) dies after OOB_T seconds; empty vehicles are wrecked after twice that */
 function updateBounds(dt) {
@@ -632,7 +704,7 @@ function updateItems(dt) {
   for (const it of M.items) {
     it.t -= dt;
     if (it.k === 'med') {
-      for (const s of M.sol) if (s.alive && !s.veh && s.team === it.team && s.hp < 100 && Math.hypot(s.x - it.x, s.y - it.y) < 58) { const h = Math.min(100 - s.hp, 14 * dt); s.hp += h; if (it.owner && it.owner !== s) { it.owner.heal += h; it.acc = (it.acc || 0) + h; if (it.acc >= 25) { it.acc -= 25; addPts(it.owner, 10, 'HEAL'); } } if (s.player) psfx(s.player, 'heal'); }
+      for (const s of M.sol) if (s.alive && !s.veh && s.team === it.team && !s.down && s.hp < s.mhp && Math.hypot(s.x - it.x, s.y - it.y) < 58) { const h = Math.min(s.mhp - s.hp, 14 * dt); s.hp += h; if (it.owner && it.owner !== s) { it.owner.heal += h; it.acc = (it.acc || 0) + h; if (it.acc >= 25) { it.acc -= 25; addPts(it.owner, 10, 'HEAL'); } } if (s.player) psfx(s.player, 'heal'); }
     } else if (it.k === 'ammo') {
       for (const s of M.sol) {
         if (!s.alive || s.veh || s.team !== it.team || Math.hypot(s.x - it.x, s.y - it.y) > 58) continue;
@@ -709,7 +781,7 @@ function updateProjectiles(dt) {
     // a joiner's shot is judged against where things were on their screen when they pulled the trigger (lag compensation)
     const T = p.rew ? netNow() - p.rew : 0;
     for (const s of M.sol) {
-      if (!s.alive || s === p.src || !canHurt(p.src, s) || (p.src && s.team === p.src.team && !M.ff)) continue;
+      if (!s.alive || s.down || s === p.src || !canHurt(p.src, s) || (p.src && s.team === p.src.team && !M.ff)) continue;
       if (s.veh && !s.veh.T.seats[s.seat].exposed) continue;
       const rad = s.veh ? 7 : s.swim ? 6 : [9, 6.5, 4.5][s.stance], o = p.rew ? lagAt(s, T) : s;
       const t = segCirc(x0, y0, x1, y1, o.x, o.y, rad); if (t >= 0 && t < bt) { bt = t; hit = { k: 'sol', s }; }
@@ -791,7 +863,7 @@ function controlSoldier(s, I, dt) {
   if (I.aimA !== null && I.aimA !== undefined) {
     if (s.stance === 2 && !s.veh) s.a += clamp(angDiff(s.a, I.aimA), -4 * dt, 4 * dt); else s.a = I.aimA;
   }
-  if (M.time - s.lastHurt > 5 && s.hp < 100) s.hp = Math.min(100, s.hp + 9 * dt);
+  if (M.time - s.lastHurt > 5 && s.hp < s.mhp) s.hp = Math.min(s.mhp, s.hp + 9 * dt * s.mhp / 100);
   if (s.reloadT > 0) { s.reloadT -= dt; if (s.reloadW !== s.wi) s.reloadT = 0; else if (s.reloadT <= 0) { const st = cw(s), need = WPN[st.id].mag - st.mag, take = Math.min(need, st.res); st.mag += take; st.res -= take; } }
   if (s.veh) { controlSeated(s, I, dt); return; }
   s.swim = inWater(s.x, s.y);
@@ -860,10 +932,10 @@ function controlSoldier(s, I, dt) {
 function pickupCrate(s, c) {
   c.live = false; c.t = 24;
   const r = Math.random(); let txt;
-  if (s.hp < 60 && r < 0.6) { s.hp = 100; txt = 'MEDKIT'; }
+  if (s.hp < s.mhp * 0.6 && r < 0.6) { s.hp = s.mhp; txt = 'MEDKIT'; }
   else if (r < 0.45) { for (const w of s.w) { w.res = WPN[w.id].res; } txt = 'FULL AMMO'; }
   else if (r < 0.75) { s.nades = Math.min(5, s.nades + 2); txt = 'GRENADES +2'; }
-  else { s.hp = Math.min(100, s.hp + 40); for (const w of s.w) w.res = Math.min(WPN[w.id].res, w.res + Math.ceil(WPN[w.id].res / 2)); txt = 'FIELD KIT'; }
+  else { s.hp = Math.min(s.mhp, s.hp + 0.4 * s.mhp); for (const w of s.w) w.res = Math.min(WPN[w.id].res, w.res + Math.ceil(WPN[w.id].res / 2)); txt = 'FIELD KIT'; }
   if (s.player) { s.msg = { t: 1.8, txt }; psfx(s.player, 'pickup'); }
 }
 function controlSeated(s, I, dt) {

@@ -10,7 +10,7 @@ function visibleTo(s, o, d) {
 }
 function enemiesOf(s, out) {
   out.length = 0;
-  for (const o of M.sol) if (o.alive && isEnemy(s.team, o.team) && (!o.veh || o.veh.T.seats[o.seat].exposed) && o.protect <= 0) out.push(o);
+  for (const o of M.sol) if (o.alive && !o.down && isEnemy(s.team, o.team) && (!o.veh || o.veh.T.seats[o.seat].exposed) && o.protect <= 0) out.push(o);
   return out;
 }
 /* a gun nest only swings so far: anything outside its arc isn't a target for whoever is on it */
@@ -29,7 +29,7 @@ function findTarget(s, range) {
 }
 function pickGoal(s) {
   const B = s.bot;
-  if (M.ffa || M.mode === 'tdm') {
+  if (M.ffa || M.mode === 'tdm' || M.coop) {
     enemiesOf(s, _en);
     let best = null, bd = 1e9; for (const o of _en) { const d = Math.hypot(o.x - s.x, o.y - s.y) + rnd(0, 400); if (d < bd) { bd = d; best = o; } }
     B.goal = best ? { x: best.x + rnd(-60, 60), y: best.y + rnd(-60, 60) } : { x: rnd(200, WW - 200), y: rnd(200, WH - 200) }; B.goalT = rnd(4, 7); return;
@@ -92,7 +92,7 @@ function botControl(s, dt) {
       B.repairV = null;
       if (s.kit === 1 && (!nt || nt.d > 320)) { for (const w of M.vehicles) if (w.active && !w.dead && w.T.drive && w.hp < w.T.hp * 0.7 && !isEnemy(vehTeam(w), s.team) && Math.hypot(w.x - s.x, w.y - s.y) < 260 && Math.abs(w.spd) < 30) { B.repairV = w; break; } }
       // vehicles and nests
-      if (B.vehCd <= 0 && (!nt || nt.d > 250) && !B.repairV) {
+      if (B.vehCd <= 0 && (!nt || nt.d > 250) && !B.repairV && (!M.coop || M.wv.n >= 6)) {     // co-op raiders only take vehicles from wave 6
         B.vehCd = rnd(1.5, 3);
         const gd = Math.hypot(B.goal.x - s.x, B.goal.y - s.y);
         let choice = null, cd = 1e9;
@@ -268,7 +268,7 @@ function deployInput(s, dt) {
     else if (b.act.startsWith('slot')) { const [i, d] = b.act.slice(4).split(':').map(Number); p.slotSel = i; changeSlot(i, d); }
     break;
   }
-  const ready = s.respawnT <= 0 && (M.ffa || M.tickets[s.team] > 0) && !M.over;
+  const ready = s.respawnT <= 0 && canDeploy(s) && !M.over;
   if (!ready) return;
   if (deploy) { if (NET.role === 'client') netDeployReq(s, opts[s.spawnSel]); else spawnSoldier(s, opts[s.spawnSel]); }
 }
@@ -285,9 +285,10 @@ function updateMatch(dt) {
       if (M.over) continue;
       s.respawnT -= sdt;
       if (s.player) { if (s.deathT > 0) { s.deathT -= sdt; trackKiller(s); } else if (isNet(s.player)) netDeployHost(s); else deployInput(s, sdt); }
-      else if (s.respawnT <= 0 && (M.ffa || M.tickets[s.team] > 0)) spawnSoldier(s);
+      else if (!M.coop && s.respawnT <= 0 && (M.ffa || M.tickets[s.team] > 0)) spawnSoldier(s);
       continue;
     }
+    if (s.down) { if (s.player) { if (isNet(s.player)) netInputHost(s.player); else humanInput(s.player); } downTick(s, sdt); continue; }
     const I = s.player ? (isNet(s.player) ? netInputHost(s.player) : humanInput(s.player)) : botControl(s, sdt);
     const n0 = M.proj.length;
     controlSoldier(s, I, sdt);
@@ -309,6 +310,7 @@ function updateMatch(dt) {
   updateProjectiles(sdt);
   updateItems(sdt);
   updateObjectives(sdt);
+  if (M.coop && !M.over) updateWaves(sdt);
   updateBounds(sdt);
   for (const c of M.crates) if (!c.live) { c.t -= sdt; if (c.t <= 0) c.live = true; }
   for (const w of M.wrecks) { w.t -= sdt; w.burn -= sdt; }

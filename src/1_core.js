@@ -49,9 +49,10 @@ const MODES = [
   { id: 'conquest', n: 'CONQUEST', team: true, desc: 'Hold flags to drain enemy tickets.' },
   { id: 'tdm', n: 'TEAM DEATHMATCH', team: true, desc: 'Every death costs a ticket.' },
   { id: 'koth', n: 'KING OF THE HILL', team: true, desc: 'One flag in the middle. Hold it.' },
-  { id: 'ffa', n: 'DEATHMATCH', team: false, desc: 'Everyone for themselves.' }];
+  { id: 'ffa', n: 'DEATHMATCH', team: false, desc: 'Everyone for themselves.' },
+  { id: 'surv', n: 'CO-OP SURVIVAL', team: false, coop: true, desc: 'Survive waves of bots together. Revive downed friends.' }];
 const MAPNAMES = [['crossroads', 'CROSSROADS'], ['farmlands', 'FARMLANDS'], ['rivertown', 'RIVER TOWN'], ['snowfield', 'SNOWFIELD']];
-const LIMITS = { team: [100, 200, 300], ffa: [10, 20, 30] };
+const LIMITS = { team: [100, 200, 300], ffa: [10, 20, 30], surv: [10, 20, 0] };      // survival: waves to win (0 = endless)
 
 /* weapons: dmg per bullet, vdmg = damage to light vehicles */
 const WPN = {
@@ -328,11 +329,13 @@ function audioInit() {
     applyMute(); Music.start();
   } catch (e) { AU.ctx = null; }
 }
-function applyMute() { if (!AU.ctx) return; AU.sfx.gain.value = AU.ui.gain.value = AU.sfxOn ? 0.75 : 0; AU.mus.gain.value = AU.musOn ? 0.3 : 0; }
+function applyMute() { if (!AU.ctx) return; AU.sfx.gain.value = AU.sfxOn && !AU.pz ? 0.75 : 0; AU.ui.gain.value = AU.sfxOn ? 0.75 : 0; AU.mus.gain.value = AU.musOn ? 0.3 : 0; }
 /* menus muffle the battle behind them (the demo battle on the title screen, the match under pause / lobby / settings) */
 function audioTick() {
   if (!AU.ctx || !AU.muf) return;
   const menu = SET.open || state !== 'play' || !M || M.demo, f = menu ? 520 : 20000;
+  const pz = !!(M && !M.demo && (state === 'pause' || (SET.open && SET.from === 'pause')));   // paused match: battle sounds go quiet, come back on unpause
+  if (AU.pz !== pz) { AU.pz = pz; AU.sfx.gain.cancelScheduledValues(AU.ctx.currentTime); AU.sfx.gain.setTargetAtTime(AU.sfxOn && !pz ? 0.75 : 0, AU.ctx.currentTime, pz ? 0.04 : 0.1); }
   if (AU.mufOn !== menu) { AU.mufOn = menu; AU.muf.frequency.cancelScheduledValues(AU.ctx.currentTime); AU.muf.frequency.setTargetAtTime(f, AU.ctx.currentTime, menu ? 0.06 : 0.12); }
 }
 const UISFX = { ui: 1, join: 1, leave: 1 };

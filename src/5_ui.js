@@ -121,9 +121,9 @@ function drawWorld(vw) {
   worldT(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   for (const s of M.sol) {
     if (!s.alive || !s.player || !vis(s.x, s.y, 40)) continue;
-    const y = (s.veh ? s.veh.y - s.veh.T.hw - 16 : s.y - 18), x = s.veh ? s.veh.x : s.x;
-    ctx.font = `bold ${Math.round(11 / Math.max(0.8, VZ * 0.6))}px ${FB}`;
-    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillText(s.name, x + 1, y + 1); ctx.fillStyle = CHEX[s.color]; ctx.fillText(s.name, x, y);
+    const y = (s.veh ? s.veh.y - s.veh.T.hw - 14 : s.y - (s.down ? 30 : 16)), x = s.veh ? s.veh.x : s.x;
+    ctx.font = `bold ${Math.round(8 / Math.max(0.8, VZ * 0.6))}px ${FB}`; ctx.globalAlpha = 0.5;      // small and faint: a label, not a sign
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillText(s.name, x + 1, y + 1); ctx.fillStyle = CHEX[s.color]; ctx.fillText(s.name, x, y); ctx.globalAlpha = 1;
   }
   for (const p of (M.demo ? [] : LOCALS())) {
     const s = p.sol; if (!s.alive || (p.raw && p.raw.mouse)) continue;
@@ -230,6 +230,7 @@ function drawSoldier(s, vw) {
     ctx.strokeStyle = 'rgba(220,235,240,0.5)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(s.x, s.y, 10 + Math.sin(M.time * 6) * 1.5, 0, TAU); ctx.stroke();
     solDraw(s, solSpr(s.color, 'nogun'), s.x, s.y, s.a, 0.85, 0.85, 0.85); return;
   }
+  if (s.down) { drawDowned(s); return; }
   const W_ = s.w ? WPN[cw(s).id] : null, rocket = W_ && W_.rocket, gunless = s.throwT > 0 || s.torch || s.handT > 0;
   const body = gunless ? 'nogun' : rocket ? 'rpg' : 'stand', pose = body;
   const shadow = solShadow(pose), jk = jumpK(s), lift = 1 + 0.15 * jk;
@@ -256,6 +257,16 @@ function drawSoldier(s, vw) {
   else if (s.handT > 0 && s.handK) { worldT(); const [hx, hy] = muzzle(s, 11); icon(gadgetIconKind(s.handK), hx, hy, 9); }
   if (s.flash > 0 && !gunless) { const [gx, gy] = gunTip(s), r = W_ && W_.dmg >= 40 ? 14 : 10, c = Math.cos(s.a), sn = Math.sin(s.a); flashAt(gx + c * r * 0.55, gy + sn * r * 0.55, r); }
 }
+/* co-op: a downed player lies on the ground with a pulsing marker; the red ring is the time left to bleed out, the green one the revive */
+function drawDowned(s) {
+  solDraw(s, solSpr(s.color, 'dead'), s.x, s.y, s.a + Math.PI, 1, 1); worldT();
+  const p = 0.5 + 0.5 * Math.sin(M.time * 5);
+  ctx.lineWidth = 2; ctx.strokeStyle = `rgba(255,90,69,${0.25 + 0.3 * p})`; ctx.beginPath(); ctx.arc(s.x, s.y, 16, 0, TAU); ctx.stroke();
+  ctx.strokeStyle = '#ff5a45'; ctx.beginPath(); ctx.arc(s.x, s.y, 16, -Math.PI / 2, -Math.PI / 2 + TAU * clamp((s.bleed || 0) / 30, 0, 1)); ctx.stroke();
+  if (s.rev > 0) { ctx.lineWidth = 3; ctx.strokeStyle = '#7dff7a'; ctx.beginPath(); ctx.arc(s.x, s.y, 20, -Math.PI / 2, -Math.PI / 2 + TAU * clamp(s.rev, 0, 1)); ctx.stroke(); }
+  const cy = s.y - 22 - p * 2; ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(s.x - 5, cy - 5, 10, 10);
+  ctx.fillStyle = '#fff'; ctx.fillRect(s.x - 4, cy - 1.5, 8, 3); ctx.fillRect(s.x - 1.5, cy - 4, 3, 8);
+}
 const jumpK = s => s.jumpT > 0 ? Math.sin(Math.PI * clamp(1 - s.jumpT / 0.42, 0, 1)) : 0;
 /* prone legs: frame 0 lying still, 1 / 0 / 2 / 0 while crawling */
 function legFrame(s) { return s.moving ? 'leg' + [1, 0, 2, 0][Math.floor(s.walkT / 7) % 4] : 'leg0'; }
@@ -265,7 +276,7 @@ function drawShadowLayer(vw, vis) {
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR); ctx.imageSmoothingEnabled = false;
   worldT(); ctx.fillStyle = '#000'; const eyes = viewEyes(vw);
   for (const s of M.sol) {
-    if (!s.alive || s.veh || s.swim || !vis(s.x, s.y, 30) || smokeHides(eyes, s, vw)) continue;
+    if (!s.alive || s.down || s.veh || s.swim || !vis(s.x, s.y, 30) || smokeHides(eyes, s, vw)) continue;
     const W_ = s.w ? WPN[cw(s).id] : null, body = s.throwT > 0 || s.torch ? 'nogun' : W_ && W_.rocket ? 'rpg' : 'stand';
     const jk = jumpK(s), o = 1 + jk * 5, ox = s.x + 2.5 * o, oy = s.y + 3.5 * o;
     if (s.stance === 2) spr(solShadow(legFrame(s)), ox, oy, s.a);
@@ -400,6 +411,11 @@ function drawViewHUD(vw) {
     g.addColorStop(0, 'rgba(200,0,0,0)'); g.addColorStop(1, `rgba(200,0,0,${Math.min(0.55, a)})`); ctx.fillStyle = g; ctx.fillRect(vw.x, vw.y, vw.w, vw.h);
   }
   if (!s.alive) { if (s.deathT > 0 && !M.over) drawDeathCam(vw, p, u); else drawDeploy(vw, p); ctx.restore(); return; }
+  if (s.down && !M.over) {
+    const cx = vw.x + vw.w / 2, cy = vw.y + vw.h * 0.3, b = Math.ceil(s.bleed || 0) + 's';
+    stxt('YOU’RE DOWN', cx, cy, 30 * u, '#ff5a45', 'center', 'middle', FD);
+    stxt(s.rev > 0 ? 'GETTING BACK UP… ' + Math.round(s.rev * 100) + '%' : M.sol.some(o => o.player && o !== s && o.alive && !o.down) ? 'A TEAMMATE CAN STAND OVER YOU TO REVIVE YOU · ' + b : 'BLEEDING OUT · ' + b, cx, cy + 30 * u, 15 * u, s.rev > 0 ? '#7dff7a' : '#f2e6c4', 'center', 'middle', FD);
+  }
   { // out-of-bounds warning (timed locally so online clients see it too)
     const ox = s.veh ? s.veh.x : s.x, oy = s.veh ? s.veh.y : s.y, now = performance.now() / 1000;
     if (outOfBounds(ox, oy) && !M.over) {
@@ -414,10 +430,10 @@ function drawViewHUD(vw) {
   // health cross + bar
   const cx = L + 22 * u, cy = B - 26 * u, cs = 20 * u, ih = 22 * u, bh = 16 * u;
   ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(cx - cs * 0.36 + 2, cy - cs + 2, cs * 0.72, cs * 2); ctx.fillRect(cx - cs + 2, cy - cs * 0.36 + 2, cs * 2, cs * 0.72);
-  const hc = s.hp > 35 ? (CFG.style === 'grit' ? '#4a68b8' : '#2b55ff') : '#e8302a';
+  const hc = s.hp > (s.mhp || 100) * 0.35 ? (CFG.style === 'grit' ? '#4a68b8' : '#2b55ff') : '#e8302a';
   ctx.fillStyle = hc; ctx.fillRect(cx - cs * 0.36, cy - cs, cs * 0.72, cs * 2); ctx.fillRect(cx - cs, cy - cs * 0.36, cs * 2, cs * 0.72);
   const bx = cx + cs + 10 * u, bw = Math.min(170 * u, vw.w * 0.3);
-  ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(bx, cy - 13 * u, bw, 9 * u); ctx.fillStyle = hc; ctx.fillRect(bx, cy - 13 * u, bw * s.hp / 100, 9 * u);
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(bx, cy - 13 * u, bw, 9 * u); ctx.fillStyle = hc; ctx.fillRect(bx, cy - 13 * u, bw * Math.min(1, s.hp / (s.mhp || 100)), 9 * u);
   const v = s.veh, sd = v ? v.T.seats[s.seat] : null, ry = cy + 17 * u;
   ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(bx, cy + 1 * u, bw, 7 * u);
   if (!v || sd.role === 'rifle') {
@@ -540,7 +556,7 @@ function drawDeploy(vw, p) {
   const gu = clamp(W / 1100, 0.7, 1.15), topIn = vw.y === 0 ? SAFE.t + (M.ffa ? 54 : 46) * gu : 0;
   const pad = 8 * u, X0 = vw.x + pad + (vw.x === 0 ? SAFE.l : 0), X1 = vw.x + vw.w - pad - (vw.x + vw.w >= W - 1 ? SAFE.r : 0);
   const Y0 = vw.y + topIn + pad, Y1 = vw.y + vw.h - pad - (vw.y + vw.h >= H - 1 ? SAFE.b : 0), wid = X1 - X0, dev = p.dev.type, bh = F(16, 13);
-  if (!M.ffa && M.tickets[s.team] <= 0) { icon('skull', vw.x + vw.w / 2, vw.y + vw.h / 2, F(60, 30), '#ff5a45'); return; }
+  if (!M.ffa && !M.coop && M.tickets[s.team] <= 0) { icon('skull', vw.x + vw.w / 2, vw.y + vw.h / 2, F(60, 30), '#ff5a45'); return; }
   // class tabs
   const th = Math.max(36, 42 * u), side = dev === 'pad' ? bh * 1.5 + 6 : dev === 'kb' ? bh * 1.6 + 6 : 0, n = KITS.length, gap = 5 * u, tw = (wid - side * 2 - gap * (n - 1)) / n;
   if (side) { badge(dev === 'pad' ? 'LB' : 'Q', dev, X0, Y0 + th / 2, bh); badge(dev === 'pad' ? 'RB' : 'E', dev, X1 - side + 6, Y0 + th / 2, bh); }
@@ -553,7 +569,7 @@ function drawDeploy(vw, p) {
     DUI.push({ p, x, y: Y0, w: tw, h: th, act: 'kit' + i });
   });
   // bottom bar: who + deploy
-  const bb = Math.max(38, 42 * u), bY = Y1 - bb, ready = s.respawnT <= 0, auto = clamp((s.firstDeploy ? 15 : 6) - s.deployIdle, 0, 15), autoMax = s.firstDeploy ? 15 : 6;
+  const bb = Math.max(38, 42 * u), bY = Y1 - bb, ready = s.respawnT <= 0 && canDeploy(s), auto = clamp((s.firstDeploy ? 15 : 6) - s.deployIdle, 0, 15), autoMax = s.firstDeploy ? 15 : 6;
   stxt(s.name, X0, bY + bb / 2, F(16, 13), CHEX[p.color], 'left', 'middle', FD);
   if (!s.firstDeploy) { ctx.font = `${F(16, 13)}px ${FD}`; icon('skull', X0 + ctx.measureText(s.name).width + 16 * u, bY + bb / 2, F(18, 14), '#ff7a60'); }
   const dw = Math.min(Math.max(170, 230 * u), wid * 0.5), dx = X1 - dw;
@@ -563,6 +579,7 @@ function drawDeploy(vw, p) {
   ctx.strokeStyle = 'rgba(242,230,196,0.3)'; ctx.lineWidth = 1; ctx.strokeRect(dx + 0.5, bY + 0.5, dw - 1, bb - 1);
   { let x = dx + dw / 2 - (dev === 'touch' ? 0 : bh * 1.2) - F(40, 34); if (dev !== 'touch') x += badge('deploy', dev, x, bY + bb / 2, bh) + 8 * u; icon('deploy', x + bh / 2, bY + bb / 2, bh, ready ? '#141a10' : 'rgba(255,255,255,0.4)'); txt('DEPLOY', x + bh + 8 * u, bY + bb / 2 + 1, F(16, 13), ready ? '#141a10' : 'rgba(255,255,255,0.4)', 'left', 'middle', FD); }
   DUI.push({ p, x: dx, y: bY, w: dw, h: bb, act: 'deploy' });
+  if (M.coop && !canDeploy(s)) stxt('YOU’RE BACK IN WHEN THIS WAVE IS CLEARED', (X0 + X1) / 2, bY - F(14, 12), F(14, 12), '#ffe08a', 'center', 'middle', FD);
   // middle: map + loadout
   const mTop = Y0 + th + 6 * u, mBot = bY - 6 * u, mH = mBot - mTop, lw = clamp(wid * 0.34, 150, 300 * u), mapW = wid - lw - 8 * u;
   if (mH <= 20) return;
@@ -686,7 +703,12 @@ function drawTouch(s) {
 function drawGlobalHUD() {
   screenT();
   const top = SAFE.t + 10, u = clamp(W / 1100, 0.7, 1.15);
-  if (!M.ffa) {
+  if (M.coop) {
+    const V = M.wv, cx = W / 2, bw = 300 * u;
+    ctx.fillStyle = 'rgba(8,12,6,0.7)'; ctx.fillRect(cx - bw / 2, top, bw, 34 * u);
+    stxt(V.n ? 'WAVE ' + V.n + (V.lim ? ' / ' + V.lim : '') : 'GET READY', cx - 8 * u, top + 23 * u, 17 * u, '#ffe08a', 'right', 'alphabetic', FD);
+    stxt(V.brk > 0 ? 'NEXT WAVE IN ' + Math.ceil(V.brk) : V.left + ' RAIDERS LEFT', cx + 8 * u, top + 22 * u, 13 * u, V.brk > 0 ? '#7dff7a' : '#f2e6c4', 'left', 'alphabetic', FD);
+  } else if (!M.ffa) {
     const bw = Math.min(230 * u, W * 0.25), cx = W / 2, lim = LIMITS.team[M.cfg.limit] || 200;
     ctx.fillStyle = 'rgba(8,12,6,0.7)'; ctx.fillRect(cx - bw - 90 * u, top, bw * 2 + 180 * u, 34 * u);
     for (const t of [0, 1]) {

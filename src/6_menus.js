@@ -421,7 +421,7 @@ function updateNetLobby(ins) {
     if (st.opt) { openSettings('lobby'); return; }
     if (!me) { if (st.back && stateT > 0.3) { netLeave(); return; } continue; }
     if (dev.type === 'pad' && (st.confirm || st.tabL || st.tabR || st.pause)) { NET.dev = dev; me.dev = dev; }
-    const dc = st.tabR ? 1 : st.tabL ? -1 : 0; if (dc && !NET.want.r) cycleColor(me, dc);
+    const dc = st.tabR ? 1 : st.tabL ? -1 : 0; if (dc && !NET.want.r) withHostCfg(() => cycleColor(me, dc));
     if ((dev.type === 'pad' ? st.interact : st.nadeCyc) && !NET.want.r) withHostCfg(() => toggleTeam(me));
     if (st.pause && !NET.want.r) toggleReady(me);
     else if (st.confirm && stateT > 0.3) toggleReady(me);
@@ -522,23 +522,55 @@ function drawSettings() {
 /* ================= local lobby ================= */
 const LOBBY = { sel: 0 };
 const MATCH_ROWS_ = ['mode', 'map', 'bots', 'limit', 'skill', 'ff', 'board', 'fog', 'weather'], MATCH_ROWS_NET = [...MATCH_ROWS_, 'midjoin', 'pub'];
-const matchRows = () => NET.role ? MATCH_ROWS_NET : MATCH_ROWS_;      // online games also choose whether people can join mid-match
+const matchRows = () => (NET.role ? MATCH_ROWS_NET : MATCH_ROWS_).filter(k => !(k === 'bots' && MODES[CFG.mode].coop));   // co-op: the waves set the numbers      // online games also choose whether people can join mid-match
 function deviceKey(d) { return d.type + (d.index !== undefined ? d.index : '') + (d.peer || ''); }
 function devName(d) { return d.type === 'net' ? (d.peer ? 'ONLINE' : 'HOST') : d.type === 'kb' ? 'KEYBOARD + MOUSE' : d.type === 'pad' ? 'CONTROLLER ' + (d.index + 1) : 'TOUCH'; }
 function lobbyJoin(dev) {
   if (PLAYERS.length >= MAXP || PLAYERS.some(p => deviceKey(p.dev) === deviceKey(dev))) { sfx('leave'); return; }
-  const used = new Set(PLAYERS.map(p => p.color));
+  const used = new Set(PLAYERS.map(p => p.pc || p.color));
   const id = [0, 1, 2, 3].find(i => !PLAYERS.some(p => p.id === i));
   const team = PLAYERS.filter(p => p.team === 0).length <= PLAYERS.filter(p => p.team === 1).length ? 0 : 1;
   const pref = PRIME[id], color = !used.has(pref) ? pref : COLORS.find(c => !used.has(c));
-  PLAYERS.push({ id, dev, color, team, ready: false, kit: 0, var: 0 });
+  PLAYERS.push({ id, dev, color, pc: color, team, ready: false, kit: 0, var: 0 });
   PLAYERS.sort((a, b) => a.id - b.id);
   sfx('join');
 }
 function leaveLobby(p) { PLAYERS = PLAYERS.filter(q => q !== p); sfx('leave'); }
+/* colours: in team modes a team wears one colour (anyone on it can change it, never to the other team's); otherwise each player
+   wears their own pick (p.pc). The host (or local game) settles everyone's colour every lobby frame. */
+function lobbyTeamCols() {
+  if (CFG.teamColors === 'classic') return ['blue', 'red'];
+  const T = LOBBY.tcol || (LOBBY.tcol = [null, null]), ps = PLAYERS.slice().sort((a, b) => a.id - b.id);
+  for (const t of [0, 1]) { const lead = ps.find(p => p.team === t); if (!lead) T[t] = null; else if (!T[t]) T[t] = lead.pc || lead.color; }
+  if (T[0] && T[0] === T[1]) T[1] = ['red', 'blue', ...COLORS].find(c => c !== T[0]);
+  const out = T.slice();
+  for (const t of [0, 1]) if (!out[t]) out[t] = ['blue', 'red', 'green', 'orange', 'cyan', 'magenta', 'yellow'].find(c => c !== out[1 - t]);
+  return out;
+}
+function syncLobbyColors() {
+  const ps = PLAYERS.slice().sort((a, b) => a.id - b.id);
+  for (const p of ps) if (!p.pc) p.pc = p.color;
+  if (MODES[CFG.mode].team) { const tc = lobbyTeamCols(); for (const p of ps) p.color = tc[p.team]; return; }
+  const used = new Set(); for (const p of ps) { const c = used.has(p.pc) ? COLORS.find(x => !used.has(x)) : p.pc; p.color = c; used.add(c); }
+}
+function nextColor(p, d) {
+  const team = MODES[CFG.mode].team; if (team && CFG.teamColors === 'classic') return null;
+  const used = new Set(PLAYERS.filter(q => q !== p && !(team && q.team === p.team)).map(q => q.color));
+  let i = COLORS.indexOf(p.color); for (let k = 0; k < COLORS.length; k++) { i = (i + d + COLORS.length) % COLORS.length; if (!used.has(COLORS[i])) return COLORS[i]; }
+  return null;
+}
+function applyColor(p, c) {
+  if (!COLORS.includes(c)) return;
+  if (MODES[CFG.mode].team) { if (CFG.teamColors === 'classic') return; lobbyTeamCols(); if (LOBBY.tcol[1 - p.team] === c) return; LOBBY.tcol[p.team] = c; }
+  else if (PLAYERS.some(q => q !== p && q.color === c)) return;
+  p.pc = c; syncLobbyColors();
+}
 function cycleColor(p, d) {
-  if (NET.role === 'client') { const used = new Set(PLAYERS.filter(q => q !== p).map(q => q.color)); let i = COLORS.indexOf(p.color); for (let k = 0; k < COLORS.length; k++) { i = (i + d + COLORS.length) % COLORS.length; if (!used.has(COLORS[i])) { NET.want.c = COLORS[i]; NET.want.cT = performance.now(); p.color = COLORS[i]; break; } } sfx('ui'); return; }
-  const used = new Set(PLAYERS.filter(q => q !== p).map(q => q.color)); let i = COLORS.indexOf(p.color); for (let k = 0; k < COLORS.length; k++) { i = (i + d + COLORS.length) % COLORS.length; if (!used.has(COLORS[i])) { p.color = COLORS[i]; break; } } sfx('ui'); }
+  const c = nextColor(p, d); if (!c) { sfx('leave'); return; }
+  if (NET.role === 'client') { NET.want.c = c; NET.want.cn = (NET.want.cn || 0) + 1; NET.want.cT = performance.now(); p.color = c; }
+  else applyColor(p, c);
+  sfx('ui');
+}
 function toggleTeam(p) { if (!MODES[CFG.mode].team) return; if (NET.role === 'client') { NET.want.t = 1 - p.team; NET.want.tn = (NET.want.tn || 0) + 1; NET.want.tT = performance.now(); p.team = NET.want.t; } else p.team = 1 - p.team; sfx('ui'); }
 function toggleReady(p) { if (NET.role === 'client') { NET.want.r = NET.want.r ? 0 : 1; NET.want.rT = performance.now(); p.ready = !!NET.want.r; sfx(p.ready ? 'join' : 'leave'); return; } p.ready = !p.ready; sfx(p.ready ? 'join' : 'leave'); }
 function saveCfg() { store.set('cfg3', CFG); }
@@ -565,7 +597,8 @@ function settingLabel(key) {
     case 'mode': return ['MODE', MODES[C.mode].n];
     case 'map': return ['MAP', MAPNAMES[C.map][1]];
     case 'bots': return [ffa ? 'BOTS' : 'BOTS / TEAM', String(C.bots)];
-    case 'limit': return ffa ? ['KILL LIMIT', String(LIMITS.ffa[C.limit])] : ['TICKETS', String(LIMITS.team[C.limit])];
+    case 'limit': if (MODES[C.mode].coop) return ['WAVES', LIMITS.surv[C.limit] ? String(LIMITS.surv[C.limit]) : 'ENDLESS'];
+      return ffa ? ['KILL LIMIT', String(LIMITS.ffa[C.limit])] : ['TICKETS', String(LIMITS.team[C.limit])];
     case 'skill': return ['BOT SKILL', SKILL[C.skill].name];
     case 'ff': return ['FRIENDLY FIRE', C.ff ? 'ON' : 'OFF'];
     case 'board': return ['ENEMY BOARDING', C.board ? 'ON' : 'OFF'];
@@ -587,6 +620,7 @@ function startBattle() {
 function toLobby() { engineKillAll(); SET.open = false; for (const p of PLAYERS) { p.ready = false; p.sol = null; } demoMatch(); setState('lobby'); Music.mode = 'menu'; }
 function updateLobby(ins) {
   if (NET.role === 'client') { updateNetLobby(ins); return; }
+  syncLobbyColors();
   const nRows = matchRows().length + 1;
   for (const { dev, st } of ins) {
     const p = PLAYERS.find(q => deviceKey(q.dev) === deviceKey(dev));
@@ -665,7 +699,7 @@ function drawSlot(x, y, w, h, i, u) {
   const sc = crispScale(Math.min(w * 0.7, (artBot - artTop)) / 26), sx = x + w / 2, sy = (artTop + artBot) / 2;
   uiShadowLayer(() => uiSoldierShadow('stand', sx, sy, Math.PI / 2, sc), 0.4);
   uiSoldier(p.color, 'stand', sx, sy, Math.PI / 2, sc);
-  if (!p.ready && ctl) {
+  if (!p.ready && ctl && !(team && CFG.teamColors === 'classic')) {     // classic team colours: nothing to pick
     const ab = Math.max(36, 34 * u);
     button({ x: x + 4, y: sy - ab / 2, w: ab, h: ab, label: '‹', fn: () => cycleColor(p, -1), size: fpx(22, u, 18), key: ['prev', pd], keyAt: 'below' });
     button({ x: x + w - ab - 4, y: sy - ab / 2, w: ab, h: ab, label: '›', fn: () => cycleColor(p, 1), size: fpx(22, u, 18), key: ['next', pd], keyAt: 'below' });
@@ -772,10 +806,11 @@ function drawEnd() {
   const u = uiU();
   let title, col;
   if (M.ffa) { const s = M.winnerSol || [...M.sol].sort((x, y) => y.k - x.k)[0]; title = `${s.name} WINS`; col = CHEX[s.color]; }
+  else if (M.coop) { title = M.winner === 0 ? 'YOU SURVIVED' : 'WIPED OUT ON WAVE ' + M.wv.n; col = M.winner === 0 ? '#7dff7a' : '#ff5a45'; }
   else { title = `${TEAMNAME[M.winner]} WINS`; col = TEAMHEX[M.winner]; }
   const ty = SAFE.t + fpx(44, u, 34);
   stxt(title, W / 2, ty, fpx(46, u, 28), col, 'center', 'middle', FD);
-  stxt(`${MODES.find(m => m.id === M.mode).n}  ·  ${MAPNAMES[M.cfg.map][1]}${M.ffa ? '' : `  ·  TICKETS ${M.tickets[0]} – ${M.tickets[1]}`}`, W / 2, ty + fpx(32, u, 24), fpx(13, u, 11), '#e8e8dc', 'center', 'middle', FD);
+  stxt(`${MODES.find(m => m.id === M.mode).n}  ·  ${MAPNAMES[M.cfg.map][1]}${M.ffa ? '' : M.coop ? `  ·  WAVE ${M.wv.n}` : `  ·  TICKETS ${M.tickets[0]} – ${M.tickets[1]}`}`, W / 2, ty + fpx(32, u, 24), fpx(13, u, 11), '#e8e8dc', 'center', 'middle', FD);
   const aw = awards(), awW = Math.min(200 * u, (W - 60) / Math.max(1, aw.length) - 10), ay = ty + fpx(50, u, 40), ah = fpx(62, u, 52);
   aw.forEach(([name, s, val], i) => {
     const x = W / 2 - (aw.length * (awW + 10) - 10) / 2 + i * (awW + 10);

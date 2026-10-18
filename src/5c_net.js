@@ -426,7 +426,7 @@ function netHostSee(pr) {
   if (state === 'lobby') {
     if (!P.j) { leaveLobby(p); return; }
     const j = P.j;
-    if (typeof j.c === 'string' && j.c !== p.color && COLORS.includes(j.c) && !PLAYERS.some(q => q !== p && q.color === j.c)) p.color = j.c;
+    if (typeof j.c === 'string' && (j.cn | 0) !== (p.wantCn | 0)) { p.wantCn = j.cn | 0; applyColor(p, j.c); }     // a colour pick counts once
     // a joiner's team request counts once (so the host can still move them afterwards)
     if (MODES[CFG.mode].team && (j.t === 0 || j.t === 1) && (j.tn | 0) !== (p.wantTn | 0)) { p.wantTn = j.tn | 0; p.team = j.t; }
     p.ready = !!j.r; p.name = dupName(p, cleanName(j.n).trim());
@@ -468,15 +468,15 @@ function netMidJoin(peer, j, cid) {
   let s = back && !back.player ? back : null, team = 0;
   if (!s) {
     const humans = t => M.sol.filter(o => o.player && o.team === t).length;
-    team = humans(0) <= humans(1) ? 0 : 1;
+    team = M.coop ? 0 : humans(0) <= humans(1) ? 0 : 1;
     const pick = L => L.find(o => !o.alive) || L[0] || null;
-    s = pick(M.sol.filter(o => !o.player && (M.ffa || o.team === team))) || pick(M.sol.filter(o => !o.player));
+    s = M.coop ? null : pick(M.sol.filter(o => !o.player && (M.ffa || o.team === team))) || pick(M.sol.filter(o => !o.player));     // co-op: a new survivor, never a raider
     if (s) { s.pts = s.k = s.d = s.caps = s.vk = 0; s.heal = s.rep = s.longest = s.rk = 0; }
   }
   if (!s) { s = makeSoldier({ team: M.ffa ? 100 + M.sol.length : team, color: p.color, name: p.name, player: p }); M.sol.push(s); }
   if (s.alive) { if (s.veh) leaveSeat(s); s.alive = false; }       // the bot standing in steps aside
-  s.player = p; s.bot = null; s.name = p.name || 'P' + (p.id + 1); s.respawnT = 0; s.firstDeploy = true; s.deployIdle = 0;
-  p.sol = s; p.team = s.team; if (M.ffa) p.color = s.color; else { s.color = p.color; s.dark = false; }
+  s.player = p; s.bot = null; s.mhp = M.coop ? 200 : 100; s.name = p.name || 'P' + (p.id + 1); s.respawnT = 0; s.firstDeploy = true; s.deployIdle = 0;
+  p.sol = s; p.team = s.team; if (M.ffa) p.color = s.color; else { if (!M.coop) p.color = M.teamColor[s.team]; s.color = p.color; s.dark = false; }
   delete NET.bn[M.sol.indexOf(s)]; netRoster();
   toast(s.name + (back ? ' IS BACK' : ' JOINED'), '#f2e6c4', 2.5, -1, 3);
   return p;
@@ -562,7 +562,7 @@ function netAuthMove(s, B, dt) {
 function netDeployHost(s) {
   const p = s.player, d = p.netDep;
   if (!d || d.n === p.lastDep) return;
-  if (s.respawnT > 0 || (!M.ffa && M.tickets[s.team] <= 0) || M.over) return;
+  if (s.respawnT > 0 || !canDeploy(s) || M.over) return;
   p.lastDep = d.n;
   s.kit = clamp(d.k | 0, 0, KITS.length - 1); s.var = Math.max(0, d.v | 0); s.sec = Math.max(0, d.sc | 0); s.nt = Math.max(0, d.nt | 0);
   const opts = spawnOptions(s); spawnSoldier(s, opts.find(o => o.name === d.o) || opts[0]);
@@ -622,6 +622,7 @@ function netSnap() {
   // each event rides in four snapshots in a row: a lost packet or two never loses it, and it doesn't bloat every packet
   const E = []; for (const e of NET.evLog) if ((e.n | 0) < 4 && now - e.t < 700) { e.n = (e.n | 0) + 1; E.push([e.id, Math.round((now - e.t) / 10), ...e.a]); }
   const g = { id: NET.matchId, q: ++NET.seq, t: now, S: S.join(''), V, P, F, T: [M.tickets[0], M.tickets[1]], o: M.over ? [M.winner, M.winnerSol ? M.sol.indexOf(M.winnerSol) : -1] : 0, E };
+  if (M.coop) { g.WV = [M.wv.n, M.wv.left, Math.ceil(M.wv.brk * 10)]; g.D = M.sol.map((s, i) => s.alive && s.down ? [i, Math.ceil(s.bleed), Math.round(s.rev * 100)] : 0).filter(Boolean); }
   return { g, pv };
 }
 /* what changes slowly (or never): sent four times a second beside the fast snapshots */
@@ -767,7 +768,7 @@ function netClientStart(g) {
   NET.me = PLAYERS.find(p => p.id === NET.myPid);
   newMatch(cfg, false);
   const tc = [COLORS[h[7]] || 'blue', COLORS[h[8]] || 'red']; M.teamColor = tc; TEAMHEX = tc.map(c => CHEX[c]);
-  TEAMNAME = (!M.ffa && cfg.teamColors !== 'classic') ? tc.map(c => CNAME[c]) : ['WEST', 'EAST']; buildRings();
+  TEAMNAME = teamNames(cfg, false, M.ffa, tc); buildRings();
   M.sol = roster.map(r => {
     const pl = r.pid >= 0 ? PLAYERS.find(p => p.id === r.pid) : null;
     const s = makeSoldier({ team: r.team, color: r.color, name: pl ? (cleanName(g.nm && g.nm[r.pid]).trim() || 'P' + (r.pid + 1)) : (BOTNAMES[r.ni] || 'Bot'), player: pl, bot: !pl });
@@ -804,7 +805,7 @@ function netDecode(g, pv) {
     if (k < 2) { const a = angD(rp.u(2)), sp = k ? 760 : 480; P.push({ k, id, x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp }); }
     else P.push({ k, id, x, y, vx: (rp.u(1) - 32) * 14, vy: (rp.u(1) - 32) * 14, h: rp.u(1), life: rp.u(1) / 20 });
   }
-  return { t: g.t, S, V, P, I: sl.I, W: sl.W, C: sl.C, F: String(g.F || ''), T: g.T, o: g.o, R: sl.R, A: sl.A, pv: pv || null };
+  return { t: g.t, S, V, P, I: sl.I, W: sl.W, C: sl.C, F: String(g.F || ''), T: g.T, WV: g.WV, D: g.D, o: g.o, R: sl.R, A: sl.A, pv: pv || null };
 }
 function netPair(T) {
   const B = NET.buf; if (!B.length) return null;
@@ -821,7 +822,7 @@ function netClientUpdate(dt) {
   netApplyEvents(To);
   const me = NET.me, s = me.sol;
   // read the controls first: our own aim and (on foot) our own movement answer them this frame, not a round trip later
-  NET.lastI = state === 'play' && s.alive && !M.over ? humanInput(me) : null;
+  NET.lastI = state === 'play' && s.alive && !s.down && !M.over ? humanInput(me) : null;
   netApplySnaps(now, dt);
   netWrecksStep(dt);
   if (NET.lastI) {
@@ -867,7 +868,7 @@ function netClientTick(now) {
   if (I && NET.auth && ms && ms.alive && !ms.veh) i.p = [ms.x, ms.y, ms.vx, ms.vy, Math.max(0, ms.jumpT)].map(v => Math.round(v * 100) / 100);
   const vv = NET.vauth;
   if (I && vv && ms && ms.alive && ms.veh === vv && ms.seat === 0) { i.vp = [vv.x, vv.y, vv.a, vv.vx, vv.vy, vv.spd, vv.av || 0, vv.tRel || 0].map(v => Math.round(v * 100) / 100); i.vca = NET.vcorr | 0; }
-  const pres = { j: { c: NET.want.c, t: NET.want.t, tn: NET.want.tn | 0, r: NET.want.r, n: NET.name, id: NET.cid }, i, d: NET.dep };
+  const pres = { j: { c: NET.want.c, cn: NET.want.cn | 0, t: NET.want.t, tn: NET.want.tn | 0, r: NET.want.r, n: NET.name, id: NET.cid }, i, d: NET.dep };
   const js = JSON.stringify(pres); if (js === NET.lastPres) return; NET.lastPres = js;
   NET.game.presence(pres).catch(netErr);
 }
@@ -957,7 +958,7 @@ function netApplySnaps(now, dt) {
     if (!ra) { if (s.alive) { s.alive = false; s.veh = null; s.seat = -1; s.torch = false; } return; }
     if (!s.alive) {
       if (s._deadT !== undefined && a.t <= s._deadT) return;            // the kill already played; wait for the next life
-      s.alive = true; s.deathT = 0; s.walkT = 0; s._n = ra.sh; s.x = ra.x; s.y = ra.y; s.vx = s.vy = 0; s.firstDeploy = false; s.hp = 100; s.netPos = false;
+      s.alive = true; s.deathT = 0; s.walkT = 0; s._n = ra.sh; s.x = ra.x; s.y = ra.y; s.vx = s.vy = 0; s.firstDeploy = false; s.hp = s.mhp || 100; s.netPos = false;
     }
     const px = s.x, py = s.y, ovx = s.vx, ovy = s.vy, ojt = s.jumpT, lr = rb && rb !== ra && rb.vi === ra.vi && Math.hypot(rb.x - ra.x, rb.y - ra.y) < 150 ? rb : null;
     let tx, ty;
@@ -1016,6 +1017,11 @@ function netApplySnaps(now, dt) {
   for (const v of M.vehicles) { if (v._cfx) { v._cfx = false; netCannonFx(v); } while (v._mfx > 0) { v._mfx--; netMgFx(v); } }
   // ---- projectiles (others' timeline)
   const [pa] = po, seen = new Set();
+  if (M.coop) {                                    // downed players and the wave count
+    for (const s of M.sol) s.down = false;
+    for (const d of pa.D || []) { const s = M.sol[d[0]]; if (s && s.alive) { s.down = true; s.bleed = d[1]; s.rev = d[2] / 100; } }
+    if (pa.WV) M.wv = { n: pa.WV[0], left: pa.WV[1], brk: pa.WV[2] / 10, lim: LIMITS.surv[M.cfg.limit] || 0 };
+  }
   for (const r of pa.P) {
     let p = NET.pmap.get(r.id);
     if (!p) { p = { k: ['rocket', 'shell', 'nade', 'nade'][r.k], smoke: r.k === 3, nid: r.id, life: 1, h: 0, rot: 0, x: r.x, y: r.y, vx: r.vx, vy: r.vy }; NET.pmap.set(r.id, p); }
