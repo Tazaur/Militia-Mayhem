@@ -33,7 +33,8 @@ Single self-contained HTML (canvas, no frameworks). Source is `src/*.js`, concat
 - `src/5b_fog.js` — line-of-sight vision polygons, remembered world, smoke masks.
 - `src/5c_net.js` — online play (see below).
 - `src/6_menus.js` — main menu, network menu (host / join-with-code keypad / name entry), settings, lobby (local + online), pause, end screen, main loop (`update`, `runMatch`, `render`).
-- `build_atlas.py` — slices the user's art (`art/orig/*` original uploads, `art/art3/sheet.png` soldier sheet, `art/art4/guns.png` weapon icons) into `atlas.png/atlas.json/atlas_extra.json`. Needs PIL, numpy, scipy. Only rerun when art changes; output is checked in.
+- `atlas_pack.py` — the atlas tool. Repacks atlas.png/json from the current atlas pixel-for-pixel (no resampling), keeping only what the game draws, one row group per family (vehicles, effects, soldiers, weapon icons, sandbags). Soldier bases + shadows come from `art/art3/sheet.png`, MG / dead turret / sandbags from mounts.py. Idempotent.
+- `build_atlas.py` — legacy full slice of the original uploads (old format: baked colour variants, classic soldiers, 12 turret frames). A current Pillow changes pixels, so avoid it; if ever needed, run it and then `atlas_pack.py` to convert.
 - `harness.js` — Node harness that runs the built game headless with stubbed canvas/pads. Run tests from repo root: `node tests/t5.js` (all maps, bots), `t6` (seats), `t7` (sandbag cover), `t12` (menu→lobby→deploy→death cam flow), `t13` (wreck cover). All should end `errs 0`.
 - `tests/net/` — Playwright two-browser tests (Chromium at `/opt/pw-browsers/...`, playwright at `/opt/npm-tools/node_modules/playwright`):
   - (stale since the ntfy switch: `t16.js`/`sigserver.js` still emulate PeerJS) `t16.js` direct WebRTC play from `index.html` via the local signalling stand-in `sigserver.js` (`node tests/net/sigserver.js &` first; uses `ws` from /opt/npm-tools).
@@ -115,7 +116,7 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 
 ## Feedback round (builds 51-52)
 - Soldiers vs vehicles: pushOutVeh() pushes a soldier on foot out of the hull box (T.hl x T.hw; nests: the circle), host (updateVehicle, now for nests too) and joiner (netLocalMove). The old per-circle push stopped at the first overlapping circle and shoved you into the next one: a persistent walk reached the hull centre. tests/t21_phase.js (16 directions, standing/prone, against a wall).
-- Art: art/art4/mounts.png → mounts.py cuts mg / mg_f (firing) / mg_dead / tur_dead, plus corrected bagarc0-2. atlas_add.py appends them to atlas.png/json without re-packing (re-runnable; '_strip' in atlas.json marks where the strip starts). build_atlas.py also includes them, but a full rebuild with current Pillow changes pixels, so prefer atlas_add.py.
+- Art: art/art4/mounts.png → mounts.py cuts mg / mg_f (firing) / mg_dead / tur_dead, plus bagarc0-2 (used by atlas_pack.py).
 - drawMG() draws every mounted MG (nest, tank, jeep) over its gunner; wrecks show tur_dead and mg_dead. Nests draw before tanks/jeeps so turrets stay on top.
 - Sandbag crescents: the sheet cells are 171 px apart; the old 196 px crop clipped the intact frame to 120 px and squashed it into a square (1.6x too wide). mounts.bag_frames re-cuts all three (aligned on the intact one) and recomputes bagPts in atlas_extra.json.
 - VISION (line of sight) is a match option now: lobby row 'fog', L.cfg[11], match header h[10] → M.cfg.fog; fogViews reads M.cfg.fog only. Removed from Settings.
@@ -134,3 +135,10 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - Duplicate names: host-side dupName(p, raw) by join order → "Also X", "X III", "Another X", "X (but cooler)", "X’s 3rd cousin"…
 - Settings: SET_TABS (GRAPHICS, DISPLAY, AUDIO, CONTROLS) as a tab row under the title; LB/RB or Q/E cycle.
 - (build 54) MGs draw under their gunner and sit 4 px forward along the aim (mgPos). Gunners use the 'sit' pose. The nest gunner orbits the gun pivot (seatLocal) so they turn with it. Inactive vehicles still call engineUpdate (a wreck's engine used to hum at full volume until respawn). bag_frames zeroes rows from the narrowest row after y=180, so the next crescent on the sheet no longer leaks into bagarc0.
+
+## Atlas without baked colours (build 55)
+- Atlas ships ONE soldier per pose (`sol_<pose>`: stand nogun rpg sit dead leg0-2; dark green, pure-white armband) + `nsh_<pose>` shadows. At load, buildTeamSprites() (1_core.js) copies each pose per colour below the shipped atlas with white → CHEX_C[colour], into the runtime canvas BASE; ATLAS['sol_<pose>_<colour>'] slots are registered at script start so lookups work before load. Grit atlas is built from BASE. Use BASE (not IMG) to draw atlas sprites outside spr().
+- Turret stripe `bar` and jeep emblem `decal` ship white; tinted(name, colour) maps their grey levels to highlight / colour / shade / tinted metal (colour scaled to full brightness), cached per colour + style.
+- Tank turret: `tur` (body + mantlet) and `tur_gun` (cannon, pivot left of the sprite); the cannon is drawn under the body, slid back recoil*33 px (was tur0-11 frames).
+- Capture ring is drawn in buildRings() (dark band r 42.6-63.3 at 0.59 alpha, 2 px gaps on the axes, tinted per owner).
+- Removed: classic soldiers + the SOLDIER ART setting (CFG.soldiers ignored), full-colour / covert sets, all baked colour variants, keyboard / controller sprites, gore / blood / emblem / ring sprites, orphaned old sandbags. Atlas 640x852 (284 KB) → 384x529 (117 KB); index.html 853 KB → 620 KB.

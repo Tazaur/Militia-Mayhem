@@ -101,7 +101,7 @@ function drawWorld(vw) {
   for (const f of M.flings) {
     if (!vis(f.x, f.y, 40)) continue;
     const k = f.t / f.T, h = Math.sin(Math.PI * k);
-    solDraw(f, newSet() ? solSpr(f.color, 'dead') : 'fling_' + f.color, f.x, f.y - h * 34, f.rot, 1 + h * 0.6, 1 + h * 0.6);
+    solDraw(f, solSpr(f.color, 'dead'), f.x, f.y - h * 34, f.rot, 1 + h * 0.6, 1 + h * 0.6);
   }
   drawKillerGlow(vw);
   drawParticles(vis, 'low');
@@ -231,15 +231,12 @@ function drawSoldier(s, vw) {
     solDraw(s, solSpr(s.color, 'nogun'), s.x, s.y, s.a, 0.85, 0.85, 0.85); return;
   }
   const W_ = s.w ? WPN[cw(s).id] : null, rocket = W_ && W_.rocket, gunless = s.throwT > 0 || s.torch || s.handT > 0;
-  const body = gunless ? 'nogun' : rocket ? 'rpg' : 'stand', nw = newSet();
-  const pose = s.stance === 2 && !nw ? 'walk' : body;
+  const body = gunless ? 'nogun' : rocket ? 'rpg' : 'stand', pose = body;
   const shadow = solShadow(pose), jk = jumpK(s), lift = 1 + 0.15 * jk;
   if (!M.ffa) { ctx.strokeStyle = TEAMHEX[s.team]; ctx.globalAlpha = 0.6; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(s.x, s.y, shadow ? 14 : 11, shadow ? 14 : 11, 0, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1; }
   if (s.spotT > 0 && vw && vw.p && vw.p.sol && s.spotTeam === vw.p.sol.team) { ctx.strokeStyle = '#ff4030'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(s.x - 6, s.y - 22); ctx.lineTo(s.x, s.y - 16); ctx.lineTo(s.x + 6, s.y - 22); ctx.stroke(); }
   const al = s.protect > 0 && Math.floor(M.time * 12) % 2 ? 0.45 : undefined;
-  const flip = Math.floor(s.walkT / (s.stance === 2 ? 10 : 16)) % 2 ? 1 : -1;
-  if (pose === 'walk') solDraw(s, pose + '_' + s.color, s.x, s.y, s.a, 1, s.moving ? flip : 1, al);
-  else if (s.stance === 2) { solDraw(s, solSpr(s.color, legFrame(s)), s.x, s.y, s.a, 1, 1, al); solDraw(s, solSpr(s.color, body), s.x, s.y, s.a, 1, 1, al); }
+  if (s.stance === 2) { solDraw(s, solSpr(s.color, legFrame(s)), s.x, s.y, s.a, 1, 1, al); solDraw(s, solSpr(s.color, body), s.x, s.y, s.a, 1, 1, al); }
   else {
     if (s.moving && jk === 0) {
       const ph = Math.sin(s.walkT / 5), c = Math.cos(s.a), sn = Math.sin(s.a), w = shadow ? 5 : 3.5;
@@ -249,7 +246,6 @@ function drawSoldier(s, vw) {
     const bob = (s.moving && jk === 0 ? 1 + Math.abs(Math.sin(s.walkT / 10)) * 0.05 : 1) * lift;
     solDraw(s, solSpr(s.color, pose), s.x, s.y, s.a + (s.meleeT > 0 ? Math.sin(s.meleeT / 0.18 * Math.PI) * 0.5 : 0), bob, bob, al);
   }
-  if (rocket && s.stance === 0 && CFG.soldiers === 'classic') { worldT(); ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.a); ctx.fillStyle = '#3e4a30'; ctx.fillRect(-8, 3, 26, 5); ctx.fillStyle = '#222'; ctx.fillRect(16, 2, 4, 7); if (cw(s).mag > 0) { ctx.fillStyle = '#6a7a50'; ctx.fillRect(19, 3.5, 5, 4); } ctx.restore(); }
   // what's in the soldier's hands: the repair wrench (cranking back and forth), a grenade mid-throw, or the gadget being set down
   if (s.torch) {
     worldT(); ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.a); ctx.translate(6, 0); ctx.rotate(Math.sin(M.time * 13 + s.id) * 0.45);
@@ -272,8 +268,8 @@ function drawShadowLayer(vw, vis) {
     if (!s.alive || s.veh || s.swim || !vis(s.x, s.y, 30) || smokeHides(eyes, s, vw)) continue;
     const W_ = s.w ? WPN[cw(s).id] : null, body = s.throwT > 0 || s.torch ? 'nogun' : W_ && W_.rocket ? 'rpg' : 'stand';
     const jk = jumpK(s), o = 1 + jk * 5, ox = s.x + 2.5 * o, oy = s.y + 3.5 * o;
-    if (newSet()) { if (s.stance === 2) spr(solShadow(legFrame(s)), ox, oy, s.a); spr(solShadow(body), ox, oy, s.a); }
-    else { worldT(); ctx.beginPath(); ctx.ellipse(ox - 0.5, oy - 0.5, s.stance === 2 ? 12 : 9, 7, s.a, 0, TAU); ctx.fill(); }
+    if (s.stance === 2) spr(solShadow(legFrame(s)), ox, oy, s.a);
+    spr(solShadow(body), ox, oy, s.a);
   }
   worldT();
   for (const v of M.vehicles) {
@@ -311,9 +307,9 @@ function drawVehicle(v) {
   if (v.type === 'tank') {
     const hn = 'hull' + hullFrame(v), hm = ATLAS[hn]; sprC(vehSkin(hn, col), hm[4], hm[5], v.x, v.y, v.a);
     for (const i of [2, 3]) { const s = v.seats[i]; if (s) drawSeated(s); }
-    const tf = clamp(11 - Math.round(v.recoil * 11), 0, 11), tn = 'tur' + tf, tm = ATLAS[tn];
-    const px = v.x - 4 * Math.cos(v.a), py = v.y - 4 * Math.sin(v.a);
-    sprC(vehSkin(tn, col), tm[4], tm[5], px, py, v.ta);
+    const px = v.x - 4 * Math.cos(v.a), py = v.y - 4 * Math.sin(v.a), kick = clamp(v.recoil, 0, 1) * 33, tm = ATLAS.tur;
+    spr('tur_gun', px - Math.cos(v.ta) * kick, py - Math.sin(v.ta) * kick, v.ta);
+    sprC(vehSkin('tur', col), tm[4], tm[5], px, py, v.ta);
     const [mx, my] = mgPos(v);
     drawMG(v, mx, my);
     const g = v.seats[1]; if (g) drawSeated(g, true);
@@ -337,7 +333,7 @@ function drawSeated(s, mg) {
   const role = s.veh.T.seats[s.seat].role, jeep = s.veh.type === 'jeep';
   // drivers and jeep passengers sit; MG gunners stand at the gun; tank riders keep their rifle up
   const pose = role === 'drive' || mg || (jeep && role === 'rifle' && !s.flash) ? 'sit' : 'stand';
-  solDraw(s, solSpr(s.color, pose === 'stand' && CFG.soldiers === 'classic' ? 'stand' : pose), s.x, s.y, s.a, 0.9, 0.9);
+  solDraw(s, solSpr(s.color, pose), s.x, s.y, s.a, 0.9, 0.9);
   if (s.flash > 0 && !mg && role !== 'drive') { const [mx, my] = muzzle(s, 20); flashAt(mx, my, 8); }
 }
 const FIRE = ['fire0', 'fire2', 'fire3', 'fire4'], SMOKE = ['smoke0', 'smoke1', 'smoke2', 'smoke3'], BOOM = ['boom0', 'boom1', 'boom2'];

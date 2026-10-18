@@ -432,7 +432,7 @@ function updateNetLobby(ins) {
 
 /* ================= settings (main menu corner, lobby and pause) ================= */
 const SET = { open: false, from: null, tab: 0, sel: 0 };
-const SET_TABS = [['GRAPHICS', ['soldiers', 'style', 'teams']], ['DISPLAY', ['camera', 'fullscreen']], ['AUDIO', ['sfx', 'mus', 'sound']], ['CONTROLS', null]];
+const SET_TABS = [['GRAPHICS', ['style', 'teams']], ['DISPLAY', ['camera', 'fullscreen']], ['AUDIO', ['sfx', 'mus', 'sound']], ['CONTROLS', null]];
 const setRows = () => SET_TABS[SET.tab][1];
 const CONTROLS = [['MOVE', 'LEFT STICK', 'W A S D'], ['AIM', 'RIGHT STICK', 'MOUSE'], ['FIRE', 'RT', 'LEFT CLICK'], ['AIM DOWN SIGHTS', 'LT', 'RIGHT CLICK'],
   ['SPRINT', 'L3', 'SHIFT'], ['JUMP / VAULT', 'A', 'SPACE'], ['PRONE / STAND', 'B', 'C / Z'], ['RELOAD', 'X', 'R'],
@@ -443,7 +443,6 @@ function closeSettings() { SET.open = false; sfx('ui'); }
 const inMatch = () => M && !M.demo;
 function setLabel(k) {
   switch (k) {
-    case 'soldiers': return ['SOLDIER ART', SOLDIER_SET_NAMES[CFG.soldiers]];
     case 'style': return ['ART STYLE', CFG.style === 'classic' ? 'CLASSIC' : 'GRIT'];
     case 'teams': return ['TEAM COLORS', (CFG.teamColors === 'classic' ? 'BLUE VS RED' : 'PLAYER COLOR') + (inMatch() ? '  (NEXT MATCH)' : '')];
     case 'camera': return ['MULTIPLAYER VIEW', CFG.camera === 'split' ? 'SPLIT SCREEN' : 'SHARED SCREEN'];
@@ -454,7 +453,6 @@ function setLabel(k) {
   }
 }
 function setChange(k, d) {
-  if (k === 'soldiers') CFG.soldiers = SOLDIER_SETS[(SOLDIER_SETS.indexOf(CFG.soldiers) + d + SOLDIER_SETS.length) % SOLDIER_SETS.length];
   if (k === 'style') { CFG.style = CFG.style === 'classic' ? 'grit' : 'classic'; applyStyleAssets(); if (M) { if (M.demo) demoMatch(); else paintGround(); } }
   if (k === 'teams') CFG.teamColors = CFG.teamColors === 'classic' ? 'player' : 'classic';
   if (k === 'camera') { CFG.camera = CFG.camera === 'split' ? 'shared' : 'split'; if (inMatch()) { M.cfg.camera = CFG.camera; layoutViews(); } }

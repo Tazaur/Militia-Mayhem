@@ -114,8 +114,52 @@ function goFullscreen() {
 
 /* ---------------- assets ---------------- */
 const IMG = new Image();
-let imgReady = false, SRC = IMG, GRIT_ATLAS = null;
+let imgReady = false, SRC = IMG, BASE = IMG, GRIT_ATLAS = null;
 IMG.onload = () => { imgReady = true; buildAssets(); };
+/* The atlas ships one dark-green soldier per pose with a white armband. Each team colour gets its own copy (armband painted
+   in that colour), laid out below the shipped atlas and registered as ATLAS['sol_<pose>_<colour>'] right away, so lookups
+   work before the image loads; the pixels are painted once when it does (buildTeamSprites). */
+const SOL_POSES = Object.keys(ATLAS).filter(n => n.startsWith('sol_')).map(n => n.slice(4));
+const TEAM_SPR = [];
+{
+  let aw = 0, ah = 0; for (const n in ATLAS) { const m = ATLAS[n]; aw = Math.max(aw, m[0] + m[2]); ah = Math.max(ah, m[1] + m[3]); }
+  let x = 0, y = ah + 2, rowh = 0;
+  for (const c of ['red', 'orange', 'yellow', 'green', 'blue', 'cyan', 'magenta', 'white', 'black']) for (const p of SOL_POSES) {
+    const b = ATLAS['sol_' + p]; if (x + b[2] > aw) { x = 0; y += rowh + 1; rowh = 0; }
+    ATLAS['sol_' + p + '_' + c] = [x, y, b[2], b[3], b[4], b[5]]; TEAM_SPR.push(['sol_' + p, c, x, y]); x += b[2] + 1; rowh = Math.max(rowh, b[3]);
+  }
+  TEAM_SPR.w = aw; TEAM_SPR.h = y + rowh;
+}
+const hexRGB = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+function buildTeamSprites() {
+  const c = mk(Math.max(IMG.width, TEAM_SPR.w), Math.max(IMG.height, TEAM_SPR.h)), g = c.getContext('2d'); g.drawImage(IMG, 0, 0);
+  try {
+    for (const [base, col, x, y] of TEAM_SPR) {
+      const b = ATLAS[base], d = g.getImageData(b[0], b[1], b[2], b[3]), p = d.data, [r, gg, bb] = hexRGB(CHEX_C[col]);
+      for (let i = 0; i < p.length; i += 4) if (p[i + 3] && p[i] === 255 && p[i + 1] === 255 && p[i + 2] === 255) { p[i] = r; p[i + 1] = gg; p[i + 2] = bb; }
+      g.putImageData(d, x, y);
+    }
+  } catch (e) { for (const [base, , x, y] of TEAM_SPR) { const b = ATLAS[base]; g.drawImage(IMG, b[0], b[1], b[2], b[3], x, y, b[2], b[3]); } }
+  BASE = c;
+}
+/* a white sprite (turret stripe, jeep emblem) in a team colour, cached. Its grey levels pick the tone, as in the artist's
+   coloured versions: pure white = highlight, near-white = the colour, light grey = shade, darker greys = metal with a hint of it */
+const TINTS = new Map();
+function tinted(name, col) {
+  const key = name + '|' + col + '|' + CFG.style; let c = TINTS.get(key); if (c) return c;
+  const m = ATLAS[name]; c = mk(m[2], m[3]); const g = c.getContext('2d'); g.drawImage(BASE, m[0], m[1], m[2], m[3], 0, 0, m[2], m[3]);
+  try {
+    const d = g.getImageData(0, 0, m[2], m[3]), p = d.data, [r, gg, bb] = hexRGB(CHEX_C[col] || '#ffffff'), grit = CFG.style === 'grit';
+    const hi = Math.max(r, gg, bb, 1), C = [r * 255 / hi, gg * 255 / hi, bb * 255 / hi];      // the colour at full brightness, like the artist's paint
+    for (let i = 0; i < p.length; i += 4) {
+      if (!p[i + 3]) continue; const L = p[i];
+      for (let k = 0; k < 3; k++) p[i + k] = L >= 255 ? lerp(C[k], 255, 0.48) : L >= 240 ? C[k] : L >= 160 ? C[k] * 0.54 : lerp(L, L * C[k] / 255, 0.5) * 0.85;
+      if (grit) gritPx(p, i);
+    }
+    g.putImageData(d, 0, 0);
+  } catch (e) { g.globalCompositeOperation = 'multiply'; g.fillStyle = CHEX_C[col] || '#fff'; g.fillRect(0, 0, m[2], m[3]); g.globalCompositeOperation = 'destination-in'; g.drawImage(BASE, m[0], m[1], m[2], m[3], 0, 0, m[2], m[3]); }
+  TINTS.set(key, c); return c;
+}
 IMG.src = ATLAS_SRC;
 const SPR = {};
 function softDot(rgb, size) {
@@ -124,22 +168,23 @@ function softDot(rgb, size) {
   g.fillStyle = gr; g.fillRect(0, 0, size, size); return c;
 }
 /* muted "grit" version of the whole atlas: desaturate, olive tint, slight crush */
+function gritPx(p, i) {
+  const r = p[i], gg = p[i + 1], b = p[i + 2], l = 0.3 * r + 0.59 * gg + 0.11 * b, k = 0.45;
+  let nr = lerp(r, l, k) * 0.94, ng = lerp(gg, l, k) * 0.92, nb = lerp(b, l, k) * 0.8;
+  const blood = r > 120 && gg < 60 && b < 60; if (blood) { nr = r * 0.62; ng = gg * 0.4; nb = b * 0.4; }
+  p[i] = nr; p[i + 1] = ng; p[i + 2] = nb;
+}
 function buildGrit() {
-  const c = mk(IMG.width, IMG.height), g = c.getContext('2d'); g.drawImage(IMG, 0, 0);
+  const c = mk(BASE.width, BASE.height), g = c.getContext('2d'); g.drawImage(BASE, 0, 0);
   try {
     const d = g.getImageData(0, 0, c.width, c.height), p = d.data;
-    for (let i = 0; i < p.length; i += 4) {
-      if (!p[i + 3]) continue;
-      const r = p[i], gg = p[i + 1], b = p[i + 2], l = 0.3 * r + 0.59 * gg + 0.11 * b, k = 0.45;
-      let nr = lerp(r, l, k) * 0.94, ng = lerp(gg, l, k) * 0.92, nb = lerp(b, l, k) * 0.8;
-      const blood = r > 120 && gg < 60 && b < 60; if (blood) { nr = r * 0.62; ng = gg * 0.4; nb = b * 0.4; }
-      p[i] = nr; p[i + 1] = ng; p[i + 2] = nb;
-    }
+    for (let i = 0; i < p.length; i += 4) if (p[i + 3]) gritPx(p, i);
     g.putImageData(d, 0, 0);
-  } catch (e) { g.filter = 'saturate(0.5) sepia(0.2) brightness(0.9)'; g.drawImage(IMG, 0, 0); }
+  } catch (e) { g.filter = 'saturate(0.5) sepia(0.2) brightness(0.9)'; g.drawImage(BASE, 0, 0); }
   GRIT_ATLAS = c;
 }
 function buildAssets() {
+  buildTeamSprites();
   buildGrit();
   SPR.smoke = softDot('70,70,70', 64); SPR.dust = softDot('150,135,95', 64); SPR.fire = softDot('255,150,40', 64);
   SPR.hot = softDot('255,240,180', 64); SPR.flash = softDot('255,220,120', 64); SPR.steam = softDot('200,200,200', 64); SPR.puff = softDot('236,238,236', 64); SPR.puffD = softDot('170,174,172', 64);
@@ -154,10 +199,10 @@ function buildAssets() {
 /* style-dependent sprites: rings, sandbags, trees */
 function applyStyleAssets() {
   const grit = CFG.style === 'grit';
-  SRC = grit && GRIT_ATLAS ? GRIT_ATLAS : IMG;
+  SRC = grit && GRIT_ATLAS ? GRIT_ATLAS : BASE;
   CHEX = grit ? CHEX_G : CHEX_C;
   TEAMHEX = (typeof M !== 'undefined' && M && M.teamColor) ? M.teamColor.map(c => CHEX[c]) : [CHEX.blue, CHEX.red];
-  SKINS.clear(); DARK.clear();
+  SKINS.clear(); DARK.clear(); TINTS.clear();
   buildRings();
   { const c = mk(16, 10), g = c.getContext('2d');
     g.fillStyle = grit ? '#3a3020' : '#5c4518'; rr(g, 0, 0, 16, 10, 4); g.fill();
@@ -186,12 +231,13 @@ function applyStyleAssets() {
   }
 }
 function buildRings() {
-  if (!ATLAS.ring || !imgReady) return;
+  if (typeof document === 'undefined') return;
   SPR.ring = [];
   for (const col of ['#c8c8c8', TEAMHEX[0], TEAMHEX[1]]) {
-    const m = ATLAS.ring, c = mk(m[2], m[3]), g = c.getContext('2d');
-    g.drawImage(SRC, m[0], m[1], m[2], m[3], 0, 0, m[2], m[3]);
-    g.globalCompositeOperation = 'source-atop'; g.fillStyle = col; g.globalAlpha = 0.8; g.fillRect(0, 0, m[2], m[3]);
+    const c = mk(128, 128), g = c.getContext('2d');
+    g.fillStyle = 'rgba(0,0,0,0.59)'; g.beginPath(); g.arc(64, 64, 63.3, 0, TAU); g.arc(64, 64, 42.6, 0, TAU, true); g.fill();
+    g.globalCompositeOperation = 'destination-out'; g.fillRect(63, 0, 2, 128); g.fillRect(0, 63, 128, 2);
+    g.globalCompositeOperation = 'source-atop'; g.fillStyle = col; g.globalAlpha = 0.8; g.fillRect(0, 0, 128, 128);
     SPR.ring.push(c);
   }
 }
@@ -204,8 +250,8 @@ function vehSkin(name, color) {
   g.drawImage(SRC, m[0], m[1], m[2], m[3], 0, 0, m[2], m[3]);
   const px = m[4], py = m[5];
   // the artist's colour pieces only: turret stripe bar, jeep hood emblem
-  if (color && name.startsWith('tur')) { const d = ATLAS['bar_' + color]; g.drawImage(SRC, d[0], d[1], d[2], d[3], Math.round(12 - d[4] + 0.5), Math.round(py - d[5]), d[2], d[3]); }
-  if (color && name.startsWith('jeep') && name !== 'jeep4') { const d = ATLAS['decal_' + color], o = EXTRA.jeepStar; g.drawImage(SRC, d[0], d[1], d[2], d[3], Math.round(px + o[0] - d[4]), Math.round(py + o[1] - d[5]), d[2], d[3]); }
+  if (color && name === 'tur') { const d = ATLAS.bar; g.drawImage(tinted('bar', color), Math.round(12 - d[4] + 0.5), Math.round(py - d[5])); }
+  if (color && name.startsWith('jeep') && name !== 'jeep4') { const d = ATLAS.decal, o = EXTRA.jeepStar; g.drawImage(tinted('decal', color), Math.round(px + o[0] - d[4]), Math.round(py + o[1] - d[5])); }
   SKINS.set(key, c); return c;
 }
 /* darker copies of soldier sprites for bots, so a team reads as one colour family */
@@ -255,7 +301,7 @@ function uiSpr(n, x, y, s, al) {
   const m = ATLAS[n]; if (!m) return;
   const D = DPR * UIS; ctx.setTransform(D * s, 0, 0, D * s, x * D, y * D);
   if (al !== undefined) ctx.globalAlpha = al;
-  ctx.drawImage(IMG, m[0], m[1], m[2], m[3], -m[2] / 2, -m[3] / 2, m[2], m[3]);
+  ctx.drawImage(BASE, m[0], m[1], m[2], m[3], -m[2] / 2, -m[3] / 2, m[2], m[3]);
   ctx.globalAlpha = 1; screenT();
 }
 
@@ -582,21 +628,13 @@ function rumble(pl, s, d) {
 function touchPlayer() { return PLAYERS.find(p => p.dev.type === 'touch'); }
 
 /* ---------------- settings ---------------- */
-const CFG = Object.assign({ mode: 0, map: 0, bots: 5, limit: 1, skill: 1, ff: false, board: false, midjoin: true, camera: 'split', style: 'classic', weather: 'clear', soldiers: 'ramp', teamColors: 'player', fog: 'los', sound: 'exp' }, store.get('cfg3', {}));
+const CFG = Object.assign({ mode: 0, map: 0, bots: 5, limit: 1, skill: 1, ff: false, board: false, midjoin: true, camera: 'split', style: 'classic', weather: 'clear', teamColors: 'player', fog: 'los', sound: 'exp' }, store.get('cfg3', {}));
 /* soldier art sets: classic = original sheets; ramp = new design with the green ramp recoloured; marks = new design with white markings recoloured.
    New sets cover stand / unarmed / rocket / seated; every other pose falls back to the classic frames. */
 /* soldier team display: classic sheets, or the new design as full colour / armband only / grey uniform + coloured armband */
-const SOLDIER_SETS = ['classic', 'fc', 'ab', 'cv'], SOLDIER_SET_NAMES = { classic: 'CLASSIC', fc: 'FULL COLOR', ab: 'ARMBAND', cv: 'ARMBAND COVERT' };
-if (!SOLDIER_SETS.includes(CFG.soldiers)) CFG.soldiers = CFG.soldiers === 'marks' ? 'cv' : 'fc';
-const NEWPOSES = { stand: 1, nogun: 1, rpg: 1, sit: 1, dead: 1, leg0: 1, leg1: 1, leg2: 1 };
-const newSet = () => CFG.soldiers !== 'classic';
-function solSpr(color, pose) {
-  if (newSet() && NEWPOSES[pose]) return CFG.soldiers + '_' + pose + '_' + color;
-  if (pose === 'dead') return 'splat_' + color;
-  if (pose.startsWith('leg')) return null;
-  return (pose === 'rpg' || pose === 'sit' ? 'nogun' : pose) + '_' + color;
-}
-function solShadow(pose) { return newSet() && NEWPOSES[pose] && ATLAS['nsh_' + pose] ? 'nsh_' + pose : null; }
+/* soldiers: one design (dark green, armband in the team colour); poses stand / nogun / rpg / sit / dead / leg0-2 */
+function solSpr(color, pose) { return 'sol_' + pose + '_' + color; }
+function solShadow(pose) { return ATLAS['nsh_' + pose] ? 'nsh_' + pose : null; }
 let M = null, state = 'boot', stateT = 0;
 let PLAYERS = [];
 /* online play: remote players are PLAYERS with dev.type 'net'; only local ones get views, sound and HUD */

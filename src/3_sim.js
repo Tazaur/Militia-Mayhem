@@ -508,10 +508,7 @@ function muzzle(s, dist) { return [s.x + Math.cos(s.a) * dist, s.y + Math.sin(s.
 function gunTip(s) {
   const T_ = EXTRA.tips || {}; let o;
   if (s.veh) o = [14, 0];
-  else if (s.stance === 2 && !newSet()) o = T_.walk || [24, 0];
-  else { const rocket = s.w && WPN[cw(s).id].rocket, set = CFG.soldiers;
-    if (set !== 'classic') o = T_['n_' + (rocket ? 'rpg' : 'stand')] || [17, 0];
-    else o = rocket ? [24, 5] : (T_.stand || [22, 0]); }
+  else { const rocket = s.w && WPN[cw(s).id].rocket; o = T_['n_' + (rocket ? 'rpg' : 'stand')] || [17, 0]; }
   const c = Math.cos(s.a), sn = Math.sin(s.a);
   return [s.x + c * o[0] - sn * o[1], s.y + sn * o[0] + c * o[1]];
 }

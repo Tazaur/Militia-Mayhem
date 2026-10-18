@@ -4,7 +4,7 @@ function icon(kind, cx, cy, s, col, al) {
   if (kind && kind.startsWith('w:')) {     // the artist's weapon icons from the atlas, fitted to the box height (pixel crisp)
     const m = ATLAS['wi_' + kind.slice(2)]; if (!m) return; const k = iconW(kind, s) / m[2];
     ctx.save(); ctx.translate(cx, cy); ctx.scale(k, k); ctx.imageSmoothingEnabled = false; if (al !== undefined) ctx.globalAlpha *= al;
-    ctx.drawImage(IMG, m[0], m[1], m[2], m[3], -m[2] / 2, -m[3] / 2, m[2], m[3]); ctx.restore(); return;
+    ctx.drawImage(BASE, m[0], m[1], m[2], m[3], -m[2] / 2, -m[3] / 2, m[2], m[3]); ctx.restore(); return;
   }
   const c = col || '#f0f0e0', k = s / 20;
   ctx.save(); ctx.translate(cx, cy); ctx.scale(k, k); if (al !== undefined) ctx.globalAlpha *= al;
