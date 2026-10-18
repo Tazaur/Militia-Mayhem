@@ -49,24 +49,24 @@ function netDiag() { return 'WEBRTC ' + (RTC() ? 'OK' : 'MISSING') + ' · WEBSOC
 
 /* ---------- connection trace and error codes: every failure names the step that broke ---------- */
 const NET_E = {
-  101: ['CAN’T REACH THE MATCHMAKING SERVER', 'This device couldn’t reach the free matchmaking relay (ntfy.sh). Check its internet; some school or work networks block it.'],
-  102: ['MATCHMAKING SERVER DIDN’T ANSWER', 'The matchmaking server is slow or down. Try again in a minute.'],
-  103: ['MATCHMAKING SERVER REFUSED', 'The free matchmaking server turned the request away (it may be overloaded). Try again.'],
-  104: ['NO FREE GAME CODE', 'Every code tried was already in use. Try again.'],
-  201: ['NO GAME WITH THAT CODE', 'Nobody answered on this code. Check the code, and that the host is still in its lobby with the tab in front.'],
-  202: ['THE HOST DIDN’T REPLY', 'The join request reached the matchmaking server but the host never answered. Bring the host’s tab to the front and try again.'],
-  301: ['NO NETWORK PATH TO THE HOST', 'Both sides found each other but no direct route worked and no relay was available. Usually a router/NAT or firewall issue; a TURN relay fixes it.'],
-  302: ['NETWORK PATH TIMED OUT', 'Route checks between the two devices never finished. Usually a router/NAT or firewall issue; a TURN relay fixes it.'],
-  303: ['NO ADDRESSES EXCHANGED', 'One side sent no network addresses, so there was nothing to try. The browser may be blocking WebRTC.'],
-  401: ['GAME LINK DIDN’T OPEN', 'A network route was found but the data channel never opened.'],
-  402: ['GAME LINK CLOSED', 'The data channel closed before any game data arrived.'],
-  501: ['HOST SENT NO GAME DATA', 'Connected, but the host’s lobby never arrived. The host’s tab may be in the background.'],
+  101: ['CAN’T GET ONLINE', 'Your device couldn’t reach the server that finds games. Check your internet. Some school or work Wi-Fi blocks it.'],
+  102: ['THE GAME FINDER ISN’T ANSWERING', 'The server that finds games is slow or down right now. Try again in a minute.'],
+  103: ['THE GAME FINDER IS BUSY', 'The server that finds games turned us away, probably because it’s overloaded. Try again.'],
+  104: ['COULDN’T MAKE A GAME CODE', 'Every code we tried was taken. Try again.'],
+  201: ['NO GAME WITH THAT CODE', 'Nobody is hosting that code. Double-check it, and make sure the host is still in their lobby with the game on screen.'],
+  202: ['THE HOST DIDN’T ANSWER', 'We found the game but the host never replied. Ask them to bring the game window to the front, then try again.'],
+  301: ['YOUR DEVICES CAN’T REACH EACH OTHER', 'You found each other, but your internet setups won’t let a connection through (usually a router or firewall). Try a different network, like a phone hotspot.'],
+  302: ['CONNECTING TOOK TOO LONG', 'Your devices kept trying but never got through (usually a router or firewall). Try again, or try a different network like a phone hotspot.'],
+  303: ['YOUR BROWSER BLOCKED THE CONNECTION', 'One side couldn’t share how to reach it. A browser setting or extension may be blocking online play.'],
+  401: ['CONNECTION DIDN’T FINISH', 'Your devices found a way to each other, but the link never opened. Try again.'],
+  402: ['CONNECTION DROPPED', 'The link closed before the game could load. Try again.'],
+  501: ['THE HOST’S GAME DIDN’T LOAD', 'You connected, but the lobby never came through. The host’s game window may be minimized or in the background.'],
   502: ['THAT GAME IS FULL', 'Four players are already in.'],
-  503: ['THAT MATCH HAS ALREADY STARTED', 'The host has joining mid-match turned off. Join while the host is in the lobby.'],
-  504: ['YOU WERE REMOVED FROM THE GAME', ''],
-  601: ['LOST CONTACT WITH THE HOST', 'Nothing arrived from the host for 20 seconds. Keep the host’s tab in front.'],
-  602: ['THE HOST LEFT THE GAME', ''],
-  701: ['WEBRTC ERROR', 'The browser refused to set up the connection.'],
+  503: ['THAT MATCH ALREADY STARTED', 'The host doesn’t allow joining mid-match. Join while they’re in the lobby.'],
+  504: ['THE HOST REMOVED YOU', ''],
+  601: ['LOST THE HOST', 'Nothing came from the host for 20 seconds. Their game window may be minimized, or their internet dropped.'],
+  602: ['THE HOST LEFT', ''],
+  701: ['YOUR BROWSER REFUSED TO CONNECT', 'The browser wouldn’t set up online play. Try updating it or using a different browser.'],
 };
 function mkTrace() { return { t0: performance.now(), sig: 0, offer: 0, answer: 0, lc: { host: 0, srflx: 0, relay: 0, prflx: 0 }, rc: { host: 0, srflx: 0, relay: 0, prflx: 0 }, lmdns: 0, rmdns: 0, gather: 'new', ice: 'new', conn: 'new', dc: 0, data: 0, turn: '', err: '' }; }
 function traceCand(o, mdnsKey, tr, c) {
@@ -205,10 +205,12 @@ function netListSee(x, time) {
   if (x.gone) { NET.list.set(x.c, { c: x.c, t, gone: true }); return; }
   NET.list.set(x.c, { c: x.c, t, n: clamp(x.n | 0, 0, MAXP), st: x.st === 'play' ? 'play' : 'lobby', md: String(x.md || '').slice(0, 24), mp: String(x.mp || '').slice(0, 24), nm: cleanName(x.nm).trim(), mj: !!x.mj, peer: null });
 }
+/* forget what we heard and listen again: the relays replay the last 10 minutes, so live games come straight back */
+function netListRefresh() { NET.list.clear(); netListWatch(false); NET.lwT = performance.now(); }
 /* every game we know of: the claude.ai page's, then the public list's (fresh ones only) */
 function netAllHosts() {
   const out = NET.hosts.slice(), have = new Set(out.map(h => h.c)), now = Date.now();
-  for (const h of NET.list.values()) if (!h.gone && now - h.t < 400000 && !have.has(h.c) && h.c !== NET.code) out.push(h);
+  for (const h of NET.list.values()) if (!h.gone && now - h.t < 400000 && !have.has(h.c) && !(NET.role === 'host' && h.c === NET.code)) out.push(h);      // (a joiner keeps NET.code after leaving: that game must still show)
   return out;
 }
 /* wait (briefly) until a connection has found its addresses, so they all go in one message */
@@ -338,7 +340,7 @@ function netLobbyPeers(ch) {
 function netCode() { const A = 'abcdefghjkmnpqrstuvwxyz23456789'; let s = ''; for (let i = 0; i < 4; i++) s += A[Math.floor(Math.random() * A.length)]; return s; }
 async function netHost(dev) {
   if (!NET.avail || NET.role) return;
-  NET.role = 'host'; NET.code = netCode(); NET.kicked = new Set(); NET.pubK = ''; NET.pubT = -1e9; NET.evLog = []; NET.lastPres = ''; NET.lastMM = ''; NET.game = null; NET.busy = 'OPENING A GAME…'; NET.trace = null; NET.err = null;
+  NET.role = 'host'; NET.code = netCode(); NET.kicked = new Set(); NET.pubK = ''; NET.pubT = -1e9; NET.evLog = []; NET.lastPres = ''; NET.lastMM = ''; NET.game = null; NET.busy = 'SETTING UP YOUR GAME…'; NET.trace = null; NET.err = null;
   try {
     let sig = null;
     if (NET.mode === 'p2p') {
@@ -347,9 +349,9 @@ async function netHost(dev) {
     }
     if (sig) {
       NET.game = p2pRoom(sig, null); NET.myPeer = sig.id;
-      NET.game.onSigLost = () => { if (NET.role === 'host') netSay('E801 MATCHMAKING SERVER DROPPED — NEW PLAYERS CAN’T JOIN', 12); };
-      NET.game.onJoinTry = () => { if (NET.role === 'host') netSay('A PLAYER IS CONNECTING…', 4); };
-      NET.game.onJoinFail = (tr, why) => { if (NET.role === 'host' && why !== 'left') netSay('JOIN FAILED E' + (why === 'closed' ? 402 : traceCode(tr)) + ' · ' + traceLine(tr, 'THEM') + ' · ' + traceLine2(tr), 15); };
+      NET.game.onSigLost = () => { if (NET.role === 'host') netSay('LOST THE GAME FINDER — NEW PLAYERS CAN’T JOIN RIGHT NOW (E801)', 12); };
+      NET.game.onJoinTry = () => { if (NET.role === 'host') netSay('SOMEONE IS JOINING…', 4); };
+      NET.game.onJoinFail = (tr, why) => { if (NET.role === 'host' && why !== 'left') netSay('SOMEONE TRIED TO JOIN BUT COULDN’T CONNECT · E' + (why === 'closed' ? 402 : traceCode(tr)) + ' · ' + traceLine(tr, 'THEM') + ' · ' + traceLine2(tr), 15); };
     }
     else NET.game = await NET.room.join('mm-' + NET.code);
   } catch (e) { NET.role = null; netFail(sigCode(e), e === 'error' ? SIG_MSG : ''); return; }
@@ -361,7 +363,7 @@ async function netHost(dev) {
 async function netJoin(h, dev) {
   if (!NET.avail || NET.role || !h) return;
   Object.assign(NET, { role: 'client', hostPeer: h.peer, code: h.c, dev: dev && dev.type !== 'net' ? dev : { type: 'kb' }, myPid: -1, joined: false, wasJoined: false, curMatch: -1, lastSeq: -1, buf: [], off: null, lobby: null, want: { c: '', t: -1, r: 0 }, dep: null, lastHostT: performance.now(), joinT: performance.now(), lastPres: '', game: null, demoMap: -1, gs: null, gsRaw: null, slow: null, snapN: 0, firstL: 0, doneMatch: 0, roApplied: '' });
-  NET.busy = 'CONNECTING TO GAME ' + h.c.toUpperCase() + '…'; NET.err = null; NET.trace = mkTrace();
+  NET.busy = 'JOINING ' + h.c.toUpperCase() + '…'; NET.err = null; NET.trace = mkTrace();
   try {
     let sig = null;
     if (NET.mode === 'p2p' && !h.peer) { try { sig = await sigOpen(P2P_PREFIX + 'j-' + Math.random().toString(36).slice(2, 10)); } catch (e) { if (!NET.room) throw e; } }
@@ -427,8 +429,16 @@ function netHostSee(pr) {
     if (typeof j.c === 'string' && j.c !== p.color && COLORS.includes(j.c) && !PLAYERS.some(q => q !== p && q.color === j.c)) p.color = j.c;
     // a joiner's team request counts once (so the host can still move them afterwards)
     if (MODES[CFG.mode].team && (j.t === 0 || j.t === 1) && (j.tn | 0) !== (p.wantTn | 0)) { p.wantTn = j.tn | 0; p.team = j.t; }
-    p.ready = !!j.r; p.name = cleanName(j.n).trim();
+    p.ready = !!j.r; p.name = dupName(p, cleanName(j.n).trim());
   }
+}
+/* two players with the same name: the later ones get a nickname (stable, by join order) */
+const DUPN = [n => 'Also ' + n, n => n + ' III', n => 'Another ' + n, n => n + ' (but cooler)', n => n + '’s 3rd cousin', n => 'Not ' + n, n => n + ' Jr.', n => 'Evil ' + n];
+function dupName(p, raw) {
+  p.base = raw; if (!raw) return raw;
+  const k = raw.toLowerCase(); let i = 0;
+  for (const q of PLAYERS) { if (q === p) break; if (String(q.base != null ? q.base : q.name || '').toLowerCase() === k) i++; }
+  return i ? (DUPN[i - 1] || (n => n + ' #' + (i + 1)))(raw) : raw;
 }
 function netPeerLeft(peer) {
   const p = PLAYERS.find(q => isNet(q) && q.dev.peer === peer); if (!p) return;
@@ -453,7 +463,7 @@ const netHostLive = () => M && !M.demo && (state === 'play' || state === 'pause'
    on the side with fewer people, a dead one if possible) and go to the deploy screen */
 function netMidJoin(peer, j, cid) {
   lobbyJoin({ type: 'net', peer }); const p = PLAYERS.find(q => isNet(q) && q.dev.peer === peer); if (!p) return null;
-  p.cid = cid; p.name = cleanName(j.n).trim(); p.ready = true;
+  p.cid = cid; p.name = dupName(p, cleanName(j.n).trim()); p.ready = true;
   const back = cid && cid in NET.left ? M.sol[NET.left[cid]] : null; if (cid) delete NET.left[cid];
   let s = back && !back.player ? back : null, team = 0;
   if (!s) {

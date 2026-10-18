@@ -270,17 +270,26 @@ function audioInit() {
     const lim = c.createDynamicsCompressor(); lim.threshold.value = -4; lim.ratio.value = 14; lim.attack.value = 0.002; lim.release.value = 0.12; lim.connect(comp);
     AU.ear = c.createBiquadFilter(); AU.ear.type = 'lowpass'; AU.ear.frequency.value = 20000; AU.ear.Q.value = 0.5; AU.ear.connect(lim);
     const master = c.createGain(); master.gain.value = 0.85; master.connect(AU.ear); AU.master = master;
-    AU.sfx = c.createGain(); AU.sfx.connect(master); AU.mus = c.createGain(); AU.mus.connect(master);
+    // game sounds go through AU.muf, a lowpass that closes while a menu is up (audioTick); menu clicks skip it (AU.ui)
+    AU.muf = c.createBiquadFilter(); AU.muf.type = 'lowpass'; AU.muf.frequency.value = 20000; AU.muf.Q.value = 0.6; AU.muf.connect(master);
+    AU.sfx = c.createGain(); AU.sfx.connect(AU.muf); AU.ui = c.createGain(); AU.ui.connect(master); AU.mus = c.createGain(); AU.mus.connect(master);
     const b = c.createBuffer(1, c.sampleRate * 2, c.sampleRate), d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; AU.noise = b;
     // generated reverb tail (outdoor slap + long decay) and a soft-clip curve for punchy transients
     const L = Math.floor(c.sampleRate * 2.2), ir = c.createBuffer(2, L, c.sampleRate);
     for (let ch = 0; ch < 2; ch++) { const q = ir.getChannelData(ch); for (let i = 0; i < L; i++) { const t = i / c.sampleRate; q[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / L, 3.2) * (t < 0.09 ? 0.35 : 1) + (Math.abs(t - 0.11 - ch * 0.013) < 0.004 ? (Math.random() - 0.5) * 1.6 : 0); } }
-    AU.verb = c.createConvolver(); AU.verb.buffer = ir; AU.verbIn = c.createGain(); AU.verbIn.gain.value = 0.6; AU.verbIn.connect(AU.verb); AU.verb.connect(master);
+    AU.verb = c.createConvolver(); AU.verb.buffer = ir; AU.verbIn = c.createGain(); AU.verbIn.gain.value = 0.6; AU.verbIn.connect(AU.verb); AU.verb.connect(AU.muf);
     const cur = new Float32Array(1024); for (let i = 0; i < 1024; i++) { const x = i / 511.5 - 1; cur[i] = Math.tanh(x * 3.2) / Math.tanh(3.2); } AU.curve = cur;
     applyMute(); Music.start();
   } catch (e) { AU.ctx = null; }
 }
-function applyMute() { if (!AU.ctx) return; AU.sfx.gain.value = AU.sfxOn ? 0.75 : 0; AU.mus.gain.value = AU.musOn ? 0.3 : 0; }
+function applyMute() { if (!AU.ctx) return; AU.sfx.gain.value = AU.ui.gain.value = AU.sfxOn ? 0.75 : 0; AU.mus.gain.value = AU.musOn ? 0.3 : 0; }
+/* menus muffle the battle behind them (the demo battle on the title screen, the match under pause / lobby / settings) */
+function audioTick() {
+  if (!AU.ctx || !AU.muf) return;
+  const menu = SET.open || state !== 'play' || !M || M.demo, f = menu ? 520 : 20000;
+  if (AU.mufOn !== menu) { AU.mufOn = menu; AU.muf.frequency.cancelScheduledValues(AU.ctx.currentTime); AU.muf.frequency.setTargetAtTime(f, AU.ctx.currentTime, menu ? 0.06 : 0.12); }
+}
+const UISFX = { ui: 1, join: 1, leave: 1 };
 function rainAudio(on) {
   if (!AU.ctx) return;
   if (on && !AU.rain) {
@@ -318,6 +327,10 @@ function hear(x, y) {
   return { v: best, p: pan };
 }
 function sfx(name, x, y, mul) {
+  if (!UISFX[name] || !AU.ui) return sfx1(name, x, y, mul);
+  const k = AU.sfx; AU.sfx = AU.ui; try { return sfx1(name, x, y, mul); } finally { AU.sfx = k; }      // menu clicks: not muffled
+}
+function sfx1(name, x, y, mul) {
   if (NET.role === 'host' && x !== undefined && NETSFX_I[name] !== undefined) netEv('s', NETSFX_I[name], x | 0, y | 0, Math.round((mul || 1) * 10));
   if (!AU.ctx || !AU.sfxOn) return;
   if (CFG.sound !== 'classic' && SFX2[name] && sfx2(name, x, y, mul)) return;

@@ -67,7 +67,7 @@ const BIND = {
   fire: ['RT', 'LMB'], ads: ['LT', 'RMB'], jump: ['A', 'SPACE'], stance: ['B', 'C'], reload: ['X', 'R'], use: ['Y', 'E'], nade: ['RB', 'G'], gadget: ['LB', 'F'],
   melee: ['R3', 'V'], spot: ['DU', 'Q'], map: ['DD', 'M'], cycle: ['DLR', 'T'], seat: ['B', 'F'], deploy: ['A', 'SPACE'], classes: ['LBRB', 'Q E'], slot: ['DUD', '↑↓'],
   item: ['DLR', '←→'], spawn: ['LS', 'WASD'], team: ['Y', 'T'], select: ['A', 'ENTER'], back: ['B', 'ESC'], start: ['START', 'ENTER'], settings: ['VIEW', 'O'], nav: ['LS', 'ARROWS'], change: ['DLR', '←→'],
-  prev: ['LB', 'Q'], next: ['RB', 'E'], go: ['START', 'P'], del: ['B', '⌫']
+  prev: ['LB', 'Q'], refresh: ['X', 'R'], next: ['RB', 'E'], go: ['START', 'P'], del: ['B', '⌫']
 };
 /* draws one prompt; returns its width. dev: 'pad' | 'kb' | 'touch' (touch draws nothing) */
 function badge(act, dev, x, cy, h) {

@@ -124,3 +124,12 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - Lobby fix: Esc on a keyboard is both pause and back; the pause branch used to ready up and start the battle. Now pause only starts when it isn't also back (keyboard start = P).
 - Equipment HUD: stance icon removed.
 - Tests navigate the lobby with G.MATCH_ROWS.length downs (the row count changed).
+
+## Feedback round (build 53)
+- destroyVehicle: crew captured before kill, so a crewed jeep/tank/nest scores and never shows "EMPTY … DESTROYED" (tests/t22_vkill.js).
+- Audio: AU.sfx → AU.muf (lowpass) → master; audioTick() drops it to 520 Hz in menus/settings/pause/demo. UI sounds (UISFX) go via AU.ui, never muffled.
+- Sniper laser end dot is a red radial gradient. Snow: 5 layers with strong parallax (k 1.3–2.3) and fades to 50% while the camera moves (SNOWCAM).
+- Net menu: indexes 0 host, 1 join code, 2 REFRESH (X / R), 3+ games; right arrow walks into the list. netListRefresh() runs on open. netAllHosts only hides your own game while hosting (a joiner kept NET.code after leaving, which hid that game).
+- Online text is plain language (NET_E, join steps, toasts); error codes + trace lines stay, under "TECHNICAL DETAILS".
+- Duplicate names: host-side dupName(p, raw) by join order → "Also X", "X III", "Another X", "X (but cooler)", "X’s 3rd cousin"…
+- Settings: SET_TABS (GRAPHICS, DISPLAY, AUDIO, CONTROLS) as a tab row under the title; LB/RB or Q/E cycle.

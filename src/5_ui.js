@@ -191,16 +191,25 @@ function drawLasers(vis) {
     }
     const al = s.ads ? 0.6 : 0.28;
     ctx.strokeStyle = `rgba(255,40,30,${al})`; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ex, ey); ctx.stroke();
-    ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = s.ads ? 0.9 : 0.6; ctx.drawImage(SPR.flash, ex - 4, ey - 4, 8, 8); ctx.fillStyle = '#ff3020'; ctx.fillRect(ex - 1, ey - 1, 2, 2); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+    ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = s.ads ? 0.9 : 0.6; const gd = ctx.createRadialGradient(ex, ey, 0, ex, ey, 4.5); gd.addColorStop(0, 'rgba(255,70,50,0.9)'); gd.addColorStop(1, 'rgba(255,20,10,0)'); ctx.fillStyle = gd; ctx.fillRect(ex - 4.5, ey - 4.5, 9, 9); ctx.fillStyle = '#ff3020';      // red dot where it lands ctx.fillRect(ex - 1, ey - 1, 2, 2); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
   }
 }
+/* snow falls between the camera and the ground: five depth layers sliding 1.3x-2.3x as far as the ground when the
+   camera moves (nearer = bigger, brighter), and the whole lot fades to half while the camera is moving */
+const SNOWCAM = new WeakMap();
 function drawSnow(vw) {
-  ctx.fillStyle = CFG.style === 'grit' ? 'rgba(220,222,220,0.8)' : 'rgba(255,255,255,0.85)';
-  const n = Math.round(vw.w * vw.h / 2600), t = M.time;
-  for (let i = 0; i < n; i++) {
-    const sp = 30 + (i % 7) * 9, sx = (i * 137.5 + Math.sin(t * 0.7 + i) * 18 + t * 22 - vw.cam.x * vw.cam.z * 0.25) % vw.w, sy = (i * 71.3 + t * sp - vw.cam.y * vw.cam.z * 0.25) % vw.h;
-    const x = vw.x + (sx + vw.w) % vw.w, y = vw.y + (sy + vw.h) % vw.h, r = 1 + (i % 3) * 0.6; ctx.fillRect(x, y, r, r);
+  const cam = vw.cam, st = SNOWCAM.get(cam) || { x: cam.x, y: cam.y, v: 0 };
+  st.v = lerp(st.v, Math.hypot(cam.x - st.x, cam.y - st.y) * cam.z, 0.12); st.x = cam.x; st.y = cam.y; SNOWCAM.set(cam, st);
+  const fade = 1 - 0.5 * clamp(st.v / 3, 0, 1), n = Math.round(vw.w * vw.h / 2600), t = M.time;
+  ctx.fillStyle = CFG.style === 'grit' ? '#dcdedc' : '#fff';
+  for (let L = 0; L < 5; L++) {
+    const k = 1.3 + L * 0.25, r = 0.9 + L * 0.45; ctx.globalAlpha = fade * (0.45 + L * 0.1);
+    for (let i = L; i < n; i += 5) {
+      const sp = 30 + (i % 7) * 9 + L * 8, sx = (i * 137.5 + Math.sin(t * 0.7 + i) * 18 + t * 22 - cam.x * cam.z * k) % vw.w, sy = (i * 71.3 + t * sp - cam.y * cam.z * k) % vw.h;
+      ctx.fillRect(vw.x + (sx + vw.w) % vw.w, vw.y + (sy + vw.h) % vw.h, r, r);
+    }
   }
+  ctx.globalAlpha = 1;
 }
 function humanTeams() { return new Set(LOCALS().map(p => p.sol ? p.sol.team : p.team)); }
 function drawRain(vw) {

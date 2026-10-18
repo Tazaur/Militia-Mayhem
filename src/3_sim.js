@@ -252,10 +252,11 @@ function hurtVehicle(v, dmg, src) {
 }
 function destroyVehicle(v, src) {
   v.dead = true; v.hp = 0;
+  // who was aboard, before the blast: it kills anyone in an exposed seat (jeep, tank riders, nest) and empties their seat
+  const crew = v.seats.filter(Boolean), occupied = crew.length > 0, vt = vehTeam(v);
   explosion(v.x, v.y, v.type === 'tank' ? 110 : 80, 120, 150, src, -2, true);
-  const occupied = v.seats.some(Boolean), vt = vehTeam(v);
   if (src && occupied && isEnemy(src.team, vt)) { src.vk++; addPts(src, v.type === 'tank' ? 300 : 200, (v.type === 'nest' ? 'NEST' : v.type.toUpperCase()) + ' DESTROYED'); }
-  for (const s of [...v.seats]) if (s) { s.protect = 0; kill(s, src, 'explosion', rnd(-1, 1), rnd(-1, 1)); }
+  for (const s of crew) if (s.alive) { s.protect = 0; kill(s, src, 'explosion', rnd(-1, 1), rnd(-1, 1)); }
   if (v.type !== 'nest') M.wrecks.push({ type: v.type, x: v.x, y: v.y, a: v.a, ta: v.ta, t: 180, T: 180, burn: 14, hl: v.T.hl * 0.92, hw: v.T.hw * 0.9, vx: 0, vy: 0 }) && (navDirty = 1);
   else for (let i = 0; i < 10; i++) part({ k: 'dirt', x: v.x, y: v.y, vx: rnd(-90, 90), vy: rnd(-90, 90), life: 0.8, max: 0.8, sz: 3, drag: 3 });
   if (src && src.player && !occupied) src.msg = { t: 1.4, txt: 'EMPTY ' + v.type.toUpperCase() + ' DESTROYED' };

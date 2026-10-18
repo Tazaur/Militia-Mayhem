@@ -162,14 +162,16 @@ function drawMenu() {
 /* ================= network menu: host a game, join one by code (or from the list on claude.ai) ================= */
 const NETM = { sel: 0, entry: null };
 const CODE_KEYS = 'abcdefghjkmnpqrstuvwxyz23456789'.split('').concat(['DEL', 'JOIN']);
-function openNetMenu(dev) { NET.err = null; NETM.sel = 0; NETM.entry = null; NETM.dev = dev && dev.type ? dev : { type: 'kb' }; setState('netmenu'); sfx('ui'); }
+const netListShown = () => NET.mode === 'p2p' || (!!NET.room && NET.hosts.length > 0);
+function openNetMenu(dev) { if (typeof netListRefresh === 'function') netListRefresh(); NET.err = null; NETM.sel = 0; NETM.entry = null; NETM.dev = dev && dev.type ? dev : { type: 'kb' }; setState('netmenu'); sfx('ui'); }
 function netRows() { return netAllHosts().filter(h => h.n < MAXP && (h.st === 'lobby' || h.mj)); }
 function netAct(i, dev) {
   if (dev && dev.type) NETM.dev = dev;
   if (!NET.avail || NET.busy) { sfx('leave'); return; }
   if (i === 0) { askName('host'); return; }
   if (i === 1) { NETM.entry = { mode: 'code', code: '', sel: 'q' }; sfx('ui'); return; }
-  const h = netRows()[i - 2]; if (h) netJoin(h, NETM.dev);
+  if (i === 2) { netListRefresh(); sfx('ui'); return; }
+  const h = netRows()[i - 3]; if (h) netJoin(h, NETM.dev);
 }
 const NAME_KEYS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('').concat(['SPACE', 'DEL', 'OK']);
 const padKeys = E => E.mode === 'name' ? NAME_KEYS : CODE_KEYS;
@@ -242,11 +244,14 @@ function updateNetMenu(ins, dt) {
     runClicks(); return;
   }
   if (NETM.entry) { updateCodeEntry(ins); return; }
-  const n = 2 + netRows().length;
+  // 0 host · 1 join with code · 2 refresh the list · 3.. open games
+  const list = netListShown(), rows = netRows().length, n = list ? 3 + rows : 2;
   NETM.sel = clamp(NETM.sel, 0, n - 1);
   for (const { dev, st } of ins) {
     if (st.navY) { NETM.sel = (NETM.sel + st.navY + n) % n; sfx('ui'); }
-    if (st.navX && NETM.sel < 2) { NETM.sel = 1 - NETM.sel; sfx('ui'); }
+    if (st.navX > 0 && NETM.sel < 2) { NETM.sel = NETM.sel === 0 ? 1 : list ? (rows ? 3 : 2) : 1; sfx('ui'); }
+    else if (st.navX < 0 && NETM.sel > 0) { NETM.sel = NETM.sel >= 2 ? 1 : 0; sfx('ui'); }
+    if (st.reload && list) { netListRefresh(); sfx('ui'); }
     if (st.back && stateT > 0.25) { toMenu(); return; }
     if (st.opt) { openSettings('menu'); return; }
     if (st.confirm && stateT > 0.25) { netAct(NETM.sel, dev); return; }
@@ -282,12 +287,13 @@ function drawNetErr(u) {
   UIB = E.re ? [] : [{ x: 0, y: 0, w: W, h: H, fn: () => { if (performance.now() - E.t > 600) { NET.err = null; sfx('ui'); } } }];
   ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, W, H);
   const pw = Math.min(W - SAFE.l - SAFE.r - 24, 720 * u), ls = fpx(12, u, 10), lh = ls * 1.5;
-  const bh = Math.max(44, 46 * u), ph = Math.min(H - SAFE.t - SAFE.b - 24, fpx(150, u, 120) + E.lines.length * lh + (E.hint ? fpx(54, u, 46) : 0) + (E.re ? bh + 14 * u : 0)), px = W / 2 - pw / 2, py = H / 2 - ph / 2;
+  const bh = Math.max(44, 46 * u), ph = Math.min(H - SAFE.t - SAFE.b - 24, fpx(150, u, 120) + E.lines.length * lh + (E.lines.length ? lh : 0) + (E.hint ? fpx(54, u, 46) : 0) + (E.re ? bh + 14 * u : 0)), px = W / 2 - pw / 2, py = H / 2 - ph / 2;
   panel(px, py, pw, ph); ctx.fillStyle = '#c0392b'; ctx.fillRect(px, py, pw, 4);
   let y = py + fpx(30, u, 24);
-  fitTxtC('CONNECTION FAILED · ERROR E' + E.code, W / 2, y, pw - 30, fpx(14, u, 12), '#ff9a8a', FD); y += fpx(30, u, 24);
+  fitTxtC('COULDN’T CONNECT · ERROR E' + E.code, W / 2, y, pw - 30, fpx(14, u, 12), '#ff9a8a', FD); y += fpx(30, u, 24);
   fitTxtC(E.title, W / 2, y, pw - 30, fpx(22, u, 16), '#ffe08a', FD); y += fpx(30, u, 24);
   if (E.hint) { wrapCenter(E.hint, W / 2, y, pw - 40, fpx(13, u, 11), '#c8d0b8'); y += fpx(54, u, 46); }
+  if (E.lines.length) { fitTxtC('TECHNICAL DETAILS (FOR BUG REPORTS)', W / 2, y, pw - 24, fpx(10, u, 9), 'rgba(242,230,196,0.45)', FD); y += lh; }
   for (const l of E.lines) { fitTxtC(l, W / 2, y, pw - 24, ls, 'rgba(242,230,196,0.75)', FB); y += lh; }
   if (E.re) {     // lost the link mid-game: try to get back in (the host keeps the soldier for you), or close
     const bw = Math.min((pw - 40 * u) / 2, 240 * u), by = py + ph - bh - 14 * u, ok = performance.now() - E.t > 600;
@@ -301,18 +307,17 @@ function drawNetErr(u) {
 function drawJoinSteps(u) {
   const tr = NET.trace, pw = Math.min(W - SAFE.l - SAFE.r - 24, 520 * u), rows = [];
   const ok = 'OK', wait = '…';
-  rows.push(['MATCHMAKING', tr && tr.sig ? ok : wait]);
+  rows.push(['GETTING ONLINE', tr && tr.sig ? ok : wait]);
   if (tr && tr.sig) {
-    rows.push(['GAME ' + NET.code.toUpperCase() + ' FOUND', tr.ack ? ok : wait]);
-    if (tr.ack) rows.push(['HOST REPLIED', tr.answer ? ok : wait]);
-    if (tr.answer) rows.push(['NETWORK PATH', tr.ice === 'connected' || tr.ice === 'completed' ? ok : tr.ice.toUpperCase()]);
-    if (tr.dc) rows.push(['GAME LINK', ok]);
-    if (tr.dc) rows.push(['LOBBY DATA', NET.lobby ? ok : wait]);
+    rows.push(['LOOKING FOR THE GAME', tr.ack ? ok : wait]);
+    if (tr.ack) rows.push(['SAYING HELLO TO THE HOST', tr.answer ? ok : wait]);
+    if (tr.answer) rows.push(['CONNECTING YOUR DEVICES', tr.ice === 'connected' || tr.ice === 'completed' || tr.dc ? ok : wait]);
+    if (tr.dc) rows.push(['LOADING THE LOBBY', NET.lobby ? ok : wait]);
   }
   const rh = fpx(24, u, 20), ph = fpx(60, u, 50) + rows.length * rh + (tr && tr.offer ? fpx(34, u, 28) : 0), px = W / 2 - pw / 2, py = H / 2 - ph / 2;
   panel(px, py, pw, ph);
   let y = py + fpx(24, u, 20);
-  txt('JOINING GAME ' + NET.code.toUpperCase() + '…', W / 2, y, fpx(18, u, 14), '#ffe08a', 'center', 'middle', FD); y += fpx(30, u, 24);
+  txt('JOINING ' + NET.code.toUpperCase() + '…', W / 2, y, fpx(18, u, 14), '#ffe08a', 'center', 'middle', FD); y += fpx(30, u, 24);
   for (const [k, v] of rows) { txt(k, px + 24 * u, y, fpx(14, u, 12), '#f2e6c4', 'left', 'middle', FD); txt(v, px + pw - 24 * u, y, fpx(14, u, 12), v === ok ? '#9be07a' : '#ffe08a', 'right', 'middle', FD); y += rh; }
   if (tr && tr.offer) { fitTxtC(traceLine(tr, 'HOST'), W / 2, y + 2, pw - 20, fpx(11, u, 9), 'rgba(242,230,196,0.6)'); fitTxtC(traceLine2(tr), W / 2, y + fpx(16, u, 13), pw - 20, fpx(11, u, 9), 'rgba(242,230,196,0.6)'); }
 }
@@ -337,7 +342,7 @@ function drawNetMenu() {
     }
     netToast(u); return;
   }
-  const room = NET.mode === 'p2p' || (!!NET.room && NET.hosts.length > 0), gap = 14 * u;
+  const room = netListShown(), gap = 14 * u;
   const card = (i, x, y, w, h, title, sub, art) => {
     const sel = NETM.sel === i; panel(x, y, w, h, 0.94);
     if (sel) { ctx.strokeStyle = '#ffe08a'; ctx.lineWidth = 3; ctx.strokeRect(x + 1.5, y + 1.5, w - 3, h - 3); }
@@ -358,13 +363,15 @@ function drawNetMenu() {
     const rx = L + (cw + gap) * 2, rw = R - rx;
     panel(rx, top, rw, bodyH, 0.94);
     txt('OPEN GAMES', rx + 14 * u, top + fpx(22, u, 17), fpx(16, u, 13), '#f2e6c4', 'left', 'middle', FD);
+    const rbw = Math.max(120, 136 * u), rbh = Math.max(32, 34 * u);
+    button({ x: rx + rw - rbw - 10 * u, y: top + 8 * u, w: rbw, h: rbh, label: '↻ REFRESH', sel: NETM.sel === 2, fn: () => netAct(2), focus: 2, size: fpx(13, u, 11), key: ['refresh', dv] });
     const rows = netRows(), busy = netAllHosts().filter(h => !rows.includes(h)), rh = Math.max(44, 50 * u);
-    let y = top + fpx(42, u, 34);
+    let y = top + 16 * u + rbh;
     if (!rows.length && !busy.length) wrapCenter('Public games show up here. A host can hide theirs in the lobby.', rx + rw / 2, top + bodyH * 0.42, rw - 30 * u, fpx(12, u, 11), '#a8b098');
     rows.forEach((h, i) => {
       if (y + rh > top + bodyH - 8) return;
-      const sel = NETM.sel === i + 2;
-      button({ x: rx + 10 * u, y, w: rw - 20 * u, h: rh, sel, fn: d => netAct(i + 2, d), focus: i + 2 });
+      const sel = NETM.sel === i + 3;
+      button({ x: rx + 10 * u, y, w: rw - 20 * u, h: rh, sel, fn: d => netAct(i + 3, d), focus: i + 3 });
       if (sel) keyTag('select', dv, { x: rx + 10 * u, y, w: rw - 20 * u - fpx(44, u, 38), h: rh });
       fitTxt((h.nm ? h.nm + ' · ' : 'GAME ') + h.c.toUpperCase(), rx + 24 * u, y + rh * 0.36, rw - 90 * u, fpx(15, u, 13), sel ? '#ffe08a' : '#f0f0e0', FD);
       txt(`${h.st === 'play' ? 'IN BATTLE · ' : ''}${h.md} · ${h.mp}`, rx + 24 * u, y + rh * 0.72, fpx(11, u, 10), '#a8b098', 'left', 'middle', FB);
@@ -373,7 +380,7 @@ function drawNetMenu() {
     });
     busy.forEach(h => { if (y + rh > top + bodyH - 8) return; txt('GAME ' + h.c.toUpperCase() + (h.st === 'play' ? ' · IN BATTLE' : ' · FULL'), rx + 24 * u, y + rh / 2, fpx(13, u, 11), 'rgba(240,240,224,0.4)', 'left', 'middle', FD); y += rh * 0.7; });
   }
-  txt('The host’s tab runs the battle — keep it open and in front.', W / 2, B - foot / 2 + 2, fpx(11, u, 10), 'rgba(242,230,196,0.5)', 'center', 'middle', FB);
+  txt('Hosting? Keep the game open on screen — your device runs the match for everyone.', W / 2, B - foot / 2 + 2, fpx(11, u, 10), 'rgba(242,230,196,0.5)', 'center', 'middle', FB);
   if (NETM.entry) drawCodeEntry(u);
   if (NET.busy) { panel(W / 2 - 200 * u, H / 2 - 30 * u, 400 * u, 60 * u); txt(NET.busy, W / 2, H / 2, fpx(17, u, 14), '#ffe08a', 'center', 'middle', FD); }
   netToast(u);
@@ -425,7 +432,8 @@ function updateNetLobby(ins) {
 
 /* ================= settings (main menu corner, lobby and pause) ================= */
 const SET = { open: false, from: null, tab: 0, sel: 0 };
-const SET_ROWS = ['soldiers', 'style', 'teams', 'camera', 'sound', 'sfx', 'mus', 'fullscreen'];
+const SET_TABS = [['GRAPHICS', ['soldiers', 'style', 'teams']], ['DISPLAY', ['camera', 'fullscreen']], ['AUDIO', ['sfx', 'mus', 'sound']], ['CONTROLS', null]];
+const setRows = () => SET_TABS[SET.tab][1];
 const CONTROLS = [['MOVE', 'LEFT STICK', 'W A S D'], ['AIM', 'RIGHT STICK', 'MOUSE'], ['FIRE', 'RT', 'LEFT CLICK'], ['AIM DOWN SIGHTS', 'LT', 'RIGHT CLICK'],
   ['SPRINT', 'L3', 'SHIFT'], ['JUMP / VAULT', 'A', 'SPACE'], ['PRONE / STAND', 'B', 'C / Z'], ['RELOAD', 'X', 'R'],
   ['USE · EXIT · SWAP', 'Y', 'E · 1 / 2'], ['GRENADE', 'RB', 'G'], ['GADGET', 'LB', 'F'], ['MELEE', 'R3', 'V'],
@@ -459,11 +467,12 @@ function setChange(k, d) {
 function updateSettings(ins) {
   for (const { st } of ins) {
     if (st.back || st.opt || st.pause) { closeSettings(); return; }
-    if (st.tabL || st.tabR) { SET.tab = 1 - SET.tab; sfx('ui'); }
-    if (SET.tab === 0) {
-      if (st.navY) { SET.sel = (SET.sel + st.navY + SET_ROWS.length) % SET_ROWS.length; sfx('ui'); }
-      if (st.navX) setChange(SET_ROWS[SET.sel], st.navX);
-      if (st.confirm) setChange(SET_ROWS[SET.sel], 1);
+    if (st.tabL || st.tabR) { SET.tab = (SET.tab + (st.tabR ? 1 : -1) + SET_TABS.length) % SET_TABS.length; SET.sel = 0; sfx('ui'); }
+    const rows = setRows();
+    if (rows) {
+      if (st.navY) { SET.sel = (SET.sel + st.navY + rows.length) % rows.length; sfx('ui'); }
+      if (st.navX) setChange(rows[SET.sel], st.navX);
+      if (st.confirm) setChange(rows[SET.sel], 1);
     }
   }
   hoverUpdate(v => SET.sel = v);
@@ -479,14 +488,14 @@ function drawSettings() {
   txt('SETTINGS', px + pad, py + hh / 2 + 1, fpx(22, u, 17), '#f2e6c4', 'left', 'middle', FD);
   txt(`v${VERSION.build}`, px + pad, py + ph - Math.max(14, 15 * u), fpx(11, u, 10), 'rgba(242,230,196,0.4)', 'left', 'middle', FD);
   const dv = devOf(null), cs = Math.max(40, 40 * u); iconButton(px + pw - cs - 8, py + (hh - cs) / 2, cs, 'close', () => closeSettings(), false, ['back', dv]);
-  // tabs
-  const tw = Math.min(170 * u, (pw - 200 * u) / 2), tx = px + pw / 2 - tw;
-  ['GENERAL', 'CONTROLS'].forEach((t, i) => button({ x: tx + i * tw, y: py + (hh - cs) / 2, w: tw - 6, h: cs, label: t, sel: SET.tab === i, fn: () => { SET.tab = i; sfx('ui'); }, size: fpx(14, u, 12) }));
-  keyTag('prev', dv, { x: tx, y: py + (hh - cs) / 2, w: tw - 6, h: cs }, 'left'); keyTag('next', dv, { x: tx + tw, y: py + (hh - cs) / 2, w: tw - 6, h: cs }, 'right');
-  const bodyY = py + hh + 6, bodyH = ph - hh - 6 - Math.max(28, 30 * u);
-  if (SET.tab === 0) {
-    const rh = clamp(bodyH / SET_ROWS.length, 34, 56 * u);
-    SET_ROWS.forEach((k, i) => {
+  // category tabs, on their own row under the title (LB / RB or Q / E cycle them)
+  const kw = Math.max(34, 40 * u), nt = SET_TABS.length, tw = Math.min(170 * u, (pw - pad * 2 - kw * 2) / nt), tx = px + pw / 2 - tw * nt / 2, ty = py + hh;
+  SET_TABS.forEach(([t], i) => button({ x: tx + i * tw, y: ty, w: tw - 6, h: cs, label: t, sel: SET.tab === i, fn: () => { SET.tab = i; SET.sel = 0; sfx('ui'); }, size: fpx(14, u, 11) }));
+  keyTag('prev', dv, { x: tx, y: ty, w: tw - 6, h: cs }, 'left'); keyTag('next', dv, { x: tx + (nt - 1) * tw, y: ty, w: tw - 6, h: cs }, 'right');
+  const bodyY = ty + cs + 12 * u, bodyH = py + ph - bodyY - Math.max(28, 30 * u), rows = setRows();
+  if (rows) {
+    const rh = clamp(bodyH / rows.length, 34, 56 * u);
+    rows.forEach((k, i) => {
       const y = bodyY + i * rh, sel = SET.sel === i, [lab, val] = setLabel(k), x = px + pad, w = pw - pad * 2;
       if (sel) { ctx.fillStyle = 'rgba(255,224,138,0.13)'; ctx.fillRect(x, y + 2, w, rh - 4); ctx.fillStyle = '#ffe08a'; ctx.fillRect(x, y + 2, 4, rh - 4); }
       txt(lab, x + 16 * u, y + rh / 2, fpx(15, u, 13), sel ? '#fff' : '#c8d0b8', 'left', 'middle', FD);
@@ -509,7 +518,7 @@ function drawSettings() {
       });
     }
   }
-  if (SET.tab === 1) txt('TOUCH: LEFT THUMB MOVES · RIGHT THUMB AIMS AND FIRES', W / 2, py + ph - Math.max(14, 15 * u), fpx(12, u, 11), 'rgba(240,240,220,0.65)', 'center', 'middle', FD);
+  if (!rows) txt('TOUCH: LEFT THUMB MOVES · RIGHT THUMB AIMS AND FIRES', W / 2, py + ph - Math.max(14, 15 * u), fpx(12, u, 11), 'rgba(240,240,220,0.65)', 'center', 'middle', FD);
 }
 
 /* ================= local lobby ================= */
@@ -870,7 +879,7 @@ function render() {
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, Math.max(0, (now - last) / 1000)); last = now;
-  try { update(dt); render(); } catch (err) { console.error(err); }
+  try { update(dt); render(); audioTick(); } catch (err) { console.error(err); }
   endInputFrame();
   requestAnimationFrame(frame);
 }
