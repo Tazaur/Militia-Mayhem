@@ -133,3 +133,4 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - Online text is plain language (NET_E, join steps, toasts); error codes + trace lines stay, under "TECHNICAL DETAILS".
 - Duplicate names: host-side dupName(p, raw) by join order → "Also X", "X III", "Another X", "X (but cooler)", "X’s 3rd cousin"…
 - Settings: SET_TABS (GRAPHICS, DISPLAY, AUDIO, CONTROLS) as a tab row under the title; LB/RB or Q/E cycle.
+- (build 54) MGs draw under their gunner and sit 4 px forward along the aim (mgPos). Gunners use the 'sit' pose. The nest gunner orbits the gun pivot (seatLocal) so they turn with it. Inactive vehicles still call engineUpdate (a wreck's engine used to hum at full volume until respawn). bag_frames zeroes rows from the narrowest row after y=180, so the next crescent on the sheet no longer leaks into bagarc0.

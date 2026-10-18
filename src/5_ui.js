@@ -303,8 +303,8 @@ function drawVehicle(v) {
     for (let k = -3; k <= 3; k++) { const a = v.a + k * 0.42; img(SPR.bag, v.x + Math.cos(a) * 18, v.y + Math.sin(a) * 18, a + Math.PI / 2, 1); }
     worldT();
     const [mx, my] = mgPos(v);
-    const g = v.seats[0]; if (g) drawSeated(g, true);
     drawMG(v, mx, my);
+    const g = v.seats[0]; if (g) drawSeated(g, true);
     if (v.hp < v.T.hp && v.hitFlash > -2) { const f = v.hp / v.T.hp; ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(v.x - 14, v.y - 26, 28, 3); ctx.fillStyle = f > 0.5 ? '#7dff7a' : '#ff9a30'; ctx.fillRect(v.x - 14, v.y - 26, 28 * f, 3); }
     return;
   }
@@ -315,20 +315,20 @@ function drawVehicle(v) {
     const px = v.x - 4 * Math.cos(v.a), py = v.y - 4 * Math.sin(v.a);
     sprC(vehSkin(tn, col), tm[4], tm[5], px, py, v.ta);
     const [mx, my] = mgPos(v);
-    const g = v.seats[1]; if (g) drawSeated(g, true);
     drawMG(v, mx, my);
+    const g = v.seats[1]; if (g) drawSeated(g, true);
     if (v.recoil > 0.85) flashAt(px + Math.cos(v.ta) * 100, py + Math.sin(v.ta) * 100, 26);
   } else {
     const jn = 'jeep' + Math.min(3, Math.floor(hullFrame(v) * 0.7)), jm = ATLAS[jn];
     sprC(vehSkin(jn, col), jm[4], jm[5], v.x, v.y, v.a);
     for (const i of [0, 1]) { const s = v.seats[i]; if (s) drawSeated(s); }
     const [mx, my] = mgPos(v);
-    const g = v.seats[2]; if (g) drawSeated(g, true);
     drawMG(v, mx, my);
+    const g = v.seats[2]; if (g) drawSeated(g, true);
   }
   if (v.hitFlash > 0) { worldT(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.25; ctx.fillStyle = '#fff'; ctx.save(); ctx.translate(v.x, v.y); ctx.rotate(v.a); ctx.fillRect(-v.T.hl, -v.T.hw, v.T.hl * 2, v.T.hw * 2); ctx.restore(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
 }
-/* the mounted MG (art/art4/mounts.png): firing frame + a soft glow while it shoots; drawn over its gunner, who stands behind it */
+/* the mounted MG (art/art4/mounts.png): firing frame + a soft glow while it shoots; drawn under its gunner, who holds the grips */
 function drawMG(v, mx, my) {
   const f = v.mgFlash > 0; spr(f ? 'mg_f' : 'mg', mx, my, v.mgA);
   if (f) flashAt(mx + Math.cos(v.mgA) * 21, my + Math.sin(v.mgA) * 21, 6);
@@ -336,7 +336,7 @@ function drawMG(v, mx, my) {
 function drawSeated(s, mg) {
   const role = s.veh.T.seats[s.seat].role, jeep = s.veh.type === 'jeep';
   // drivers and jeep passengers sit; MG gunners stand at the gun; tank riders keep their rifle up
-  const pose = role === 'drive' || (jeep && role === 'rifle' && !s.flash) ? 'sit' : mg ? 'nogun' : 'stand';
+  const pose = role === 'drive' || mg || (jeep && role === 'rifle' && !s.flash) ? 'sit' : 'stand';
   solDraw(s, solSpr(s.color, pose === 'stand' && CFG.soldiers === 'classic' ? 'stand' : pose), s.x, s.y, s.a, 0.9, 0.9);
   if (s.flash > 0 && !mg && role !== 'drive') { const [mx, my] = muzzle(s, 20); flashAt(mx, my, 8); }
 }

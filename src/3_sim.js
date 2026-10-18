@@ -433,6 +433,7 @@ function toWorld(v, lx, ly) { const c = Math.cos(v.a), s = Math.sin(v.a); return
 /* ---------------- seats ---------------- */
 function seatLocal(v, i) {
   const sd = v.T.seats[i];
+  if (v.type === 'nest' && sd.role === 'mg') { const r = v.mgA - v.a; return [2 - 7 * Math.cos(r), -7 * Math.sin(r)]; }
   if (sd.pos === 'turret') { const r = v.ta - v.a, c = Math.cos(r), s = Math.sin(r); return [-4 + (-6) * c - (-9) * s, (-6) * s + (-9) * c]; }
   return sd.pos;
 }
@@ -587,9 +588,9 @@ function cannonFx(v, x, y, s) {
   if (s && s.player) rumble(s.player, 0.6, 0.2);
 }
 function mgPos(v) {
-  if (v.type === 'tank') { const [lx, ly] = seatLocal(v, 1); return toWorld(v, lx, ly); }
-  if (v.type === 'nest') return toWorld(v, 2, 0);
-  return toWorld(v, -27, 0);
+  const c = Math.cos(v.mgA) * 4, s = Math.sin(v.mgA) * 4;
+  if (v.type === 'tank') { const [lx, ly] = seatLocal(v, 1), [x, y] = toWorld(v, lx, ly); return [x + c, y + s]; }
+  const [x, y] = toWorld(v, v.type === 'nest' ? 2 : -27, 0); return [x + c, y + s];
 }
 function fireMG(v, s) {
   if (v.over > 0) return;
@@ -907,6 +908,7 @@ function updateSeatedPos(s) {
 const _po = { x: 0, y: 0 };
 function updateVehicle(v, dt) {
   if (!v.active) {
+    engineUpdate(v);      // a wreck's engine has to be told to stop, or it hums on at full volume until the respawn
     v.respawnT -= dt;
     if (v.respawnT <= 0 && !solidAt(v.sp.x, v.sp.y, 30)) {
       Object.assign(v, makeVehicle(v.sp), { id: v.id });

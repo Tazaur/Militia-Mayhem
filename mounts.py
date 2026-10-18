@@ -36,6 +36,7 @@ def bag_frames(SB, SC=0.37):
     out = {}
     for n, cx, dy in (('bagarc0', 390, 0), ('bagarc1', 219, 2), ('bagarc2', 24, 3)):
         cell = np.zeros((200, 171, 4), np.uint8); part = SB[0:200, cx:cx + 171]; cell[:, :part.shape[1]] = part
+        occ = (cell[180:, :, 3] > 40).sum(1); cell[180 + int(occ.argmin()):] = 0   # the next crescent down the sheet touches this one
         w, h = round(171 * SC), round(200 * SC)
         a = np.array(Image.fromarray(cell).resize((w, h), Image.LANCZOS))
         out[n] = _cut(a, 88 * w / 171, (98 + dy) * h / 200)       # pivot: bags' centre 15 px behind it, as before
