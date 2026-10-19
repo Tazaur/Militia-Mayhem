@@ -59,6 +59,8 @@ function gearIcon(cx, cy, r, col) {
   for (let i = 0; i < 16; i++) { const a = i / 16 * TAU, rr2 = i % 2 ? r : r * 0.78; ctx.lineTo(cx + Math.cos(a - 0.1) * rr2, cy + Math.sin(a - 0.1) * rr2); ctx.lineTo(cx + Math.cos(a + 0.1) * rr2, cy + Math.sin(a + 0.1) * rr2); }
   ctx.closePath(); ctx.fill(); ctx.fillStyle = '#141a10'; ctx.beginPath(); ctx.arc(cx, cy, r * 0.34, 0, TAU); ctx.fill();
 }
+/* a click already toggled it inside the tap (fsGesture); keys and pads land here with no click */
+const FS_FN = (d, c) => { if (!c) toggleFullscreen(); };
 function iconButton(x, y, s, kind, fn, sel, key, keyAt) {
   button({ x, y, w: s, h: s, fn, sel, key, keyAt: keyAt || 'left' });
   const cx = x + s / 2, cy = y + s / 2, col = sel ? '#ffe08a' : '#f0f0e0';
@@ -140,7 +142,7 @@ function drawMenu() {
   const ib = Math.max(44, 44 * u);
   const dv = devOf(null);
   iconButton(R - ib, T, ib, 'gear', () => openSettings('menu'), MENU.sel === 2, ['settings', dv], 'below'); UIB[UIB.length - 1].focus = 2;
-  iconButton(R - ib * 2 - 10 * u, T, ib, 'full', toggleFullscreen);
+  if (fsOK()) { iconButton(R - ib * 2 - 10 * u, T, ib, 'full', FS_FN); UIB[UIB.length - 1].fs = true; }
   const top = T + fpx(46, u, 28) + fpx(40, u, 26), foot = fpx(26, u, 22), avH = B - foot - top;
   const cw = Math.min((R - L - 24 * u) / 2, avH * 1.05, 430 * u), ch = Math.min(avH, cw * 0.98), y0 = top + (avH - ch) / 2;
   for (let i = 0; i < 2; i++) {
@@ -152,17 +154,17 @@ function drawMenu() {
     squadArt(x + cw / 2, artY, sc, i === 0 ? MENU.spin : 0, i === 1, off ? 0.45 : 1);
     const ly = y0 + ch - fpx(46, u, 34);
     txt(i === 0 ? 'LOCAL PLAY' : 'NETWORK PLAY', x + cw / 2, ly, fpx(26, u, 18), off ? 'rgba(240,240,224,0.4)' : sel ? '#ffe08a' : '#f2e6c4', 'center', 'middle', FD);
-    txt(i === 0 ? '1–4 PLAYERS · SPLIT OR SHARED SCREEN' : NET.avail === false ? 'OPEN THE PAGE ON CLAUDE.AI' : 'HOST OR JOIN · UP TO 4 PLAYERS', x + cw / 2, ly + fpx(24, u, 18), fpx(12, u, 11), off ? 'rgba(240,240,224,0.35)' : '#c8d0b8', 'center', 'middle', FB);
+    txt(i === 0 ? '1–4 PLAYERS · SPLIT OR SHARED SCREEN' : NET.avail === false ? 'NOT AVAILABLE IN THIS BROWSER' : 'HOST OR JOIN · UP TO 4 PLAYERS', x + cw / 2, ly + fpx(24, u, 18), fpx(12, u, 11), off ? 'rgba(240,240,224,0.35)' : '#c8d0b8', 'center', 'middle', FB);
     if (sel && !off) { ctx.font = `${fpx(26, u, 18)}px ${FD}`; const tw2 = ctx.measureText(i === 0 ? 'LOCAL PLAY' : 'NETWORK PLAY').width; keyTag('select', dv, { x: x + cw / 2 - tw2 / 2, y: ly - 17, w: 0, h: 34 }, 'left'); }
   }
   netToast(u);
   txt(`v${VERSION.build}  ·  ${VERSION.date}`, L, B - foot / 2, fpx(11, u, 10), 'rgba(242,230,196,0.45)', 'left', 'middle', FD);
 }
 
-/* ================= network menu: host a game, join one by code (or from the list on claude.ai) ================= */
+/* ================= network menu: host a game, join one by code or from the list ================= */
 const NETM = { sel: 0, entry: null };
 const CODE_KEYS = 'abcdefghjkmnpqrstuvwxyz23456789'.split('').concat(['DEL', 'JOIN']);
-const netListShown = () => NET.mode === 'p2p' || (!!NET.room && NET.hosts.length > 0);
+const netListShown = () => NET.mode === 'p2p';
 function openNetMenu(dev) { if (typeof netListRefresh === 'function') netListRefresh(); NET.err = null; NETM.sel = 0; NETM.entry = null; NETM.dev = dev && dev.type ? dev : { type: 'kb' }; setState('netmenu'); sfx('ui'); }
 function netRows() { return netAllHosts().filter(h => h.n < MAXP && (h.st === 'lobby' || h.mj)); }
 function netAct(i, dev) {
@@ -337,7 +339,7 @@ function drawNetMenu() {
     panel(px, py, pw, ph);
     txt(NET.avail === null ? 'CONNECTING…' : 'THIS BROWSER CAN’T PLAY ONLINE', W / 2, py + ph * 0.3, fpx(20, u, 15), '#ffe08a', 'center', 'middle', FD);
     if (NET.avail === false) {
-      wrapCenter(typeof window !== 'undefined' && window.claude ? 'This claude.ai page view blocks direct connections in this browser. Play from a copy of the game hosted on a normal web address instead.' : 'This view can’t make direct connections. Open the game from a normal web address in Safari or Chrome.', W / 2, py + ph * 0.5, pw - 40 * u, fpx(13, u, 12), '#c8d0b8');
+      wrapCenter('This browser can’t make direct connections. Open the game in Safari or Chrome.', W / 2, py + ph * 0.5, pw - 40 * u, fpx(13, u, 12), '#c8d0b8');
       txt(netDiag(), W / 2, py + ph - 18 * u, fpx(11, u, 10), 'rgba(242,230,196,0.5)', 'center', 'middle', FD);
     }
     netToast(u); return;
@@ -352,7 +354,7 @@ function drawNetMenu() {
     txt(sub, x + w / 2, y + h - fpx(30, u, 22), fpx(12, u, 11), '#c8d0b8', 'center', 'middle', FB);
     if (sel) { ctx.font = `${fpx(24, u, 17)}px ${FD}`; const tw2 = ctx.measureText(title).width; keyTag('select', dv, { x: x + w / 2 - tw2 / 2, y: y + h - fpx(56, u, 40) - 17, w: 0, h: 34 }, 'left'); }
   };
-  // two big cards, plus (on claude.ai) a list of games open on this page
+  // two big cards, plus a list of open games
   const cw = room ? clamp((R - L) * 0.3, 180, 330 * u) : (R - L - gap) / 2;
   card(0, L, top, cw, bodyH, 'HOST A GAME', 'YOU GET A CODE · FRIENDS TYPE IT', (cx, cy, m) => squadArt(cx, cy, crispScale(m / 120), MENU.spin, true, 1));
   card(1, L + cw + gap, top, cw, bodyH, 'JOIN WITH CODE', 'TYPE YOUR FRIEND’S 4 LETTERS', (cx, cy, m) => {
@@ -449,7 +451,7 @@ function setLabel(k) {
     case 'sound': return ['SOUND STYLE', CFG.sound === 'classic' ? 'CLASSIC' : 'EXPERIMENTAL'];
     case 'sfx': return ['SOUND EFFECTS', AU.sfxOn ? 'ON' : 'OFF'];
     case 'mus': return ['MUSIC', AU.musOn ? 'ON' : 'OFF'];
-    case 'fullscreen': return ['FULLSCREEN', isFS() ? 'ON' : 'OFF'];
+    case 'fullscreen': return ['FULLSCREEN', !fsOK() ? 'SHARE › ADD TO HOME SCREEN' : isFS() ? 'ON' : 'OFF'];
   }
 }
 function setChange(k, d) {
@@ -459,7 +461,7 @@ function setChange(k, d) {
   if (k === 'sound') { CFG.sound = CFG.sound === 'classic' ? 'exp' : 'classic'; engineKillAll(); }
   if (k === 'sfx') { AU.sfxOn = !AU.sfxOn; store.set('sfx', AU.sfxOn); applyMute(); }
   if (k === 'mus') { AU.musOn = !AU.musOn; store.set('mus', AU.musOn); applyMute(); }
-  if (k === 'fullscreen') toggleFullscreen();
+  if (k === 'fullscreen' && !SET.fsClick) toggleFullscreen(); SET.fsClick = false;
   saveCfg(); sfx('ui');
 }
 function updateSettings(ins) {
@@ -502,8 +504,8 @@ function drawSettings() {
       txt('‹', x + w * 0.52, y + rh / 2, fpx(20, u, 16), 'rgba(242,230,196,0.5)', 'center', 'middle', FD);
       if (sel) keyTag('change', dv, { x: x + w * 0.52 - 12, y: y + rh * 0.2, w: 0, h: rh * 0.6 }, 'left');
       txt('›', x + w - aw / 2, y + rh / 2, fpx(20, u, 16), 'rgba(242,230,196,0.8)', 'center', 'middle', FD);
-      UIB.push({ x, y, w: w * 0.55, h: rh, focus: i, fn: () => { SET.sel = i; setChange(k, -1); } });
-      UIB.push({ x: x + w * 0.55, y, w: w * 0.45, h: rh, focus: i, fn: () => { SET.sel = i; setChange(k, 1); } });
+      UIB.push({ x, y, w: w * 0.55, h: rh, focus: i, fs: k === 'fullscreen', fn: () => { SET.sel = i; SET.fsClick = true; setChange(k, -1); } });
+      UIB.push({ x: x + w * 0.55, y, w: w * 0.45, h: rh, focus: i, fs: k === 'fullscreen', fn: () => { SET.sel = i; SET.fsClick = true; setChange(k, 1); } });
     });
   } else {
     const cols = pw > 620 ? 2 : 1, per = Math.ceil(CONTROLS.length / cols), rh = Math.min(bodyH / (per + 1), 34 * u), colW = (pw - pad * 2) / cols, fs = fpx(13, u, 11.5);
@@ -653,7 +655,7 @@ function drawLobby2() {
   const hb = Math.max(42, 42 * u);
   const dv = devOf(null), local = PLAYERS.some(p => !isNet(p));      // once you have a slot, back leaves the slot (its ✕)
   button({ x: L, y: T, w: Math.max(96, 104 * u), h: hb, label: NET.role ? '‹  LEAVE' : '‹  MENU', fn: () => NET.role ? netLeave() : toMenu(), size: fpx(15, u, 13), key: local ? null : ['back', dv] });
-  txt(NET.role ? 'ONLINE · CODE ' + NET.code.toUpperCase() + (NET.game && NET.game.name && String(NET.game.name).startsWith('militia') ? '' : NET.role === 'host' ? ' (CLAUDE.AI ONLY)' : '') : 'LOCAL PLAY', L + Math.max(96, 104 * u) + 16 * u, T + hb / 2 + 1, fpx(26, u, 18), '#f2e6c4', 'left', 'middle', FD);
+  txt(NET.role ? 'ONLINE · CODE ' + NET.code.toUpperCase() : 'LOCAL PLAY', L + Math.max(96, 104 * u) + 16 * u, T + hb / 2 + 1, fpx(26, u, 18), '#f2e6c4', 'left', 'middle', FD);
   iconButton(R - hb, T, hb, 'gear', () => openSettings('lobby'), false, ['settings', dv]);
   const foot = fpx(10, u, 8), top = T + hb + 12 * u, bodyH = B - foot - top;
   // match panel (right)
@@ -743,13 +745,23 @@ function drawMatchPanel(x, y, w, h, u) {
 
 /* ================= pause ================= */
 const PAUSE = { by: null, sel: 0 };
-const PAUSE_ITEMS = ['RESUME', 'SETTINGS', 'RESTART MATCH', 'BACK TO LOBBY', 'QUIT TO MENU'];
+const PAUSE_ITEMS = ['RESUME', 'SETTINGS', 'REDEPLOY', 'RESTART MATCH', 'BACK TO LOBBY', 'QUIT TO MENU'];
 function openPause(p) { if (state !== 'play') return; PAUSE.by = p; PAUSE.sel = 0; setState('pause'); sfx('ui'); }
-const pauseItems = () => NET.role === 'client' ? ['RESUME', 'SETTINGS', 'LEAVE GAME'] : NET.role === 'host' ? ['RESUME', 'SETTINGS', 'RESTART MATCH', 'BACK TO LOBBY', 'END GAME'] : PAUSE_ITEMS;
+const pauseItems = () => {
+  const l = NET.role === 'client' ? ['RESUME', 'SETTINGS', 'REDEPLOY', 'LEAVE GAME'] : NET.role === 'host' ? ['RESUME', 'SETTINGS', 'REDEPLOY', 'RESTART MATCH', 'BACK TO LOBBY', 'END GAME'] : PAUSE_ITEMS;
+  return pauseMe() ? l : l.filter(x => x !== 'REDEPLOY');
+};
+/* who REDEPLOY kills: whoever opened the menu (or the first local player who's alive); never in co-op */
+function pauseMe() {
+  if (!M || M.demo || M.over || M.coop) return null;
+  if (NET.role === 'client') { const s = NET.me && NET.me.sol; return s && s.alive ? s : null; }
+  const p = PAUSE.by && PAUSE.by.sol && PAUSE.by.sol.alive ? PAUSE.by : LOCALS().find(q => q.sol && q.sol.alive); return p ? p.sol : null;
+}
 function pauseAct(i) {
   const it = pauseItems()[i];
   if (it === 'RESUME') setState('play');
   if (it === 'SETTINGS') openSettings('pause');
+  if (it === 'REDEPLOY') { const s = pauseMe(); if (NET.role === 'client') { NET.rd = (NET.rd | 0) + 1; NET.rdT = performance.now(); } else redeploy(s); setState('play'); }
   if (it === 'RESTART MATCH') { newMatch({ ...CFG }, false); setState('play'); }
   if (it === 'BACK TO LOBBY') toLobby();
   if (it === 'QUIT TO MENU' || it === 'END GAME') toMenu();
@@ -771,7 +783,7 @@ function drawPause() {
   const u = uiU(), bw = Math.min(360 * u, W - 40), bh = Math.max(44, 46 * u), gap = 8 * u, items = pauseItems(), tot = items.length * (bh + gap);
   const hc = NET.role === 'host' && NET.code ? fpx(40, u, 30) : 0, y0 = Math.max(SAFE.t + fpx(90, u, 70) + hc, H / 2 - tot / 2 + 20 * u);
   if (hc) { txt('GAME CODE', W / 2, SAFE.t + fpx(16, u, 13), fpx(12, u, 11), 'rgba(242,230,196,0.6)', 'center', 'middle', FD); stxt(NET.code.toUpperCase(), W / 2, SAFE.t + fpx(40, u, 31), fpx(28, u, 21), '#ffe08a', 'center', 'middle', FD); }
-  const ib = Math.max(44, 44 * u); iconButton(W - SAFE.r - 14 * u - ib, SAFE.t + 12 * u, ib, 'full', toggleFullscreen);
+  const ib = Math.max(44, 44 * u); if (fsOK()) { iconButton(W - SAFE.r - 14 * u - ib, SAFE.t + 12 * u, ib, 'full', FS_FN); UIB[UIB.length - 1].fs = true; }
   stxt(NET.role ? 'MENU' : 'PAUSED', W / 2, y0 - fpx(50, u, 40), fpx(44, u, 30), '#f2e6c4', 'center', 'middle', FD);
   if (NET.role) txt('ONLINE — THE BATTLE CARRIES ON', W / 2, y0 - fpx(18, u, 14) + (PAUSE.by && PAUSE.by.sol ? fpx(18, u, 14) : 0), fpx(12, u, 11), 'rgba(242,230,196,0.6)', 'center', 'middle', FD);
   if (PAUSE.by && PAUSE.by.sol) stxt('by ' + PAUSE.by.sol.name, W / 2, y0 - fpx(18, u, 14), fpx(14, u, 12), CHEX[PAUSE.by.color], 'center', 'middle', FD);
@@ -840,14 +852,6 @@ function drawEnd() {
   const dv = devOf(null); if (dv !== 'touch') { badge('select', dv, W / 2 - w2 + 4, by + bh / 2, bh * 0.5); badge('back', dv, W / 2 + 20, by + bh / 2, bh * 0.5); }
   ctx.globalAlpha = 1;
 }
-function drawRotate() {
-  screenT(); ctx.fillStyle = '#0c140a'; ctx.fillRect(0, 0, W, H);
-  const cx = W / 2, cy = H * 0.42, t = performance.now() / 1000, a = Math.min(1, (t % 2.4) / 1.2) * Math.PI / 2;
-  ctx.save(); ctx.translate(cx, cy); ctx.rotate(-a); ctx.strokeStyle = '#f2e6c4'; ctx.lineWidth = 4; rr(ctx, -30, -50, 60, 100, 8); ctx.stroke(); ctx.fillStyle = '#f2e6c4'; ctx.fillRect(-6, 40, 12, 3); ctx.restore();
-  txt('TURN YOUR DEVICE SIDEWAYS', cx, cy + 90, 18, '#f2e6c4', 'center', 'middle', FD);
-  txt('Militia Mayhem is played in landscape.', cx, cy + 116, 14, '#c8d0b8', 'center', 'middle');
-}
-
 /* ================= main loop ================= */
 function setState(s) { state = s; stateT = 0; }
 function update(dt) {
@@ -856,7 +860,6 @@ function update(dt) {
   netTick();
   const front = state === 'menu' || state === 'lobby' || state === 'netmenu';
   const live = !front && M && !M.demo && !!NET.role;        // an online battle never stops for one player's menu
-  if (portrait()) { if (state === 'play' && !NET.role) openPause(null); if (live) runMatch(dt, true); return; }
   let ins;
   if (front) ins = allInputs(); else { readPlayers(); ins = playerInputs(); }
   if (SET.open) { if (front) updateMatch(dt); else if (live) runMatch(dt, true); updateSettings(ins); return; }
@@ -889,7 +892,6 @@ function render() {
   screenT(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
   ctx.fillStyle = '#0c140a'; ctx.fillRect(0, 0, W, H);
   if (!M || !imgReady) { txt('LOADING…', W / 2, H / 2, 18, '#f2e6c4', 'center', 'middle', FD); return; }
-  if (portrait()) { drawRotate(); return; }
   DUI.length = 0; TB_ON = [];
   // 1) all gameplay for every view, 2) split dividers, 3) every HUD, 4) global HUD, 5) menus on top
   for (const vw of M.views) drawWorld(vw);

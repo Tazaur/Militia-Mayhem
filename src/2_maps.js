@@ -332,13 +332,13 @@ function gStampS(n, dark, x, y, a) {
   const m = ATLAS[n]; if (!m) return; if (!dark) { gStamp(n, x, y, a, 1); return; }
   const c = Math.cos(a), sn = Math.sin(a); dgx.setTransform(c, sn, -sn, c, x, y); dgx.drawImage(darkSpr(n), -m[4], -m[5]); dgx.setTransform(1, 0, 0, 1, 0, 0);
 }
-/* bodies stay live for a few seconds while a blood pool seeps out underneath, then both bake into the ground */
-const POOL_T = 4.5;
+/* bodies lie where they fell for 2 minutes, then fade out over 1; their blood pool seeps out and bakes into the ground */
+const POOL_T = 4.5, BODY_T = 120, BODY_FADE = 60;
 function addCorpse(color, dark, x, y, rot) {
   if (inWater(x, y)) return;
   const blobs = []; for (let i = 0; i < 6; i++) { const a = rnd(0, TAU), d = i ? rnd(2, 7) : 0; blobs.push([Math.cos(a) * d, Math.sin(a) * d, i ? rnd(0.45, 0.8) : 1]); }
   M.corpses.push({ n: solSpr(color, 'dead'), dark, x, y, rot, t: 0, R: rnd(11, 15), blobs });
-  if (M.corpses.length > 40) bakeCorpse(M.corpses.shift());
+  if (M.corpses.length > 90) { const c = M.corpses.shift(); if (!c.baked) bakePool(c); }
 }
 function drawPool(g, c, k) {
   const e = 1 - Math.pow(1 - clamp(k, 0, 1), 2.2), R = c.R * e; if (R < 0.5) return;
@@ -346,10 +346,15 @@ function drawPool(g, c, k) {
   for (const [bx, by, br] of c.blobs) { g.beginPath(); g.arc(c.x + bx * e, c.y + by * e, R * br, 0, TAU); g.fill(); }
   g.fillStyle = CFG.style === 'grit' ? '#521410' : '#741410'; g.beginPath(); g.arc(c.x - 1, c.y - 1, R * 0.55, 0, TAU); g.fill();
 }
-function bakeCorpse(c) { dgx.setTransform(1, 0, 0, 1, 0, 0); dgx.globalAlpha = 0.92; drawPool(dgx, c, 1); dgx.globalAlpha = 1; gStampS(c.n, c.dark, c.x, c.y, c.rot); }
+function bakePool(c) { dgx.setTransform(1, 0, 0, 1, 0, 0); dgx.globalAlpha = 0.92; drawPool(dgx, c, 1); dgx.globalAlpha = 1; c.baked = true; }
+const corpseAlpha = c => c.t > BODY_T ? Math.max(0, 1 - (c.t - BODY_T) / BODY_FADE) : 1;
+/* spent casings lie on the ground and fade out over 15 s */
+const BRASS_T = 15;
 function updateCorpses(dt) {
-  for (const c of M.corpses) { c.t += dt; if (c.t >= POOL_T) { bakeCorpse(c); c.done = true; } }
+  for (const c of M.corpses) { c.t += dt; if (!c.baked && c.t >= POOL_T) bakePool(c); if (c.t >= BODY_T + BODY_FADE) c.done = true; }
   if (M.corpses.some(c => c.done)) M.corpses = M.corpses.filter(c => !c.done);
+  for (const b of M.brass) b.t += dt;
+  if (M.brass.length && M.brass[0].t >= BRASS_T) M.brass = M.brass.filter(b => b.t < BRASS_T);
 }
 function scorch(x, y, r) {
   const g = dgx.createRadialGradient(x, y, 0, x, y, r);

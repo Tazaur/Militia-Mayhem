@@ -94,15 +94,23 @@ const SAFE = { t: 0, r: 0, b: 0, l: 0 };
 const probe = document.createElement('div');
 probe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)';
 document.body.appendChild(probe);
+let ROT = false; const TOUCHDEV = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 function resize() {
-  DPR = Math.min(2, window.devicePixelRatio || 1); W = innerWidth; H = innerHeight;
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  // a phone held upright: the canvas turns sideways so the game is always landscape
+  ROT = TOUCHDEV && innerHeight > innerWidth * 1.05; W = ROT ? innerHeight : innerWidth; H = ROT ? innerWidth : innerHeight;
+  cv.style.width = ROT ? W + 'px' : ''; cv.style.height = ROT ? H + 'px' : ''; cv.style.right = cv.style.bottom = ROT ? 'auto' : '';
+  cv.style.transformOrigin = ROT ? '0 0' : ''; cv.style.transform = ROT ? `translateX(${innerWidth}px) rotate(90deg)` : '';
   cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
-  const cs = getComputedStyle(probe);
-  SAFE.t = parseFloat(cs.paddingTop) || 0; SAFE.r = parseFloat(cs.paddingRight) || 0; SAFE.b = parseFloat(cs.paddingBottom) || 0; SAFE.l = parseFloat(cs.paddingLeft) || 0;
+  const cs = getComputedStyle(probe), st = parseFloat(cs.paddingTop) || 0, sr = parseFloat(cs.paddingRight) || 0, sb = parseFloat(cs.paddingBottom) || 0, sl = parseFloat(cs.paddingLeft) || 0;
+  if (ROT) { SAFE.t = sr; SAFE.r = sb; SAFE.b = sl; SAFE.l = st; } else { SAFE.t = st; SAFE.r = sr; SAFE.b = sb; SAFE.l = sl; }
   if (typeof M !== 'undefined' && M) layoutViews();
 }
 addEventListener('resize', resize);
-const portrait = () => H > W * 1.05;
+/* screen point → game point (the canvas may be turned sideways) */
+const ptXY = e => ROT ? [e.clientY, innerWidth - e.clientX] : [e.clientX, e.clientY];
+/* iPhone Safari has no page fullscreen: there it's Share → Add to Home Screen */
+const fsOK = () => { const el = document.documentElement; return !!(el && (el.requestFullscreen || el.webkitRequestFullscreen)); };
 const isFS = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
 function toggleFullscreen() {
   if (!isFS()) { goFullscreen(); return; }
@@ -496,7 +504,8 @@ const TB = {}; let TB_ON = [];            // buttons drawn this frame (only thes
 function hitB(x, y, b) { if (!b) return false; if (b.w) return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h; return (x - b.x) ** 2 + (y - b.y) ** 2 < (b.r + 8) ** 2; }
 cv.addEventListener('pointerdown', e => {
   audioInit(); try { cv.focus({ preventScroll: true }); } catch (_) { }
-  const x = e.clientX, y = e.clientY;
+  const [x, y] = ptXY(e);
+  if (e.pointerType === 'mouse' && e.button === 0) fsGesture(x, y);
   if (e.pointerType === 'touch') {
     e.preventDefault(); TOUCH.active = true;
     const tp = touchPlayer();
@@ -506,6 +515,7 @@ cv.addEventListener('pointerdown', e => {
       if (TB_ON.includes('fire') && hitB(x, y, { x: TB.fire.x, y: TB.fire.y, r: TB.fire.r + 18 })) role = 'fire';   // drag is measured from where the thumb lands
       else role = x < W * 0.45 ? 'move' : 'aim';
       for (const [id, t] of TOUCH.pts) if (t.role === role) TOUCH.pts.delete(id);
+      if (role === 'move' && TOUCH.lockFree) TOUCH.sprintLock = TOUCH.lockFree = false;     // back on the stick after a locked sprint: that ends it
       TOUCH.pts.set(e.pointerId, { role, ox, oy, x, y, t0: performance.now(), full: 0, drag: false });
     } else TOUCH.taps.push({ x, y });
   } else {
@@ -516,10 +526,14 @@ cv.addEventListener('pointerdown', e => {
   try { cv.setPointerCapture(e.pointerId); } catch (_) { }
 }, { passive: false });
 cv.addEventListener('pointermove', e => {
-  if (e.pointerType === 'touch') { const t = TOUCH.pts.get(e.pointerId); if (t && t.role !== 'btn') { t.x = e.clientX; t.y = e.clientY; } }
-  else { KB.mouse.x = e.clientX; KB.mouse.y = e.clientY; KB.mouse.moved = true; }
+  const [x, y] = ptXY(e);
+  if (e.pointerType === 'touch') { const t = TOUCH.pts.get(e.pointerId); if (t && t.role !== 'btn') { t.x = x; t.y = y; } }
+  else { KB.mouse.x = x; KB.mouse.y = y; KB.mouse.moved = true; }
 });
+/* fullscreen must be asked for inside the tap itself (Safari refuses it from the game loop) */
+function fsGesture(x, y) { if (typeof hitUI !== 'function') return; const b = hitUI(x, y); if (b && b.fs && !b.off) toggleFullscreen(); }
 function pUp(e) {
+  if (e.pointerType !== 'mouse' && e.type === 'pointerup' && state !== 'play') { const [x, y] = ptXY(e); fsGesture(x, y); }
   if (e.pointerType === 'touch') { const t = TOUCH.pts.get(e.pointerId); if (t && t.role === 'btn') TOUCH.hold[t.k] = false; TOUCH.pts.delete(e.pointerId); }
   else { if (e.button === 0 || e.type === 'pointercancel') KB.mouse.down = false; if (e.button === 2 || e.type === 'pointercancel') KB.mouse.rdown = false; }
 }
@@ -591,14 +605,14 @@ function kbState() {
 }
 const TSTICK = 58;
 function touchState() {
-  const T = TOUCH, now = performance.now(); let mx = 0, my = 0, aim = null, fire = false, sprint = false, ads = false, aimMag = 0;
+  const T = TOUCH, now = performance.now(), tp = touchPlayer(), me = tp && tp.sol; let mx = 0, my = 0, aim = null, fire = false, sprint = false, ads = false, aimMag = 0;
+  if (!me || !me.alive || me.veh || state !== 'play') T.sprintLock = T.lockFree = false;
   for (const t of T.pts.values()) {
     if (t.role === 'move') {
       let dx = t.x - t.ox, dy = t.y - t.oy; const L = Math.hypot(dx, dy), R = TSTICK;
       if (L > R * 1.25) { t.ox = t.x - dx / L * R * 1.25; t.oy = t.y - dy / L * R * 1.25; }
       const k = Math.min(1, L / R); if (L > 1) { mx = dx / L * k; my = dy / L * k; } if (k < 0.15) mx = my = 0;
-      if (L >= R * 0.92) { t.full = t.full || now; if (now - t.full > 260) t.auto = true; } else { t.full = 0; t.auto = false; }
-      if (T.sprintLock && k < 0.3) T.sprintLock = false;            // let go of the stick: sprint lock ends
+      if (L >= R * 0.92 && !(me && me.stance)) { t.full = t.full || now; if (now - t.full > 260) t.auto = true; } else { t.full = 0; t.auto = false; }     // crawling: the rim never stands you up
       sprint = (t.auto || T.sprintLock) && k > 0.3; t.sprint = sprint;
     } else if (t.role === 'fire') {
       // a tap fires straight ahead; only a deliberate drag (24px) turns it into aim-and-fire, and then it stays a drag
@@ -613,9 +627,14 @@ function touchState() {
     }
   }
   if (T.hold.lfire) fire = true;                                  // left-thumb fire: shoots where you're aiming/facing
-  if (T.btn.sprint) T.sprintLock = !T.sprintLock;
-  if (T.sprintLock && !T.pts.size) T.sprintLock = false;
-  if (T.sprintLock && [...T.pts.values()].some(t => t.role === 'move')) sprint = true;
+  // sprint lock: keeps running (last direction) after the stick is let go; touching the stick again ends it
+  if (T.btn.sprint) { T.sprintLock = !T.sprintLock; T.lockFree = false; T.ldx = mx; T.ldy = my; }
+  if (T.sprintLock) {
+    if (![...T.pts.values()].some(t => t.role === 'move')) T.lockFree = true;
+    if (mx || my) { T.ldx = mx; T.ldy = my; } else { mx = T.ldx || 0; my = T.ldy || 0; }
+    const l = Math.hypot(mx, my); if (l > 0.01) { mx /= l; my /= l; sprint = true; } else T.sprintLock = T.lockFree = false;
+  }
+  T.moving = !!(mx || my);
   const b = T.btn, seatIdx = ['seat0', 'seat1', 'seat2', 'seat3'].findIndex(k => b[k]), pickW = b.w0 ? 0 : b.w1 ? 1 : -1;
   if (b.score) T.scoreOn = !T.scoreOn; if (state !== 'play') T.scoreOn = false;     // the scoreboard button flips it open and shut
   const s = { touch: true, mx, my, aim, aimMag, fire, ads, alt: !!b.nade, gadget: !!T.hold.gadget, gadgetP: !!b.gadget, swapW: false, pickW, interact: !!(b.enter || b.exit), jump: !!b.jump, melee: !!b.melee, spot: false, reload: !!b.reload, variant: false, stanceCycle: !!b.stance, sprint, seatNext: false, seatDir: -1, seatIdx, pause: !!b.pause, score: T.scoreOn, navX: 0, navY: 0, confirm: false, back: false, join: false, deploy: false, tabL: false, tabR: false, opt: false, mapT: !!b.map, nadeCyc: b.nadeCyc ? 1 : 0, dpX: 0, dpY: 0, stX: 0, stY: 0 };

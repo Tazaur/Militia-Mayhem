@@ -193,6 +193,15 @@ function botControl(s, dt) {
     B.stuckT += dt;
     if (B.stuckT > 1.5) { const moved = Math.hypot(vt.x - (B.sx || 0), vt.y - (B.sy || 0)); if (moved < 15 && (I.mx || I.my)) { B.unstick = 1.1; B.ua = vt.a + Math.PI + rnd(-0.8, 0.8); B.path = null; } B.sx = vt.x; B.sy = vt.y; B.stuckT = 0; }
     if (B.unstick > 0) { B.unstick -= dt; I.mx = Math.cos(B.ua); I.my = Math.sin(B.ua); }
+    // friendly fire on: swerve around (and slow for) teammates on foot in the way
+    if (M.ff && (I.mx || I.my)) {
+      const ml = Math.hypot(I.mx, I.my), hx = I.mx / ml, hy = I.my / ml;
+      for (const o of M.sol) {
+        if (!o.alive || o.veh || o.team !== s.team) continue;
+        const dx = o.x - vt.x, dy = o.y - vt.y, ahead = dx * hx + dy * hy, side = -dx * hy + dy * hx;
+        if (ahead > 0 && ahead < 110 && Math.abs(side) < vt.T.hw + 16) { const k = side > 0 ? -1 : 1; I.mx = hx * 0.35 - hy * k * 0.8; I.my = hy * 0.35 + hx * k * 0.8; if (ahead < 45) { I.mx *= 0.3; I.my *= 0.3; } break; }
+      }
+    }
     if (vt.type === 'tank' && T) I.fire = aimed && T.d < 620 && Math.random() < 0.6;
     if (vt.type === 'jeep' && T && T.o && T.d < 60) I.fire = true;
     if (vt.type === 'jeep' && B.goal && B.goal.flag && B.goal.flag.owner === s.team && Math.hypot(vt.x - B.goal.x, vt.y - B.goal.y) < 120 && Math.abs(vt.spd) < 30 && B.exitCd <= 0 && Math.random() < dt * 0.3) { B.exitCd = 5; I.enter = true; }
@@ -336,7 +345,7 @@ function fxTick(sdt, dt) {
     if (q.rot !== undefined) q.rot += (q.vr || 0) * sdt;
     if (q.k === 'smoke' || q.k === 'dust' || q.k === 'steam') q.sz += sdt * 10;
     if (q.k === 'blood' && q.life <= 0 && !inWater(q.x, q.y)) { dgx.setTransform(1, 0, 0, 1, 0, 0); bloodDrop(dgx, q.x, q.y, q.sz, q.rot, 0.92); }
-    if (q.k === 'shell' && q.life <= 0) { gx.fillStyle = 'rgba(200,160,60,0.6)'; gx.fillRect(q.x, q.y, 2, 1); }
+    if (q.k === 'shell' && q.life <= 0 && !inWater(q.x, q.y)) { M.brass.push({ x: q.x, y: q.y, t: 0 }); if (M.brass.length > 600) M.brass.shift(); }
   }
   prune(M.parts, q => q.life > 0);
   for (const f of M.feed) f.t -= dt; prune(M.feed, f => f.t > 0);

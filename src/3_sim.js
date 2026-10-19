@@ -44,7 +44,7 @@ function newMatch(cfg, demo) {
   M = {
     cfg, demo: !!demo, mode: mode.id, ffa, time: 0, sol: [], vehicles: [], wrecks: [], proj: [], parts: [], flings: [], corpses: [], smokes: [], crates: [], items: [], feed: [], toasts: [],
     flags: [], tickets: [tk, tk], limit: ffa ? LIMITS.ffa[cfg.limit] : 0, bleedT: 0, over: false, overT: 0, winner: -1, views: [], skill: SKILL[cfg.skill] || SKILL[1],
-    scoreHeld: false, lowWarn: [false, false], ff: !!cfg.ff && !demo, rain: cfg.weather === 'rain' && MAPNAMES[cfg.map][0] !== 'snowfield', snow: cfg.weather === 'snow' || (cfg.weather === 'rain' && MAPNAMES[cfg.map][0] === 'snowfield'), teamColor,
+    brass: [], scoreHeld: false, lowWarn: [false, false], ff: !!cfg.ff && !demo, rain: cfg.weather === 'rain' && MAPNAMES[cfg.map][0] !== 'snowfield', snow: cfg.weather === 'snow' || (cfg.weather === 'rain' && MAPNAMES[cfg.map][0] === 'snowfield'), teamColor,
     coop, wv: coop ? { n: 0, queue: 0, left: 0, brk: 8, spT: 0, lim: LIMITS.surv[cfg.limit] || 0 } : null
   };
   if (mode.id === 'conquest') M.flags = MAP.flags.map(f => ({ ...f, r: 96, owner: -1, prog: 0, contested: false, wave: rnd(0, 6), cnt: [0, 0] }));
@@ -230,6 +230,11 @@ function kill(s, src, kind, dx, dy, wname) {
     for (let i = 0; i < 6; i++) blood(s.x, s.y, dx, dy);
     sfx('splat', s.x, s.y);
   }
+}
+/* pause menu REDEPLOY: drop dead on the spot and go straight to the deploy screen */
+function redeploy(s) {
+  if (!s || !s.alive || !M || M.demo || M.over || M.coop) return;
+  s.protect = 0; kill(s, null, 'redeploy', 0, 0, 'REDEPLOY'); s.deathT = 0; s.respawnT = 0;
 }
 /* ---------------- co-op survival ---------------- */
 /* out of health a player goes down instead of dying: a teammate standing over them for 3 s gets them back up; after 30 s they bleed out */

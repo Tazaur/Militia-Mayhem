@@ -19,7 +19,6 @@ Single self-contained HTML (canvas, no frameworks). Source is `src/*.js`, concat
 - GitHub Pages: Settings → Pages → Deploy from a branch → main → / (root). `index.html` at the repo root is the game.
 - `python3 build.py` writes `index.html` and `combined-arms.html` (identical) and auto-bumps `version.json`
   (build number shown in the main menu and settings).
-- Old claude.ai artifact: https://claude.ai/artifact/K4Cde2vTv5iTPRtS3VSsLV (declares the `room` capability).
   Optional to keep updating; the GitHub Pages site is now the main target.
 
 ## Files
@@ -38,7 +37,6 @@ Single self-contained HTML (canvas, no frameworks). Source is `src/*.js`, concat
 - `harness.js` — Node harness that runs the built game headless with stubbed canvas/pads. Run tests from repo root: `node tests/t5.js` (all maps, bots), `t6` (seats), `t7` (sandbag cover), `t12` (menu→lobby→deploy→death cam flow), `t13` (wreck cover). All should end `errs 0`.
 - `tests/net/` — Playwright two-browser tests (Chromium at `/opt/pw-browsers/...`, playwright at `/opt/npm-tools/node_modules/playwright`):
   - (stale since the ntfy switch: `t16.js`/`sigserver.js` still emulate PeerJS) `t16.js` direct WebRTC play from `index.html` via the local signalling stand-in `sigserver.js` (`node tests/net/sigserver.js &` first; uses `ws` from /opt/npm-tools).
-  - `t14.js`/`t15.js` claude.ai-room mode via `mockroom.js`; they expect `python3 -m http.server 8765` serving the repo root.
   - Pages must be in separate browser contexts (same-context background pages get throttled); messages are relayed through Playwright.
 
 ## Online play design (src/5c_net.js)
@@ -47,7 +45,7 @@ Single self-contained HTML (canvas, no frameworks). Source is `src/*.js`, concat
 - Oct 2026 findings: PeerJS public server (0.peerjs.com) accepts connections but relays nothing; PeerJS TURN (eu-0/us-0.turn.peerjs.com) and openrelay.metered.ca no longer resolve in DNS. A TURN relay now needs a free account (e.g. Metered.ca / ExpressTURN static credentials in `P2P_ICE`).
 - Error codes: `NET_E` table in 5c_net.js (1xx matchmaking, 2xx host lookup, 3xx network path/ICE, 4xx data channel, 5xx lobby, 6xx lost host, 7xx WebRTC error). 
 etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per side, mDNS, ICE/gather/link state, relay status, build, browser). Joiners see live step progress in the lobby; the host gets a toast with code + trace for failed joins. `p2pRoom()` mimics the room API (presence/onPeers/leave); state resent every 250 ms, links dropped after 10 s silence. Test overrides: `window.__MM_SIG`, `window.__MM_ICE`.
-- Transport B (fallback, only inside a claude.ai artifact if matchmaking is unreachable): artifact `room` capability, named room `mm-<code>`. Games on B show "(CLAUDE.AI ONLY)" in the lobby title; A and B can't see each other.
+- Transport B (claude.ai artifact room) was removed in build 62: online play is direct WebRTC only, found through the public game finder.
 - Host → clients: presence `{L: lobby info, g: snapshot}` ~20 Hz. Snapshot (`netSnap`) packs soldiers/vehicles/projectiles/items/crates/wrecks/flags/stats as base-64 digit strings, a per-remote-player private block (hp, ammo, cooldowns, messages), and a 0.7 s window of id'd events (explosions, kills, feed, toasts, destroyed statics, whitelisted sounds, smoke pops, per-player pops/sounds). Kept < ~3.9 KB (≈2.2 KB with 22 soldiers).
 - Clients: render others 110 ms behind (interpolate), own soldier ~20 ms behind with smoothing and instant local aim; replay events on that timeline; cosmetic tracers from shot counters; local footprints/treads/particles. Input sent as continuous state + edge counters; deploy requests carry loadout + spawn option name.
 - Lobby: host's normal lobby; joiners pick colour/team/ready; host starts. No joining mid-match; a leaver's soldier becomes a bot. Max 4 humans total.
@@ -57,7 +55,7 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - Two-browser tests pass locally (WebRTC from file://, and the mocked room). NOT yet proven between real devices.
 - User's real test (PC host, iPhone join, same Wi-Fi) failed because the phone had no working route: iOS Safari won't run a local HTML file; the claude.ai artifact view reported no WebRTC in Safari. Fix in progress: host on GitHub Pages and retest from `https://tazaur.github.io/Militia-Mayhem/` in Safari.
 - If it still fails on the same Wi-Fi: ask for the exact message ("NO GAME WITH CODE …" = matchmaking/ID problem; "COULD NOT CONNECT …" = ICE/NAT problem), and test phone on cellular. Likely next step then: a reliable TURN relay (e.g. Metered.ca free tier credentials in `P2P_ICE`) — the "paid relay" was explicitly put on the backburner by the user.
-- The "can't play online" screen shows a diagnostic line (WEBRTC / WEBSOCKET / CLAUDE ROOM).
+- The "can't play online" screen shows a diagnostic line (WEBRTC / WEBSOCKET).
 - Host tab must stay open/visible (hidden tabs throttle; a 40 ms interval keeps the sim going when hidden).
 - Waiting on the user for more art ("other stuff"), plus weapon icons for shotgun, HMG, DMR.
 
@@ -153,3 +151,14 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - Down instead of dead (goDown): s.down with s.alive still true, immune, not targeted, bullets pass; a teammate within 28 px for 3 s revives at 50 % (downTick); 30 s bleed-out → kill(). No respawn mid-wave (canDeploy() = wave break); waveCleared revives / heals everyone and lets the dead deploy; startWave force-spawns anyone still on the deploy screen. All humans down/dead → endMatch(1) ("WIPED OUT ON WAVE n").
 - Net: snapshot g.WV = [wave, left, brk·10], g.D = [[sol index, bleed s, rev %]] for downed soldiers; the client sets s.down / M.wv from them and stops local input while down.
 - Tests: tests/t23_surv.js (team colours + survival). Browser flow: scratchpad pw/flow.js has a 'coop' scenario.
+
+## Build 62
+- Forced landscape: on a touch device held upright, resize() sets ROT and turns the canvas 90° with CSS (W/H swapped, SAFE remapped); ptXY(e) maps pointer coords. The rotate-your-phone screen is gone.
+- Fullscreen: Safari only allows it inside the tap, so fsGesture() runs from pointerdown (mouse) / pointerup (touch) on UIB entries with `fs: true`; FS_FN only toggles for keys/pads. fsOK() false (iPhone): icons hidden, setting reads SHARE › ADD TO HOME SCREEN.
+- Touch sprint: button in the right cluster (at(196,182)), only while moving. Tap = lock; the lock keeps running in the last direction after the stick is let go (TOUCH.lockFree); a new stick touch ends it. The stick-rim auto sprint never fires while prone.
+- Pause REDEPLOY (not co-op): redeploy(s) kills with deathT/respawnT 0. Joiners bump NET.rd in presence (`rd`); host compares p.rdN.
+- Bodies stay 120 s then fade over 60 (pool still bakes at POOL_T); casings live in M.brass and fade over 15 s (BRASS_T).
+- Minimap: enemies (incl. players and enemy-crewed vehicles) only when spotted, heard firing, or seen (fog on: LOS + not smoke within 700; fog off: 300).
+- Nameplates hidden behind smoke/walls; smoke fog fully opaque in-cloud; no grenade icon in hand; kill feed right-aligned unless split; deploy screen has no name/skull.
+- Bots driving with friendly fire on swerve/slow for teammates on foot ahead (4_ai driver block).
+- tests/t24_redeploy.js (redeploy, body/casing timing). Browser: pw/phone.js (portrait phone: rotation, deploy, sprint lock), flow.js 'redeploy' scenario.

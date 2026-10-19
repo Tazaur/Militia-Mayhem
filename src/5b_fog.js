@@ -103,7 +103,7 @@ function drawSmokeFog(vw) {
     const g = mg.createRadialGradient(c.x, c.y, 0, c.x, c.y, core * 1.3); g.addColorStop(0, `rgba(255,255,255,${a})`); g.addColorStop(0.7, `rgba(255,255,255,${a})`); g.addColorStop(1, 'rgba(255,255,255,0)');
     mg.globalAlpha = 1; mg.fillStyle = g; mg.beginPath(); mg.arc(c.x, c.y, core * 1.3, 0, TAU); mg.fill(); mg.fillStyle = '#fff';
     if (d <= core) { // standing in it: everything but a little bubble around you
-      mg.globalAlpha = a * 0.9; mg.fillRect(ex - 5000, ey - 5000, 10000, 10000); mg.globalCompositeOperation = 'destination-out';
+      mg.globalAlpha = a; mg.fillRect(ex - 5000, ey - 5000, 10000, 10000); mg.globalCompositeOperation = 'destination-out';
       const h = mg.createRadialGradient(ex, ey, 10, ex, ey, 60); h.addColorStop(0, 'rgba(0,0,0,1)'); h.addColorStop(1, 'rgba(0,0,0,0)'); mg.globalAlpha = 1; mg.fillStyle = h; mg.beginPath(); mg.arc(ex, ey, 60, 0, TAU); mg.fill();
       mg.globalCompositeOperation = 'source-over'; continue;
     }
@@ -113,7 +113,7 @@ function drawSmokeFog(vw) {
       const w = core * (0.35 + i * 0.16), FAR = 5000;
       const ax = c.x + px * w, ay = c.y + py * w, bx = c.x - px * w, by = c.y - py * w;
       const la = Math.hypot(ax - ex, ay - ey), lb = Math.hypot(bx - ex, by - ey);
-      mg.globalAlpha = Math.min(1, a / N * 2.2); mg.globalCompositeOperation = 'lighter';
+      mg.globalAlpha = Math.min(1, a / N * 3); mg.globalCompositeOperation = 'lighter';
       mg.beginPath(); mg.moveTo(ax, ay); mg.lineTo(ex + (ax - ex) / la * FAR, ey + (ay - ey) / la * FAR); mg.lineTo(ex + (bx - ex) / lb * FAR, ey + (by - ey) / lb * FAR); mg.lineTo(bx, by);
       mg.arc(c.x, c.y, w, Math.atan2(by - c.y, bx - c.x), Math.atan2(ay - c.y, ax - c.x), true); mg.closePath(); mg.fill();
     }

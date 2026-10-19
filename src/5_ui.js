@@ -50,7 +50,10 @@ function drawWorld(vw) {
     } else if (it.k === 'pouch') { ctx.fillStyle = '#4c4a2c'; ctx.fillRect(it.x - 4, it.y - 3, 8, 6); ctx.fillStyle = '#6c6a40'; ctx.fillRect(it.x - 4, it.y - 3, 8, 2); }
   }
   // ---- bodies with their blood pools seeping out
-  worldT(); for (const c of M.corpses) if (vis(c.x, c.y, 30)) { drawPool(ctx, c, c.t / POOL_T); solDraw(c, c.n, c.x, c.y, c.rot); worldT(); }
+  worldT(); ctx.fillStyle = '#c9a443';
+  for (const b of M.brass) if (vis(b.x, b.y, 4)) { ctx.globalAlpha = 0.8 * (1 - b.t / BRASS_T); ctx.fillRect(b.x, b.y, 2, 1); }
+  ctx.globalAlpha = 1;
+  for (const c of M.corpses) if (vis(c.x, c.y, 30)) { if (!c.baked) drawPool(ctx, c, c.t / POOL_T); solDraw(c, c.n, c.x, c.y, c.rot, 1, 1, c.t > BODY_T ? corpseAlpha(c) : undefined); worldT(); }
   // ---- one shared shadow layer for soldiers, vehicles and bodies in the air
   drawShadowLayer(vw, vis);
   // ---- layer 1: prone soldiers sit below cover
@@ -119,8 +122,10 @@ function drawWorld(vw) {
   drawLasers(vis);
   // tags, reticles
   worldT(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const eyN = viewEyes(vw);
   for (const s of M.sol) {
     if (!s.alive || !s.player || !vis(s.x, s.y, 40)) continue;
+    if (smokeHides(eyN, s, vw) || (fogged && eyN.length && !eyN.some(e => e.s === s || (!M.ffa && e.team === s.team) || los(e.x, e.y, s.x, s.y)))) continue;
     const y = (s.veh ? s.veh.y - s.veh.T.hw - 14 : s.y - (s.down ? 30 : 16)), x = s.veh ? s.veh.x : s.x;
     ctx.font = `bold ${Math.round(8 / Math.max(0.8, VZ * 0.6))}px ${FB}`; ctx.globalAlpha = 0.5;      // small and faint: a label, not a sign
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillText(s.name, x + 1, y + 1); ctx.fillStyle = CHEX[s.color]; ctx.fillText(s.name, x, y); ctx.globalAlpha = 1;
@@ -253,8 +258,7 @@ function drawSoldier(s, vw) {
     ctx.fillStyle = '#2a2a26'; ctx.fillRect(-1, -2.4, 14, 4.8); ctx.fillStyle = '#9a9c96'; ctx.fillRect(0, -1.6, 12, 3.2);
     ctx.fillStyle = '#2a2a26'; ctx.fillRect(10.5, -5.4, 9, 10.8); ctx.fillStyle = '#b4b6b0'; ctx.fillRect(11.5, -4.4, 7, 2.8); ctx.fillRect(11.5, 1.6, 7, 2.8); ctx.fillRect(11.5, -4.4, 2.6, 8.8);
     ctx.restore();
-  } else if (s.throwT > 0.12) { worldT(); const [hx, hy] = muzzle(s, 9 + (0.35 - s.throwT) * 20); icon(s.thrownSmoke ? 'smoke' : 'frag', hx, hy, 7); }
-  else if (s.handT > 0 && s.handK) { worldT(); const [hx, hy] = muzzle(s, 11); icon(gadgetIconKind(s.handK), hx, hy, 9); }
+  } else if (s.handT > 0 && s.handK) { worldT(); const [hx, hy] = muzzle(s, 11); icon(gadgetIconKind(s.handK), hx, hy, 9); }
   if (s.flash > 0 && !gunless) { const [gx, gy] = gunTip(s), r = W_ && W_.dmg >= 40 ? 14 : 10, c = Math.cos(s.a), sn = Math.sin(s.a); flashAt(gx + c * r * 0.55, gy + sn * r * 0.55, r); }
 }
 /* co-op: a downed player lies on the ground with a pulsing marker; the red ring is the time left to bleed out, the green one the revive */
@@ -570,8 +574,6 @@ function drawDeploy(vw, p) {
   });
   // bottom bar: who + deploy
   const bb = Math.max(38, 42 * u), bY = Y1 - bb, ready = s.respawnT <= 0 && canDeploy(s), auto = clamp((s.firstDeploy ? 15 : 6) - s.deployIdle, 0, 15), autoMax = s.firstDeploy ? 15 : 6;
-  stxt(s.name, X0, bY + bb / 2, F(16, 13), CHEX[p.color], 'left', 'middle', FD);
-  if (!s.firstDeploy) { ctx.font = `${F(16, 13)}px ${FD}`; icon('skull', X0 + ctx.measureText(s.name).width + 16 * u, bY + bb / 2, F(18, 14), '#ff7a60'); }
   const dw = Math.min(Math.max(170, 230 * u), wid * 0.5), dx = X1 - dw;
   ctx.fillStyle = ready ? '#d1aa55' : 'rgba(255,255,255,0.07)'; ctx.fillRect(dx, bY, dw, bb);
   if (!ready) { ctx.fillStyle = 'rgba(209,170,85,0.45)'; ctx.fillRect(dx, bY, dw * (1 - s.respawnT / 5), bb); }
@@ -648,6 +650,7 @@ function drawTouch(s) {
     const [nx, ny] = at(286, 114); btn('nade', nx, ny, 26 * k, s.throwSel ? 'smoke' : 'frag', { al: (s.throwSel ? s.smokes : s.nades) ? 1 : 0.35 });
     txt(String(s.throwSel ? s.smokes : s.nades), nx + 17 * k, ny + 17 * k, 12 * k, '#ffe08a', 'center', 'middle', FD);
     if (s.nades > 0 && s.smokes > 0) btn('nadeCyc', nx - 30 * k, ny - 22 * k, 13 * k, 'swap', { sc: 1.1 });
+    if (TOUCH.moving || TOUCH.sprintLock) btn('sprint', ...at(196, 182), 24 * k, 'run', { fill: TOUCH.sprintLock ? 'rgba(255,224,138,0.5)' : undefined });     // tap: sprint lock
     const [gx, gy] = at(232, 180); btn('gadget', gx, gy, 26 * k, gadgetIconKind(K.g), { al: K.g === 'mine' && !s.mines ? 0.35 : 1 });
     if (K.g !== 'torch' && s.gcd > 0) cooldownPie(gx, gy, 24 * k, s.gcd / (s.gmax || 1));
     if (K.g === 'mine') txt(String(s.mines), gx + 17 * k, gy + 17 * k, 12 * k, '#ffe08a', 'center', 'middle', FD);
@@ -680,9 +683,8 @@ function drawTouch(s) {
       txt(String(w.mag), x + cw2 - 6 * k, y + ch2 / 2 + 1, 13 * k, on ? '#fff' : '#bbb', 'right', 'middle', FD);
     });
   }
-  // left side: fire button for the left thumb (on foot or in a gun seat), sprint lock above the stick
+  // left side: fire button for the left thumb (on foot or in a gun seat)
   if (!v || sd.role !== 'drive' || v.type === 'tank') btn('lfire', SAFE.l + 46 * k, H - SAFE.b - 196 * k, 30 * k, 'cross', { fill: 'rgba(160,30,20,0.4)', col: '#fff', sc: 1.1 });
-  if (!v) btn('sprint', SAFE.l + 118 * k, H - SAFE.b - 196 * k, 22 * k, 'run', { fill: TOUCH.sprintLock ? 'rgba(255,224,138,0.5)' : undefined });
   // top-left: pause, and the minimap opens the full map
   btn('pause', SAFE.l + 26 * k, SAFE.t + 26 * k, 19 * k, 'pause');
   btn('score', SAFE.l + 72 * k, SAFE.t + 26 * k, 19 * k, 'score', { fill: TOUCH.scoreOn ? 'rgba(255,224,138,0.5)' : undefined });
@@ -734,7 +736,7 @@ function drawGlobalHUD() {
   }
   // kill feed: killer [how] victim — icons instead of words; centred under the score bar in split screen
   let y = top + 8 + (M.ffa ? 50 : 44) * u;
-  const centred = M.views.length > 1 || (M.shared && LOCALS().length > 1) || !!touchPlayer(), fx = W - SAFE.r - 12, ih = 16 * u;
+  const centred = M.views.length > 1 || (M.shared && LOCALS().length > 1), fx = W - SAFE.r - 12, ih = 16 * u;
   const deploying = hudViews().filter(v => v.p && v.p.sol && !v.p.sol.alive && !(v.p.sol.deathT > 0));
   for (const f of M.feed) {
     ctx.font = `${12 * u}px ${FD}`;
@@ -781,12 +783,18 @@ function drawMinimap() {
   ctx.fillStyle = 'rgba(8,20,8,0.82)'; ctx.fillRect(mx - 3, my - 3, mw + 6, mh + 6);
   ctx.globalAlpha = 0.85; ctx.drawImage(ground, 0, 0, WW, WH, mx, my, mw, mh); ctx.globalAlpha = 1;
   for (const f of M.flags) { ctx.fillStyle = f.owner < 0 ? '#ddd' : TEAMHEX[f.owner]; ctx.beginPath(); ctx.arc(mx + f.x * k, my + f.y * k, 5, 0, TAU); ctx.fill(); txt(f.name.length > 1 ? 'H' : f.name, mx + f.x * k, my + f.y * k + 1, 8, '#000', 'center', 'middle', FB); }
-  for (const v of M.vehicles) if (v.active) { const t = vehTeam(v); ctx.fillStyle = t < 0 ? '#bbb' : t < 2 ? TEAMHEX[t] : '#ddd'; ctx.fillRect(mx + v.x * k - 3, my + v.y * k - 2, 6, 4); }
-  const myTeams = humanTeams();
+  const myTeams = humanTeams(), LS = LOCALS(), eyesM = LS.map(p => p.sol).filter(s => s && s.alive), fogOn = M.cfg.fog && M.cfg.fog !== 'off';
+  const mine = o => LS.some(p => p.sol === o);
+  // an enemy shows when spotted, heard firing nearby, or in sight (fog on: line of sight, not through smoke; fog off: close by)
+  const seenAt = (x, y, o) => (o && o.spotT > 0 && myTeams.has(o.spotTeam)) || (o && o.firedT > 0 && eyesM.some(e => Math.hypot(e.x - x, e.y - y) < 500))
+    || eyesM.some(e => { const ex = e.veh ? e.veh.x : e.x, ey = e.veh ? e.veh.y : e.y, d = Math.hypot(ex - x, ey - y); return fogOn ? d < 700 && los(ex, ey, x, y) && !smokeBlocks(ex, ey, x, y) : d < 300; });
+  for (const v of M.vehicles) if (v.active) {
+    const t = vehTeam(v), crew = v.seats.find(o => o); if (t >= 0 && crew && !(M.ffa ? v.seats.some(o => o && mine(o)) : myTeams.has(t)) && !seenAt(v.x, v.y, crew)) continue;
+    ctx.fillStyle = t < 0 ? '#bbb' : t < 2 ? TEAMHEX[t] : '#ddd'; ctx.fillRect(mx + v.x * k - 3, my + v.y * k - 2, 6, 4); }
   for (const s of M.sol) {
     if (!s.alive) continue;
-    const friendly = M.ffa ? !!s.player : myTeams.has(s.team);
-    if (!friendly && !s.player) { const seen = (s.spotT > 0 && myTeams.has(s.spotTeam)) || s.firedT > 0 && LOCALS().some(p => p.sol && p.sol.alive && Math.hypot(p.sol.x - s.x, p.sol.y - s.y) < 500) || LOCALS().some(p => p.sol && p.sol.alive && Math.hypot(p.sol.x - s.x, p.sol.y - s.y) < 300); if (!seen) continue; }
+    const friendly = M.ffa ? mine(s) : myTeams.has(s.team);
+    if (!friendly && !seenAt(s.x, s.y, s)) continue;
     ctx.fillStyle = s.player ? CHEX[s.color] : M.ffa ? '#ff5a45' : TEAMHEX[s.team]; const r = s.player ? 3 : 1.6;
     ctx.fillRect(mx + s.x * k - r, my + s.y * k - r, r * 2, r * 2);
   }

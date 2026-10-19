@@ -1,5 +1,5 @@
 /* =====================================================================
-   ONLINE PLAY over the artifact room (presence only, so anyone admitted to the page can play)
+   ONLINE PLAY over direct (WebRTC) links, found through the public game finder
    One host runs the real match. Its presence in the game room carries a compact snapshot ~20 times a
    second plus a short log of events (blasts, kills, feed, sounds); each joiner's presence carries its input.
    Joiners draw what the host sends about 0.1 s behind so motion is smooth, see their own soldier with
@@ -8,7 +8,7 @@
 const NET = {
   room: null, avail: null, mode: null, busy: '', role: null, code: '', game: null, myPeer: null, hosts: [], msg: '', msgT: 0,
   // host
-  matchId: 0, seq: 0, seqS: 0, slowT: 0, gs: null, slow: null, evId: 0, evLog: [], t0: performance.now(), sendT: 0, lastPres: '', lastMM: '', pid: 0, kicked: new Set(), bn: {}, L: null, maxSnap: 0, hdr: null, roster: '',
+  matchId: 0, seq: 0, seqS: 0, slowT: 0, gs: null, slow: null, evId: 0, evLog: [], t0: performance.now(), sendT: 0, lastPres: '', pid: 0, kicked: new Set(), bn: {}, L: null, maxSnap: 0, hdr: null, roster: '',
   // client
   hostPeer: null, dev: null, myPid: -1, joined: false, wasJoined: false, curMatch: -1, lastSeq: -1, buf: [], off: null, lastEv: 0, evq: [], lobby: null, me: null,
   cc: new Array(14).fill(0), sd: 0, si: 0, pw: 0, dep: null, depN: 0, want: { c: '', t: -1, r: 0 }, lastI: null, pmap: new Map(), bul: [], lastHostT: 0, lastSnapT: 0, joinT: 0, lastA: null, demoMap: -1, selfD: null
@@ -45,7 +45,7 @@ const P2P_ICE = () => (typeof window !== 'undefined' && window.__MM_ICE) || [
 const RTC = () => typeof window !== 'undefined' ? (window.RTCPeerConnection || window.webkitRTCPeerConnection || null) : null;
 const p2pOK = () => !!RTC() && typeof WebSocket !== 'undefined';
 /* what this browser view can do, shown when online play isn't possible */
-function netDiag() { return 'WEBRTC ' + (RTC() ? 'OK' : 'MISSING') + ' · WEBSOCKET ' + (typeof WebSocket !== 'undefined' ? 'OK' : 'MISSING') + ' · CLAUDE ROOM ' + (NET.room ? 'OK' : 'NONE'); }
+function netDiag() { return 'WEBRTC ' + (RTC() ? 'OK' : 'MISSING') + ' · WEBSOCKET ' + (typeof WebSocket !== 'undefined' ? 'OK' : 'MISSING'); }
 
 /* ---------- connection trace and error codes: every failure names the step that broke ---------- */
 const NET_E = {
@@ -207,7 +207,7 @@ function netListSee(x, time) {
 }
 /* forget what we heard and listen again: the relays replay the last 10 minutes, so live games come straight back */
 function netListRefresh() { NET.list.clear(); netListWatch(false); NET.lwT = performance.now(); }
-/* every game we know of: the claude.ai page's, then the public list's (fresh ones only) */
+/* every open game on the public list (fresh ones only) */
 function netAllHosts() {
   const out = NET.hosts.slice(), have = new Set(out.map(h => h.c)), now = Date.now();
   for (const h of NET.list.values()) if (!h.gone && now - h.t < 400000 && !have.has(h.c) && !(NET.role === 'host' && h.c === NET.code)) out.push(h);      // (a joiner keeps NET.code after leaving: that game must still show)
@@ -317,35 +317,20 @@ function p2pRoom(sig, hostId, trace) {
 
 /* ---------- connecting ---------- */
 async function netInit() {
-  // direct play everywhere (file or claude.ai page) so everyone can meet; the claude.ai room is only a fallback
-  NET.mode = p2pOK() ? 'p2p' : null; NET.avail = p2pOK() ? true : null;
-  let r = null;
-  try { const C = typeof window !== 'undefined' && window.claude; if (C && C.use) r = await C.use('room'); } catch (e) { r = null; }
-  if (r) { NET.room = r; try { r.onPeers(netLobbyPeers, netErr); } catch (e) { } if (!NET.mode) NET.mode = 'room'; }
-  NET.avail = !!NET.mode;
+  NET.mode = p2pOK() ? 'p2p' : null; NET.avail = !!NET.mode;
 }
-function netErr(e) {
-  console.warn('room', e && e.code, e && e.message);
-  if (e && (e.code === 'not_granted' || e.code === 'revoked' || e.code === 'capability_disabled' || e.code === 'capability_removed')) { NET.room = null; if (NET.mode === 'room') { NET.mode = null; NET.avail = false; if (NET.role) netShutdown('ONLINE PLAY IS NOT AVAILABLE HERE'); } }
-}
+function netErr(e) { console.warn('net', e && e.code, e && e.message); }
 function netSay(m, t) { NET.msg = m; NET.msgT = t || 3.5; }
 const sigCode = e => e === 'network' ? 101 : e === 'timeout' ? 102 : e === 'error' ? 103 : e === 'taken' ? 104 : 701;
-function netLobbyPeers(ch) {
-  const me = ch.peers.find(p => p.sameTab); if (me) NET.myPeer = me.peer;
-  NET.hosts = ch.peers.filter(p => !p.sameTab && p.kind !== 'agent' && p.presence && p.presence.mm && /^[a-z0-9]{4}$/.test(p.presence.mm.c || '')).map(p => {
-    const m = p.presence.mm; return { peer: p.peer, c: m.c, n: clamp(m.n | 0, 0, 4), st: m.st === 'play' ? 'play' : 'lobby', md: String(m.md || '').slice(0, 24), mp: String(m.mp || '').slice(0, 24), mine: p.isMe };
-  });
-  if (NET.role === 'client' && ch.left.some(p => p.peer === NET.hostPeer)) netHostGone();
-}
 function netCode() { const A = 'abcdefghjkmnpqrstuvwxyz23456789'; let s = ''; for (let i = 0; i < 4; i++) s += A[Math.floor(Math.random() * A.length)]; return s; }
 async function netHost(dev) {
   if (!NET.avail || NET.role) return;
-  NET.role = 'host'; NET.code = netCode(); NET.kicked = new Set(); NET.pubK = ''; NET.pubT = -1e9; NET.evLog = []; NET.lastPres = ''; NET.lastMM = ''; NET.game = null; NET.busy = 'SETTING UP YOUR GAME…'; NET.trace = null; NET.err = null;
+  NET.role = 'host'; NET.code = netCode(); NET.kicked = new Set(); NET.pubK = ''; NET.pubT = -1e9; NET.evLog = []; NET.lastPres = ''; NET.game = null; NET.busy = 'SETTING UP YOUR GAME…'; NET.trace = null; NET.err = null;
   try {
     let sig = null;
     if (NET.mode === 'p2p') {
-      try { for (let k = 0; k < 4 && !sig; k++) { try { sig = await sigOpen(P2P_PREFIX + NET.code); } catch (e) { if (e !== 'taken') throw e; NET.code = netCode(); } } if (!sig) throw 'taken'; }
-      catch (e) { if (!NET.room) throw e; }       // matchmaking unreachable from here: use the claude.ai room instead
+      for (let k = 0; k < 4 && !sig; k++) { try { sig = await sigOpen(P2P_PREFIX + NET.code); } catch (e) { if (e !== 'taken') throw e; NET.code = netCode(); } }
+      if (!sig) throw 'taken';
     }
     if (sig) {
       NET.game = p2pRoom(sig, null); NET.myPeer = sig.id;
@@ -353,7 +338,7 @@ async function netHost(dev) {
       NET.game.onJoinTry = () => { if (NET.role === 'host') netSay('SOMEONE IS JOINING…', 4); };
       NET.game.onJoinFail = (tr, why) => { if (NET.role === 'host' && why !== 'left') netSay('SOMEONE TRIED TO JOIN BUT COULDN’T CONNECT · E' + (why === 'closed' ? 402 : traceCode(tr)) + ' · ' + traceLine(tr, 'THEM') + ' · ' + traceLine2(tr), 15); };
     }
-    else NET.game = await NET.room.join('mm-' + NET.code);
+    else throw 'error';
   } catch (e) { NET.role = null; netFail(sigCode(e), e === 'error' ? SIG_MSG : ''); return; }
   NET.busy = '';
   NET.game.onPeers(netGamePeers, netErr);
@@ -366,9 +351,8 @@ async function netJoin(h, dev) {
   NET.busy = 'JOINING ' + h.c.toUpperCase() + '…'; NET.err = null; NET.trace = mkTrace();
   try {
     let sig = null;
-    if (NET.mode === 'p2p' && !h.peer) { try { sig = await sigOpen(P2P_PREFIX + 'j-' + Math.random().toString(36).slice(2, 10)); } catch (e) { if (!NET.room) throw e; } }
-    if (!sig) NET.game = await NET.room.join('mm-' + h.c);
-    else {
+    sig = await sigOpen(P2P_PREFIX + 'j-' + Math.random().toString(36).slice(2, 10));
+    {
       NET.trace.sig = performance.now();
       NET.hostPeer = P2P_PREFIX + h.c; NET.myPeer = sig.id;
       NET.game = p2pRoom(sig, NET.hostPeer, NET.trace);
@@ -383,7 +367,6 @@ async function netJoin(h, dev) {
 function netShutdown(msg) {
   const g = NET.game; NET.game = null;
   if (g) { try { g.presence({ L: null, g: null, gs: null, j: null, i: null, d: null }).catch(() => { }); } catch (e) { } try { g.leave().catch(() => { }); } catch (e) { } }
-  if (NET.role === 'host' && NET.room) NET.room.presence({ mm: null }).catch(() => { });
   if (NET.role === 'host' && NET.pubK && NET.pubK !== 'gone') { netListSend({ c: NET.code, gone: 1 }); NET.pubK = ''; }      // off the list
   NET.role = null; NET.curMatch = -1; NET.me = null; NET.buf = []; NET.evq = []; NET.pmap.clear(); NET.bul = []; NET.lastI = null;
   if (msg) netSay(msg);
@@ -423,6 +406,7 @@ function netHostSee(pr) {
   }
   if ((P.i || null) !== p.netIn) p.netInT = performance.now();
   p.netIn = P.i || null; p.netDep = P.d || null;
+  if (p.rdN === undefined) p.rdN = P.rd | 0; else if ((P.rd | 0) !== p.rdN) { p.rdN = P.rd | 0; if (state !== 'lobby') redeploy(p.sol); }     // REDEPLOY from their pause menu
   if (state === 'lobby') {
     if (!P.j) { leaveLobby(p); return; }
     const j = P.j;
@@ -641,8 +625,6 @@ function netHostTick(now) {
   if (!NET.game) return;
   const inMatch = M && !M.demo && (state === 'play' || state === 'pause' || state === 'end' || (SET.open && SET.from === 'pause'));
   const L = netLobbyInfo();
-  const mm = { c: NET.code, n: PLAYERS.length, st: L.st, md: MODES[CFG.mode].n, mp: MAPNAMES[CFG.map][1] }, mj = JSON.stringify(mm);
-  if (mj !== NET.lastMM && NET.room) { NET.lastMM = mj; NET.room.presence({ mm }).catch(netErr); }
   netListPub(now, L);
   if (now - NET.sendT < 33) return; NET.sendT = now;
   const live = inMatch && PLAYERS.some(isNet), slow = !live || now - NET.slowT > 240;
@@ -659,9 +641,6 @@ function netHostTick(now) {
       NET.game.presence(pres, per).catch(netErr); return;
     }
     g.pv = pv;
-    // the claude.ai room keeps a 4 KiB cap: shed events, then projectiles
-    let js = JSON.stringify(Object.assign({ L, gs: NET.gs }, pres));
-    while (js.length > 3950 && (g.E.length || g.P)) { if (g.E.length) g.E.splice(0, Math.ceil(g.E.length / 2)); else g.P = ''; js = JSON.stringify(Object.assign({ L, gs: NET.gs }, pres)); }
     if (pres.gs) NET.gs = pres.gs;
   } else { pres.L = L; pres.g = null; }
   const js = JSON.stringify(pres);
@@ -868,7 +847,7 @@ function netClientTick(now) {
   if (I && NET.auth && ms && ms.alive && !ms.veh) i.p = [ms.x, ms.y, ms.vx, ms.vy, Math.max(0, ms.jumpT)].map(v => Math.round(v * 100) / 100);
   const vv = NET.vauth;
   if (I && vv && ms && ms.alive && ms.veh === vv && ms.seat === 0) { i.vp = [vv.x, vv.y, vv.a, vv.vx, vv.vy, vv.spd, vv.av || 0, vv.tRel || 0].map(v => Math.round(v * 100) / 100); i.vca = NET.vcorr | 0; }
-  const pres = { j: { c: NET.want.c, cn: NET.want.cn | 0, t: NET.want.t, tn: NET.want.tn | 0, r: NET.want.r, n: NET.name, id: NET.cid }, i, d: NET.dep };
+  const pres = { j: { c: NET.want.c, cn: NET.want.cn | 0, t: NET.want.t, tn: NET.want.tn | 0, r: NET.want.r, n: NET.name, id: NET.cid }, i, d: NET.dep, rd: NET.rd | 0 };
   const js = JSON.stringify(pres); if (js === NET.lastPres) return; NET.lastPres = js;
   NET.game.presence(pres).catch(netErr);
 }
@@ -911,7 +890,7 @@ function netKillFx(a, t) {
   s.alive = false; s.veh = null; s.seat = -1; s.torch = false; s._deadT = t;
   if (NET.me && s === NET.me.sol) {
     const k = a[7] >= 0 ? M.sol[a[7]] : null;
-    s.deathT = 2.2; s.deployIdle = 0; rumble(NET.me, 1, 0.4);
+    s.deathT = performance.now() - (NET.rdT || -1e9) < 3000 ? 0 : 2.2; s.deployIdle = 0; rumble(NET.me, 1, 0.4);
     s.killer = k ? { sol: k, veh: k.veh || null, x: k.veh ? k.veh.x : k.x, y: k.veh ? k.veh.y : k.y, name: k.name, color: k.color } : null;
   }
 }
