@@ -162,3 +162,4 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - Nameplates hidden behind smoke/walls; smoke fog fully opaque in-cloud; no grenade icon in hand; kill feed right-aligned unless split; deploy screen has no name/skull.
 - Bots driving with friendly fire on swerve/slow for teammates on foot ahead (4_ai driver block).
 - tests/t24_redeploy.js (redeploy, body/casing timing). Browser: pw/phone.js (portrait phone: rotation, deploy, sprint lock), flow.js 'redeploy' scenario.
+- Touch: a stick (move/fire/aim) belongs to the finger that grabbed it until it lifts; extra touches on that side become role 'stray' and are ignored. lostpointercapture also releases a touch.

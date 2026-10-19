@@ -514,7 +514,8 @@ cv.addEventListener('pointerdown', e => {
       let role, ox = x, oy = y;
       if (TB_ON.includes('fire') && hitB(x, y, { x: TB.fire.x, y: TB.fire.y, r: TB.fire.r + 18 })) role = 'fire';   // drag is measured from where the thumb lands
       else role = x < W * 0.45 ? 'move' : 'aim';
-      for (const [id, t] of TOUCH.pts) if (t.role === role) TOUCH.pts.delete(id);
+      // a stick belongs to the finger that grabbed it until that finger lifts: a stray palm touch is ignored
+      if ([...TOUCH.pts.values()].some(t => t.role === role)) { TOUCH.pts.set(e.pointerId, { role: 'stray' }); return; }
       if (role === 'move' && TOUCH.lockFree) TOUCH.sprintLock = TOUCH.lockFree = false;     // back on the stick after a locked sprint: that ends it
       TOUCH.pts.set(e.pointerId, { role, ox, oy, x, y, t0: performance.now(), full: 0, drag: false });
     } else TOUCH.taps.push({ x, y });
@@ -538,6 +539,7 @@ function pUp(e) {
   else { if (e.button === 0 || e.type === 'pointercancel') KB.mouse.down = false; if (e.button === 2 || e.type === 'pointercancel') KB.mouse.rdown = false; }
 }
 cv.addEventListener('pointerup', pUp); cv.addEventListener('pointercancel', pUp);
+cv.addEventListener('lostpointercapture', e => { if (e.pointerType === 'touch') pUp(e); });      // never leave a stick held by a finger we lost track of
 function blurAll() { for (const k in KB.keys) KB.keys[k] = false; KB.mouse.down = false; KB.mouse.rdown = false; TOUCH.pts.clear(); TOUCH.hold = {}; if (state === 'play' && M && !M.demo) openPause(null); }
 addEventListener('blur', blurAll);
 document.addEventListener('visibilitychange', () => { if (document.hidden) blurAll(); });
