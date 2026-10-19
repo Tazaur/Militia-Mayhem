@@ -45,7 +45,7 @@ Single self-contained HTML (canvas, no frameworks). Source is `src/*.js`, concat
 - Oct 2026 findings: PeerJS public server (0.peerjs.com) accepts connections but relays nothing; PeerJS TURN (eu-0/us-0.turn.peerjs.com) and openrelay.metered.ca no longer resolve in DNS. A TURN relay now needs a free account (e.g. Metered.ca / ExpressTURN static credentials in `P2P_ICE`).
 - Error codes: `NET_E` table in 5c_net.js (1xx matchmaking, 2xx host lookup, 3xx network path/ICE, 4xx data channel, 5xx lobby, 6xx lost host, 7xx WebRTC error). 
 etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per side, mDNS, ICE/gather/link state, relay status, build, browser). Joiners see live step progress in the lobby; the host gets a toast with code + trace for failed joins. `p2pRoom()` mimics the room API (presence/onPeers/leave); state resent every 250 ms, links dropped after 10 s silence. Test overrides: `window.__MM_SIG`, `window.__MM_ICE`.
-- Transport B (claude.ai artifact room) was removed in build 62: online play is direct WebRTC only, found through the public game finder.
+- Transport B (claude.ai artifact room) was removed in build 63: online play is direct WebRTC only, found through the public game finder.
 - Host → clients: presence `{L: lobby info, g: snapshot}` ~20 Hz. Snapshot (`netSnap`) packs soldiers/vehicles/projectiles/items/crates/wrecks/flags/stats as base-64 digit strings, a per-remote-player private block (hp, ammo, cooldowns, messages), and a 0.7 s window of id'd events (explosions, kills, feed, toasts, destroyed statics, whitelisted sounds, smoke pops, per-player pops/sounds). Kept < ~3.9 KB (≈2.2 KB with 22 soldiers).
 - Clients: render others 110 ms behind (interpolate), own soldier ~20 ms behind with smoothing and instant local aim; replay events on that timeline; cosmetic tracers from shot counters; local footprints/treads/particles. Input sent as continuous state + edge counters; deploy requests carry loadout + spawn option name.
 - Lobby: host's normal lobby; joiners pick colour/team/ready; host starts. No joining mid-match; a leaver's soldier becomes a bot. Max 4 humans total.
@@ -152,7 +152,7 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - Net: snapshot g.WV = [wave, left, brk·10], g.D = [[sol index, bleed s, rev %]] for downed soldiers; the client sets s.down / M.wv from them and stops local input while down.
 - Tests: tests/t23_surv.js (team colours + survival). Browser flow: scratchpad pw/flow.js has a 'coop' scenario.
 
-## Build 62
+## Build 63
 - Forced landscape: on a touch device held upright, resize() sets ROT and turns the canvas 90° with CSS (W/H swapped, SAFE remapped); ptXY(e) maps pointer coords. The rotate-your-phone screen is gone.
 - Fullscreen: Safari only allows it inside the tap, so fsGesture() runs from pointerdown (mouse) / pointerup (touch) on UIB entries with `fs: true`; FS_FN only toggles for keys/pads. fsOK() false (iPhone): icons hidden, setting reads SHARE › ADD TO HOME SCREEN.
 - Touch sprint: button in the right cluster (at(196,182)), only while moving. Tap = lock; the lock keeps running in the last direction after the stick is let go (TOUCH.lockFree); a new stick touch ends it. The stick-rim auto sprint never fires while prone.
