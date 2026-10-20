@@ -416,6 +416,9 @@ function sfx1(name, x, y, mul) {
     case 'door': noise({ t: 0.12, v: 0.3 * v, f: 400, f2: 120, out }); tone({ type: 'square', f: 95, f2: 70, t: 0.08, v: 0.12 * v, out }); break;
     case 'shuffle': noise({ t: 0.35, v: 0.12 * v, ft: 'bandpass', f: 700, f2: 1200, q: 2, out }); break;
     case 'rustle': if (!thr('rustle', 150)) return; noise({ t: 0.18, v: 0.08 * v, ft: 'bandpass', f: 900, f2: 500, q: 1.5, out }); break;
+    case 'glass': if (!thr('glass', 70)) return; noise({ t: 0.22, v: 0.22 * v, ft: 'highpass', f: 4200, out }); for (let i = 0; i < 4; i++) tone({ type: 'triangle', f: rnd(2600, 5200), f2: rnd(1800, 3000), t: 0.05, v: 0.06 * v, out, delay: i * 0.035 + rnd(0, 0.03) }); break;
+    case 'crumble': if (!thr('crumble', 120)) return; noise({ t: 1.5, v: 0.5 * v, f: 700, f2: 60, q: 0.6, out }); tone({ type: 'sine', f: 60, f2: 24, t: 1, v: 0.45 * v, out });
+      for (let i = 0; i < 7; i++) noise({ t: 0.06, v: 0.14 * v, ft: 'bandpass', f: rnd(700, 2200), q: 2, out, delay: 0.12 + i * 0.11 + rnd(0, 0.08) }); break;     // a rumble, then bricks landing
     case 'crush': if (!thr('crush', 80)) return; noise({ t: 0.3, v: 0.3 * v, f: 500, f2: 90, out }); break;
     case 'crack': noise({ t: 0.4, v: 0.3 * v, ft: 'bandpass', f: 900, f2: 200, q: 1.5, out }); tone({ type: 'square', f: 70, t: 0.15, v: 0.1 * v, out }); break;
     case 'clang': if (!thr('clang', 90)) return; tone({ type: 'square', f: 300, f2: 120, t: 0.12, v: 0.12 * v, out }); noise({ t: 0.1, v: 0.15 * v, f: 2000, out }); break;
@@ -499,7 +502,9 @@ cv.addEventListener('contextmenu', e => e.preventDefault());
 /* touch (CoD Mobile / PUBG style): floating move stick on the left (push to the rim to sprint), a fixed fire stick
    bottom-right (drag to aim + fire, tap to fire ahead), free drag on the right aims without firing,
    action buttons arc around the fire stick, contextual buttons (enter vehicle, seats) only appear when usable. */
-const TOUCH = { active: false, pts: new Map(), taps: [], btn: {}, hold: {}, scoreOn: false };
+/* auto: what the right (fire) stick's drag does: 'on' aims and fires, 'off' only aims, 'range' fires by itself when an enemy is lined up and in range */
+const AUTO_MODES = ['on', 'off', 'range'];
+const TOUCH = { active: false, pts: new Map(), taps: [], btn: {}, hold: {}, scoreOn: false, auto: AUTO_MODES.includes(store.get('autofire', 'on')) ? store.get('autofire', 'on') : 'on' };
 const TB = {}; let TB_ON = [];            // buttons drawn this frame (only these can be pressed)
 function hitB(x, y, b) { if (!b) return false; if (b.w) return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h; return (x - b.x) ** 2 + (y - b.y) ** 2 < (b.r + 8) ** 2; }
 cv.addEventListener('pointerdown', e => {
@@ -618,10 +623,14 @@ function touchState() {
       if (L >= R * 0.92 && !(me && me.stance)) { t.full = t.full || now; if (now - t.full > 260) t.auto = true; } else { t.full = 0; t.auto = false; }     // crawling: the rim never stands you up
       sprint = (t.auto || T.sprintLock) && k > 0.3; t.sprint = sprint;
     } else if (t.role === 'fire') {
-      // a tap fires straight ahead; only a deliberate drag (24px) turns it into aim-and-fire, and then it stays a drag
-      const dx = t.x - t.ox, dy = t.y - t.oy, L = Math.hypot(dx, dy); fire = true;
+      // a tap fires straight ahead; only a deliberate drag (24px) turns it into aim-and-fire, and then it stays a drag.
+      // AUTO off / range (on foot): the drag only aims (range: and fires itself when lined up); holding without a drag still fires
+      const dx = t.x - t.ox, dy = t.y - t.oy, L = Math.hypot(dx, dy), md = me && !me.veh ? T.auto : 'on';
       if (!t.drag && L > 24) t.drag = true;
       if (t.drag && L > 8) { aim = Math.atan2(dy, dx); aimMag = Math.min(1, L / 70); }
+      if (md === 'on') fire = true;
+      else if (!t.drag) fire = fire || now - t.t0 > 150;
+      else if (md === 'range' && aim !== null && autoLined(me, aim)) fire = true;
       if (L > 70) { t.ox = t.x - dx / L * 70; t.oy = t.y - dy / L * 70; }
     } else if (t.role === 'aim') {
       const dx = t.x - t.ox, dy = t.y - t.oy, L = Math.hypot(dx, dy);
@@ -639,6 +648,7 @@ function touchState() {
   }
   T.moving = !!(mx || my);
   const b = T.btn, seatIdx = ['seat0', 'seat1', 'seat2', 'seat3'].findIndex(k => b[k]), pickW = b.w0 ? 0 : b.w1 ? 1 : -1;
+  if (b.auto) { T.auto = AUTO_MODES[(AUTO_MODES.indexOf(T.auto) + 1) % 3]; store.set('autofire', T.auto); }
   if (b.score) T.scoreOn = !T.scoreOn; if (state !== 'play') T.scoreOn = false;     // the scoreboard button flips it open and shut
   const s = { touch: true, mx, my, aim, aimMag, fire, ads, alt: !!b.nade, gadget: !!T.hold.gadget, gadgetP: !!b.gadget, swapW: false, pickW, interact: !!(b.enter || b.exit), jump: !!b.jump, melee: !!b.melee, spot: false, reload: !!b.reload, variant: false, stanceCycle: !!b.stance, sprint, seatNext: false, seatDir: -1, seatIdx, pause: !!b.pause, score: T.scoreOn, navX: 0, navY: 0, confirm: false, back: false, join: false, deploy: false, tabL: false, tabR: false, opt: false, mapT: !!b.map, nadeCyc: b.nadeCyc ? 1 : 0, dpX: 0, dpY: 0, stX: 0, stY: 0 };
   T.btn = {};

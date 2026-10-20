@@ -181,3 +181,18 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - Wall art: art/walls16.png (embedded by build.py as `WALLS_SRC`): corner, straight, window-middle / tee, cross / end. Piece and rotation come from which 4-neighbours are WALL (`WALL_BY_MASK`); windows don't count, so a wall beside a window draws an end; windows always use the middle piece. Painted into the ground canvas (`paintCell`).
 - Sections: straight runs of wall/window cells (corners/junctions join their row's run), cut to <= 6 cells; each live one is a rect in `MAP.buildings`. Windows: `b.glass` - block movement, not sight/bullets (`los`, bullet traces, scope laser, net trace skip glass). `MAP.sight` = merged runs of standing wall, used by `visPoly` instead of `MAP.buildings` (dev only; normal maps don't set it).
 - Collapse: cells -> rubble, neighbours repainted (walls next to the hole become ends), `devSight()`, `navDirty`, `M.fogMem = null`.
+
+## Build 71: breakable glass, ramming, junction strength, touch AUTO fire
+- Tile sheet (art/walls16.png) row 2 now: end, crumbled end (`CRUMB_T`, joins left like `end`), rubble (`RUB_T`). (2,1) is the broken window `WIN_BROKE`.
+- Windows: intact (hp == mhp) draws `WIN_T`, anything less draws `WIN_BROKE`. `devGlass(sec)` takes 1 hp, once, from an intact window. It is called by a bullet/rocket/shell crossing it (3_sim updateProjectiles: `gl`/`gt`), a grenade passing it (updateNade no longer bounces off glass), and a soldier vaulting it (soldierCollide skips glass while `jumpT > 0.04`, and the landing extends while over glass).
+- Sections: corners, tees and crosses (a wall cell with wall both across and along) are 1-cell sections with `junc` = number of joins, hp `JUNC_HP` 200/260/320. Straight sections: 30 + 20 per cell (max 150).
+- Rubble cells draw `RUB_T`, rotated and flipped per cell by hash. A wall with ≤1 wall joins next to rubble draws the crumbled end, with its jagged side away from what still stands.
+- `devDamage(sec, v, x, y)` is the single damage path (blasts, rams, glass). Collapse plays `sfx('crumble')` (rumble plus falling bricks), or 'glass', with 3 dust and 5 debris per cell.
+- Ramming: `devRams(v)` runs at the top of vehicleCollide (host/offline only, before the push-back, so a fallen section lets the vehicle through). `RAM[type]` gives wall damage, self damage and speed kept, per unit of speed, with a 0.25 s cooldown per section.
+  - Jeep at 200: about 90 to the wall, about 200 to itself, stops.
+  - Tank at least 50 effective speed × 2.6: one hit drops a straight or a corner, a tee or cross takes two; about 12 to itself, keeps 80% of its speed.
+- Touch AUTO (`TOUCH.auto`, saved as `autofire`): a button at the fire stick cycles ON / OFF / RNG. On foot only; vehicles always behave as ON.
+  - ON: as before.
+  - OFF: the drag only aims.
+  - RNG: the drag aims and fires when `autoLined(s, a)` (4_ai) finds an enemy within the gun's reach (≤420 px) inside the cone `atan(r/d) + 0.04`, with los and no smoke.
+  - In OFF and RNG, holding without a drag fires after 150 ms, so starting a drag doesn't shoot.

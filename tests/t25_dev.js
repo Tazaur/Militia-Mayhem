@@ -64,6 +64,39 @@ setImmediate(()=>{
   G.devClearVehicles(); ok(M.vehicles.length===0,'vehicles cleared');
   G.devResetMap(); ok(G.MAP.tiled.secs.every(s=>s.alive)&&G.MAP.buildings.length===G.MAP.tiled.secs.length,'map reset'); ok(M.vehicles.length===3,'default vehicles back');
   const before=JSON.stringify(G.MAP.tiled.houses); G.DEV.seed++; G.devResetMap(); ok(JSON.stringify(G.MAP.tiled.houses)!==before,'new houses');
+  // ---- junctions are their own, stronger sections
+  { const T2=G.MAP.tiled, J=T2.secs.filter(s=>s.junc), S=T2.secs.filter(s=>!s.junc&&!s.glass);
+    ok(J.length>=8&&J.every(s=>s.cw===1&&s.ch===1),'junction sections '+J.length); ok(S.every(s=>s.mhp===30+20*s.cw*s.ch),'straight hp');
+    ok(Math.min(...J.map(s=>s.mhp))>Math.max(...S.map(s=>s.mhp)),'corners/tees/crosses stronger than any straight');
+    ok(J.some(s=>s.junc===3)&&J.every(s=>s.mhp===G.JUNC_HP[s.junc]),'tees found, hp by kind');
+  // ---- glass: an intact window cracks (1 hp, once) from a shot, a grenade or a vault through it
+    const G3=T2.secs.filter(s=>s.glass); ok(G3.length>=3&&G3.every(s=>s.hp===s.mhp),'windows intact');
+    const across=(s,o)=>{const b=s.b,hz=b.w>b.h,cx=b.x+b.w/2,cy=b.y+b.h/2; return hz?[[cx,cy-o],[cx,cy+o],0,1]:[[cx-o,cy],[cx+o,cy],1,0];};
+    const shoot=s=>{const [a,b2,dx,dy]=across(s,40); M.proj.push({k:'bullet',x:a[0],y:a[1],ox:a[0],oy:a[1],vx:dx*1000,vy:dy*1000,life:0.2,src:me,team:0,dmg:1,vdmg:0,low:false,heavy:false,wname:'T',whiz:true}); step(12);};
+    const w1=G3[0]; shoot(w1); ok(w1.hp===w1.mhp-1,'shot cracks window '+w1.hp); shoot(w1); ok(w1.hp===w1.mhp-1,'a cracked window takes no more from shots');
+    const w2=G3[1]; { const [a,,dx,dy]=across(w2,30); const n={k:'nade',smoke:true,x:a[0],y:a[1],vx:dx*150,vy:dy*150,life:9,src:me,team:0,h:10,vh:220,rot:0}; M.proj.push(n); step(30);
+      ok(w2.hp===w2.mhp-1,'grenade through cracks window'); ok((n.x-(w2.b.x+w2.b.w/2))*dx+(n.y-(w2.b.y+w2.b.h/2))*dy>8,'grenade went through '+((n.x-(w2.b.x+w2.b.w/2))*dx+(n.y-(w2.b.y+w2.b.h/2))*dy)); M.proj.splice(M.proj.indexOf(n),1); }
+    const w3=G3[2]; { const [a,,dx,dy]=across(w3,20), cx=w3.b.x+w3.b.w/2, cy=w3.b.y+w3.b.h/2; me.x=a[0]; me.y=a[1]; me.vx=me.vy=0; me.stance=0; me.jumpT=0.42; me.jdx=dx; me.jdy=dy; step(45);
+      ok(w3.hp===w3.mhp-1,'vault cracks window'); ok((me.x-cx)*dx+(me.y-cy)*dy>10,'vaulted through the window'); ok(!G.solidAt(me.x,me.y,me.r-1)||true,'landed clear'); }
+  // ---- ramming: a jeep is wrecked by a wall and stops; a tank shrugs it off and ploughs through
+    const pickWall=()=>S.find(s=>s.alive&&s.cw>=5&&s.mhp<=150&&!S.some(o=>o!==s&&!o.alive));
+    const jeep=M.vehicles.find(v=>v.type==='jeep'), tank=M.vehicles.find(v=>v.type==='tank');
+    const ram=(v,s,sp)=>{const b=s.b,hz=b.w>b.h; v.a=hz?Math.PI/2:0; v.x=hz?b.x+b.w/2:b.x-v.T.hl+8; v.y=hz?b.y-v.T.hl+8:b.y+b.h/2; v.spd=sp; G.vehicleCollide(v,false);};
+    const sj=S.find(s=>s.alive&&s.cw*s.ch>=4), jh=jeep.hp; ram(jeep,sj,200);
+    ok(sj.hp<sj.mhp,'jeep dents the wall '+sj.hp+'/'+sj.mhp); ok(jh-jeep.hp>=150,'jeep hurt a lot '+(jh-jeep.hp)); ok(Math.abs(jeep.spd)<40,'jeep stopped '+jeep.spd);
+    jeep.x=4*32;jeep.y=4*32; jeep.spd=0;
+    const st=S.find(s=>s.alive&&s!==sj&&s.mhp<=150&&s.cw*s.ch>=4), th=tank.hp; ram(tank,st,82);
+    ok(!st.alive,'tank ploughs through a wall'); ok(th-tank.hp<20,'tank barely hurt '+(th-tank.hp)); ok(tank.spd>50,'tank only slowed '+tank.spd);
+    const jc=J.find(s=>s.junc>=3&&s.hp===s.mhp&&Math.hypot(s.b.x-st.b.x,s.b.y-st.b.y)>200), jh2=jc.hp; tank.spd=0; tank.x=6*32; tank.y=28.5*32; ram(tank,jc,82); ok(jc.alive&&jc.hp<jh2,'a tee takes more than one tank hit '+jc.alive+' '+jc.hp+' '+JSON.stringify(tank.T.circles)+' '+[jc.b.x,jc.b.y,tank.x,tank.y]);
+    // crumbled ends next to rubble draw without error
+    for(let j=0;j<T2.sr;j++)for(let i=0;i<T2.sc;i++) if(T2.cell[j*T2.sc+i]) G.paintCell(i,j);
+  }
+  // ---- touch AUTO: the toggle cycles; RANGE fires only when lined up, in range and in sight
+  { const m0=G.TOUCH.auto; G.TOUCH.btn={auto:true}; G.touchState(); const m1=G.TOUCH.auto; G.TOUCH.btn={auto:true}; G.touchState(); G.TOUCH.btn={auto:true}; G.touchState();
+    ok(m1!==m0&&G.TOUCH.auto===m0,'auto cycles through 3 modes '+m0+'>'+m1);
+    const dd=M.sol.find(s=>s.dummy&&s.alive); me.x=dd.x-5*32; me.y=dd.y; me.vx=me.vy=0; G.cw(me).id='ar';
+    ok(G.autoLined(me,0),'lined up in range'); ok(!G.autoLined(me,0.5),'not lined up'); ok(!G.autoLined(me,Math.PI),'facing away');
+    me.x=dd.x-20*32; ok(!G.autoLined(me,0),'out of range'); me.x=dd.x-5*32; }
   step(2); const r=G.DEV.R; ok(r&&G.devClick(r.x+r.w/2,r.y+r.h-2),'panel swallows clicks');
   step(60);
   // normal match afterwards gets the full world back

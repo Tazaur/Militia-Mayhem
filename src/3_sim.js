@@ -444,7 +444,10 @@ function segWreck(x0, y0, x1, y1, w) {
   return segRect(ax, ay, bx, by, { x: -w.hl, y: -w.hw, w: w.hl * 2, h: w.hw * 2 }, 0);
 }
 function soldierCollide(s) {
-  for (const b of MAP.buildings) pushCircleRect(s, s.r, b);
+  for (const b of MAP.buildings) {
+    if (b.glass && s.jumpT > 0.04) { if (b.sec && inRect(s.x, s.y, b, 2)) devGlass(b.sec, s.x, s.y); continue; }     // vaulting through a window
+    pushCircleRect(s, s.r, b);
+  }
   for (const w of M.wrecks) pushOutWreck(s, s.r, w);
   staticsNear(s.x, s.y, 30, _near);
   for (const o of _near) { if (s.jumpT > 0.04 && LOW[o.type]) continue; const dx = s.x - o.x, dy = s.y - o.y, d = Math.hypot(dx, dy), m = s.r + o.r; if (d < m && d > 0.01) { s.x = o.x + dx / d * m; s.y = o.y + dy / d * m; } }
@@ -468,6 +471,7 @@ function shove(o, cx, cy, px, py, local) {
 }
 function vehicleCollide(v, local, auth) {
   let hit = 0, hitV = 0;
+  if (MAP.tiled && !local) devRams(v);
   for (let pass = 0; pass < 2; pass++) {
     vehCircles(v, _vc);
     for (const [cx, cy, r] of _vc) {
@@ -780,8 +784,11 @@ function updateProjectiles(dt) {
     if (p.k === 'nade') { updateNade(p, dt); continue; }
     EXP_REW = p.rew || 0;
     const x0 = p.x, y0 = p.y, x1 = x0 + p.vx * dt, y1 = y0 + p.vy * dt;
-    let bt = 2, hit = null;
-    for (const b of MAP.buildings) { if (b.glass) continue; const t = segRect(x0, y0, x1, y1, b, 0); if (t >= 0 && t < bt) { bt = t; hit = { k: 'wall' }; } }   // windows let shots through
+    let bt = 2, hit = null, gl = null, gt = 2;
+    for (const b of MAP.buildings) {
+      if (b.glass) { if (b.sec && b.sec.hp >= b.sec.mhp) { const t = segRect(x0, y0, x1, y1, b, 0); if (t >= 0 && t < gt) { gt = t; gl = b; } } continue; }   // windows let shots through (an intact one cracks)
+      const t = segRect(x0, y0, x1, y1, b, 0); if (t >= 0 && t < bt) { bt = t; hit = { k: 'wall' }; }
+    }
     for (const w of M.wrecks) { const t = segWreck(x0, y0, x1, y1, w); if (t >= 0 && t < bt) { bt = t; hit = { k: 'wall' }; } }
     const mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
     staticsNear(mx, my, Math.hypot(x1 - x0, y1 - y0) / 2 + 14, _near);
@@ -808,6 +815,7 @@ function updateProjectiles(dt) {
       const t = segRect(ax, ay, bx, by, { x: -v.T.hl, y: -v.T.hw, w: v.T.hl * 2, h: v.T.hw * 2 }, 0);
       if (t >= 0 && t < bt) { bt = t; hit = { k: 'veh', v }; }
     }
+    if (gl && gt <= bt) devGlass(gl.sec, x0 + (x1 - x0) * gt, y0 + (y1 - y0) * gt);
     if ((p.k === 'rocket' || p.k === 'shell') && Math.random() < 0.8) part({ k: 'smoke', x: p.x, y: p.y, vx: rnd(-10, 10), vy: rnd(-10, 10), life: 0.6, max: 0.6, sz: p.k === 'rocket' ? 7 : 5, drag: 2 });
     if (hit) {
       const hx = lerp(x0, x1, bt), hy = lerp(y0, y1, bt);
@@ -857,7 +865,7 @@ function updateNade(p, dt) {
   p.vh -= 700 * dt; p.h = Math.max(0, p.h + p.vh * dt); if (p.h === 0 && p.vh < 0) { p.vh = -p.vh * 0.35; if (Math.abs(p.vh) > 40) sfx('clink', p.x, p.y); p.vx *= 0.6; p.vy *= 0.6; }
   const nx = p.x + p.vx * dt, ny = p.y + p.vy * dt;
   let bounced = false;
-  for (const b of MAP.buildings) if (inRect(nx, ny, b, 3)) { if (p.x < b.x - 2 || p.x > b.x + b.w + 2) p.vx *= -0.5; else p.vy *= -0.5; bounced = true; }
+  for (const b of MAP.buildings) if (inRect(nx, ny, b, 3)) { if (b.glass) { if (b.sec) devGlass(b.sec, nx, ny); continue; } if (p.x < b.x - 2 || p.x > b.x + b.w + 2) p.vx *= -0.5; else p.vy *= -0.5; bounced = true; }
   if (p.h < 14) { staticsNear(nx, ny, 16, _near); for (const s of _near) if (s.type !== 'fence' && Math.hypot(nx - s.x, ny - s.y) < s.r + 3) { const dx = nx - s.x, dy = ny - s.y, d = Math.hypot(dx, dy) || 1, dot = (p.vx * dx + p.vy * dy) / d; p.vx -= 1.6 * dot * dx / d; p.vy -= 1.6 * dot * dy / d; bounced = true; } }
   if (bounced) sfx('clink', p.x, p.y); else { p.x = nx; p.y = ny; }
   p.x = clamp(p.x, 10 - SKIRT, WW + SKIRT - 10); p.y = clamp(p.y, 10 - SKIRT, WH + SKIRT - 10);
@@ -918,7 +926,7 @@ function controlSoldier(s, I, dt) {
   if (s.jumpT > 0) {
     s.jumpT -= dt; const along = s.vx * s.jdx + s.vy * s.jdy; if (along < 110) { s.vx += s.jdx * (110 - along); s.vy += s.jdy * (110 - along); }
     // don't land on top of a sandbag or fence: carry on until clear
-    if (s.jumpT <= 0.04) { staticsNear(s.x, s.y, 20, _near); if (_near.some(o => LOW[o.type] && Math.hypot(o.x - s.x, o.y - s.y) < o.r + s.r) && s.jumpT > -0.4) s.jumpT = 0.05; else if (s.jumpT <= 0) { s.jumpT = 0; for (let i = 0; i < 3; i++) part({ k: 'dust', x: s.x, y: s.y, vx: rnd(-30, 30), vy: rnd(-30, 30), life: 0.5, max: 0.5, sz: 6, drag: 3 }); } }
+    if (s.jumpT <= 0.04) { staticsNear(s.x, s.y, 20, _near); if ((_near.some(o => LOW[o.type] && Math.hypot(o.x - s.x, o.y - s.y) < o.r + s.r) || MAP.buildings.some(b => b.glass && inRect(s.x, s.y, b, s.r))) && s.jumpT > -0.4) s.jumpT = 0.05; else if (s.jumpT <= 0) { s.jumpT = 0; for (let i = 0; i < 3; i++) part({ k: 'dust', x: s.x, y: s.y, vx: rnd(-30, 30), vy: rnd(-30, 30), life: 0.5, max: 0.5, sz: 6, drag: 3 }); } }
   }
   s.x += s.vx * dt; s.y += s.vy * dt;
   soldierCollide(s);

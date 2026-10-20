@@ -5,11 +5,16 @@
    them, a front and a back door, 1-2 windows per room. Wall cells are drawn from the 16 px tile sheet (art/walls16.png).
    Walls are cut into structural sections (short runs of wall cells); each live section is a solid rect in
    MAP.buildings, so collision, bullets and paths need nothing new. A blast that empties a section turns its
-   cells to rubble. Windows block movement but not sight or bullets (b.glass).
+   cells to rubble. Windows block movement but not sight or bullets (b.glass); an intact window cracks (1 hp, the
+   broken picture) the first time a shot, a grenade or a vaulting soldier goes through it. Corners, tees and
+   crosses are their own one-cell sections and are much stronger. Vehicles ramming walls hurt both (RAM).
    ===================================================================== */
 const TILE = 32, SUB = 16, DEV_COLS = 48, DEV_ROWS = 32;
 const C_OUT = 0, C_FLOOR = 1, C_WALL = 2, C_WIN = 3, C_RUB = 4;
 const ROOM_MIN = 36, ROOM_SIDE = 5, SEC_MAX = 6;
+const JUNC_HP = { 2: 200, 3: 260, 4: 320 };                 // corner, tee, cross (a straight section: 30 + 20 per cell)
+/* ramming, per unit of speed: damage to the wall, damage to the vehicle, speed kept; a tank always hits at least min */
+const RAM = { tank: { wall: 2.6, self: 0.15, keep: 0.8, min: 50, go: 12 }, jeep: { wall: 0.45, self: 1, keep: 0.15, min: 0, go: 25 } };
 const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];          // up, right, down, left
 const DEV = { open: true, god: false, ammo: true, respawn: true, grid: true, secs: true, range: 6, log: [], nums: [], lastA: 0, over: false, B: [], R: null, seed: 1 };
 const DEV_RANGES = [2, 4, 6, 8, 10, 15, 20, 30];
@@ -25,7 +30,7 @@ WALL_IMG.onload = () => { if (typeof MAP !== 'undefined' && MAP && MAP.tiled) pa
 WALL_IMG.src = WALLS_SRC;
 /* sheet cell [col,row] and the sides each piece joins, as drawn (bits: 1 up, 2 right, 4 down, 8 left) */
 const WT = { corner: [0, 0, 2 | 4], straight: [1, 0, 8 | 2], tee: [0, 1, 8 | 2 | 1], cross: [1, 1, 15], end: [0, 2, 8] };
-const WIN_T = [2, 0];                                     // window middle, drawn running left-right
+const WIN_T = [2, 0], WIN_BROKE = [2, 1], CRUMB_T = [1, 2], RUB_T = [2, 2];   // window (intact / broken) drawn running left-right; crumbled end joins left like 'end'
 const rotMask = (m, k) => { let o = 0; for (let d = 0; d < 4; d++) if (m & (1 << d)) o |= 1 << ((d + k) % 4); return o; };
 /* every joint pattern -> [piece, quarter turns clockwise] */
 const WALL_BY_MASK = (() => {
@@ -182,17 +187,26 @@ function wallRuns(TL, ok) {
   return out;
 }
 function devSections() {
-  const TL = MAP.tiled; TL.secs = []; TL.sec.fill(-1);
-  for (const r of wallRuns(TL, v => v === C_WALL || v === C_WIN)) {
+  const TL = MAP.tiled, sc = TL.sc; TL.secs = []; TL.sec.fill(-1);
+  const t = (x, y) => x < 0 || y < 0 || x >= sc || y >= TL.sr ? C_OUT : TL.cell[y * sc + x];
+  const add = (cx, cy, cw, ch, glass, hp, junc) => {
+    const s = { cx, cy, cw, ch, i: TL.secs.length, glass, hp, mhp: hp, alive: true, hitT: 0, junc };
+    s.b = { x: cx * SUB, y: cy * SUB, w: cw * SUB, h: ch * SUB, glass, sec: s };
+    for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) TL.sec[(cy + j) * sc + cx + i] = s.i;
+    TL.secs.push(s); MAP.buildings.push(s.b);
+  };
+  // corners, tees and crosses (wall both across and along): one cell each, and strong
+  for (let y = 0; y < TL.sr; y++) for (let x = 0; x < sc; x++) {
+    if (t(x, y) !== C_WALL) continue; let n = 0, h = 0, v = 0;
+    for (let d = 0; d < 4; d++) if (t(x + DIRS[d][0], y + DIRS[d][1]) === C_WALL) { n++; if (d % 2) h = 1; else v = 1; }
+    if (h && v) add(x, y, 1, 1, false, JUNC_HP[n], n);
+  }
+  for (const r of wallRuns(TL, (v, x, y) => (v === C_WALL || v === C_WIN) && TL.sec[y * sc + x] < 0)) {
     const len = Math.max(r.w, r.h), n = Math.ceil(len / SEC_MAX);
     for (let k = 0; k < n; k++) {
-      const a = Math.round(k * len / n), b = Math.round((k + 1) * len / n);
-      const s = r.w > 1 ? { cx: r.x + a, cy: r.y, cw: b - a, ch: 1 } : { cx: r.x, cy: r.y + a, cw: 1, ch: b - a };
-      const glass = r.v === C_WIN, cells = s.cw * s.ch, hp = glass ? 20 : 40 + 25 * cells;
-      Object.assign(s, { i: TL.secs.length, glass, hp, mhp: hp, alive: true, hitT: 0 });
-      s.b = { x: s.cx * SUB, y: s.cy * SUB, w: s.cw * SUB, h: s.ch * SUB, glass, sec: s };
-      for (let j = 0; j < s.ch; j++) for (let i = 0; i < s.cw; i++) TL.sec[(s.cy + j) * TL.sc + s.cx + i] = s.i;
-      TL.secs.push(s); MAP.buildings.push(s.b);
+      const a = Math.round(k * len / n), b = Math.round((k + 1) * len / n), glass = r.v === C_WIN;
+      if (r.w > 1) add(r.x + a, r.y, b - a, 1, glass, glass ? 20 : 30 + 20 * (b - a), 0);
+      else add(r.x, r.y + a, 1, b - a, glass, glass ? 20 : 30 + 20 * (b - a), 0);
     }
   }
   devSight();
@@ -213,16 +227,17 @@ function paintCell(i, j) {
   const inside = TL.bld[j * TL.sc + i] >= 0;
   gx.fillStyle = inside ? '#6e5c46' : '#5b6248'; gx.fillRect(x, y, SUB, SUB);
   if (v === C_FLOOR) { gx.fillStyle = '#62513d'; gx.fillRect(x, y + (i % 2 ? 7 : 15), SUB, 1); return; }      // planks
-  if (v === C_RUB) {
-    const Rr = mulberry(i * 131 + j * 7 + 1); gx.fillStyle = '#6e675c'; gx.fillRect(x, y, SUB, SUB);
-    for (let k = 0; k < 5; k++) { const s = 2 + Rr() * 3; gx.fillStyle = Rr() < 0.5 ? '#4f4a42' : '#8a8276'; gx.fillRect(x + Rr() * (SUB - s), y + Rr() * (SUB - s), s, s); }
-    return;
-  }
   if (!WALL_IMG.complete || !WALL_IMG.width) return;
-  let c, k;
-  if (v === C_WIN) { c = WIN_T; k = t(i - 1, j) === C_WIN || t(i + 1, j) === C_WIN ? 0 : 1; }       // windows only ever use the middle piece
-  else { let m = 0; for (let d = 0; d < 4; d++) if (t(i + DIRS[d][0], j + DIRS[d][1]) === C_WALL) m |= 1 << d; const q = WALL_BY_MASK[m]; c = WT[q[0]]; k = q[1]; }   // a window beside a wall gives it an end
-  gx.save(); gx.translate(x + SUB / 2, y + SUB / 2); gx.rotate(k * Math.PI / 2);
+  let c, k, flip = false;
+  if (v === C_RUB) { const h = Math.imul(i, 73856093) ^ Math.imul(j, 19349663) ^ (DEV.seed * 83492791); c = RUB_T; k = h & 3; flip = !!(h & 4); }   // rubble: same tile, turned / flipped per cell
+  else if (v === C_WIN) { const s = TL.secs[TL.sec[j * TL.sc + i]]; c = s && s.hp < s.mhp ? WIN_BROKE : WIN_T; k = t(i - 1, j) === C_WIN || t(i + 1, j) === C_WIN ? 0 : 1; }   // windows only ever use the middle piece
+  else {
+    let m = 0, n = 0, rub = -1;
+    for (let d = 0; d < 4; d++) { const o = t(i + DIRS[d][0], j + DIRS[d][1]); if (o === C_WALL) { m |= 1 << d; n++; } else if (o === C_RUB) rub = d; }
+    if (n <= 1 && rub >= 0) { c = CRUMB_T; k = WALL_BY_MASK[n ? m : 1 << ((rub + 2) % 4)][1]; }    // beside a fallen wall: the broken end, jagged side away from what still stands
+    else { const q = WALL_BY_MASK[m]; c = WT[q[0]]; k = q[1]; }          // a window beside a wall gives it an end
+  }
+  gx.save(); gx.translate(x + SUB / 2, y + SUB / 2); gx.rotate(k * Math.PI / 2); if (flip) gx.scale(-1, 1);
   gx.drawImage(WALL_IMG, c[0] * SUB, c[1] * SUB, SUB, SUB, -SUB / 2, -SUB / 2, SUB, SUB); gx.restore();
 }
 
@@ -232,9 +247,38 @@ function devBlast(x, y, r, dmg) {
   for (const sec of MAP.tiled.secs) {
     if (!sec.alive) continue;
     const b = sec.b, nx = clamp(x, b.x, b.x + b.w), ny = clamp(y, b.y, b.y + b.h), d = Math.hypot(nx - x, ny - y); if (d > R) continue;
-    const v = dmg * k * clamp(1 - d / R, 0.3, 1);
-    sec.hp -= v; sec.hitT = 0.35; devNum(nx, ny, v, '#ffb060');
-    if (sec.hp <= 0) devCollapse(sec);
+    devDamage(sec, dmg * k * clamp(1 - d / R, 0.3, 1), nx, ny);
+  }
+}
+function devDamage(sec, v, x, y) {
+  if (!sec.alive) return;
+  const intact = sec.hp >= sec.mhp;
+  sec.hp -= v; sec.hitT = 0.35; devNum(x, y, v, '#ffb060');
+  if (sec.hp <= 0) devCollapse(sec);
+  else if (sec.glass && intact) { devRepaint(sec, 0); sfx('glass', x, y); }
+}
+/* a shot, a grenade or a vaulting soldier through an intact window: it cracks */
+function devGlass(sec, x, y) { if (sec.alive && sec.hp >= sec.mhp) devDamage(sec, 1, x, y); }
+function devRepaint(sec, pad) {
+  const TL = MAP.tiled;
+  for (let j = sec.cy - pad; j < sec.cy + sec.ch + pad; j++) for (let i = sec.cx - pad; i < sec.cx + sec.cw + pad; i++) if (i >= 0 && j >= 0 && i < TL.sc && j < TL.sr && TL.cell[j * TL.sc + i] !== C_OUT) paintCell(i, j);
+}
+/* a vehicle driving into wall sections (host / offline): from vehicleCollide, before it is pushed back.
+   A section that falls is gone before the push, so a tank carries on through, slowed. */
+const _ram = [];
+function devRams(v) {
+  const P = RAM[v.type]; if (!P) return;
+  const sp = Math.abs(v.spd); if (sp < P.go) return;
+  _ram.length = 0; vehCircles(v, _vc);
+  for (const [cx, cy, r] of _vc) for (const b of MAP.buildings) if (b.sec && !_ram.includes(b.sec) && Math.hypot(clamp(cx, b.x, b.x + b.w) - cx, clamp(cy, b.y, b.y + b.h) - cy) < r + 1) _ram.push(b.sec);
+  const cd = v.ramCd || (v.ramCd = {});
+  for (const sec of _ram) {
+    if ((cd[sec.i] || 0) > M.time) continue; cd[sec.i] = M.time + 0.25;
+    const s = Math.max(sp, P.min), b = sec.b, x = clamp(v.x, b.x, b.x + b.w), y = clamp(v.y, b.y, b.y + b.h);
+    devDamage(sec, s * P.wall * (sec.glass ? 3 : 1), x, y);
+    hurtVehicle(v, s * P.self * (sec.glass ? 0.1 : 1), null);
+    v.spd *= sec.glass ? Math.max(P.keep, 0.7) : P.keep; v.crashCd = 0.6;
+    if (!sec.glass) { sfx('crush', x, y); sparks(x, y, 3); }
   }
 }
 function devCollapse(sec) {
@@ -243,13 +287,13 @@ function devCollapse(sec) {
   for (let j = sec.cy; j < sec.cy + sec.ch; j++) for (let i = sec.cx; i < sec.cx + sec.cw; i++) {
     TL.cell[j * TL.sc + i] = C_RUB;
     const cx = (i + 0.5) * SUB, cy = (j + 0.5) * SUB;
-    if (!sec.glass) part({ k: 'dust', x: cx, y: cy, vx: rnd(-30, 30), vy: rnd(-30, 30), life: 1.4, max: 1.4, sz: rnd(14, 22), drag: 1.5 });
-    { const a = rnd(0, TAU), sp = rnd(40, 160); part({ k: 'debris', x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rnd(0.4, 0.9), max: 0.9, sz: rnd(2, 4), rot: rnd(0, TAU), vr: rnd(-12, 12), drag: 3 }); }
+    if (!sec.glass) for (let q = 0; q < 3; q++) part({ k: 'dust', x: cx + rnd(-6, 6), y: cy + rnd(-6, 6), vx: rnd(-40, 40), vy: rnd(-40, 40), life: rnd(1.4, 2.4), max: 2.4, sz: rnd(14, 26), drag: 1.2 });
+    for (let q = 0; q < (sec.glass ? 3 : 5); q++) { const a = rnd(0, TAU), sp = rnd(40, 190); part({ k: 'debris', x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rnd(0.4, 1), max: 1, sz: rnd(2, sec.glass ? 3 : 5), rot: rnd(0, TAU), vr: rnd(-12, 12), drag: 3 }); }
   }
-  // the cells and everything around them (neighbouring walls may become ends)
-  for (let j = sec.cy - 1; j <= sec.cy + sec.ch; j++) for (let i = sec.cx - 1; i <= sec.cx + sec.cw; i++) if (i >= 0 && j >= 0 && i < TL.sc && j < TL.sr && TL.cell[j * TL.sc + i] !== C_OUT) paintCell(i, j);
+  // the cells and everything around them (neighbouring walls may become crumbled ends)
+  devRepaint(sec, 1);
   devSight(); navDirty = 1; M.fogMem = null;
-  sfx(sec.glass ? 'hit' : 'boom', sec.b.x + sec.b.w / 2, sec.b.y + sec.b.h / 2);
+  sfx(sec.glass ? 'glass' : 'crumble', sec.b.x + sec.b.w / 2, sec.b.y + sec.b.h / 2);
   devLog(sec.glass ? 'WINDOW BROKEN' : `WALL ${sec.cw * sec.ch} CELL${sec.cw * sec.ch > 1 ? 'S' : ''} DOWN`, '#ffb060');
 }
 

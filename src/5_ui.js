@@ -652,6 +652,10 @@ function drawTouch(s) {
     txt(String(s.throwSel ? s.smokes : s.nades), nx + 17 * k, ny + 17 * k, 12 * k, '#ffe08a', 'center', 'middle', FD);
     if (s.nades > 0 && s.smokes > 0) btn('nadeCyc', nx - 30 * k, ny - 22 * k, 13 * k, 'swap', { sc: 1.1 });
     if (TOUCH.moving || TOUCH.sprintLock) btn('sprint', ...at(196, 182), 24 * k, 'run', { fill: TOUCH.sprintLock ? 'rgba(255,224,138,0.5)' : undefined });     // tap: sprint lock
+    // AUTO: what dragging the fire stick does (ON aims + fires, OFF aims only, RNG fires itself when lined up in range)
+    { const [ax, ay] = at(318, 96), r = 20 * k, md = TOUCH.auto; reg('auto', { x: ax, y: ay, r });
+      disc(ax, ay, r, TOUCH.hold.auto, md === 'on' ? 'rgba(160,30,20,0.45)' : md === 'range' ? 'rgba(200,160,40,0.5)' : 'rgba(0,0,0,0.45)');
+      txt('AUTO', ax, ay - 6 * k, 8 * k, 'rgba(255,255,255,0.75)', 'center', 'middle', FD); txt(md === 'range' ? 'RNG' : md.toUpperCase(), ax, ay + 5 * k, 11 * k, '#fff', 'center', 'middle', FD); }
     const [gx, gy] = at(232, 180); btn('gadget', gx, gy, 26 * k, gadgetIconKind(K.g), { al: K.g === 'mine' && !s.mines ? 0.35 : 1 });
     if (K.g !== 'torch' && s.gcd > 0) cooldownPie(gx, gy, 24 * k, s.gcd / (s.gmax || 1));
     if (K.g === 'mine') txt(String(s.mines), gx + 17 * k, gy + 17 * k, 12 * k, '#ffe08a', 'center', 'middle', FD);

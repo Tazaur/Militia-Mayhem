@@ -13,6 +13,15 @@ function enemiesOf(s, out) {
   for (const o of M.sol) if (o.alive && !o.down && isEnemy(s.team, o.team) && (!o.veh || o.veh.T.seats[o.seat].exposed) && o.protect <= 0) out.push(o);
   return out;
 }
+/* touch AUTO range: is an enemy in range of the gun in hand, inside a narrow cone around angle a, and in sight? */
+function autoLined(s, a) {
+  const w = cw(s), st = w && WPN[w.id]; if (!st) return false;
+  const R = Math.min(420, (st.spd || 900) * (st.life || 0.4) * 0.8), cone = (d, r) => Math.atan2(r, d) + 0.04;
+  const ok = (x, y, r, d) => d > 1 && d <= R && Math.abs(angDiff(a, Math.atan2(y - s.y, x - s.x))) <= cone(d, r) && los(s.x, s.y, x, y) && !smokeBlocks(s.x, s.y, x, y);
+  for (const o of enemiesOf(s, _en)) { const d = Math.hypot(o.x - s.x, o.y - s.y); if (visibleTo(s, o, d) && ok(o.x, o.y, 10, d)) return true; }
+  for (const v of M.vehicles) { if (!v.active || v.dead || !isEnemy(s.team, vehTeam(v))) continue; const d = Math.hypot(v.x - s.x, v.y - s.y); if (ok(v.x, v.y, v.T.hw || 14, d)) return true; }
+  return false;
+}
 /* a gun nest only swings so far: anything outside its arc isn't a target for whoever is on it */
 function inNestArc(s, x, y) { const v = s.veh; return !v || v.T.drive || !v.T.arc || Math.abs(angDiff(v.a, Math.atan2(y - s.y, x - s.x))) <= v.T.arc + 0.08; }
 function findTarget(s, range) {
