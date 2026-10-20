@@ -6,7 +6,7 @@ setImmediate(()=>{
   pads[0]=mkPad(); pads[1]=mkPad(); step(2);
   press(0,15); console.log('menu sel after right',G.MENU.sel); press(0,0); step(20); console.log('network pressed ->',G.state); press(0,1); step(20); console.log('B back ->',G.state);
   press(0,12); console.log('up -> gear',G.MENU.sel); press(0,8); console.log('View opens settings',G.SET.open); press(0,5); console.log('RB tab',G.SET.tab); press(0,1); console.log('B closes',G.SET.open);
-  press(0,14); press(0,13); console.log('sel',G.MENU.sel); press(0,0); console.log('state',G.state,'players',G.PLAYERS.length);
+  press(0,14); press(0,13); console.log('down -> dev',G.MENU.sel); press(0,12); console.log('sel',G.MENU.sel); press(0,0); console.log('state',G.state,'players',G.PLAYERS.length);
   step(25); press(1,0); console.log('P2 joined',G.PLAYERS.length, G.PLAYERS.map(p=>p.color).join(','));
   const c0=G.PLAYERS[0].color; press(0,5); console.log('RB color',c0,'->',G.PLAYERS[0].color); press(1,3); console.log('P2 team (Y)',G.PLAYERS[1].team); const m0=G.CFG.mode; press(1,15); console.log('unready P2 D-pad changes mode',m0,'->',G.CFG.mode); press(1,14);
   // 5th player cap

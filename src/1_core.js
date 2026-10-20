@@ -26,7 +26,7 @@ function mk(w, h) { const c = document.createElement('canvas'); c.width = w; c.h
 function rr(g, x, y, w, h, r) { g.beginPath(); if (g.roundRect) g.roundRect(x, y, w, h, r); else g.rect(x, y, w, h); }
 
 /* ---------------- game data ---------------- */
-const WW = 3000, WH = 2000;
+let WW = 3000, WH = 2000;                // the dev yard shrinks the world (setWorld)
 /* out of bounds: a band of terrain around the battlefield you can enter, but staying out for OOB_T seconds kills you */
 const SKIRT = 480, OOB_T = 5;
 const outOfBounds = (x, y) => x < 0 || y < 0 || x > WW || y > WH;
@@ -506,6 +506,7 @@ cv.addEventListener('pointerdown', e => {
   audioInit(); try { cv.focus({ preventScroll: true }); } catch (_) { }
   const [x, y] = ptXY(e);
   if (e.pointerType === 'mouse' && e.button === 0) fsGesture(x, y);
+  if (state === 'play' && M && M.dev && (e.pointerType !== 'mouse' || e.button === 0) && devClick(x, y)) return;   // dev tool panel
   if (e.pointerType === 'touch') {
     e.preventDefault(); TOUCH.active = true;
     const tp = touchPlayer();

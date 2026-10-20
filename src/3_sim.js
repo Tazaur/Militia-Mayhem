@@ -38,7 +38,9 @@ function newMatch(cfg, demo) {
   TEAMHEX = teamColor.map(c => CHEX[c]);
   TEAMNAME = teamNames(cfg, demo, ffa, teamColor);
   buildRings();
-  buildMap(MAPNAMES[cfg.map % MAPNAMES.length][0]); paintGround(); buildNav();
+  setWorld(cfg.dev ? DEV_COLS * TILE : 3000, cfg.dev ? DEV_ROWS * TILE : 2000);
+  if (cfg.dev) buildDevMap(); else buildMap(MAPNAMES[cfg.map % MAPNAMES.length][0]);
+  paintGround(); buildNav();
   MAP.statics.forEach((s, i) => s.idx = i);
   const tk = LIMITS.team[cfg.limit] || 200;
   M = {
@@ -49,7 +51,8 @@ function newMatch(cfg, demo) {
   };
   if (mode.id === 'conquest') M.flags = MAP.flags.map(f => ({ ...f, r: 96, owner: -1, prog: 0, contested: false, wave: rnd(0, 6), cnt: [0, 0] }));
   if (mode.id === 'koth') M.flags = [{ ...MAP.flags[1], name: 'HILL', r: 120, owner: -1, prog: 0, contested: false, wave: 0, cnt: [0, 0] }];
-  if (demo || coop) M.tickets = [99999, 99999];
+  M.dev = !!cfg.dev && !demo;
+  if (demo || coop || M.dev) M.tickets = [99999, 99999];
   if (mode.id === 'conquest') { M.flags[0].owner = 0; M.flags[0].prog = -1; M.flags[2].owner = 1; M.flags[2].prog = 1; }
   for (const s of MAP.vehSpawns) M.vehicles.push(makeVehicle(s));
   for (const c of MAP.crateSpots) M.crates.push({ x: c.x, y: c.y, a: rnd(-0.4, 0.4), live: true, t: 0 });
@@ -190,9 +193,11 @@ function pickKit() { const r = Math.random(); return r < 0.35 ? 0 : r < 0.6 ? 1 
 /* ---------------- damage & death ---------------- */
 function hurtSoldier(s, dmg, src, kind, dx, dy, wname) {
   if (!s.alive || s.down || s.protect > 0 || M.over) return;
+  if (M.dev && DEV.god && s.player) return;
   if (src && !canHurt(src, s)) return;
   if (kind === 'explosion' || kind === 'mine') dmg *= [1, 0.8, 0.6][s.stance];
   s.hp -= dmg; s.lastHurt = M.time; s.hurtT = 0.35;
+  if (s.dummy) devHit(s, dmg);
   if (src && src.player && src !== s) { src.hitT = 0.15; src.hitV = false; psfx(src.player, 'hit'); }
   if (s.player) rumble(s.player, Math.min(1, dmg / 60), 0.15);
   if (kind === 'bullet' || kind === 'mg') { for (let i = 0; i < 2; i++) blood(s.x, s.y, dx, dy); sfx('hurt', s.x, s.y); netEv('b', s.x | 0, s.y | 0, Math.round(dx || 0), Math.round(dy || 0)); }
@@ -204,6 +209,7 @@ function blood(x, y, dx, dy) {
 }
 function kill(s, src, kind, dx, dy, wname) {
   s.alive = false; s.down = false; s.hp = 0; s.d++; s.respawnT = s.player ? 5 : 6; s.torch = false;
+  if (s.dummy) { s.respawnT = 1.5; devKill(s, src, kind, wname); }
   if (s.veh) leaveSeat(s);
   if (s.player) { rumble(s.player, 1, 0.4); s.deployIdle = 0; s.deathT = 2.2; s.killer = src && src !== s ? { sol: src, veh: src.veh || null, x: src.veh ? src.veh.x : src.x, y: src.veh ? src.veh.y : src.y, name: src.name, color: src.color } : null; }
   if (!M.ffa && !M.demo && !M.coop) M.tickets[s.team] = Math.max(0, M.tickets[s.team] - 1);
@@ -364,6 +370,7 @@ function explosion(x, y, r, dmgS, dmgV, src, team, big, kind) {
   for (const s of _near) if (Math.hypot(s.x - x, s.y - y) < r * (s.type === 'tree' ? 0.35 : 0.55)) destroyStatic(s, true);
   for (const c of M.crates) if (c.live && Math.hypot(c.x - x, c.y - y) < r * 0.5) { c.live = false; c.t = 25; }
   for (const it of M.items) if (it.k === 'mine' && it.armed !== false && Math.hypot(it.x - x, it.y - y) < r * 0.6 && !it.boom) { it.boom = true; it.t = 0; }
+  if (MAP.tiled) devBlast(x, y, r, dmgS);
 }
 /* everything you see and hear of a blast (online clients replay this from the host's events) */
 function explosionFx(x, y, r, big) {

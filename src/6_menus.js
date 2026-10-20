@@ -94,14 +94,15 @@ function enterLobby(dev) { PLAYERS = []; LOBBY.sel = 0; setState('lobby'); if (d
 function menuAct(i, dev) {
   if (i === 0) enterLobby(dev);
   else if (i === 1) openNetMenu(dev);
+  else if (i === 3) startDev(dev);
   else openSettings('menu');
 }
 function updateMenu(ins, dt) {
   MENU.msgT -= dt; MENU.spin += dt * (MENU.sel === 0 ? 0.35 : 0.08);
   for (const { dev, st } of ins) {
     const dx = st.navX || (st.tabR ? 1 : st.tabL ? -1 : 0);
-    if (dx) { MENU.sel = MENU.sel === 2 ? (dx > 0 ? 1 : 0) : clamp(MENU.sel + dx, 0, 1); sfx('ui'); }
-    if (st.navY) { MENU.sel = st.navY < 0 ? 2 : MENU.sel === 2 ? 0 : MENU.sel; sfx('ui'); }
+    if (dx) { MENU.sel = MENU.sel >= 2 ? (dx > 0 ? 1 : 0) : clamp(MENU.sel + dx, 0, 1); sfx('ui'); }
+    if (st.navY) { MENU.sel = st.navY < 0 ? (MENU.sel === 3 ? 0 : 2) : MENU.sel === 2 ? 0 : 3; sfx('ui'); }
     if (st.opt) { openSettings('menu'); return; }
     if ((st.confirm || st.pause) && stateT > 0.25) { menuAct(MENU.sel, dev); return; }
   }
@@ -158,6 +159,7 @@ function drawMenu() {
     if (sel && !off) { ctx.font = `${fpx(26, u, 18)}px ${FD}`; const tw2 = ctx.measureText(i === 0 ? 'LOCAL PLAY' : 'NETWORK PLAY').width; keyTag('select', dv, { x: x + cw / 2 - tw2 / 2, y: ly - 17, w: 0, h: 34 }, 'left'); }
   }
   netToast(u);
+  { const bw = fpx(110, u, 92), bh = fpx(24, u, 22); button({ x: R - bw, y: B - foot / 2 - bh / 2, w: bw, h: bh, fn: d => menuAct(3, d), sel: MENU.sel === 3, label: 'DEV MODE', size: fpx(12, u, 11), focus: 3 }); }
   txt(`v${VERSION.build}  ·  ${VERSION.date}`, L, B - foot / 2, fpx(11, u, 10), 'rgba(242,230,196,0.45)', 'left', 'middle', FD);
 }
 
@@ -749,7 +751,8 @@ const PAUSE_ITEMS = ['RESUME', 'SETTINGS', 'REDEPLOY', 'RESTART MATCH', 'BACK TO
 function openPause(p) { if (state !== 'play') return; PAUSE.by = p; PAUSE.sel = 0; setState('pause'); sfx('ui'); }
 const pauseItems = () => {
   const l = NET.role === 'client' ? ['RESUME', 'SETTINGS', 'REDEPLOY', 'LEAVE GAME'] : NET.role === 'host' ? ['RESUME', 'SETTINGS', 'REDEPLOY', 'RESTART MATCH', 'BACK TO LOBBY', 'END GAME'] : PAUSE_ITEMS;
-  return pauseMe() ? l : l.filter(x => x !== 'REDEPLOY');
+  const l2 = M && M.dev ? l.filter(x => x !== 'BACK TO LOBBY') : l;
+  return pauseMe() ? l2 : l2.filter(x => x !== 'REDEPLOY');
 };
 /* who REDEPLOY kills: whoever opened the menu (or the first local player who's alive); never in co-op */
 function pauseMe() {
@@ -762,7 +765,7 @@ function pauseAct(i) {
   if (it === 'RESUME') setState('play');
   if (it === 'SETTINGS') openSettings('pause');
   if (it === 'REDEPLOY') { const s = pauseMe(); if (NET.role === 'client') { NET.rd = (NET.rd | 0) + 1; NET.rdT = performance.now(); } else redeploy(s); setState('play'); }
-  if (it === 'RESTART MATCH') { newMatch({ ...CFG }, false); setState('play'); }
+  if (it === 'RESTART MATCH') { newMatch({ ...(M.dev ? M.cfg : CFG) }, false); setState('play'); }
   if (it === 'BACK TO LOBBY') toLobby();
   if (it === 'QUIT TO MENU' || it === 'END GAME') toMenu();
   if (it === 'LEAVE GAME') netLeave();
@@ -903,6 +906,7 @@ function render() {
     if (M.views.length > 1) { ctx.fillStyle = '#0a0a08'; for (const vw of M.views) { if (vw.x > 0) ctx.fillRect(vw.x - 2, vw.y, 4, vw.h); if (vw.y > 0) ctx.fillRect(vw.x, vw.y - 2, vw.w, 4); } }
     for (const vw of hudViews()) drawViewHUD(vw);
     drawGlobalHUD();
+    if (M.dev && state === 'play') devDrawPanel();
     if (M.scoreHeld && state === 'play') uiScaled(drawScoreboard);
     if (state === 'pause') uiScaled(drawPause);
     { const tp = touchPlayer(); if (state === 'play' && tp && tp.sol && tp.sol.alive) { screenT(); drawTouch(tp.sol); } }

@@ -163,3 +163,12 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - Bots driving with friendly fire on swerve/slow for teammates on foot ahead (4_ai driver block).
 - tests/t24_redeploy.js (redeploy, body/casing timing). Browser: pw/phone.js (portrait phone: rotation, deploy, sprint lock), flow.js 'redeploy' scenario.
 - Touch: a stick (move/fire/aim) belongs to the finger that grabbed it until it lifts; extra touches on that side become role 'stray' and are ignored. lostpointercapture also releases a touch.
+
+## Build 65: dev mode (src/5d_dev.js)
+- Main menu DEV MODE button (focus 3; down from the cards). `startDev` → `newMatch({...CFG, dev:true, mode:1, bots:0, ...})`, `M.dev`. Local only (refused while networked).
+- World size is now variable: `WW/WH` are `let`; `setWorld(w,h)` (2_maps) resizes ground/prints/decals and the nav grid (`NGW/NGH/ASG/ASF/ASS` are `let`). newMatch calls it every match (3000x2000 normally, 48x32 tiles of `TILE=24` in dev).
+- Tile yard: `MAP.tiled = {cols, rows, own, rubble, secs, blds}`. A building is a list of sections on the grid; each live section's rect `sec.b` sits in `MAP.buildings`, so collision/bullets/LOS/fog/nav need no changes. `explosion()` ends with `devBlast` (structural multiplier by blast radius `STRUCT_K`: rocket ×1.6, shell ×2, frag ×0.35). At 0 HP `devCollapse` removes the rect, paints rubble tiles, redraws that building's roofs, sets `navDirty`, clears `M.fogMem`.
+- `paintGround` hands off to `paintDevGround` when `MAP.tiled`; building shadows are skipped there.
+- Dummies: `s.dummy` soldiers get `newI()` instead of `botControl`, respawn in place after 1.5 s (`devReviveDummy`), log TTK from the first hit at full HP (`devHit`/`devKill`).
+- Panel (right; backquote toggles): spawn dummy/jeep/tank/nest at a range ahead of last aim, god mode, inf ammo, dummy respawn, line of sight, grid, sections, reset map, heal, log. Clicks are taken in pointerdown (`devClick`) so they never fire.
+- Test: tests/t25_dev.js. t12 now checks down → DEV MODE.

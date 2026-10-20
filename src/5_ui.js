@@ -113,7 +113,7 @@ function drawWorld(vw) {
   worldT();
   for (const b of MAP.buildings) if (b.roofC && vis(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h))) ctx.drawImage(b.roofC, b.x, b.y);
   ctx.fillStyle = CFG.style === 'grit' ? 'rgba(0,0,0,0.38)' : 'rgba(0,0,0,0.32)';
-  for (const b of MAP.buildings) { if (!vis(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h))) continue; ctx.beginPath(); ctx.moveTo(b.x + b.w, b.y); ctx.lineTo(b.x + b.w + 14, b.y + 14); ctx.lineTo(b.x + b.w + 14, b.y + b.h + 14); ctx.lineTo(b.x + 14, b.y + b.h + 14); ctx.lineTo(b.x, b.y + b.h); ctx.lineTo(b.x + b.w, b.y + b.h); ctx.closePath(); ctx.fill(); }
+  if (!MAP.tiled) for (const b of MAP.buildings) { if (!vis(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h))) continue; ctx.beginPath(); ctx.moveTo(b.x + b.w, b.y); ctx.lineTo(b.x + b.w + 14, b.y + 14); ctx.lineTo(b.x + b.w + 14, b.y + b.h + 14); ctx.lineTo(b.x + 14, b.y + b.h + 14); ctx.lineTo(b.x, b.y + b.h); ctx.lineTo(b.x + b.w, b.y + b.h); ctx.closePath(); ctx.fill(); }
   if (fogged) { ctx.save(); worldT(); polyPath(ctx, fogPolys); ctx.clip(); }
   // ---- layer 5: smoke and fire rise above roofs, tree canopies above everything
   drawParticles(vis, 'high');
@@ -144,6 +144,7 @@ function drawWorld(vw) {
     ctx.globalAlpha = 1;
   }
   if (fogged) ctx.restore();
+  if (M.dev) devDrawWorld(vw);
   // weather + grit grade
   screenT();
   if (M.rain) drawRain(vw);
@@ -710,7 +711,8 @@ function drawGlobalHUD() {
     ctx.fillStyle = 'rgba(8,12,6,0.7)'; ctx.fillRect(cx - bw / 2, top, bw, 34 * u);
     stxt(V.n ? 'WAVE ' + V.n + (V.lim ? ' / ' + V.lim : '') : 'GET READY', cx - 8 * u, top + 23 * u, 17 * u, '#ffe08a', 'right', 'alphabetic', FD);
     stxt(V.brk > 0 ? 'NEXT WAVE IN ' + Math.ceil(V.brk) : V.left + ' RAIDERS LEFT', cx + 8 * u, top + 22 * u, 13 * u, V.brk > 0 ? '#7dff7a' : '#f2e6c4', 'left', 'alphabetic', FD);
-  } else if (!M.ffa) {
+  } else if (M.dev) devHUD(u, top);
+  else if (!M.ffa) {
     const bw = Math.min(230 * u, W * 0.25), cx = W / 2, lim = LIMITS.team[M.cfg.limit] || 200;
     ctx.fillStyle = 'rgba(8,12,6,0.7)'; ctx.fillRect(cx - bw - 90 * u, top, bw * 2 + 180 * u, 34 * u);
     for (const t of [0, 1]) {

@@ -208,6 +208,7 @@ function drawSkirt(x0, y0, x1, y1) {
 function paintGround() {
   const grit = CFG.style === 'grit', P = SNOWY() ? (grit ? PALS.snowGrit : PALS.snow) : (PALS[CFG.style] || PALS.classic), RF = ROOFS[CFG.style] || ROOFS.classic;
   px_.setTransform(1, 0, 0, 1, 0, 0); px_.clearRect(0, 0, WW, WH); dgx.setTransform(1, 0, 0, 1, 0, 0); dgx.clearRect(0, 0, WW, WH); if (typeof M !== 'undefined' && M) M.fogMem = null;
+  if (MAP.tiled) { paintDevGround(); return; }
   const R = mulberry(4242);
   gx.setTransform(1, 0, 0, 1, 0, 0); gx.globalAlpha = 1; gx.globalCompositeOperation = 'source-over';
   gx.fillStyle = SKIRT_PAT = pattern(96, 96, (g, w, h) => {
@@ -378,7 +379,7 @@ function bloodDrop(g, x, y, sz, rot, al) {
 }
 
 /* ---------------- nav grids + A* ---------------- */
-const NC = 30, NGW = Math.ceil(WW / NC), NGH = Math.ceil(WH / NC);
+const NC = 30; let NGW = Math.ceil(WW / NC), NGH = Math.ceil(WH / NC);
 let navS = null, navV = null, navDirty = 0;
 function buildNav() {
   navS = new Uint8Array(NGW * NGH); navV = new Uint8Array(NGW * NGH);
@@ -402,7 +403,13 @@ function markStatic(s) {
     if ((s.type === 'tree' || s.type === 'hay') && d < 32) navV[j * NGW + i] = 1;
   }
 }
-const ASG = new Float32Array(NGW * NGH), ASF = new Int32Array(NGW * NGH), ASS = new Uint32Array(NGW * NGH);
+let ASG = new Float32Array(NGW * NGH), ASF = new Int32Array(NGW * NGH), ASS = new Uint32Array(NGW * NGH);
+/* world size: the normal maps are 3000x2000, the dev yard is smaller; canvases and path grids follow */
+function setWorld(w, h) {
+  if (w === WW && h === WH) return; WW = w; WH = h;
+  for (const c of [ground, prints, decals]) { c.width = w; c.height = h; }
+  NGW = Math.ceil(WW / NC); NGH = Math.ceil(WH / NC); ASG = new Float32Array(NGW * NGH); ASF = new Int32Array(NGW * NGH); ASS = new Uint32Array(NGW * NGH);
+}
 let asStamp = 1;
 function nearestFree(g, i, j) {
   if (i >= 0 && j >= 0 && i < NGW && j < NGH && !g[j * NGW + i]) return [i, j];

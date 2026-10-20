@@ -287,6 +287,7 @@ function updateMatch(dt) {
   if (M.over) { M.overT += dt; M.slowT -= dt; }
   const sdt = dt * (M.over ? Math.max(0.25, Math.min(1, 1 - M.slowT * 0.5)) : 1);
   M.time += sdt;
+  if (M.dev) devTick(sdt);
   if (navDirty) { navDirty = 0; buildNav(); }
   M.spotTimer = (M.spotTimer || 0) - sdt; if (M.spotTimer <= 0) { M.spotTimer = 0.5; updateSpotting(); }
   for (const s of M.sol) {
@@ -294,11 +295,12 @@ function updateMatch(dt) {
       if (M.over) continue;
       s.respawnT -= sdt;
       if (s.player) { if (s.deathT > 0) { s.deathT -= sdt; trackKiller(s); } else if (isNet(s.player)) netDeployHost(s); else deployInput(s, sdt); }
+      else if (s.dummy) { if (DEV.respawn && s.respawnT <= 0) devReviveDummy(s); }
       else if (!M.coop && s.respawnT <= 0 && (M.ffa || M.tickets[s.team] > 0)) spawnSoldier(s);
       continue;
     }
     if (s.down) { if (s.player) { if (isNet(s.player)) netInputHost(s.player); else humanInput(s.player); } downTick(s, sdt); continue; }
-    const I = s.player ? (isNet(s.player) ? netInputHost(s.player) : humanInput(s.player)) : botControl(s, sdt);
+    const I = s.player ? (isNet(s.player) ? netInputHost(s.player) : humanInput(s.player)) : s.dummy ? newI() : botControl(s, sdt);
     const n0 = M.proj.length;
     controlSoldier(s, I, sdt);
     if (M.proj.length > n0 && s.player && isNet(s.player)) netTagShots(s.player, s, n0);
