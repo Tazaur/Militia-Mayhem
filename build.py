@@ -1,12 +1,13 @@
 import base64,json
 atlas=base64.b64encode(open('atlas.png','rb').read()).decode()
 meta=open('atlas.json',encoding='utf-8').read()
+walls=base64.b64encode(open('art/walls16.png','rb').read()).decode()
 import glob
 js='\n'.join(open(f,encoding='utf-8').read() for f in sorted(glob.glob('src/*.js')))
 extra=open('atlas_extra.json',encoding='utf-8').read()
 # automatic version stamp: the build number goes up by one whenever the game's source or art actually changes
 import hashlib,os,datetime
-h=hashlib.sha1((js+meta+atlas).encode()).hexdigest()
+h=hashlib.sha1((js+meta+atlas+walls).encode()).hexdigest()
 st=json.load(open('version.json')) if os.path.exists('version.json') else {'build':14,'hash':''}
 if st['hash']!=h: st['build']+=1; st['hash']=h; st['date']=datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).strftime('%Y-%m-%d %H:%M')
 json.dump(st,open('version.json','w'))
@@ -34,6 +35,7 @@ html,body{{height:100%;margin:0;background:var(--field);overflow:hidden;overscro
 const ATLAS={meta};
 const EXTRA={extra};
 const ATLAS_SRC="data:image/png;base64,{atlas}";
+const WALLS_SRC="data:image/png;base64,{walls}";
 {js}
 </script>
 '''

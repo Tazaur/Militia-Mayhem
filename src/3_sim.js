@@ -752,24 +752,13 @@ function segRect(x0, y0, x1, y1, b, pad) {
   }
   return t0;
 }
-/* does the sightline from height e to height t dip below the wall's top while it crosses it? */
-function overZ(x0, y0, x1, y1, b, e, t) {
-  const dx = x1 - x0, dy = y1 - y0; let u0 = 0, u1 = 1;
-  for (const [p, d, mn, mx] of [[x0, dx, b.x, b.x + b.w], [y0, dy, b.y, b.y + b.h]]) {
-    if (Math.abs(d) < 1e-9) { if (p < mn || p > mx) return false; continue; }
-    let a = (mn - p) / d, c = (mx - p) / d; if (a > c) { const q = a; a = c; c = q; }
-    u0 = Math.max(u0, a); u1 = Math.min(u1, c); if (u0 > u1) return false;
-  }
-  return Math.min(e + (t - e) * u0, e + (t - e) * u1) < b.z;
-}
 function segCirc(x0, y0, x1, y1, cx, cy, r) {
   const dx = x1 - x0, dy = y1 - y0, fx = x0 - cx, fy = y0 - cy, a = dx * dx + dy * dy, b = 2 * (fx * dx + fy * dy), c = fx * fx + fy * fy - r * r;
   if (c <= 0) return 0; if (a < 1e-9) return -1; const det = b * b - 4 * a * c; if (det < 0) return -1;
   const t = (-b - Math.sqrt(det)) / (2 * a); return t >= 0 && t <= 1 ? t : -1;
 }
-/* e, t: eye and target heights (height-aware sight); without them every wall blocks */
-function los(x0, y0, x1, y1, e, t) {
-  for (const b of MAP.buildings) if (e !== undefined && b.z !== undefined ? overZ(x0, y0, x1, y1, b, e, t) : segRect(x0, y0, x1, y1, b, 0) >= 0) return false;
+function los(x0, y0, x1, y1) {
+  for (const b of MAP.buildings) if (!b.glass && segRect(x0, y0, x1, y1, b, 0) >= 0) return false;
   for (const w of M.wrecks) if (segWreck(x0, y0, x1, y1, w) >= 0) return false;
   const mx = (x0 + x1) / 2, my = (y0 + y1) / 2, r = Math.hypot(x1 - x0, y1 - y0) / 2 + 20;
   staticsNear(mx, my, r, _near);
@@ -792,7 +781,7 @@ function updateProjectiles(dt) {
     EXP_REW = p.rew || 0;
     const x0 = p.x, y0 = p.y, x1 = x0 + p.vx * dt, y1 = y0 + p.vy * dt;
     let bt = 2, hit = null;
-    for (const b of MAP.buildings) { const t = segRect(x0, y0, x1, y1, b, 0); if (t >= 0 && t < bt) { bt = t; hit = { k: 'wall' }; } }
+    for (const b of MAP.buildings) { if (b.glass) continue; const t = segRect(x0, y0, x1, y1, b, 0); if (t >= 0 && t < bt) { bt = t; hit = { k: 'wall' }; } }   // windows let shots through
     for (const w of M.wrecks) { const t = segWreck(x0, y0, x1, y1, w); if (t >= 0 && t < bt) { bt = t; hit = { k: 'wall' }; } }
     const mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
     staticsNear(mx, my, Math.hypot(x1 - x0, y1 - y0) / 2 + 14, _near);

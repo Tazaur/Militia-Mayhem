@@ -1143,7 +1143,7 @@ function netMgFx(v) {
 function netBullets(dt) {
   for (const p of NET.bul) {
     const x0 = p.x, y0 = p.y, x1 = x0 + p.vx * dt, y1 = y0 + p.vy * dt; let bt = 2, hit = 0;
-    for (const b of MAP.buildings) { const t = segRect(x0, y0, x1, y1, b, 0); if (t >= 0 && t < bt) { bt = t; hit = 1; } }
+    for (const b of MAP.buildings) { if (b.glass) continue; const t = segRect(x0, y0, x1, y1, b, 0); if (t >= 0 && t < bt) { bt = t; hit = 1; } }
     for (const w of M.wrecks) { const t = segWreck(x0, y0, x1, y1, w); if (t >= 0 && t < bt) { bt = t; hit = 1; } }
     staticsNear((x0 + x1) / 2, (y0 + y1) / 2, Math.hypot(x1 - x0, y1 - y0) / 2 + 14, _near);
     for (const s of _near) { if (s.type === 'fence' || (s.type === 'bag' && !p.low)) continue; const t = segCirc(x0, y0, x1, y1, s.x, s.y, s.type === 'tree' ? 9 : s.type === 'hay' ? 12 : s.r); if (t >= 0 && t < bt) { bt = t; hit = 1; } }

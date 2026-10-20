@@ -1,88 +1,229 @@
 /* =====================================================================
    DEV MODE: a small tile-based test yard plus tools (no-AI dummies, vehicle spawns, toggles, a TTK log).
-   The yard is a grid of TILE px tiles. Buildings are made of rectangular sections on that grid; each intact
-   section is a solid rect in MAP.buildings, so collision, bullets, sight and paths treat it like any wall.
-   A blast hurts nearby sections; one that runs out of health collapses and its tiles turn to rubble.
+   Two grids: TILE (32 px, about a soldier) and the SUB grid (16 px) that walls are built on.
+   Houses come from genHouse: an outline (rectangle or L), split into 3-4 rooms, the fewest inner doors that join
+   them, a front and a back door, 1-2 windows per room. Wall cells are drawn from the 16 px tile sheet (art/walls16.png).
+   Walls are cut into structural sections (short runs of wall cells); each live section is a solid rect in
+   MAP.buildings, so collision, bullets and paths need nothing new. A blast that empties a section turns its
+   cells to rubble. Windows block movement but not sight or bullets (b.glass).
    ===================================================================== */
-const TILE = 24, DEV_COLS = 48, DEV_ROWS = 32;
-const DEV = { open: true, god: false, ammo: true, respawn: true, grid: true, secs: true, range: 6, log: [], nums: [], lastA: 0, over: false, B: [], R: null, hlos: true };
+const TILE = 32, SUB = 16, DEV_COLS = 48, DEV_ROWS = 32;
+const C_OUT = 0, C_FLOOR = 1, C_WALL = 2, C_WIN = 3, C_RUB = 4;
+const ROOM_MIN = 36, ROOM_SIDE = 5, SEC_MAX = 6;
+const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];          // up, right, down, left
+const DEV = { open: true, god: false, ammo: true, respawn: true, grid: true, secs: true, range: 6, log: [], nums: [], lastA: 0, over: false, B: [], R: null, seed: 1 };
 const DEV_RANGES = [2, 4, 6, 8, 10, 15, 20, 30];
-/* section health = base + per tile */
-const MATS = {
-  wood: { n: 'WOOD', hp: [60, 10], c: '#8a6a44', e: '#5a4228' },
-  brick: { n: 'BRICK', hp: [150, 18], c: '#9a5a48', e: '#5e342a' },
-  concrete: { n: 'CONCRETE', hp: [400, 40], c: '#8e8e88', e: '#55554f' }
-};
 /* structural damage per blast, keyed by blast radius: rocket 62, tank shell 78, frag 88; anything else x1 */
 const STRUCT_K = { 62: 1.6, 78: 2, 88: 0.35 };
-/* buildings: a material, a height z (eyes: standing 10, crouched 7, prone 2, jeep 10, tank 14) and sections [tx, ty, tw, th] in tiles */
-const DEV_BUILDINGS = [
-  { mat: 'brick', z: 30, secs: [[14, 4, 6, 4], [20, 4, 4, 4], [14, 8, 3, 3], [17, 8, 7, 3]] },
-  { mat: 'wood', z: 24, secs: [[30, 18, 8, 2], [30, 20, 3, 6], [33, 20, 5, 3], [33, 23, 5, 3]] },
-  { mat: 'brick', z: 5, secs: [[8, 18, 1, 3], [8, 21, 1, 3], [8, 24, 1, 4]] },
-  { mat: 'concrete', z: 8, secs: [[40, 5, 4, 4]] },
-  { mat: 'wood', z: 4, secs: [[24, 23, 2, 2]] },
-  { mat: 'concrete', z: 4, secs: [[33, 12, 4, 1], [38, 12, 4, 1]] }
-];
 const tileC = t => (t + 0.5) * TILE;
+/* house slots in SUB cells: top-left corner and the largest size a house there may take */
+const DEV_LOTS = [[12, 4, 24, 20], [56, 4, 24, 20], [28, 38, 26, 22]];
 
+/* ---------------- the tile sheet ---------------- */
+const WALL_IMG = new Image();
+WALL_IMG.onload = () => { if (typeof MAP !== 'undefined' && MAP && MAP.tiled) paintGround(); };
+WALL_IMG.src = WALLS_SRC;
+/* sheet cell [col,row] and the sides each piece joins, as drawn (bits: 1 up, 2 right, 4 down, 8 left) */
+const WT = { corner: [0, 0, 2 | 4], straight: [1, 0, 8 | 2], tee: [0, 1, 8 | 2 | 1], cross: [1, 1, 15], end: [0, 2, 8] };
+const WIN_T = [2, 0];                                     // window middle, drawn running left-right
+const rotMask = (m, k) => { let o = 0; for (let d = 0; d < 4; d++) if (m & (1 << d)) o |= 1 << ((d + k) % 4); return o; };
+/* every joint pattern -> [piece, quarter turns clockwise] */
+const WALL_BY_MASK = (() => {
+  const t = {};
+  for (const n in WT) for (let k = 0; k < 4; k++) { const m = rotMask(WT[n][2], k); if (!t[m]) t[m] = [n, k]; }
+  t[0] = ['cross', 0];                                    // a lone post
+  return t;
+})();
+
+/* ---------------- house generator ---------------- */
+/* returns {W, H, g} with g[y*W+x] in C_OUT / C_FLOOR / C_WALL / C_WIN, or null if no house fits */
+function genHouse(R, maxW, maxH) {
+  const ri = (a, b) => a + Math.floor(R() * (b - a + 1)), pick = A => A[Math.floor(R() * A.length)];
+  for (let tries = 0; tries < 500; tries++) {
+    const W = ri(15, maxW), H = ri(13, maxH);
+    // outline: a rectangle, or an L (the top-right corner cut away; the house is flipped / turned at the end)
+    const nw = ri(4, W - 7), nh = ri(ROOM_SIDE + 1, H - ROOM_SIDE - 2), L = R() < 0.45 && nw >= 4 && nh <= H - 7;
+    const inShape = (x, y) => x >= 0 && y >= 0 && x < W && y < H && !(L && x >= W - nw && y < nh);
+    const g = new Uint8Array(W * H), at = (x, y) => x < 0 || y < 0 || x >= W || y >= H ? C_OUT : g[y * W + x], set = (x, y, v) => { g[y * W + x] = v; };
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (!inShape(x, y)) continue; let edge = false;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (!inShape(x + dx, y + dy)) edge = true;
+      set(x, y, edge ? C_WALL : C_FLOOR);
+    }
+    // rooms: rectangles of floor; every split is a wall line (a "cut") that gets exactly one door later
+    let rooms, cuts = [];
+    if (!L) rooms = [{ x: 1, y: 1, w: W - 2, h: H - 2 }];
+    else {
+      rooms = [{ x: 1, y: 1, w: W - nw - 2, h: nh - 1 }, { x: 1, y: nh + 1, w: W - 2, h: H - nh - 2 }];
+      for (let x = 1; x <= W - nw - 2; x++) set(x, nh, C_WALL);
+      cuts.push({ o: 'h', at: nh, lo: 1, hi: W - nw - 2 });
+    }
+    if (rooms.some(r => r.w < ROOM_SIDE || r.h < ROOM_SIDE || r.w * r.h < ROOM_MIN)) continue;
+    const want = ri(3, 4);
+    while (rooms.length < want) {
+      const opts = [];
+      for (const r of rooms) for (const o of ['v', 'h']) {
+        const len = o === 'v' ? r.w : r.h, side = o === 'v' ? r.h : r.w;
+        for (let a = ROOM_SIDE; a <= len - 1 - ROOM_SIDE; a++) if (a * side >= ROOM_MIN && (len - 1 - a) * side >= ROOM_MIN) opts.push({ r, o, a, area: r.w * r.h });
+      }
+      if (!opts.length) break;
+      const big = Math.max(...opts.map(q => q.area)), q = pick(opts.filter(o => o.area === big)), r = q.r;
+      rooms.splice(rooms.indexOf(r), 1);
+      if (q.o === 'v') {
+        const cx = r.x + q.a; for (let y = r.y; y < r.y + r.h; y++) set(cx, y, C_WALL);
+        rooms.push({ x: r.x, y: r.y, w: q.a, h: r.h }, { x: cx + 1, y: r.y, w: r.w - q.a - 1, h: r.h }); cuts.push({ o: 'v', at: cx, lo: r.y, hi: r.y + r.h - 1 });
+      } else {
+        const cy = r.y + q.a; for (let x = r.x; x < r.x + r.w; x++) set(x, cy, C_WALL);
+        rooms.push({ x: r.x, y: r.y, w: r.w, h: q.a }, { x: r.x, y: cy + 1, w: r.w, h: r.h - q.a - 1 }); cuts.push({ o: 'h', at: cy, lo: r.x, hi: r.x + r.w - 1 });
+      }
+    }
+    if (rooms.length < 3) continue;
+    const roomAt = (x, y) => rooms.findIndex(r => x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h);
+    // inner doors: one 2-wide gap per cut, between two rooms that face each other across it
+    let ok = true;
+    for (const c of cuts) {
+      let best = null;
+      for (const a of rooms) for (const b of rooms) {
+        let lo, hi;
+        if (c.o === 'v') { if (a.x + a.w !== c.at || b.x !== c.at + 1) continue; lo = Math.max(a.y, b.y, c.lo); hi = Math.min(a.y + a.h - 1, b.y + b.h - 1, c.hi); }
+        else { if (a.y + a.h !== c.at || b.y !== c.at + 1) continue; lo = Math.max(a.x, b.x, c.lo); hi = Math.min(a.x + a.w - 1, b.x + b.w - 1, c.hi); }
+        if (hi - lo + 1 >= 2 && (!best || hi - lo > best[1] - best[0])) best = [lo, hi];
+      }
+      if (!best) { ok = false; break; }
+      const m = best[1] - best[0] + 1 >= 4 ? 1 : 0, p = ri(best[0] + m, best[1] - 1 - m);
+      for (const k of [p, p + 1]) c.o === 'v' ? set(c.at, k, C_FLOOR) : set(k, c.at, C_FLOOR);
+    }
+    if (!ok) continue;
+    // outside wall runs that can take a door or a window: every cell, and two wall cells either side (so no wall
+    // piece is left standing alone between two openings), is plain outer wall (outside one way, floor the other), all facing the same room
+    const plain = (x, y, d) => at(x, y) === C_WALL && at(x + DIRS[d][0], y + DIRS[d][1]) === C_OUT && at(x - DIRS[d][0], y - DIRS[d][1]) === C_FLOOR && roomAt(x - DIRS[d][0], y - DIRS[d][1]) >= 0;
+    const runs = n => {
+      const out = [];
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) for (let d = 0; d < 4; d++) {
+        const [tx, ty] = DIRS[(d + 1) % 4], cells = [];
+        let fine = plain(x - tx, y - ty, d) && plain(x - tx * 2, y - ty * 2, d) && plain(x + tx * n, y + ty * n, d) && plain(x + tx * (n + 1), y + ty * (n + 1), d);
+        for (let i = 0; i < n && fine; i++) { const cx = x + tx * i, cy = y + ty * i; if (!plain(cx, cy, d)) fine = false; else cells.push([cx, cy]); }
+        if (!fine) continue;
+        const rm = roomAt(x - DIRS[d][0], y - DIRS[d][1]);
+        if (cells.every(([cx, cy]) => roomAt(cx - DIRS[d][0], cy - DIRS[d][1]) === rm)) out.push({ cells, d, room: rm });
+      }
+      return out;
+    };
+    // front door (south if it can), back door on the opposite side
+    let ds = runs(2); const front = pick(ds.filter(q => q.d === 2).length ? ds.filter(q => q.d === 2) : ds); if (!front) continue;
+    for (const [x, y] of front.cells) set(x, y, C_FLOOR);
+    ds = runs(2); const backs = ds.filter(q => q.d === (front.d + 2) % 4), back = pick(backs.length ? backs : ds.filter(q => q.d !== front.d)); if (!back) continue;
+    for (const [x, y] of back.cells) set(x, y, C_FLOOR);
+    // windows: 1-2 per room, 2-3 cells, outside walls only
+    for (let r = 0; r < rooms.length && ok; r++) {
+      const n = ri(1, 2);
+      for (let k = 0; k < n; k++) {
+        let c = runs(ri(2, 3)).filter(q => q.room === r); if (!c.length) c = runs(2).filter(q => q.room === r);
+        if (!c.length) { if (k === 0) ok = false; break; }
+        for (const [x, y] of pick(c).cells) set(x, y, C_WIN);
+      }
+    }
+    if (!ok) continue;
+    // every floor cell reachable from the front door
+    const seen = new Uint8Array(W * H), st = [front.cells[0]]; let reach = 0, floor = 0;
+    for (let i = 0; i < W * H; i++) if (g[i] === C_FLOOR) floor++;
+    while (st.length) { const [x, y] = st.pop(); if (at(x, y) !== C_FLOOR || seen[y * W + x]) continue; seen[y * W + x] = 1; reach++; for (const [dx, dy] of DIRS) st.push([x + dx, y + dy]); }
+    if (reach !== floor) continue;
+    // random flips / quarter turn
+    let G = g, GW = W, GH = H;
+    if (R() < 0.5 && H <= maxW && W <= maxH) { const T = new Uint8Array(W * H); for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) T[x * H + y] = G[y * W + x]; G = T; GW = H; GH = W; }
+    const fx = R() < 0.5, fy = R() < 0.5, F = new Uint8Array(GW * GH);
+    for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) F[(fy ? GH - 1 - y : y) * GW + (fx ? GW - 1 - x : x)] = G[y * GW + x];
+    return { W: GW, H: GH, g: F, rooms: rooms.length };
+  }
+  return null;
+}
+
+/* ---------------- the yard ---------------- */
 function buildDevMap() {
-  const TL = { cols: DEV_COLS, rows: DEV_ROWS, own: new Int16Array(DEV_COLS * DEV_ROWS).fill(-1), rubble: new Uint8Array(DEV_COLS * DEV_ROWS), secs: [], blds: [] };
+  const SC = DEV_COLS * TILE / SUB, SR = DEV_ROWS * TILE / SUB;
+  const TL = { cols: DEV_COLS, rows: DEV_ROWS, sc: SC, sr: SR, cell: new Uint8Array(SC * SR), bld: new Int8Array(SC * SR).fill(-1), sec: new Int16Array(SC * SR).fill(-1), secs: [], houses: [] };
   const m = { id: 'devyard', tiled: TL, arcs: [], roads: [], buildings: [], water: [], bridges: [], statics: [], flags: [], bases: [], crateSpots: [], vehSpawns: [], ffaSpawns: [], fields: [], fwd: [], ice: [] };
   MAP = m;
-  DEV_BUILDINGS.forEach((B, bi) => {
-    TL.blds.push({ mat: B.mat, z: B.z });
-    for (const [tx, ty, tw, th] of B.secs) {
-      const mt = MATS[B.mat], hp = mt.hp[0] + mt.hp[1] * tw * th;
-      const sec = { i: TL.secs.length, bld: bi, mat: B.mat, tx, ty, tw, th, hp, mhp: hp, alive: true, hitT: 0 };
-      sec.b = { x: tx * TILE, y: ty * TILE, w: tw * TILE, h: th * TILE, z: B.z, sec };
-      TL.secs.push(sec); m.buildings.push(sec.b);
-      for (let j = ty; j < ty + th; j++) for (let i = tx; i < tx + tw; i++) TL.own[j * DEV_COLS + i] = sec.i;
-    }
+  const R = mulberry(DEV.seed * 7919 + 13);
+  DEV_LOTS.forEach(([ox, oy, mw, mh], hi) => {
+    const h = genHouse(R, mw, mh); if (!h) return;
+    TL.houses.push({ x: ox, y: oy, w: h.W, h: h.H, rooms: h.rooms });
+    for (let y = 0; y < h.H; y++) for (let x = 0; x < h.W; x++) { const v = h.g[y * h.W + x]; if (v === C_OUT) continue; const k = (oy + y) * SC + ox + x; TL.cell[k] = v; TL.bld[k] = hi; }
   });
+  devSections();
   const pad = { x: 0, y: 0, w: 0, h: 0 };
   m.bases = [{ team: 0, x: tileC(3), y: tileC(16), pad }, { team: 1, x: tileC(44), y: tileC(16), pad }];
   m.fwd = m.bases.map(b => ({ x: b.x, y: b.y }));
-  m.ffaSpawns = [[3, 16], [44, 16], [24, 28], [24, 2]].map(([i, j]) => ({ x: tileC(i), y: tileC(j) }));
-  m.vehSpawns.push({ type: 'jeep', x: tileC(5), y: tileC(4), a: 0, team: 0 }, { type: 'tank', x: 6 * TILE, y: tileC(28), a: 0, team: 0 }, { type: 'nest', x: tileC(26), y: tileC(14), a: Math.PI, team: -1 });
-  // a little cover to blow up: trees, hay, one sandbag crescent
-  [[11, 12], [27, 4], [36, 10], [21, 27]].forEach(([i, j], k) => m.statics.push({ type: 'tree', x: tileC(i), y: tileC(j), r: 10, v: k % 4, sc: 0.9, a: k * 1.3, alive: true, pine: false }));
-  [[12, 27], [28, 11]].forEach(([i, j]) => m.statics.push({ type: 'hay', x: tileC(i), y: tileC(j), r: 13, a: 0.4, alive: true }));
-  { const A = { x: tileC(20), y: tileC(16), a: 0, bags: [], lost: 0 }; m.arcs.push(A); const c = Math.cos(A.a), sn = Math.sin(A.a);
+  m.ffaSpawns = [[3, 16], [44, 16], [8, 29], [40, 29]].map(([i, j]) => ({ x: tileC(i), y: tileC(j) }));
+  m.vehSpawns.push({ type: 'jeep', x: tileC(4), y: tileC(4), a: 0, team: 0 }, { type: 'tank', x: 6 * TILE, y: tileC(28), a: 0, team: 0 }, { type: 'nest', x: tileC(26), y: tileC(14), a: Math.PI, team: -1 });
+  [[9, 13], [24, 13], [41, 26], [12, 28]].forEach(([i, j], k) => m.statics.push({ type: 'tree', x: tileC(i), y: tileC(j), r: 10, v: k % 4, sc: 0.9, a: k * 1.3, alive: true, pine: false }));
+  [[6, 22], [30, 14]].forEach(([i, j]) => m.statics.push({ type: 'hay', x: tileC(i), y: tileC(j), r: 13, a: 0.4, alive: true }));
+  { const A = { x: tileC(20), y: tileC(15), a: 0, bags: [], lost: 0 }; m.arcs.push(A); const c = Math.cos(A.a), sn = Math.sin(A.a);
     for (const [px, py] of EXTRA.bagPts) { const st = { type: 'bag', x: A.x + px * c - py * sn, y: A.y + px * sn + py * c, a: 0, r: 8, alive: true, arc: A }; A.bags.push(st); m.statics.push(st); } }
+  // anything standing inside a house goes
+  m.statics = m.statics.filter(s => { const k = ((s.y / SUB) | 0) * SC + ((s.x / SUB) | 0); return TL.bld[k] < 0; });
+  m.arcs = m.arcs.filter(A => A.bags.every(b => m.statics.includes(b)));
   buildHash();
 }
-/* plain ground, rubble where sections fell, flat-coloured roofs */
+/* wall and window cells -> sections: straight runs (corners and junctions join the run along their row),
+   cut into pieces of at most SEC_MAX cells. Also rebuilds MAP.sight: whole runs of standing wall, for the fog. */
+function wallRuns(TL, ok) {
+  const { sc, sr } = TL, used = new Uint8Array(sc * sr), out = [];
+  const t = (x, y) => x < 0 || y < 0 || x >= sc || y >= sr ? -1 : TL.cell[y * sc + x];
+  for (let y = 0; y < sr; y++) for (let x = 0; x < sc; x++) {
+    const v = t(x, y); if (!ok(v, x, y) || used[y * sc + x]) continue;
+    let w = 1; while (t(x + w, y) === v && ok(v, x + w, y) && !used[y * sc + x + w]) w++;
+    let h = 1;
+    if (w === 1) while (t(x, y + h) === v && ok(v, x, y + h) && !used[(y + h) * sc + x] && t(x - 1, y + h) !== v && t(x + 1, y + h) !== v) h++;
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) used[(y + j) * sc + x + i] = 1;
+    out.push({ x, y, w, h, v });
+  }
+  return out;
+}
+function devSections() {
+  const TL = MAP.tiled; TL.secs = []; TL.sec.fill(-1);
+  for (const r of wallRuns(TL, v => v === C_WALL || v === C_WIN)) {
+    const len = Math.max(r.w, r.h), n = Math.ceil(len / SEC_MAX);
+    for (let k = 0; k < n; k++) {
+      const a = Math.round(k * len / n), b = Math.round((k + 1) * len / n);
+      const s = r.w > 1 ? { cx: r.x + a, cy: r.y, cw: b - a, ch: 1 } : { cx: r.x, cy: r.y + a, cw: 1, ch: b - a };
+      const glass = r.v === C_WIN, cells = s.cw * s.ch, hp = glass ? 20 : 40 + 25 * cells;
+      Object.assign(s, { i: TL.secs.length, glass, hp, mhp: hp, alive: true, hitT: 0 });
+      s.b = { x: s.cx * SUB, y: s.cy * SUB, w: s.cw * SUB, h: s.ch * SUB, glass, sec: s };
+      for (let j = 0; j < s.ch; j++) for (let i = 0; i < s.cw; i++) TL.sec[(s.cy + j) * TL.sc + s.cx + i] = s.i;
+      TL.secs.push(s); MAP.buildings.push(s.b);
+    }
+  }
+  devSight();
+}
+function devSight() { const TL = MAP.tiled; MAP.sight = wallRuns(TL, v => v === C_WALL).map(r => ({ x: r.x * SUB, y: r.y * SUB, w: r.w * SUB, h: r.h * SUB })); }
+
+/* ---------------- painting ---------------- */
 function paintDevGround() {
-  gx.setTransform(1, 0, 0, 1, 0, 0); gx.globalAlpha = 1; gx.globalCompositeOperation = 'source-over';
+  gx.setTransform(1, 0, 0, 1, 0, 0); gx.globalAlpha = 1; gx.globalCompositeOperation = 'source-over'; gx.imageSmoothingEnabled = false;
   gx.fillStyle = '#5b6248'; gx.fillRect(0, 0, WW, WH);
   SKIRT_PAT = '#3c4232';
   const TL = MAP.tiled;
-  for (let j = 0; j < TL.rows; j++) for (let i = 0; i < TL.cols; i++) if (TL.rubble[j * TL.cols + i]) paintRubble(i, j);
-  buildDevRoofs();
+  for (let j = 0; j < TL.sr; j++) for (let i = 0; i < TL.sc; i++) if (TL.cell[j * TL.sc + i] !== C_OUT) paintCell(i, j);
 }
-function paintRubble(i, j) {
-  const x = i * TILE, y = j * TILE, R = mulberry(i * 131 + j * 7 + 1);
-  gx.fillStyle = '#6e675c'; gx.fillRect(x, y, TILE, TILE);
-  for (let k = 0; k < 8; k++) { const s = 2 + R() * 4; gx.fillStyle = R() < 0.5 ? '#4f4a42' : '#8a8276'; gx.fillRect(x + R() * (TILE - s), y + R() * (TILE - s), s, s); }
-}
-/* a building's outline runs only along its outside, so its sections read as one building */
-function buildDevRoofs(bi) {
-  const TL = MAP.tiled;
-  const same = (sec, a, b) => { if (a < 0 || b < 0 || a >= TL.cols || b >= TL.rows) return false; const o = TL.own[b * TL.cols + a]; return o >= 0 && TL.secs[o].alive && TL.secs[o].bld === sec.bld; };
-  for (const sec of TL.secs) {
-    if (!sec.alive || (bi !== undefined && sec.bld !== bi)) continue;
-    const c = mk(sec.tw * TILE, sec.th * TILE), g = c.getContext('2d'), mt = MATS[sec.mat];
-    g.fillStyle = mt.c; g.fillRect(0, 0, sec.tw * TILE, sec.th * TILE); g.fillStyle = mt.e;
-    for (let j = 0; j < sec.th; j++) for (let i = 0; i < sec.tw; i++) {
-      const ti = sec.tx + i, tj = sec.ty + j, x = i * TILE, y = j * TILE;
-      if (!same(sec, ti, tj - 1)) g.fillRect(x, y, TILE, 3);
-      if (!same(sec, ti, tj + 1)) g.fillRect(x, y + TILE - 3, TILE, 3);
-      if (!same(sec, ti - 1, tj)) g.fillRect(x, y, 3, TILE);
-      if (!same(sec, ti + 1, tj)) g.fillRect(x + TILE - 3, y, 3, TILE);
-    }
-    sec.b.roofC = c;
+/* one SUB cell: floor, rubble, a window, or a wall piece picked from which neighbours are wall */
+function paintCell(i, j) {
+  const TL = MAP.tiled, t = (x, y) => x < 0 || y < 0 || x >= TL.sc || y >= TL.sr ? C_OUT : TL.cell[y * TL.sc + x], v = t(i, j), x = i * SUB, y = j * SUB;
+  const inside = TL.bld[j * TL.sc + i] >= 0;
+  gx.fillStyle = inside ? '#6e5c46' : '#5b6248'; gx.fillRect(x, y, SUB, SUB);
+  if (v === C_FLOOR) { gx.fillStyle = '#62513d'; gx.fillRect(x, y + (i % 2 ? 7 : 15), SUB, 1); return; }      // planks
+  if (v === C_RUB) {
+    const Rr = mulberry(i * 131 + j * 7 + 1); gx.fillStyle = '#6e675c'; gx.fillRect(x, y, SUB, SUB);
+    for (let k = 0; k < 5; k++) { const s = 2 + Rr() * 3; gx.fillStyle = Rr() < 0.5 ? '#4f4a42' : '#8a8276'; gx.fillRect(x + Rr() * (SUB - s), y + Rr() * (SUB - s), s, s); }
+    return;
   }
+  if (!WALL_IMG.complete || !WALL_IMG.width) return;
+  let c, k;
+  if (v === C_WIN) { c = WIN_T; k = t(i - 1, j) === C_WIN || t(i + 1, j) === C_WIN ? 0 : 1; }       // windows only ever use the middle piece
+  else { let m = 0; for (let d = 0; d < 4; d++) if (t(i + DIRS[d][0], j + DIRS[d][1]) === C_WALL) m |= 1 << d; const q = WALL_BY_MASK[m]; c = WT[q[0]]; k = q[1]; }   // a window beside a wall gives it an end
+  gx.save(); gx.translate(x + SUB / 2, y + SUB / 2); gx.rotate(k * Math.PI / 2);
+  gx.drawImage(WALL_IMG, c[0] * SUB, c[1] * SUB, SUB, SUB, -SUB / 2, -SUB / 2, SUB, SUB); gx.restore();
 }
 
 /* ---------------- structure damage ---------------- */
@@ -99,15 +240,17 @@ function devBlast(x, y, r, dmg) {
 function devCollapse(sec) {
   const TL = MAP.tiled; sec.alive = false; sec.hp = 0;
   const bi = MAP.buildings.indexOf(sec.b); if (bi >= 0) MAP.buildings.splice(bi, 1);
-  for (let j = sec.ty; j < sec.ty + sec.th; j++) for (let i = sec.tx; i < sec.tx + sec.tw; i++) {
-    TL.rubble[j * TL.cols + i] = 1; paintRubble(i, j);
-    const cx = tileC(i), cy = tileC(j);
-    part({ k: 'dust', x: cx, y: cy, vx: rnd(-30, 30), vy: rnd(-30, 30), life: 1.6, max: 1.6, sz: rnd(18, 30), drag: 1.5 });
-    for (let n = 0; n < 2; n++) { const a = rnd(0, TAU), sp = rnd(40, 160); part({ k: 'debris', x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rnd(0.4, 0.9), max: 0.9, sz: rnd(2, 4), rot: rnd(0, TAU), vr: rnd(-12, 12), drag: 3 }); }
+  for (let j = sec.cy; j < sec.cy + sec.ch; j++) for (let i = sec.cx; i < sec.cx + sec.cw; i++) {
+    TL.cell[j * TL.sc + i] = C_RUB;
+    const cx = (i + 0.5) * SUB, cy = (j + 0.5) * SUB;
+    if (!sec.glass) part({ k: 'dust', x: cx, y: cy, vx: rnd(-30, 30), vy: rnd(-30, 30), life: 1.4, max: 1.4, sz: rnd(14, 22), drag: 1.5 });
+    { const a = rnd(0, TAU), sp = rnd(40, 160); part({ k: 'debris', x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rnd(0.4, 0.9), max: 0.9, sz: rnd(2, 4), rot: rnd(0, TAU), vr: rnd(-12, 12), drag: 3 }); }
   }
-  buildDevRoofs(sec.bld); navDirty = 1; M.fogMem = null;
-  sfx('boom', sec.b.x + sec.b.w / 2, sec.b.y + sec.b.h / 2);
-  devLog(`${MATS[sec.mat].n} ${sec.tw}×${sec.th} SECTION DOWN`, '#ffb060');
+  // the cells and everything around them (neighbouring walls may become ends)
+  for (let j = sec.cy - 1; j <= sec.cy + sec.ch; j++) for (let i = sec.cx - 1; i <= sec.cx + sec.cw; i++) if (i >= 0 && j >= 0 && i < TL.sc && j < TL.sr && TL.cell[j * TL.sc + i] !== C_OUT) paintCell(i, j);
+  devSight(); navDirty = 1; M.fogMem = null;
+  sfx(sec.glass ? 'hit' : 'boom', sec.b.x + sec.b.w / 2, sec.b.y + sec.b.h / 2);
+  devLog(sec.glass ? 'WINDOW BROKEN' : `WALL ${sec.cw * sec.ch} CELL${sec.cw * sec.ch > 1 ? 'S' : ''} DOWN`, '#ffb060');
 }
 
 /* ---------------- dummies + TTK ---------------- */
@@ -181,18 +324,19 @@ function devTick(dt) {
 function devDrawWorld(vw) {
   const TL = MAP.tiled; worldT();
   if (TL && DEV.grid) {
-    ctx.strokeStyle = 'rgba(255,255,255,0.13)'; ctx.lineWidth = 1 / VZ; ctx.beginPath();
-    for (let i = 0; i <= TL.cols; i++) { ctx.moveTo(i * TILE, 0); ctx.lineTo(i * TILE, TL.rows * TILE); }
-    for (let j = 0; j <= TL.rows; j++) { ctx.moveTo(0, j * TILE); ctx.lineTo(TL.cols * TILE, j * TILE); }
-    ctx.stroke();
+    ctx.lineWidth = 1 / VZ;
+    for (const [step, al] of [[SUB, 0.06], [TILE, 0.15]]) {        // 16 px wall grid, 32 px tile grid
+      ctx.strokeStyle = `rgba(255,255,255,${al})`; ctx.beginPath();
+      for (let x = 0; x <= WW; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, WH); }
+      for (let y = 0; y <= WH; y += step) { ctx.moveTo(0, y); ctx.lineTo(WW, y); }
+      ctx.stroke();
+    }
   }
   const bar = (cx, cy, w, f) => { ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(cx - w / 2 - 1, cy - 3, w + 2, 6); ctx.fillStyle = f > 0.5 ? '#7dff7a' : f > 0.25 ? '#ffe08a' : '#ff5a45'; ctx.fillRect(cx - w / 2, cy - 2, w * clamp(f, 0, 1), 4); };
   if (TL && DEV.secs) for (const sec of TL.secs) {
-    if (!sec.alive) continue; const b = sec.b, cx = b.x + b.w / 2, cy = b.y + b.h / 2;
-    ctx.strokeStyle = sec.hitT > 0 ? '#ff6040' : 'rgba(255,224,138,0.85)'; ctx.lineWidth = 2 / VZ; ctx.strokeRect(b.x + 2, b.y + 2, b.w - 4, b.h - 4);
-    bar(cx, cy - 4, Math.min(b.w - 8, 56), sec.hp / sec.mhp);
-    stxt(Math.ceil(sec.hp) + '/' + sec.mhp, cx, cy + 9, 8, '#fff', 'center', 'middle', FD);
-    stxt('Z' + b.z, b.x + 4, b.y + 9, 7, '#9fd0f0', 'left', 'middle', FD);
+    if (!sec.alive) continue; const b = sec.b;
+    ctx.strokeStyle = sec.hitT > 0 ? '#ff6040' : sec.glass ? 'rgba(120,200,255,0.8)' : 'rgba(255,224,138,0.7)'; ctx.lineWidth = 1.5 / VZ; ctx.strokeRect(b.x + 1.5, b.y + 1.5, b.w - 3, b.h - 3);
+    if (sec.hp < sec.mhp) { bar(b.x + b.w / 2, b.y + b.h / 2, Math.max(14, Math.min(b.w, 40)), sec.hp / sec.mhp); stxt(String(Math.ceil(sec.hp)), b.x + b.w / 2, b.y + b.h / 2 - 9, 8, '#fff', 'center', 'middle', FD); }
   }
   for (const s of M.sol) if (s.dummy && s.alive) { bar(s.x, s.y - 20, 26, s.hp / s.mhp); stxt(String(Math.ceil(s.hp)), s.x, s.y - 28, 8, '#fff', 'center', 'middle', FD); }
   for (const v of M.vehicles) if (v.active && !v.dead) { const y = v.y - (v.T.hw || 16) - 16; bar(v.x, y, 40, v.hp / v.T.hp); stxt(Math.ceil(v.hp) + '/' + v.T.hp, v.x, y - 9, 8, '#fff', 'center', 'middle', FD); }
@@ -203,8 +347,7 @@ function devDrawWorld(vw) {
 function devHUD(u, top) {
   const cx = W / 2, bw = 360 * u;
   ctx.fillStyle = 'rgba(8,12,6,0.7)'; ctx.fillRect(cx - bw / 2, top, bw, 34 * u);
-  const p = devPlayer(), s = p && p.sol;
-  stxt('DEV MODE' + (s ? `  ·  EYE ${eyeZ(s)} ${s.veh ? s.veh.type.toUpperCase() : ['STANDING', 'CROUCHED', 'PRONE'][s.stance]}` : ''), cx, top + 15 * u, 13 * u, '#ffe08a', 'center', 'middle', FD);
+  stxt('DEV MODE', cx, top + 15 * u, 13 * u, '#ffe08a', 'center', 'middle', FD);
   const l = DEV.log[0]; txt(l ? l.text : (TOUCH.active ? 'TAP DEV FOR TOOLS' : '` OPENS THE TOOLS'), cx, top + 27 * u, 10 * u, l ? l.c : 'rgba(242,230,196,0.6)', 'center', 'middle', FD);
 }
 /* the tool panel (right side); clicks are taken in pointerdown via devClick so they never fire the gun */
@@ -226,7 +369,7 @@ function devDrawPanel() {
   const head = t => { txt(t, L, y + 8 * u, 10 * u, 'rgba(255,224,138,0.8)', 'left', 'middle', FD); y += 18 * u; };
   const row = (a, b) => { if (a) btn(...a.slice(0, 2), L, y, b ? cw2 : cw2 * 2 + gap, a[2]); if (b) btn(...b.slice(0, 2), R2, y, cw2, b[2]); y += rh + gap; };
   // measure first so the backdrop fits
-  const H0 = 34 * u + 18 * u * 4 + (rh + gap) * 10 + Math.min(DEV.log.length, 9) * 15 * u + 16 * u;
+  const H0 = 34 * u + 18 * u * 4 + (rh + gap) * 9 + Math.min(DEV.log.length, 9) * 15 * u + 16 * u;
   ctx.fillStyle = 'rgba(6,10,5,0.86)'; ctx.fillRect(x0, y0, pw, H0); ctx.strokeStyle = 'rgba(255,224,138,0.5)'; ctx.strokeRect(x0 + 0.5, y0 + 0.5, pw - 1, H0 - 1);
   DEV.R = { x: x0, y: y0, w: pw, h: H0 };
   stxt('DEV TOOLS', L, y0 + 18 * u, 15 * u, '#ffe08a', 'left', 'middle', FD);
@@ -240,10 +383,9 @@ function devDrawPanel() {
   row(['GOD MODE', () => DEV.god = !DEV.god, DEV.god], ['INF AMMO', () => DEV.ammo = !DEV.ammo, DEV.ammo]);
   row(['DUMMY RESPAWN', () => DEV.respawn = !DEV.respawn, DEV.respawn], ['LINE OF SIGHT', () => M.cfg.fog = M.cfg.fog === 'off' ? 'los' : 'off', M.cfg.fog !== 'off']);
   row(['GRID', () => DEV.grid = !DEV.grid, DEV.grid], ['SECTIONS', () => DEV.secs = !DEV.secs, DEV.secs]);
-  row(['HEIGHT SIGHT', () => DEV.hlos = !DEV.hlos, DEV.hlos]);
   head('WORLD');
   row(['RESET MAP', devResetMap], ['HEAL ME', devHeal]);
-  row(['CLEAR LOG', () => DEV.log.length = 0]);
+  row(['NEW HOUSES', () => { DEV.seed++; devResetMap(); }], ['CLEAR LOG', () => DEV.log.length = 0]);
   head('LOG');
   for (const l of DEV.log) { txt(l.text, L, y + 6 * u, 10 * u, l.c, 'left', 'middle', FD); y += 15 * u; }
 }

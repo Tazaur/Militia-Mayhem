@@ -3,45 +3,19 @@
    the ground and decals, plus sandbags / fences / hay / trees in their last-seen state, dimmed. Units, vehicles,
    projectiles and effects only appear inside your sight. */
 const FOGK = 0.5;
-/* height-aware sight (dev yard for now): every eye and every target has a height, every wall has b.z.
-   A wall at least as tall as the eye blocks everything behind it; a lower one only shades the ground out to
-   eye/(eye - wall) times its distance, and a standing soldier there can still be seen over it. */
-const HLOS = () => !!(M && M.dev && DEV.hlos && MAP.tiled);
-function eyeZ(s) { if (s.veh) return { tank: 14, jeep: 10, nest: 8 }[s.veh.type] || 10; return s.stance === 2 ? 2 : s.stance === 1 ? 7 : 10; }
-const bodyZ = eyeZ, vehZ = v => ({ tank: 10, jeep: 7, nest: 6 })[v.type] || 7;
-/* the ground hidden behind each wall lower than the eye: the wall's outline pushed away from the eye */
-function lowShadows(ex, ey, e, R) {
-  const out = [];
-  for (const b of MAP.buildings) {
-    if (b.z === undefined || b.z >= e || b.x > ex + R || b.x + b.w < ex - R || b.y > ey + R || b.y + b.h < ey - R) continue;
-    const f = Math.min(40, e / (e - b.z)), pts = [];
-    for (const [x, y] of [[b.x, b.y], [b.x + b.w, b.y], [b.x + b.w, b.y + b.h], [b.x, b.y + b.h]]) pts.push([x, y], [ex + (x - ex) * f, ey + (y - ey) * f]);
-    out.push(hull(pts));
-  }
-  return out;
-}
-/* convex hull, always the same winding (so a nonzero clip of several is their union) */
-function hull(P) {
-  P.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-  const cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), lo = [], up = [];
-  for (const p of P) { while (lo.length > 1 && cr(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); }
-  for (let i = P.length - 1; i >= 0; i--) { const p = P[i]; while (up.length > 1 && cr(up[up.length - 2], up[up.length - 1], p) <= 0) up.pop(); up.push(p); }
-  lo.pop(); up.pop(); return lo.concat(up);
-}
 function fogEyes(vw) {
   if (!M || M.demo || M.cfg.fog === 'off') return [];      // a match option (host's lobby), the same for everyone
   const ps = vw.p ? [vw.p] : M.shared ? LOCALS() : [];
-  return ps.map(p => p.sol).filter(s => s && s.alive).map(s => s.veh ? [s.veh.x, s.veh.y, eyeZ(s)] : [s.x, s.y, eyeZ(s)]);
+  return ps.map(p => p.sol).filter(s => s && s.alive).map(s => s.veh ? [s.veh.x, s.veh.y] : [s.x, s.y]);
 }
 function raySeg(ox, oy, dx, dy, ax, ay, bx, by) {
   const sx = bx - ax, sy = by - ay, den = dx * sy - dy * sx; if (Math.abs(den) < 1e-9) return Infinity;
   const t = ((ax - ox) * sy - (ay - oy) * sx) / den, u = ((ax - ox) * dy - (ay - oy) * dx) / den;
   return t > 0 && u >= 0 && u <= 1 ? t : Infinity;
 }
-function visPoly(ex, ey, R, e) {
+function visPoly(ex, ey, R) {
   const segs = [], angs = [];
-  for (const b of MAP.buildings) {
-    if (e !== undefined && b.z !== undefined && b.z < e) continue;      // low walls cast a finite shadow instead (lowShadows)
+  for (const b of MAP.sight || MAP.buildings) {   // the dev yard keeps merged wall runs in MAP.sight (windows aren't in it)
     if (b.x > ex + R || b.x + b.w < ex - R || b.y > ey + R || b.y + b.h < ey - R) continue;
     const c = [[b.x, b.y], [b.x + b.w, b.y], [b.x + b.w, b.y + b.h], [b.x, b.y + b.h]];
     for (let i = 0; i < 4; i++) { const a = c[i], d = c[(i + 1) % 4]; segs.push([a[0], a[1], d[0], d[1]]); const t = Math.atan2(a[1] - ey, a[0] - ex); angs.push(t - 0.0008, t + 0.0008); }
@@ -83,8 +57,7 @@ function fogCanvases() {
 function applyFog(vw, vis, x0, y0, x1, y1) {
   vw._fog = null;
   const eyes = fogEyes(vw); if (!eyes.length) return null;
-  const R = Math.hypot(x1 - x0, y1 - y0) / 2 + 80, hz = HLOS(), polys = eyes.map(([x, y, e]) => visPoly(x, y, R, hz ? e : undefined)), m = fogMemory(vw);
-  const low = hz && eyes.length === 1 ? lowShadows(eyes[0][0], eyes[0][1], eyes[0][2], R) : [];
+  const R = Math.hypot(x1 - x0, y1 - y0) / 2 + 80, polys = eyes.map(([x, y]) => visPoly(x, y, R)), m = fogMemory(vw);
   // remember what is in sight now
   const bx0 = Math.max(0, Math.floor(x0)), by0 = Math.max(0, Math.floor(y0)), bx1 = Math.min(WW, Math.ceil(x1)), by1 = Math.min(WH, Math.ceil(y1)), bw = bx1 - bx0, bh = by1 - by0;
   if (bw > 0 && bh > 0) {
@@ -113,28 +86,10 @@ function applyFog(vw, vis, x0, y0, x1, y1) {
   ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = CFG.style === 'grit' ? 'rgba(6,6,4,0.3)' : 'rgba(4,8,6,0.22)'; ctx.fillRect(vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR);
   ctx = main;
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(FOG_OUT, vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR, vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR);
-  vw._fog = { polys, eye: eyes[0], low };
+  vw._fog = { polys, eye: eyes[0] };
   // everything from here on is only drawn where you can see
   worldT(); ctx.save(); polyPath(ctx, polys); ctx.clip();
   return polys;
-}
-/* the ground behind low walls falls back to the remembered view; anyone tall enough to be seen over the wall is drawn again on top */
-function drawLowFog(vw, vis, hidden) {
-  const F = vw._fog; if (!F || !F.low.length) return;
-  const L = F.low, [ex, ey, e] = F.eye, inL = (x, y) => L.some(P => inPoly(x, y, P));
-  ctx.save(); worldT(); polyPath(ctx, L); ctx.clip();
-  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(FOG_OUT, vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR, vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR); worldT();
-  for (const s of M.sol) if (s.alive && !s.veh && vis(s.x, s.y, 30) && !hidden(s) && inL(s.x, s.y) && los(ex, ey, s.x, s.y, e, bodyZ(s))) { drawSoldier(s, vw); worldT(); }
-  for (const v of M.vehicles) if (v.active && vis(v.x, v.y, 80) && inL(v.x, v.y) && los(ex, ey, v.x, v.y, e, vehZ(v))) { drawVehicle(v); worldT(); }
-  ctx.restore();
-}
-/* a wall at least as tall as your eye still lets you see a taller head close behind it (prone behind a low wall) */
-function drawOverWalls(vw, vis, hidden) {
-  const F = vw._fog; if (!F || !HLOS()) return;
-  const [ex, ey, e] = F.eye, out = (x, y) => !F.polys.some(P => inPoly(x, y, P));
-  for (const s of M.sol) if (s.alive && !s.veh && vis(s.x, s.y, 30) && !hidden(s) && out(s.x, s.y) && los(ex, ey, s.x, s.y, e, bodyZ(s))) { worldT(); drawSoldier(s, vw); }
-  for (const v of M.vehicles) if (v.active && vis(v.x, v.y, 80) && out(v.x, v.y) && los(ex, ey, v.x, v.y, e, vehZ(v))) { worldT(); drawVehicle(v); }
-  worldT();
 }
 /* smoke blocks sight like a soft-edged wall: the area behind each cloud (and its core) falls back to the remembered view */
 function drawSmokeFog(vw) {

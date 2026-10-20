@@ -173,9 +173,11 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - Panel (right; backquote toggles): spawn dummy/jeep/tank/nest at a range ahead of last aim, god mode, inf ammo, dummy respawn, line of sight, grid, sections, reset map, heal, log. Clicks are taken in pointerdown (`devClick`) so they never fire.
 - Test: tests/t25_dev.js. t12 now checks down → DEV MODE.
 
-## Build 67: grayscale fog, height-aware sight (dev yard)
-- Fog: the remembered view (FOG_OUT) is now desaturated with a `saturation` composite fill plus a light dim (was a dark tint). FOG_OUT gets the skirt and a backdrop first so the blend never paints over transparent pixels. Applies on every map.
-- Height sight (only when `HLOS()`: dev match + `DEV.hlos` + `MAP.tiled`): `eyeZ(s)` stand 10 / crouch 7 / prone 2, jeep 10, tank 14, nest 8; `bodyZ = eyeZ`; `vehZ` jeep 7, tank 10, nest 6. Dev buildings carry `z` on each section rect (`b.z`).
-  - `los(x0,y0,x1,y1,e,t)`: with heights, a building blocks only if the sightline dips below `b.z` while crossing it (`overZ`). Without heights (bots, normal maps) it's unchanged.
-  - `visPoly(..., e)` ignores walls lower than the eye; `lowShadows` gives each one a finite ground shadow (the outline scaled from the eye by `e/(e-z)`, convex hull). `drawLowFog` repaints FOG_OUT inside those shadows, then redraws units whose head clears the wall. `drawOverWalls` draws units past a wall at least as tall as the eye when their head still clears it. Fog is drawn for ground height; units use their own height.
-  - Single eye only (shared screen skips low shadows). Bullets are still flat 2D.
+## Build 68: grayscale fog; dev yard walls
+- Fog: the remembered view (FOG_OUT) is desaturated with a `saturation` composite fill plus a light dim (was a dark tint). FOG_OUT gets the skirt and a backdrop first so the blend never paints over transparent pixels. Every map.
+- Height-aware sight was tried in build 67 and removed: sight is occlude-or-not.
+- Dev yard is now 48x32 tiles of `TILE=32` with a `SUB=16` wall grid (`MAP.tiled.cell`, `sc x sr` cells: C_OUT/C_FLOOR/C_WALL/C_WIN/C_RUB). The old section rects/roofs/materials are gone.
+- `genHouse(R, maxW, maxH)`: rectangle or L outline; rooms by guillotine cuts (3-4 rooms, each >= ROOM_MIN 36 cells and >= 5 a side; the L's inner line is the first cut); one 2-cell door per cut (fewest doors that connect everything); front door (south if possible) and back door on the opposite side; 1-2 windows of 2-3 cells per room on outside walls. Openings keep 2 plain wall cells either side so no wall cell is left alone. Then random transpose/flips. Lots in `DEV_LOTS`; `DEV.seed` (NEW HOUSES button rerolls).
+- Wall art: art/walls16.png (embedded by build.py as `WALLS_SRC`): corner, straight, window-middle / tee, cross / end. Piece and rotation come from which 4-neighbours are WALL (`WALL_BY_MASK`); windows don't count, so a wall beside a window draws an end; windows always use the middle piece. Painted into the ground canvas (`paintCell`).
+- Sections: straight runs of wall/window cells (corners/junctions join their row's run), cut to <= 6 cells; each live one is a rect in `MAP.buildings`. Windows: `b.glass` - block movement, not sight/bullets (`los`, bullet traces, scope laser, net trace skip glass). `MAP.sight` = merged runs of standing wall, used by `visPoly` instead of `MAP.buildings` (dev only; normal maps don't set it).
+- Collapse: cells -> rubble, neighbours repainted (walls next to the hole become ends), `devSight()`, `navDirty`, `M.fogMem = null`.
