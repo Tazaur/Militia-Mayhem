@@ -173,7 +173,7 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - Panel (right; backquote toggles): spawn dummy/jeep/tank/nest at a range ahead of last aim, god mode, inf ammo, dummy respawn, line of sight, grid, sections, reset map, heal, log. Clicks are taken in pointerdown (`devClick`) so they never fire.
 - Test: tests/t25_dev.js. t12 now checks down → DEV MODE.
 
-## Build 68: grayscale fog; dev yard walls
+## Build 69: grayscale fog; dev yard walls
 - Fog: the remembered view (FOG_OUT) is desaturated with a `saturation` composite fill plus a light dim (was a dark tint). FOG_OUT gets the skirt and a backdrop first so the blend never paints over transparent pixels. Every map.
 - Height-aware sight was tried in build 67 and removed: sight is occlude-or-not.
 - Dev yard is now 48x32 tiles of `TILE=32` with a `SUB=16` wall grid (`MAP.tiled.cell`, `sc x sr` cells: C_OUT/C_FLOOR/C_WALL/C_WIN/C_RUB). The old section rects/roofs/materials are gone.
