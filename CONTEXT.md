@@ -172,3 +172,10 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - Dummies: `s.dummy` soldiers get `newI()` instead of `botControl`, respawn in place after 1.5 s (`devReviveDummy`), log TTK from the first hit at full HP (`devHit`/`devKill`).
 - Panel (right; backquote toggles): spawn dummy/jeep/tank/nest at a range ahead of last aim, god mode, inf ammo, dummy respawn, line of sight, grid, sections, reset map, heal, log. Clicks are taken in pointerdown (`devClick`) so they never fire.
 - Test: tests/t25_dev.js. t12 now checks down → DEV MODE.
+
+## Build 66: grayscale fog, height-aware sight (dev yard)
+- Fog: the remembered view (FOG_OUT) is now desaturated with a `saturation` composite fill plus a light dim (was a dark tint). FOG_OUT gets the skirt and a backdrop first so the blend never paints over transparent pixels. Applies on every map.
+- Height sight (only when `HLOS()`: dev match + `DEV.hlos` + `MAP.tiled`): `eyeZ(s)` stand 10 / crouch 7 / prone 2, jeep 10, tank 14, nest 8; `bodyZ = eyeZ`; `vehZ` jeep 7, tank 10, nest 6. Dev buildings carry `z` on each section rect (`b.z`).
+  - `los(x0,y0,x1,y1,e,t)`: with heights, a building blocks only if the sightline dips below `b.z` while crossing it (`overZ`). Without heights (bots, normal maps) it's unchanged.
+  - `visPoly(..., e)` ignores walls lower than the eye; `lowShadows` gives each one a finite ground shadow (the outline scaled from the eye by `e/(e-z)`, convex hull). `drawLowFog` repaints FOG_OUT inside those shadows, then redraws units whose head clears the wall. `drawOverWalls` draws units past a wall at least as tall as the eye when their head still clears it. Fog is drawn for ground height; units use their own height.
+  - Single eye only (shared screen skips low shadows). Bullets are still flat 2D.

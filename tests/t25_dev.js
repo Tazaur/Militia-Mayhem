@@ -33,6 +33,12 @@ setImmediate(()=>{
   // panel clicks are swallowed
   step(2); const r=G.DEV.R; ok(r&&G.devClick(r.x+r.w/2,r.y+r.h-2),'panel swallows clicks');
   step(60); ok(true,'runs');
+  // height-aware sight: low brick wall (z5) at x 192..216; standing eye (10) at x 132 -> ground shadow ends at x 300
+  const L=(x,e,t)=>G.los(132,540,x,540,e,t);
+  ok(!L(250,10,0)&&L(320,10,0),'ground shadow is finite'); ok(L(250,10,10),'standing target seen over the wall'); ok(!L(250,10,2)&&L(400,10,2),'prone target hidden close behind, seen far');
+  ok(L(250,2,10)&&!L(700,2,10),'prone eye sees a nearby head over the wall, not a far one'); ok(!G.los(132,540,250,540),'flat los still blocks');
+  const sh=G.lowShadows(132,540,10,2000); ok(sh.some(P=>G.inPoly(250,540,P))&&!sh.some(P=>G.inPoly(320,540,P)),'shadow polygon matches');
+  ok(!G.lowShadows(132,540,2,2000).some(P=>G.inPoly(250,540,P)),'wall taller than a prone eye is a full wall, not a shadow');
   // normal match afterwards gets the full world back
   G.CFG.mode=1; G.CFG.bots=2; G.toMenu(); step(5); G.newMatch({...G.CFG},false); step(30);
   ok(G.WW===3000&&G.WH===2000&&!G.MAP.tiled&&!G.M.dev,'normal world restored'); ok(G.NGW===100,'nav grid restored');

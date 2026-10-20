@@ -109,7 +109,7 @@ function drawWorld(vw) {
   drawKillerGlow(vw);
   drawParticles(vis, 'low');
   // ---- layer 4: building shadows fall across units, then roofs on top
-  if (fogged) { drawSmokeFog(vw); ctx.restore(); }
+  if (fogged) { drawLowFog(vw, vis, hidden); drawSmokeFog(vw); ctx.restore(); drawOverWalls(vw, vis, hidden); }
   worldT();
   for (const b of MAP.buildings) if (b.roofC && vis(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h))) ctx.drawImage(b.roofC, b.x, b.y);
   ctx.fillStyle = CFG.style === 'grit' ? 'rgba(0,0,0,0.38)' : 'rgba(0,0,0,0.32)';
@@ -125,7 +125,7 @@ function drawWorld(vw) {
   const eyN = viewEyes(vw);
   for (const s of M.sol) {
     if (!s.alive || !s.player || !vis(s.x, s.y, 40)) continue;
-    if (smokeHides(eyN, s, vw) || (fogged && eyN.length && !eyN.some(e => e.s === s || (!M.ffa && e.team === s.team) || los(e.x, e.y, s.x, s.y)))) continue;
+    if (smokeHides(eyN, s, vw) || (fogged && eyN.length && !eyN.some(e => e.s === s || (!M.ffa && e.team === s.team) || (HLOS() ? los(e.x, e.y, s.x, s.y, eyeZ(e.s), bodyZ(s)) : los(e.x, e.y, s.x, s.y))))) continue;
     const y = (s.veh ? s.veh.y - s.veh.T.hw - 14 : s.y - (s.down ? 30 : 16)), x = s.veh ? s.veh.x : s.x;
     ctx.font = `bold ${Math.round(8 / Math.max(0.8, VZ * 0.6))}px ${FB}`; ctx.globalAlpha = 0.5;      // small and faint: a label, not a sign
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillText(s.name, x + 1, y + 1); ctx.fillStyle = CHEX[s.color]; ctx.fillText(s.name, x, y); ctx.globalAlpha = 1;

@@ -5,7 +5,7 @@
    A blast hurts nearby sections; one that runs out of health collapses and its tiles turn to rubble.
    ===================================================================== */
 const TILE = 24, DEV_COLS = 48, DEV_ROWS = 32;
-const DEV = { open: true, god: false, ammo: true, respawn: true, grid: true, secs: true, range: 6, log: [], nums: [], lastA: 0, over: false, B: [], R: null };
+const DEV = { open: true, god: false, ammo: true, respawn: true, grid: true, secs: true, range: 6, log: [], nums: [], lastA: 0, over: false, B: [], R: null, hlos: true };
 const DEV_RANGES = [2, 4, 6, 8, 10, 15, 20, 30];
 /* section health = base + per tile */
 const MATS = {
@@ -15,13 +15,14 @@ const MATS = {
 };
 /* structural damage per blast, keyed by blast radius: rocket 62, tank shell 78, frag 88; anything else x1 */
 const STRUCT_K = { 62: 1.6, 78: 2, 88: 0.35 };
-/* buildings: a material and its sections [tx, ty, tw, th] in tiles */
+/* buildings: a material, a height z (eyes: standing 10, crouched 7, prone 2, jeep 10, tank 14) and sections [tx, ty, tw, th] in tiles */
 const DEV_BUILDINGS = [
-  { mat: 'brick', secs: [[14, 4, 6, 4], [20, 4, 4, 4], [14, 8, 3, 3], [17, 8, 7, 3]] },
-  { mat: 'wood', secs: [[30, 18, 8, 2], [30, 20, 3, 6], [33, 20, 5, 3], [33, 23, 5, 3]] },
-  { mat: 'brick', secs: [[8, 18, 1, 3], [8, 21, 1, 3], [8, 24, 1, 4]] },
-  { mat: 'concrete', secs: [[40, 5, 4, 4]] },
-  { mat: 'wood', secs: [[24, 23, 2, 2]] }
+  { mat: 'brick', z: 30, secs: [[14, 4, 6, 4], [20, 4, 4, 4], [14, 8, 3, 3], [17, 8, 7, 3]] },
+  { mat: 'wood', z: 24, secs: [[30, 18, 8, 2], [30, 20, 3, 6], [33, 20, 5, 3], [33, 23, 5, 3]] },
+  { mat: 'brick', z: 5, secs: [[8, 18, 1, 3], [8, 21, 1, 3], [8, 24, 1, 4]] },
+  { mat: 'concrete', z: 8, secs: [[40, 5, 4, 4]] },
+  { mat: 'wood', z: 4, secs: [[24, 23, 2, 2]] },
+  { mat: 'concrete', z: 4, secs: [[33, 12, 4, 1], [38, 12, 4, 1]] }
 ];
 const tileC = t => (t + 0.5) * TILE;
 
@@ -30,11 +31,11 @@ function buildDevMap() {
   const m = { id: 'devyard', tiled: TL, arcs: [], roads: [], buildings: [], water: [], bridges: [], statics: [], flags: [], bases: [], crateSpots: [], vehSpawns: [], ffaSpawns: [], fields: [], fwd: [], ice: [] };
   MAP = m;
   DEV_BUILDINGS.forEach((B, bi) => {
-    TL.blds.push({ mat: B.mat });
+    TL.blds.push({ mat: B.mat, z: B.z });
     for (const [tx, ty, tw, th] of B.secs) {
       const mt = MATS[B.mat], hp = mt.hp[0] + mt.hp[1] * tw * th;
       const sec = { i: TL.secs.length, bld: bi, mat: B.mat, tx, ty, tw, th, hp, mhp: hp, alive: true, hitT: 0 };
-      sec.b = { x: tx * TILE, y: ty * TILE, w: tw * TILE, h: th * TILE, sec };
+      sec.b = { x: tx * TILE, y: ty * TILE, w: tw * TILE, h: th * TILE, z: B.z, sec };
       TL.secs.push(sec); m.buildings.push(sec.b);
       for (let j = ty; j < ty + th; j++) for (let i = tx; i < tx + tw; i++) TL.own[j * DEV_COLS + i] = sec.i;
     }
@@ -191,6 +192,7 @@ function devDrawWorld(vw) {
     ctx.strokeStyle = sec.hitT > 0 ? '#ff6040' : 'rgba(255,224,138,0.85)'; ctx.lineWidth = 2 / VZ; ctx.strokeRect(b.x + 2, b.y + 2, b.w - 4, b.h - 4);
     bar(cx, cy - 4, Math.min(b.w - 8, 56), sec.hp / sec.mhp);
     stxt(Math.ceil(sec.hp) + '/' + sec.mhp, cx, cy + 9, 8, '#fff', 'center', 'middle', FD);
+    stxt('Z' + b.z, b.x + 4, b.y + 9, 7, '#9fd0f0', 'left', 'middle', FD);
   }
   for (const s of M.sol) if (s.dummy && s.alive) { bar(s.x, s.y - 20, 26, s.hp / s.mhp); stxt(String(Math.ceil(s.hp)), s.x, s.y - 28, 8, '#fff', 'center', 'middle', FD); }
   for (const v of M.vehicles) if (v.active && !v.dead) { const y = v.y - (v.T.hw || 16) - 16; bar(v.x, y, 40, v.hp / v.T.hp); stxt(Math.ceil(v.hp) + '/' + v.T.hp, v.x, y - 9, 8, '#fff', 'center', 'middle', FD); }
@@ -201,7 +203,8 @@ function devDrawWorld(vw) {
 function devHUD(u, top) {
   const cx = W / 2, bw = 360 * u;
   ctx.fillStyle = 'rgba(8,12,6,0.7)'; ctx.fillRect(cx - bw / 2, top, bw, 34 * u);
-  stxt('DEV MODE', cx, top + 15 * u, 13 * u, '#ffe08a', 'center', 'middle', FD);
+  const p = devPlayer(), s = p && p.sol;
+  stxt('DEV MODE' + (s ? `  ·  EYE ${eyeZ(s)} ${s.veh ? s.veh.type.toUpperCase() : ['STANDING', 'CROUCHED', 'PRONE'][s.stance]}` : ''), cx, top + 15 * u, 13 * u, '#ffe08a', 'center', 'middle', FD);
   const l = DEV.log[0]; txt(l ? l.text : (TOUCH.active ? 'TAP DEV FOR TOOLS' : '` OPENS THE TOOLS'), cx, top + 27 * u, 10 * u, l ? l.c : 'rgba(242,230,196,0.6)', 'center', 'middle', FD);
 }
 /* the tool panel (right side); clicks are taken in pointerdown via devClick so they never fire the gun */
@@ -223,7 +226,7 @@ function devDrawPanel() {
   const head = t => { txt(t, L, y + 8 * u, 10 * u, 'rgba(255,224,138,0.8)', 'left', 'middle', FD); y += 18 * u; };
   const row = (a, b) => { if (a) btn(...a.slice(0, 2), L, y, b ? cw2 : cw2 * 2 + gap, a[2]); if (b) btn(...b.slice(0, 2), R2, y, cw2, b[2]); y += rh + gap; };
   // measure first so the backdrop fits
-  const H0 = 34 * u + 18 * u * 4 + (rh + gap) * 9 + Math.min(DEV.log.length, 9) * 15 * u + 16 * u;
+  const H0 = 34 * u + 18 * u * 4 + (rh + gap) * 10 + Math.min(DEV.log.length, 9) * 15 * u + 16 * u;
   ctx.fillStyle = 'rgba(6,10,5,0.86)'; ctx.fillRect(x0, y0, pw, H0); ctx.strokeStyle = 'rgba(255,224,138,0.5)'; ctx.strokeRect(x0 + 0.5, y0 + 0.5, pw - 1, H0 - 1);
   DEV.R = { x: x0, y: y0, w: pw, h: H0 };
   stxt('DEV TOOLS', L, y0 + 18 * u, 15 * u, '#ffe08a', 'left', 'middle', FD);
@@ -237,6 +240,7 @@ function devDrawPanel() {
   row(['GOD MODE', () => DEV.god = !DEV.god, DEV.god], ['INF AMMO', () => DEV.ammo = !DEV.ammo, DEV.ammo]);
   row(['DUMMY RESPAWN', () => DEV.respawn = !DEV.respawn, DEV.respawn], ['LINE OF SIGHT', () => M.cfg.fog = M.cfg.fog === 'off' ? 'los' : 'off', M.cfg.fog !== 'off']);
   row(['GRID', () => DEV.grid = !DEV.grid, DEV.grid], ['SECTIONS', () => DEV.secs = !DEV.secs, DEV.secs]);
+  row(['HEIGHT SIGHT', () => DEV.hlos = !DEV.hlos, DEV.hlos]);
   head('WORLD');
   row(['RESET MAP', devResetMap], ['HEAL ME', devHeal]);
   row(['CLEAR LOG', () => DEV.log.length = 0]);
@@ -255,6 +259,6 @@ function startDev(dev) {
   engineKillAll(); PLAYERS = []; lobbyJoin(dev && dev.type ? dev : { type: 'kb' });
   const p = PLAYERS[0]; if (!p) return; p.team = 0; p.ready = true;
   DEV.log.length = 0; DEV.nums.length = 0;
-  newMatch({ ...CFG, dev: true, mode: 1, bots: 0, ff: false, weather: 'clear', fog: 'off', limit: 1, camera: 'split' }, false);
+  newMatch({ ...CFG, dev: true, mode: 1, bots: 0, ff: false, weather: 'clear', fog: 'los', limit: 1, camera: 'split' }, false);
   setState('play'); Music.mode = 'battle';
 }
