@@ -203,6 +203,7 @@ function drawSmokes(vis, vw) {
 /* the grid smoke field: a pixel per tile over the view, drawn GS times bigger and smoothed, so a tile blends half a
    tile (8 px) into its neighbours; first its shade on what's under it (offset, dark), then the smoke. Each tile's grey
    drifts slowly (two slow waves, phase from the tile); thinned near the eyes like the clouds */
+const SMK_VIS = 3;     // how solid a tile looks: 1 - e^(-SMK_VIS x amount), as light through haze (0.3: 60 %, 0.5: 78 %, 1: 95 %)
 const SMK_C = document.createElement('canvas'), SMK_SH = document.createElement('canvas');
 function drawSmokeField(vw, eyes) {
   const f = M.gsf, [n0, n1] = SIGHT_NEAR, V = vw ? [(vw.x - VOX) / VZ, (vw.y - VOY) / VZ, (vw.x + vw.w - VOX) / VZ, (vw.y + vw.h - VOY) / VZ].map(v => v / GS) : [-1e9, -1e9, 1e9, 1e9];
@@ -215,10 +216,10 @@ function drawSmokeField(vw, eyes) {
   const T = M.time;
   for (const k of f.act) {
     const i = k % f.W - i0, j = ((k - k % f.W) / f.W) - j0; if (i < 0 || j < 0 || i >= w || j >= h) continue;
-    const a = f.A[k], den = a < 1 ? a : 1, fb = f.B[k] / a, ph = ((k * 2654435761) >>> 0) / 4294967296 * TAU, x = (k % f.W + 0.5) * GS, y = (j + j0 + 0.5) * GS;
+    const a = f.A[k], den = 1 - Math.exp(-SMK_VIS * a), fb = f.B[k] / a, ph = ((k * 2654435761) >>> 0) / 4294967296 * TAU, x = (k % f.W + 0.5) * GS, y = (j + j0 + 0.5) * GS;
     let thin = 1; for (const o of eyes) thin *= SMOKE_KEEP + (1 - SMOKE_KEEP) * clamp((Math.hypot(x - o.x, y - o.y) - n0) / (n1 - n0), 0, 1);
     const t = 176 + 14 * Math.sin(T * 0.45 + ph) + 8 * Math.sin(T * 0.19 + ph * 2.7), o = (j * Wc + i) * 4;
-    d[o] = t * (1 - 0.2 * fb); d[o + 1] = t * (1 - 0.36 * fb); d[o + 2] = t * (1 - 0.52 * fb) - 3; d[o + 3] = den * 230 * thin;
+    d[o] = t * (1 - 0.2 * fb); d[o + 1] = t * (1 - 0.36 * fb); d[o + 2] = t * (1 - 0.52 * fb) - 3; d[o + 3] = den * 250 * thin;
     e[o + 3] = den * 70;
   }
   g.putImageData(im, 0, 0); gs.putImageData(sm, 0, 0);

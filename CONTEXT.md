@@ -283,3 +283,6 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - Grid smoke spreads only downhill: a tile's neighbours lowest first, a share (~SMK_BLEED/4, random) goes only if it leaves that neighbour no higher than the tile after passing; no minimum, a tile goes when under SMK_DEL 0.01. Random-tick loss 0.01 (wider, thinner field: blocks ~14 s, gone ~20 s, ~280 tiles).
 - Grid dust ignores op (full thickness, amount SMK_DUST x T/10).
 - Smoke image and field mask clear and upload their whole canvas: smoothing read stale pixels past the drawn part (the line at the field's edge).
+
+## Build 117
+- Grid smoke tile alpha follows haze, 1 - e^(-SMK_VIS x amount) with SMK_VIS 3 (0.3: 60%, 0.5: 78%, 1: 95%), instead of linear in amount. LoS sums along the line, so thin-looking tiles used to block sight while the soft fog showed floor and sandbags through them.
