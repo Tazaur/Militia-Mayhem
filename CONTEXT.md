@@ -260,3 +260,6 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 ## Build 105
 - Wall strips go half way into the wall (pad SUB/2); corners where the outline turns between two faces get a square, so corner walls show in sight.
 - Out of sight a tiled house is remembered as its whole roof (ROOF_C stamped into memory): no walls under it, no ROOF_NEAR/FAR fade. roofView is only the live, faded roof in sight.
+
+## Build 106
+- A strip's very ends (no wall face beyond) are cut at 45 degrees; an edge shorter than the pad gets a shallower strip, still 45.

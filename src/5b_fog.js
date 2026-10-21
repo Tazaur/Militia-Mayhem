@@ -77,8 +77,14 @@ function visPoly(ex, ey, box, walls, pad) {
   const strips = [], on = (v, f) => { const sx = f[2] - f[0], sy = f[3] - f[1], L2 = sx * sx + sy * sy || 1, t = clamp(((v[0] - f[0]) * sx + (v[1] - f[1]) * sy) / L2, 0, 1); return Math.hypot(f[0] + sx * t - v[0], f[1] + sy * t - v[1]) < 0.5; };
   const EF = [];       // the wall face each outline edge runs along (or none)
   for (let i = 0; i < P.length; i++) {
-    const a = P[i], b = P[(i + 1) % P.length], f = [a[3], a[4], b[3], b[4]].find(f => f && f[5] && on(a, f) && on(b, f)) || segs.find(f => f[5] && on(a, f) && on(b, f)); EF.push(f || null); if (!f) continue;
-    const k = f[5]; strips.push([[a[0], a[1]], [b[0], b[1]], [b[0] - f[6] * k, b[1] - f[7] * k], [a[0] - f[6] * k, a[1] - f[7] * k]]);
+    const a = P[i], b = P[(i + 1) % P.length], f = [a[3], a[4], b[3], b[4]].find(f => f && f[5] && on(a, f) && on(b, f)) || segs.find(f => f[5] && on(a, f) && on(b, f)); EF.push(f || null);
+  }
+  // a strip's very ends (no wall face beyond them) are cut at 45 degrees, not square
+  for (let i = 0, n = P.length; i < n; i++) {
+    const f = EF[i]; if (!f) continue;
+    const a = P[i], b = P[(i + 1) % n], k = f[5], L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, tx = (b[0] - a[0]) / L, ty = (b[1] - a[1]) / L;
+    const e0 = EF[(i + n - 1) % n] ? 0 : 1, e1 = EF[(i + 1) % n] ? 0 : 1, c = Math.min(k, L / ((e0 + e1) || 1)), s0 = e0 * c, s1 = e1 * c, d = e0 + e1 ? c : k;   // a short edge: a shallower strip, still 45
+    strips.push([[a[0], a[1]], [b[0], b[1]], [b[0] - f[6] * d - tx * s1, b[1] - f[7] * d - ty * s1], [a[0] - f[6] * d + tx * s0, a[1] - f[7] * d + ty * s0]]);
   }
   // where the outline turns from one wall face to another (a room's corner), the square between their strips too
   for (let i = 0; i < P.length; i++) {
