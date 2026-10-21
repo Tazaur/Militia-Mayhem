@@ -158,17 +158,26 @@ function drawWorld(vw) {
   } else if (M.rain) { ctx.fillStyle = 'rgba(20,30,50,0.18)'; ctx.fillRect(vw.x, vw.y, vw.w, vw.h); }
   ctx.restore();
 }
-/* smoke screens: thick, soft-edged clouds above everything on the ground */
+/* smoke screens: thick, soft-edged clouds above everything on the ground. Each cloud's 19 puffs are composited into
+   its own small canvas a few times a second (the drift is slow) and drawn as one image, scaled with the cloud's growth */
+const SMOKE_PX = 160, SMOKE_EXT = 1.65, SMOKE_POOL = [];         // cache size; cloud extent in radii (puffs reach 1.59 + drift)
+function smokeCache(c) {
+  const g = (c.cv || (c.cv = SMOKE_POOL.pop() || mk(SMOKE_PX, SMOKE_PX))).getContext('2d'), h = SMOKE_PX / 2, k = h / SMOKE_EXT, pal = SPR.puffs[c.tint];
+  g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.clearRect(0, 0, SMOKE_PX, SMOKE_PX);
+  g.globalAlpha = 0.55; g.drawImage(pal[c.shade][0], h - k * 1.35, h - k * 1.35, k * 2.7, k * 2.7);
+  for (const [ox, oy, v, rot, sz, sh] of c.puffs) {
+    const r = k * 0.72 * sz, x = h + (ox + Math.sin(M.time * 0.35 + rot) * 6 / c.R) * k, y = h + (oy + Math.cos(M.time * 0.27 + rot) * 5 / c.R) * k;
+    g.globalAlpha = v % 2 ? 0.55 : 0.8; g.drawImage(pal[sh][v % 2], x - r, y - r, r * 2, r * 2);
+  }
+  c.cvT = M.time;
+}
 function drawSmokes(vis) {
   worldT();
   for (const c of M.smokes) {
-    if (!vis(c.x, c.y, c.R + 60)) continue;
-    const a = Math.min(1, c.t / 0.5) * Math.min(1, (c.T - c.t) / 3.5) * c.op, B = c.tint === 'brown' && SPR.puffB[c.shade], P = B ? B[0] : SPR.puff, PD = B ? B[1] : SPR.puffD;
-    ctx.globalAlpha = a * 0.55; ctx.drawImage(P, c.x - c.r * 1.35, c.y - c.r * 1.35, c.r * 2.7, c.r * 2.7);
-    for (const [ox, oy, v, rot, k] of c.puffs) {
-      const r = c.r * 0.72 * k, x = c.x + ox * c.r + Math.sin(M.time * 0.35 + rot) * 6, y = c.y + oy * c.r + Math.cos(M.time * 0.27 + rot) * 5;
-      ctx.globalAlpha = a * (v % 2 ? 0.55 : 0.8); ctx.drawImage(v % 2 ? PD : P, x - r, y - r, r * 2, r * 2);
-    }
+    if (c.r < 1 || !vis(c.x, c.y, c.R + 60)) continue;
+    if (M.time - c.cvT > 0.3 || M.time < c.cvT) smokeCache(c);
+    const e = c.r * SMOKE_EXT;
+    ctx.globalAlpha = Math.min(1, c.t / 0.5) * Math.min(1, (c.T - c.t) / 3.5) * c.op; ctx.drawImage(c.cv, c.x - e, c.y - e, e * 2, e * 2);
   }
   ctx.globalAlpha = 1;
 }

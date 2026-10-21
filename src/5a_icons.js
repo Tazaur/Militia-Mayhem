@@ -166,7 +166,6 @@ function drawTacMap(x, y, w, h, s, o) {
   ctx.drawImage(ground, 0, 0, WW, WH, mx, my, mw, mh);
   for (const b of MAP.buildings) if (b.roofC) ctx.drawImage(b.roofC, mx + b.x * k, my + b.y * k, b.w * k, b.h * k);
   ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fillRect(mx, my, mw, mh);
-  for (const c of M.smokes) { ctx.fillStyle = 'rgba(210,214,214,0.5)'; ctx.beginPath(); ctx.arc(mx + c.x * k, my + c.y * k, c.r * k, 0, TAU); ctx.fill(); }
   ctx.strokeStyle = 'rgba(242,230,196,0.4)'; ctx.lineWidth = 1; ctx.strokeRect(mx + 0.5, my + 0.5, mw - 1, mh - 1);
   const fr = Math.max(6, 9 * u);
   for (const f of M.flags) { ctx.fillStyle = f.owner < 0 ? '#bdbdb0' : TEAMHEX[f.owner]; ctx.beginPath(); ctx.arc(mx + f.x * k, my + f.y * k, fr, 0, TAU); ctx.fill(); txt(f.name.length > 1 ? 'H' : f.name, mx + f.x * k, my + f.y * k + 1, Math.max(9, 10 * u), '#111', 'center', 'middle', FD); }

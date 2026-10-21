@@ -196,7 +196,8 @@ function buildAssets() {
   buildTeamSprites();
   buildGrit();
   SPR.smoke = softDot('70,70,70', 64); SPR.dust = softDot('150,135,95', 64); SPR.fire = softDot('255,150,40', 64);
-  SPR.hot = softDot('255,240,180', 64); SPR.flash = softDot('255,220,120', 64); SPR.steam = softDot('200,200,200', 64); SPR.puff = softDot('236,238,236', 64); SPR.puffD = softDot('170,174,172', 64); SPR.puffB = [[150, 112, 76], [136, 104, 74], [162, 126, 90], [126, 96, 68]].map(c => [softDot(c.join(','), 64), softDot(c.map(v => Math.round(v * 0.72)).join(','), 64)]);   // brown dust, light + dark puff per shade
+  SPR.hot = softDot('255,240,180', 64); SPR.flash = softDot('255,220,120', 64); SPR.steam = softDot('200,200,200', 64); SPR.puffs = { grey: [[236, 238, 236], [214, 218, 218], [246, 244, 236], [196, 200, 200]], brown: [[150, 112, 76], [136, 104, 74], [162, 126, 90], [126, 96, 68]] };
+  for (const k in SPR.puffs) SPR.puffs[k] = SPR.puffs[k].map(c => [softDot(c.join(','), 64), softDot(c.map(v => Math.round(v * 0.72)).join(','), 64)]);   // smoke grey / dust brown: light + dark puff per shade
   // grain tile
   { const c = mk(256, 256), g = c.getContext('2d'), d = g.createImageData(256, 256); for (let i = 0; i < d.data.length; i += 4) { const v = Math.random() * 255; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 255; } g.putImageData(d, 0, 0); SPR.grain = c; }
   // crate
@@ -514,7 +515,7 @@ cv.addEventListener('pointerdown', e => {
   audioInit(); try { cv.focus({ preventScroll: true }); } catch (_) { }
   const [x, y] = ptXY(e);
   if (e.pointerType === 'mouse' && e.button === 0) fsGesture(x, y);
-  if (state === 'play' && M && M.dev && (e.pointerType !== 'mouse' || e.button === 0) && devClick(x, y)) return;   // dev tool panel
+  if (state === 'play' && M && M.dev && (e.pointerType !== 'mouse' || e.button === 0) && devClick(x, y, e.pointerType === 'touch')) return;   // dev tool panel
   if (e.pointerType === 'touch') {
     e.preventDefault(); TOUCH.active = true;
     const tp = touchPlayer();

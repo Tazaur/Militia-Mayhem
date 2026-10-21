@@ -872,8 +872,9 @@ function update(dt) {
   if (state === 'netmenu') { updateMatch(dt); updateNetMenu(ins, dt); return; }
   if (state === 'lobby') { updateMatch(dt); updateLobby(ins); return; }
   if (state === 'play') {
+    if (M.dev) devInputs();
     runMatch(dt, false);
-    M.scoreHeld = LOCALS().some(p => p.raw && p.raw.score);
+    M.scoreHeld = !M.dev && LOCALS().some(p => p.raw && p.raw.score);     // dev: View is the tool panel
     for (const p of LOCALS()) if (p.raw && p.raw.pause) { openPause(p); break; }
     if (M.over && M.overT > 3) setState('end');
     return;
@@ -908,10 +909,10 @@ function render() {
     if (M.views.length > 1) { ctx.fillStyle = '#0a0a08'; for (const vw of M.views) { if (vw.x > 0) ctx.fillRect(vw.x - 2, vw.y, 4, vw.h); if (vw.y > 0) ctx.fillRect(vw.x, vw.y - 2, vw.w, 4); } }
     for (const vw of hudViews()) drawViewHUD(vw);
     drawGlobalHUD();
-    if (M.dev && state === 'play') devDrawPanel();
     if (M.scoreHeld && state === 'play') uiScaled(drawScoreboard);
     if (state === 'pause') uiScaled(drawPause);
-    { const tp = touchPlayer(); if (state === 'play' && tp && tp.sol && tp.sol.alive) { screenT(); drawTouch(tp.sol); } }
+    { const tp = touchPlayer(); if (state === 'play' && tp && tp.sol && tp.sol.alive && !(M.dev && DEV.open)) { screenT(); drawTouch(tp.sol); } }
+    if (M.dev && state === 'play') devDrawPanel();      // over the touch controls
     if (state === 'end') uiScaled(drawEnd);
     netOverlay();
   }

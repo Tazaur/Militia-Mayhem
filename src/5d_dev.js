@@ -18,7 +18,7 @@ const JUNC_HP = { 2: 200, 3: 260, 4: 320 };                 // corner, tee, cros
 /* ramming, per unit of speed: damage to the wall, damage to the vehicle, speed kept; a tank always hits at least min */
 const RAM = { tank: { wall: 2.6, self: 0.15, keep: 0.8, min: 50, go: 12 }, jeep: { wall: 0.45, self: 1, keep: 0.15, min: 0, go: 25 } };
 const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];          // up, right, down, left
-const DEV = { roofQ: [], open: true, god: false, ammo: true, respawn: true, grid: true, secs: true, range: 6, log: [], nums: [], lastA: 0, over: false, B: [], R: null, seed: 1 };
+const DEV = { roofQ: [], open: true, god: false, ammo: true, respawn: true, grid: true, secs: true, range: 6, sel: 1, padNav: false, log: [], nums: [], lastA: 0, over: false, B: [], R: null, seed: 1 };
 const DEV_RANGES = [2, 4, 6, 8, 10, 15, 20, 30];
 /* structural damage per blast, keyed by blast radius: rocket 62, tank shell 78, frag 88; anything else x1 */
 const STRUCT_K = { 62: 1.6, 78: 2, 88: 0.35 };
@@ -290,7 +290,7 @@ function devRoofTile(k, ev) {
 }
 /* the roof over the whole house, walls included (drawn above units and walls). Out of sight: solid, greyed like the rest of
    the fog. In sight it fades by distance from the eye: gone within ROOF_NEAR, ROOF_CAP at ROOF_FAR and beyond; seen through glass it keeps ROOF_GLASS more */
-const ROOF_NEAR = 60, ROOF_FAR = 120, ROOF_CAP = 0.7, ROOF_GLASS = 0.15, roofOp = d => d <= ROOF_NEAR ? 0 : ROOF_CAP * Math.min(1, (d - ROOF_NEAR) / (ROOF_FAR - ROOF_NEAR));
+const ROOF_NEAR = 100, ROOF_FAR = 200, ROOF_CAP = 0.7, ROOF_GLASS = 0.15, roofOp = d => d <= ROOF_NEAR ? 0 : ROOF_CAP * Math.min(1, (d - ROOF_NEAR) / (ROOF_FAR - ROOF_NEAR));
 function devDrawRoof(vw, x0, y0, x1, y1, fogPolys) {
   const TL = MAP.tiled; if (!TL || !TL.roof) return;
   if (ROOF_TMP.width !== cv.width || ROOF_TMP.height !== cv.height) { ROOF_TMP.width = cv.width; ROOF_TMP.height = cv.height; }
@@ -501,17 +501,18 @@ function devHUD(u, top) {
   const cx = W / 2, bw = 360 * u;
   ctx.fillStyle = 'rgba(8,12,6,0.7)'; ctx.fillRect(cx - bw / 2, top, bw, 34 * u);
   stxt('DEV MODE', cx, top + 15 * u, 13 * u, '#ffe08a', 'center', 'middle', FD);
-  const l = DEV.log[0]; txt(l ? l.text : (TOUCH.active ? 'TAP DEV FOR TOOLS' : '` OPENS THE TOOLS'), cx, top + 27 * u, 10 * u, l ? l.c : 'rgba(242,230,196,0.6)', 'center', 'middle', FD);
+  const l = DEV.log[0], dt = PLAYERS[0] && PLAYERS[0].dev.type; txt(l ? l.text : (dt === 'pad' ? 'VIEW OPENS THE TOOLS' : TOUCH.active ? 'TAP DEV FOR TOOLS' : '` OPENS THE TOOLS'), cx, top + 27 * u, 10 * u, l ? l.c : 'rgba(242,230,196,0.6)', 'center', 'middle', FD);
 }
 /* the tool panel (right side); clicks are taken in pointerdown via devClick so they never fire the gun */
 function devDrawPanel() {
   screenT(); DEV.B = [];
   const u = clamp(W / 1100, 0.75, 1.1), fs = 11 * u, rh = 25 * u, gap = 5 * u, pw = 250 * u, x0 = W - SAFE.r - pw - 10 * u, y0 = SAFE.t + 52 * u;
-  const btn = (label, fn, x, y, w, on) => {
+  const btn = (label, fn, x, y, w, on, adj) => {
+    if (DEV.padNav && DEV.B.length === DEV.sel) { ctx.fillStyle = 'rgba(255,224,138,0.9)'; ctx.fillRect(x - 3 * u, y - 3 * u, w + 6 * u, rh + 6 * u); }   // the pad's cursor
     ctx.fillStyle = on === true ? 'rgba(125,255,122,0.22)' : 'rgba(32,42,26,0.95)'; ctx.fillRect(x, y, w, rh);
     ctx.strokeStyle = on === true ? '#7dff7a' : 'rgba(242,230,196,0.28)'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, rh - 1);
     txt(label, x + w / 2, y + rh / 2 + 1, fs, on === false ? 'rgba(242,230,196,0.55)' : '#f2e6c4', 'center', 'middle', FD);
-    DEV.B.push({ x, y, w, h: rh, fn });
+    DEV.B.push({ x, y, w, h: rh, fn, adj });
   };
   if (!DEV.open) {
     const w = 64 * u; btn('DEV', () => DEV.open = true, W - SAFE.r - w - 10 * u, y0, w);
@@ -520,7 +521,7 @@ function devDrawPanel() {
   const cw2 = (pw - 24 * u - gap) / 2, L = x0 + 12 * u, R2 = L + cw2 + gap;
   let y = y0 + 34 * u;
   const head = t => { txt(t, L, y + 8 * u, 10 * u, 'rgba(255,224,138,0.8)', 'left', 'middle', FD); y += 18 * u; };
-  const row = (a, b) => { if (a) btn(...a.slice(0, 2), L, y, b ? cw2 : cw2 * 2 + gap, a[2]); if (b) btn(...b.slice(0, 2), R2, y, cw2, b[2]); y += rh + gap; };
+  const row = (a, b) => { if (a) btn(...a.slice(0, 2), L, y, b ? cw2 : cw2 * 2 + gap, a[2], a[3]); if (b) btn(...b.slice(0, 2), R2, y, cw2, b[2]); y += rh + gap; };
   // measure first so the backdrop fits
   const H0 = 34 * u + 18 * u * 4 + (rh + gap) * 9 + Math.min(DEV.log.length, 9) * 15 * u + 16 * u;
   ctx.fillStyle = 'rgba(6,10,5,0.86)'; ctx.fillRect(x0, y0, pw, H0); ctx.strokeStyle = 'rgba(255,224,138,0.5)'; ctx.strokeRect(x0 + 0.5, y0 + 0.5, pw - 1, H0 - 1);
@@ -529,7 +530,7 @@ function devDrawPanel() {
   btn('×', () => DEV.open = false, x0 + pw - 34 * u, y0 + 6 * u, 26 * u);
   head('SPAWN');
   row(['DUMMY', devSpawnDummy], ['CLEAR DUMMIES', devClearDummies]);
-  row([`‹  RANGE ${DEV.range} TILES  ›`, d => { const i = DEV_RANGES.indexOf(DEV.range); DEV.range = DEV_RANGES[clamp(i + d, 0, DEV_RANGES.length - 1)]; }]);
+  row([`‹  RANGE ${DEV.range} TILES  ›`, d => { const i = DEV_RANGES.indexOf(DEV.range); DEV.range = DEV_RANGES[clamp(i + d, 0, DEV_RANGES.length - 1)]; }, undefined, true]);
   row(['JEEP', () => devSpawnVeh('jeep')], ['TANK', () => devSpawnVeh('tank')]);
   row(['MG NEST', () => devSpawnVeh('nest')], ['CLEAR VEHICLES', devClearVehicles]);
   head('TOGGLES');
@@ -542,18 +543,41 @@ function devDrawPanel() {
   head('LOG');
   for (const l of DEV.log) { txt(l.text, L, y + 6 * u, 10 * u, l.c, 'left', 'middle', FD); y += 15 * u; }
 }
-/* pointerdown on the panel: run the button, swallow the click (true) */
-function devClick(x, y) {
-  const r = DEV.R; if (!r) return false;
+/* pointerdown on the panel: run the button, swallow the click (true); a tap off the open panel closes it */
+function devClick(x, y, touch) {
+  const r = DEV.R; if (!r) return false; DEV.padNav = false;
   for (const b of DEV.B) if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) { b.fn(x < b.x + b.w / 2 ? -1 : 1); sfx('ui'); return true; }
+  if (touch && DEV.open && !(x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h)) { DEV.open = false; return true; }
   return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+}
+/* View (select) opens / closes the panel. While it is open it takes over a pad or touch player's controls (they stand
+   still): stick / D-pad moves between buttons, left / right steps a ‹ › row, A presses, B closes */
+function devInputs() {
+  for (const p of LOCALS()) {
+    const st = p.raw, t = p.dev.type; if (!st) continue;
+    if (t === 'pad' && st.opt) { DEV.open = !DEV.open; DEV.padNav = DEV.open; sfx('ui'); p.raw = null; continue; }
+    if (DEV.open && t === 'pad') { devPad(st); p.raw = null; }
+    else if (DEV.open && t === 'touch') p.raw = null;
+  }
+}
+function devPad(st) {
+  const B = DEV.B; DEV.padNav = true;
+  if (st.back) { DEV.open = false; sfx('ui'); return; }
+  const i = DEV.sel = clamp(DEV.sel, 0, B.length - 1), b = B[i]; if (!b) return;
+  if (st.confirm) { b.fn(1); sfx('ui'); return; }
+  const dx = st.navX, dy = dx ? 0 : st.navY; if (!dx && !dy) return;
+  if (dx && b.adj) { b.fn(dx); sfx('ui'); return; }
+  const gapTo = (a0, a1, b0, b1) => Math.max(0, b0 - a1, a0 - b1), ahead = (a0, a1, b0, b1, s) => s > 0 ? b0 - a1 : a0 - b1;
+  let best = -1, bd = 1e9;      // the nearest button wholly that way; edge to edge, sideways gaps count double
+  B.forEach((o, j) => { const along = dx ? ahead(b.x, b.x + b.w, o.x, o.x + o.w, dx) : ahead(b.y, b.y + b.h, o.y, o.y + o.h, dy), side = dx ? gapTo(b.y, b.y + b.h, o.y, o.y + o.h) : gapTo(b.x, b.x + b.w, o.x, o.x + o.w), d = along + 2 * side; if (j !== i && along >= -1 && d < bd) { bd = d; best = j; } });
+  if (best >= 0) { DEV.sel = best; sfx('ui'); }
 }
 /* from the main menu: straight into the yard, one player, no bots */
 function startDev(dev) {
   if (NET.role) return;
   engineKillAll(); PLAYERS = []; lobbyJoin(dev && dev.type ? dev : { type: 'kb' });
   const p = PLAYERS[0]; if (!p) return; p.team = 0; p.ready = true;
-  DEV.log.length = 0; DEV.nums.length = 0;
+  DEV.log.length = 0; DEV.nums.length = 0; DEV.open = !dev || !dev.type || dev.type === 'kb';     // a pad / touch player starts with the panel shut (it takes their controls)
   newMatch({ ...CFG, dev: true, mode: 1, bots: 0, ff: false, weather: 'clear', fog: 'los', limit: 1, camera: 'split' }, false);
   setState('play'); Music.mode = 'battle';
 }

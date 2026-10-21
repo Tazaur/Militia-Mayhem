@@ -659,9 +659,13 @@ function throwNade(s, dist, forceFrag) {
 }
 /* every view near (x, y) shakes, by amt at the spot fading to nothing at range */
 function shakeAt(x, y, amt, range) { for (const vw of M.views) { const d = Math.hypot(vw.cam.x - x, vw.cam.y - y); vw.shake = Math.min(18, vw.shake + amt * Math.max(0, 1 - d / range)); } }
-/* a smoke grenade's cloud; o (optional): { tint: 'brown', shade: 0-3, op: opacity, T: seconds, quiet } (falling roofs use it) */
-function popSmoke(x, y, o) { if (!o) netEv('sm', x | 0, y | 0); const puffs = []; for (let i = 0; i < 18; i++) { const a = rnd(0, TAU), d = i ? Math.sqrt(Math.random()) * 0.72 : 0; puffs.push([Math.cos(a) * d, Math.sin(a) * d, rint(0, 3), rnd(0, TAU), rnd(0.8, 1.2)]); } M.smokes.push({ x, y, r: 0, R: 92, t: 0, T: (o && o.T) || 18, puffs, tint: o && o.tint, shade: (o && o.shade) || 0, op: o && o.op !== undefined ? o.op : 1 }); if (!(o && o.quiet)) sfx('splash', x, y, 0.5); for (let i = 0; i < 8; i++) part({ k: 'smoke', x, y, vx: rnd(-60, 60), vy: rnd(-60, 60), life: 1.2, max: 1.2, sz: 12, drag: 2 }); }
-function updateSmokes(dt) { for (const c of M.smokes) { c.t += dt; c.r = c.R * Math.min(1, c.t / 1.6); } prune(M.smokes, c => c.t < c.T); }
+/* a smoke grenade's cloud, each puff a random grey shade; o (optional): { tint: 'brown', shade: 0-3 (the whole cloud), op: opacity, T: seconds, quiet } (falling roofs use it) */
+function popSmoke(x, y, o) {
+  if (!o) { netEv('sm', x | 0, y | 0); o = {}; }
+  const puffs = []; for (let i = 0; i < 18; i++) { const a = rnd(0, TAU), d = i ? Math.sqrt(Math.random()) * 0.72 : 0; puffs.push([Math.cos(a) * d, Math.sin(a) * d, rint(0, 3), rnd(0, TAU), rnd(0.8, 1.2), o.tint ? o.shade || 0 : rint(0, 3)]); }
+  M.smokes.push({ x, y, r: 0, R: 92, t: 0, T: o.T || 18, puffs, tint: o.tint || 'grey', shade: o.shade || 0, op: o.op !== undefined ? o.op : 1, cv: null, cvT: -9 }); if (!o.quiet) sfx('splash', x, y, 0.5); for (let i = 0; i < 8; i++) part({ k: 'smoke', x, y, vx: rnd(-60, 60), vy: rnd(-60, 60), life: 1.2, max: 1.2, sz: 12, drag: 2 });
+}
+function updateSmokes(dt) { for (const c of M.smokes) { c.t += dt; c.r = c.R * Math.min(1, c.t / 1.6); } prune(M.smokes, c => c.t < c.T || (c.cv && SMOKE_POOL.length < 64 && SMOKE_POOL.push(c.cv), false)); }
 function smokeBlocks(x0, y0, x1, y1) {
   for (const c of M.smokes) {
     if (c.t > c.T - 2.5 || c.r < 24) continue;
