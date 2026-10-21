@@ -267,8 +267,14 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 ## Build 107
 - Wrecks no longer block sight (sightBlocked, visPoly). They still block movement, bullets and blasts (los), and are still drawn in the remembered view.
 
-## Build 108
+## Build 109
 - Craters (scorch) burn into the ground canvas: permanent for the match (decals still fade).
 - MAP.glass in the dev yard = intact window sections only (devSight reruns when a window cracks).
 - raySeg counts a hit at a segment's very end (u slack 1e-6): rays through the seam of two touching sections no longer slip through and extend (bleed probe 3 -> 0 of 25k wedges). VIS_TOL 2.
 - Grid smoke (experimental, dev GRID SMOKE): popSmoke(x, y, { grid }) -> gridSmoke: nearest-first fill of open 16 px tiles (8 ways, no diagonal squeeze), GS_N 90 tiles, GS_STEP 0.3 s per tile, density 1 -> GS_EDGE 0.15 by (d/dmax)^2. Sight: thickest tile crossed (gridOcc, DDA) in smokeOcc; fog mask per pixel from gridOcc (gridMask); drawn as 1 px/tile scaled x16 smoothed (8 px blend). Net 'sm' carries the grid flag.
+
+## Build 111
+- Grid smoke is one field (M.gsf, 16 px tiles), not per-cloud: emitters (grenade SMK_NADE 70, dust SMK_DUST 5 x op x T/10, brown) put SMK_EMIT 15 % of what's left into their tile per S-tick (10 Hz). Tiles >= SMK_MIN 0.5 bleed ~SMK_BLEED 35 % (random) to their 4 neighbours, a quarter each; walls/intact windows keep it (smokeSolid, by tile centre; dirty on devSight), cracked windows pass SMK_LEAK 25 %. Random ticks: 10 % chance a tick to lose 0.035. Overlaps just add. Grenade: blocks a line ~14 s, ~100-120 tiles, gone ~26 s.
+- Sight: fieldOcc = sum of min(1, amount) x tiles crossed x SMK_K 0.5 (two thick tiles block), DDA in the box of smoky tiles; part of smokeOcc. Mask: fieldOcc per tile centre over the view box, a tile a pixel, smoothed (fieldMask). smokeAny() guards.
+- Drawn as a tile-a-pixel image x16 smoothed (8 px blend): per-tile grey drifting on two slow waves, brown share mixed in, an offset dark shade under it, thinned near eyes. 40 dusts: 0.03 ms per S-tick, +0.6 ms draw.
+- Soft fog now goes after roofs, fire and tree canopies (drawRoofs shared; also drawn into the remembered view), so smoke/windows fade everything in sight alike. In sight the remembered view is the world now + the dev yard's live roof (rv), so smoke in a room never shows the roof.

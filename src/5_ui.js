@@ -11,7 +11,7 @@ function drawWorld(vw) {
   screenT(); ctx.save(); ctx.beginPath(); ctx.rect(vw.x, vw.y, vw.w, vw.h); ctx.clip();
   ctx.fillStyle = '#0c140a'; ctx.fillRect(vw.x, vw.y, vw.w, vw.h);
   worldT(); ctx.imageSmoothingEnabled = false;
-  const rv = MAP.tiled ? roofView(vw, x0, y0, x1, y1) : null, fogPolys = applyFog(vw, vis, x0, y0, x1, y1), fogged = !!fogPolys;
+  const rv = MAP.tiled ? roofView(vw, x0, y0, x1, y1) : null, fogPolys = applyFog(vw, vis, x0, y0, x1, y1, rv), fogged = !!fogPolys;
   // ---- layer 0: ground + fading footprints
   drawSkirt(x0, y0, x1, y1);
   const gx0 = Math.max(0, Math.floor(x0)), gy0 = Math.max(0, Math.floor(y0)), gx1 = Math.min(WW, Math.ceil(x1)), gy1 = Math.min(WH, Math.ceil(y1));
@@ -103,15 +103,14 @@ function drawWorld(vw) {
   drawParticles(vis, 'low');
   // ---- layer 4: building shadows fall across units, then roofs on top
   if (rv) { worldT(); ctx.imageSmoothingEnabled = false; ctx.drawImage(rv.c, 0, 0, rv.w, rv.h, rv.x, rv.y, rv.w, rv.h); }     // dev yard roofs, in sight (out of sight they're in the memory)
-  if (fogged) { drawSoftFog(vw); ctx.restore(); }
-  worldT();
-  for (const b of MAP.buildings) if (b.roofC && vis(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h))) ctx.drawImage(b.roofC, b.x, b.y);
-  ctx.fillStyle = CFG.style === 'grit' ? 'rgba(0,0,0,0.38)' : 'rgba(0,0,0,0.32)';
-  if (!MAP.tiled) for (const b of MAP.buildings) { if (!vis(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h))) continue; ctx.beginPath(); ctx.moveTo(b.x + b.w, b.y); ctx.lineTo(b.x + b.w + 14, b.y + 14); ctx.lineTo(b.x + b.w + 14, b.y + b.h + 14); ctx.lineTo(b.x + 14, b.y + b.h + 14); ctx.lineTo(b.x, b.y + b.h); ctx.lineTo(b.x + b.w, b.y + b.h); ctx.closePath(); ctx.fill(); }
+  if (fogged) ctx.restore();
+  worldT(); drawRoofs(vis);
   if (fogged) { ctx.save(); worldT(); polyPath(ctx, fogPolys); ctx.clip(); }
   // ---- layer 5: smoke and fire rise above roofs, tree canopies above everything
   drawParticles(vis, 'high');
   for (const s of MAP.statics) if (s.alive && s.type === 'tree' && vis(s.x, s.y, 40)) { const tc = s.pine ? SPR.pines[s.v] : SPR.trees[s.v]; worldT(); ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.beginPath(); ctx.arc(s.x + 6, s.y + 7, 24 * s.sc, 0, TAU); ctx.fill(); img(tc, s.x, s.y, s.a, s.sc, 0.94); }
+  // the soft layers (smoke, windows) over everything in sight alike: units, vehicles, roofs, trees, fire
+  if (fogged) drawSoftFog(vw);
   drawSmokes(vis, vw);
   drawLasers(vis);
   // tags, reticles
@@ -151,6 +150,12 @@ function drawWorld(vw) {
   } else if (M.rain) { ctx.fillStyle = 'rgba(20,30,50,0.18)'; ctx.fillRect(vw.x, vw.y, vw.w, vw.h); }
   ctx.restore();
 }
+/* the map's roofs (they're always known: drawn over the out-of-sight memory too) and the buildings' shadows */
+function drawRoofs(vis) {
+  for (const b of MAP.buildings) if (b.roofC && vis(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h))) ctx.drawImage(b.roofC, b.x, b.y);
+  ctx.fillStyle = CFG.style === 'grit' ? 'rgba(0,0,0,0.38)' : 'rgba(0,0,0,0.32)';
+  if (!MAP.tiled) for (const b of MAP.buildings) { if (!vis(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h))) continue; ctx.beginPath(); ctx.moveTo(b.x + b.w, b.y); ctx.lineTo(b.x + b.w + 14, b.y + 14); ctx.lineTo(b.x + b.w + 14, b.y + b.h + 14); ctx.lineTo(b.x + 14, b.y + b.h + 14); ctx.lineTo(b.x, b.y + b.h); ctx.lineTo(b.x + b.w, b.y + b.h); ctx.closePath(); ctx.fill(); }
+}
 /* smoke screens: thick, soft-edged clouds above everything on the ground. Each cloud's 19 puffs are composited into
    its own small canvas a few times a second (the drift is slow) and drawn as one image, scaled with the cloud's growth */
 const SMOKE_PX = 160, SMOKE_EXT = 1.65, SMOKE_POOL = [];         // cache size; cloud extent in radii (puffs reach 1.59 + drift)
@@ -174,9 +179,9 @@ function smokeCache(c) {
 const SMOKE_HOLE = document.createElement('canvas'), SMOKE_KEEP = 0.25;
 function drawSmokes(vis, vw) {
   worldT(); let eyes = null; const n1 = SIGHT_NEAR[1];
+  if (M.gsf && M.gsf.act.length) drawSmokeField(vw, eyes = vw ? viewSols(vw).map(posOf) : []);
   for (const c of M.smokes) {
     if (c.r < 1 || !vis(c.x, c.y, c.R + 60)) continue;
-    if (c.grid) { drawGridSmoke(c, eyes = eyes || (vw ? viewSols(vw).map(posOf) : [])); continue; }
     if (M.time - c.cvT > (c.t < SMOKE_GROW ? 0.1 : 0.3) || M.time < c.cvT) smokeCache(c);     // faster while it grows (puffs meet walls)
     const e = c.r * SMOKE_EXT; let img = c.cv;
     eyes = eyes || (vw ? viewSols(vw).map(posOf) : []);
@@ -195,18 +200,31 @@ function drawSmokes(vis, vw) {
   }
   ctx.globalAlpha = 1;
 }
-/* grid smoke: a pixel per tile, drawn GS times bigger and smoothed, so each tile blends half a tile (8 px) into its
-   neighbours; thinned near the eyes like the clouds */
-function drawGridSmoke(c, eyes) {
-  const g = c.gc.getContext('2d'), im = c.gim || (c.gim = g.createImageData(c.gw, c.gh)), d = im.data, s = smokeStr(c), [n0, n1] = SIGHT_NEAR;
-  for (let j = 0; j < c.gh; j++) for (let i = 0; i < c.gw; i++) {
-    const k = j * c.gw + i, o = k * 4; let v = gsAt(c, k) * s;
-    if (v > 0) for (const e of eyes) v *= SMOKE_KEEP + (1 - SMOKE_KEEP) * clamp((Math.hypot((c.gi + i + 0.5) * GS - e.x, (c.gj + j + 0.5) * GS - e.y) - n0) / (n1 - n0), 0, 1);
-    d[o] = d[o + 1] = d[o + 2] = c.sh[k]; d[o + 3] = v * 235;
+/* the grid smoke field: a pixel per tile over the view, drawn GS times bigger and smoothed, so a tile blends half a
+   tile (8 px) into its neighbours; first its shade on what's under it (offset, dark), then the smoke. Each tile's grey
+   drifts slowly (two slow waves, phase from the tile); thinned near the eyes like the clouds */
+const SMK_C = document.createElement('canvas'), SMK_SH = document.createElement('canvas');
+function drawSmokeField(vw, eyes) {
+  const f = M.gsf, [n0, n1] = SIGHT_NEAR, V = vw ? [(vw.x - VOX) / VZ, (vw.y - VOY) / VZ, (vw.x + vw.w - VOX) / VZ, (vw.y + vw.h - VOY) / VZ].map(v => v / GS) : [-1e9, -1e9, 1e9, 1e9];
+  const i0 = Math.max(f.box[0] - 1, Math.floor(V[0]) - 1), j0 = Math.max(f.box[1] - 1, Math.floor(V[1]) - 1), i1 = Math.min(f.box[2] + 1, Math.ceil(V[2]) + 1), j1 = Math.min(f.box[3] + 1, Math.ceil(V[3]) + 1), w = i1 - i0, h = j1 - j0;
+  if (w <= 0 || h <= 0) return;
+  if (SMK_C.width < w || SMK_C.height < h) { SMK_C.width = SMK_SH.width = Math.max(w, SMK_C.width); SMK_C.height = SMK_SH.height = Math.max(h, SMK_C.height); SMK_C.im = SMK_SH.im = null; }
+  const g = SMK_C.getContext('2d'), gs = SMK_SH.getContext('2d'), Wc = SMK_C.width;
+  const im = SMK_C.im || (SMK_C.im = g.createImageData(SMK_C.width, SMK_C.height)), sm = SMK_SH.im || (SMK_SH.im = gs.createImageData(SMK_C.width, SMK_C.height)), d = im.data, e = sm.data;
+  for (let j = 0; j < h; j++) { d.fill(0, j * Wc * 4, (j * Wc + w) * 4); e.fill(0, j * Wc * 4, (j * Wc + w) * 4); }
+  const T = M.time;
+  for (const k of f.act) {
+    const i = k % f.W - i0, j = ((k - k % f.W) / f.W) - j0; if (i < 0 || j < 0 || i >= w || j >= h) continue;
+    const a = f.A[k], den = a < 1 ? a : 1, fb = f.B[k] / a, ph = ((k * 2654435761) >>> 0) / 4294967296 * TAU, x = (k % f.W + 0.5) * GS, y = (j + j0 + 0.5) * GS;
+    let thin = 1; for (const o of eyes) thin *= SMOKE_KEEP + (1 - SMOKE_KEEP) * clamp((Math.hypot(x - o.x, y - o.y) - n0) / (n1 - n0), 0, 1);
+    const t = 176 + 14 * Math.sin(T * 0.45 + ph) + 8 * Math.sin(T * 0.19 + ph * 2.7), o = (j * Wc + i) * 4;
+    d[o] = t * (1 - 0.2 * fb); d[o + 1] = t * (1 - 0.36 * fb); d[o + 2] = t * (1 - 0.52 * fb) - 3; d[o + 3] = den * 230 * thin;
+    e[o + 3] = den * 70;
   }
-  g.putImageData(im, 0, 0);
+  g.putImageData(im, 0, 0, 0, 0, w, h); gs.putImageData(sm, 0, 0, 0, 0, w, h);
   ctx.globalAlpha = 1; ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'low';
-  ctx.drawImage(c.gc, c.gi * GS, c.gj * GS, c.gw * GS, c.gh * GS); ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(SMK_SH, 0, 0, w, h, i0 * GS + 4, j0 * GS + 6, w * GS, h * GS);
+  ctx.drawImage(SMK_C, 0, 0, w, h, i0 * GS, j0 * GS, w * GS, h * GS); ctx.imageSmoothingEnabled = false;
 }
 /* a wreck: solid cover, then gone over its last 2 s (also drawn into the remembered view) */
 function drawWreck(w) {
@@ -226,7 +244,7 @@ function viewEyes(vw) {
 /* an enemy in smoke / behind glass: with vision on, the soft mask already fades him (only skip him once he's gone); with it
    off, hidden once it takes him under SIGHT_MIN */
 function smokeHides(eyes, o, vw) {
-  if (!eyes.length || (!M.smokes.length && !MAP.glass.length) || eyes.some(e => e.s === o || (!M.ffa && e.team === o.team))) return false;
+  if (!eyes.length || (!smokeAny() && !MAP.glass.length) || eyes.some(e => e.s === o || (!M.ffa && e.team === o.team))) return false;
   let k = 0; for (const e of eyes) k = Math.max(k, 1 - softOcc(e.x, e.y, o.x, o.y));
   return vw._fog ? k < 0.02 : k < SIGHT_MIN;
 }

@@ -660,57 +660,91 @@ function throwNade(s, dist, forceFrag) {
 /* every view near (x, y) shakes, by amt at the spot fading to nothing at range */
 function shakeAt(x, y, amt, range) { for (const vw of M.views) { const d = Math.hypot(vw.cam.x - x, vw.cam.y - y); vw.shake = Math.min(18, vw.shake + amt * Math.max(0, 1 - d / range)); } }
 /* a smoke grenade's cloud, each puff a random grey shade; o (optional): { tint: 'brown', shade: 0-3 (the whole cloud), op: opacity, T: seconds, quiet } (falling roofs use it),
-   { grid: true } for grid smoke (gridSmoke), { net: true } to send it to the clients (a grenade's) */
+   { grid } to pick grid smoke or not (default: the dev panel's GRID SMOKE); a grenade's (no o) goes to the clients */
 function popSmoke(x, y, o) {
-  if (!o) o = { net: true };
-  if (o.net) netEv('sm', x | 0, y | 0, o.grid ? 1 : 0);
-  if (o.grid) { M.smokes.push(gridSmoke(x, y, o)); if (!o.quiet) sfx('splash', x, y, 0.5); return; }
+  const net = !o; o = o || {}; const grid = o.grid !== undefined ? o.grid : DEV.gridSmoke;
+  if (net) netEv('sm', x | 0, y | 0, grid ? 1 : 0);
+  if (grid) { smokeEmit(x, y, o.tint ? SMK_DUST * (o.op !== undefined ? o.op : 1) * (o.T || 10) / 10 : SMK_NADE, !!o.tint); if (!o.quiet) sfx('splash', x, y, 0.5); return; }
   const puffs = []; for (let i = 0; i < 18; i++) { const a = rnd(0, TAU), d = i ? Math.sqrt(Math.random()) * 0.72 : 0; puffs.push([Math.cos(a) * d, Math.sin(a) * d, rint(0, 3), rnd(0, TAU), rnd(0.8, 1.2), o.tint ? o.shade || 0 : rint(0, 3)]); }
   M.smokes.push({ x, y, r: 0, R: 92, t: 0, T: o.T || 18, puffs, tint: o.tint || 'grey', shade: o.shade || 0, op: o.op !== undefined ? o.op : 1, cv: null, cvT: -9 }); smokeRays(M.smokes[M.smokes.length - 1]); if (!o.quiet) sfx('splash', x, y, 0.5); for (let i = 0; i < 8; i++) part({ k: 'smoke', x, y, vx: rnd(-60, 60), vy: rnd(-60, 60), life: 1.2, max: 1.2, sz: 12, drag: 2 });
 }
-/* grid smoke (experimental: the dev panel's GRID SMOKE): it fills the open GS px tiles outward from where it lands,
-   nearest first (8 ways, never squeezing between two diagonal walls), up to GS_N tiles, so a corridor carries it
-   further. A tile shows up GS_STEP s per tile of path from the start; thickest at the start (1), thinning to GS_EDGE at
-   the furthest tiles. Kept as a tile box (gi, gj, gw, gh) with a free tile all round, so drawn smoothed it fades out. */
-const GS = 16, GS_N = 90, GS_STEP = 0.3, GS_EDGE = 0.15, DIRS8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
-function gridSmoke(x, y, o) {
-  const bl = MAP.buildings.filter(b => Math.abs(b.x + b.w / 2 - x) < b.w / 2 + 400 && Math.abs(b.y + b.h / 2 - y) < b.h / 2 + 400), memo = new Map();
-  const open = (i, j) => { const k = j * 4096 + i; let v = memo.get(k); if (v === undefined) { v = i >= 0 && j >= 0 && (i + 1) * GS <= WW && (j + 1) * GS <= WH && !bl.some(b => b.x < (i + 1) * GS - 1 && b.x + b.w > i * GS + 1 && b.y < (j + 1) * GS - 1 && b.y + b.h > j * GS + 1); memo.set(k, v); } return v; };
-  let si = Math.floor(x / GS), sj = Math.floor(y / GS);
-  if (!open(si, sj)) { let best = Infinity; for (const [dx, dy] of DIRS8) { const i = Math.floor(x / GS) + dx, j = Math.floor(y / GS) + dy, d = Math.hypot((i + 0.5) * GS - x, (j + 0.5) * GS - y); if (open(i, j) && d < best) { best = d; si = i; sj = j; } } }
-  const seen = new Set(), done = [], q = [[0, si, sj]];
-  while (q.length && done.length < GS_N) {
-    let m = 0; for (let k = 1; k < q.length; k++) if (q[k][0] < q[m][0]) m = k;
-    const [d, i, j] = q[m]; q[m] = q[q.length - 1]; q.pop();
-    if (seen.has(j * 4096 + i) || !open(i, j)) continue; seen.add(j * 4096 + i); done.push([i, j, d]);
-    for (const [dx, dy] of DIRS8) if (!seen.has((j + dy) * 4096 + i + dx) && (!dx || !dy || (open(i + dx, j) && open(i, j + dy)))) q.push([d + (dx && dy ? Math.SQRT2 : 1), i + dx, j + dy]);
-  }
-  let i0 = si, j0 = sj, i1 = si, j1 = sj, dmax = 1;
-  for (const [i, j, d] of done) { i0 = Math.min(i0, i); j0 = Math.min(j0, j); i1 = Math.max(i1, i); j1 = Math.max(j1, j); dmax = Math.max(dmax, d); }
-  const gi = i0 - 1, gj = j0 - 1, gw = i1 - i0 + 3, gh = j1 - j0 + 3, den = new Float32Array(gw * gh), dist = new Float32Array(gw * gh), sh = new Uint8Array(gw * gh);
-  for (const [i, j, d] of done) { const k = (j - gj) * gw + i - gi; den[k] = 1 - (1 - GS_EDGE) * (d / dmax) ** 2; dist[k] = d; sh[k] = rint(168, 200); }
-  const gc = document.createElement('canvas'); gc.width = gw; gc.height = gh;
-  const R = Math.hypot(gw, gh) * GS / 2;
-  return { grid: true, gi, gj, gw, gh, den, dist, sh, gc, x: (gi + gw / 2) * GS, y: (gj + gh / 2) * GS, R, r: R, t: 0, T: o.T || 18, op: o.op !== undefined ? o.op : 1, cv: null };
+/* grid smoke (experimental: the dev panel's GRID SMOKE; grenades, dust and falling roofs all feed it): one field of
+   smoke amounts on GS px tiles (M.gsf), stepped SMK_HZ times a second (S-ticks), not every frame. Each S-tick:
+   - an emitter (where a grenade / dust landed) puts SMK_EMIT of what it has left into its tile;
+   - every tile with at least SMK_MIN bleeds about SMK_BLEED of its amount (a little random) to its 4 neighbours, a
+     quarter each; a wall keeps its share, a cracked window lets SMK_LEAK of it through. That is the whole spread, so
+     smoke flows round corners and along corridors, seeps out of broken windows, and overlapping smokes add up;
+   - random ticks (Minecraft style): a tile is picked with chance SMK_RT_P and loses SMK_RT_D, so it thins raggedly.
+   A tile's thickness is min(1, amount). Dust is the same smoke, brown (B: the brown part of a tile's amount).
+   Cost goes with the tiles holding smoke, not the number of smokes. */
+const GS = 16, SMK_HZ = 10, SMK_EMIT = 0.15, SMK_BLEED = 0.35, SMK_LEAK = 0.25, SMK_MIN = 0.5, SMK_RT_P = 0.1, SMK_RT_D = 0.035, SMK_NADE = 70, SMK_DUST = 5, SMK_K = 0.5;
+const DIRS8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+function smokeField() {
+  const W = Math.ceil(WW / GS), H = Math.ceil(WH / GS); let f = M.gsf;
+  if (!f || f.W !== W || f.H !== H) { const n = W * H; f = M.gsf = { W, H, A: new Float32Array(n), B: new Float32Array(n), dA: new Float32Array(n), dB: new Float32Array(n), S: new Uint8Array(n), on: new Uint8Array(n), act: [], em: [], acc: 0, box: [0, 0, 0, 0], dirty: 1 }; }
+  if (f.dirty) smokeSolid(f);
+  return f;
 }
-/* how thick grid smoke tile k is now (0-1, before the cloud's own fade, smokeStr) */
-function gsAt(c, k) { return c.den[k] && c.den[k] * clamp((c.t - c.dist[k] * GS_STEP) / 0.6, 0, 1); }
-/* the thickest grid smoke tile the line (x0, y0)-(x1, y1) crosses (before smokeStr): cut to the tile box, then tile by tile */
-function gridOcc(c, x0, y0, x1, y1) {
-  const X0 = c.gi * GS, Y0 = c.gj * GS, dx = x1 - x0, dy = y1 - y0; let t0 = 0, t1 = 1;
-  for (const [p, q] of [[-dx, x0 - X0], [dx, X0 + c.gw * GS - x0], [-dy, y0 - Y0], [dy, Y0 + c.gh * GS - y0]]) {
+/* the tiles smoke can't enter (1: a wall, an intact window) or only seeps into (2: a cracked window), by tile centre */
+function smokeSolid(f) {
+  f.S.fill(0); f.dirty = 0;
+  for (const b of MAP.buildings) {
+    const v = b.glass && b.sec && b.sec.hp < b.sec.mhp ? 2 : 1, i1 = Math.min(f.W, Math.ceil((b.x + b.w - GS / 2) / GS)), j1 = Math.min(f.H, Math.ceil((b.y + b.h - GS / 2) / GS));
+    for (let j = Math.max(0, Math.round(b.y / GS)); j < j1; j++) for (let i = Math.max(0, Math.round(b.x / GS)); i < i1; i++) f.S[j * f.W + i] = v;
+  }
+}
+/* an emitter: amt of smoke (brown: dust) let out into the tile at (x, y), or the nearest open one round it */
+function smokeEmit(x, y, amt, brown) {
+  const f = smokeField(); let i = clamp(Math.floor(x / GS), 0, f.W - 1), j = clamp(Math.floor(y / GS), 0, f.H - 1);
+  if (f.S[j * f.W + i] === 1) { let best = Infinity; const ci = i, cj = j; for (const [dx, dy] of DIRS8) { const a = ci + dx, b = cj + dy, d = Math.hypot((a + 0.5) * GS - x, (b + 0.5) * GS - y); if (a >= 0 && b >= 0 && a < f.W && b < f.H && f.S[b * f.W + a] !== 1 && d < best) { best = d; i = a; j = b; } } }
+  f.em.push([j * f.W + i, amt, brown ? 1 : 0]);
+}
+function updateSmokeField(dt) {
+  const f = M.gsf; if (!f || (!f.act.length && !f.em.length)) return;
+  f.acc += dt; if (f.acc < 1 / SMK_HZ) return; f.acc = Math.min(f.acc - 1 / SMK_HZ, 1 / SMK_HZ);      // one S-tick a frame at most
+  if (f.dirty) smokeSolid(f);
+  const { W, H, A, B, dA, dB, S, on, act } = f, add = k => { if (!on[k]) { on[k] = 1; act.push(k); } };
+  for (const e of f.em) { const a = Math.min(e[1], Math.max(e[1] * SMK_EMIT, 0.5)); e[1] -= a; A[e[0]] += a; if (e[2]) B[e[0]] += a; add(e[0]); }
+  if (f.em.length) f.em = f.em.filter(e => e[1] > 0.01);
+  for (let q = 0, n = act.length; q < n; q++) {
+    const k = act[q], a = A[k]; if (a < SMK_MIN) continue;
+    const out = a * SMK_BLEED * (0.7 + Math.random() * 0.6) / 4, fb = B[k] / a, i = k % W, lk = S[k] === 2;
+    for (let d = 0; d < 4; d++) {
+      const nk = d === 0 ? (i + 1 < W ? k + 1 : -1) : d === 1 ? (i > 0 ? k - 1 : -1) : d === 2 ? (k + W < W * H ? k + W : -1) : k - W;
+      if (nk < 0 || S[nk] === 1) continue;
+      const m = out * (lk || S[nk] === 2 ? SMK_LEAK : 1) * (0.75 + Math.random() * 0.5);
+      dA[nk] += m; dA[k] -= m; dB[nk] += m * fb; dB[k] -= m * fb; add(nk);
+    }
+  }
+  let w = 0, i0 = W, j0 = H, i1 = 0, j1 = 0;
+  for (let q = 0; q < act.length; q++) {
+    const k = act[q]; let a = A[k] + dA[k], b = B[k] + dB[k]; dA[k] = dB[k] = 0;
+    if (Math.random() < SMK_RT_P) { const r = Math.max(0, a - SMK_RT_D); b = a > 0 ? b * r / a : 0; a = r; }
+    if (a < 0.01) { A[k] = B[k] = 0; on[k] = 0; continue; }
+    A[k] = a; B[k] = Math.max(0, Math.min(a, b)); act[w++] = k;
+    const i = k % W, j = (k - i) / W; if (i < i0) i0 = i; if (i >= i1) i1 = i + 1; if (j < j0) j0 = j; if (j >= j1) j1 = j + 1;
+  }
+  act.length = w; f.box = [i0, j0, i1, j1];
+}
+/* how much the field's smoke takes off the sight line (x0, y0)-(x1, y1): thickness times the length crossed (in
+   tiles), times SMK_K (two thick tiles: all of it). Cut to the box of tiles holding smoke, then tile by tile */
+function fieldOcc(x0, y0, x1, y1) {
+  const f = M.gsf; if (!f || !f.act.length) return 0;
+  const X0 = f.box[0] * GS, Y0 = f.box[1] * GS, X1 = f.box[2] * GS, Y1 = f.box[3] * GS, dx = x1 - x0, dy = y1 - y0; let t0 = 0, t1 = 1;
+  for (const [p, q] of [[-dx, x0 - X0], [dx, X1 - x0], [-dy, y0 - Y0], [dy, Y1 - y0]]) {
     if (!p) { if (q < 0) return 0; continue; }
     const r = q / p; if (p < 0) { if (r > t1) return 0; if (r > t0) t0 = r; } else { if (r < t0) return 0; if (r < t1) t1 = r; }
   }
-  let i = clamp(Math.floor((x0 + dx * t0 - X0) / GS), 0, c.gw - 1), j = clamp(Math.floor((y0 + dy * t0 - Y0) / GS), 0, c.gh - 1), m = 0;
-  const si = Math.sign(dx), sj = Math.sign(dy), ddx = si ? GS / Math.abs(dx) : Infinity, ddy = sj ? GS / Math.abs(dy) : Infinity;
-  let tx = si ? (X0 + (i + (si > 0)) * GS - x0) / dx : Infinity, ty = sj ? (Y0 + (j + (sj > 0)) * GS - y0) / dy : Infinity;
-  for (;;) {
-    const v = gsAt(c, j * c.gw + i); if (v > m) m = v;
-    if (tx < ty) { if (tx > t1) break; tx += ddx; i += si; } else { if (ty > t1) break; ty += ddy; j += sj; }
-    if (i < 0 || j < 0 || i >= c.gw || j >= c.gh) break;
+  if (t1 <= t0) return 0;
+  const L = Math.hypot(dx, dy) / GS, si = Math.sign(dx), sj = Math.sign(dy), ddx = si ? GS / Math.abs(dx) : Infinity, ddy = sj ? GS / Math.abs(dy) : Infinity, A = f.A, W = f.W;
+  let i = clamp(Math.floor((x0 + dx * t0) / GS), f.box[0], f.box[2] - 1), j = clamp(Math.floor((y0 + dy * t0) / GS), f.box[1], f.box[3] - 1), t = t0, o = 0;
+  let tx = si ? ((i + (si > 0)) * GS - x0) / dx : Infinity, ty = sj ? ((j + (sj > 0)) * GS - y0) / dy : Infinity;
+  while (t < t1) {
+    const tn = Math.min(tx, ty, t1), a = A[j * W + i]; if (a) o += (a < 1 ? a : 1) * (tn - t) * L;
+    t = tn; if (tx < ty) { tx += ddx; i += si; } else { ty += ddy; j += sj; }
+    if (i < f.box[0] || j < f.box[1] || i >= f.box[2] || j >= f.box[3]) break;
   }
-  return m;
+  return Math.min(1, o * SMK_K);
 }
 /* growth eases out over SMOKE_GROW s (starts at 80 % of the old linear rate, slows to a stop) */
 const SMOKE_GROW = 4, SMOKE_RAYS = 8;
@@ -733,11 +767,12 @@ function smokeRays(c) {
 function smokeFree(c, a) { const f = ((a / TAU * SMOKE_RAYS) % SMOKE_RAYS + SMOKE_RAYS) % SMOKE_RAYS, i = f | 0, w = f - i; return c.free[i] * (1 - w) + c.free[(i + 1) % SMOKE_RAYS] * w; }
 function updateSmokes(dt) {
   for (const c of M.smokes) {
-    c.t += dt; if (c.grid) continue; const g = 1 - Math.min(1, c.t / SMOKE_GROW); c.r = c.R * (1 - g * g);
+    c.t += dt; const g = 1 - Math.min(1, c.t / SMOKE_GROW); c.r = c.R * (1 - g * g);
     if (c.t - c.rayT >= 2 || Math.hypot(c.x - c.rx, c.y - c.ry) > 12) smokeRays(c);
     const k = Math.min(1, dt * 1.5); c.x += (c.tx - c.x) * k; c.y += (c.ty - c.y) * k;
   }
-  prune(M.smokes, c => c.t < c.T || (c.cv && SMOKE_POOL.length < 64 && SMOKE_POOL.push(c.cv), false)); }
+  prune(M.smokes, c => c.t < c.T || (c.cv && SMOKE_POOL.length < 64 && SMOKE_POOL.push(c.cv), false));
+  updateSmokeField(dt); }
 /* ---------------- line of sight: one rule for bots, spotting, aim help, the HUD and the vision fog ----------------
    Hard: standing walls (MAP.sight). Soft, adding up to 100 %: smoke, in rings around each cloud's centre
    (fraction of c.r -> occlusion, outer to core), times the cloud's strength (fades in / out; dust is half), a sight line
@@ -747,13 +782,15 @@ function updateSmokes(dt) {
 const SMOKE_RINGS = [[1, 0.1], [0.83, 0.35], [0.67, 0.65], [0.5, 1]], SIGHT_NEAR = [24, 96], SIGHT_MIN = 0.5, GLASS_OCC = 0.25;
 function smokeStr(c) { return Math.max(0, Math.min(1, c.t / 0.8) * Math.min(1, (c.T - c.t) / 3.5) * c.op); }
 function ringOcc(d, r) { let o = 0; for (const [f, v] of SMOKE_RINGS) if (d <= f * r) o = v; return o; }
+/* any smoke at all (clouds or the grid field) */
+function smokeAny() { return M.smokes.length > 0 || !!(M.gsf && M.gsf.act.length); }
 function smokeOcc(x0, y0, x1, y1) {
-  if (!M.smokes.length) return 0;
+  if (!smokeAny()) return 0;
   const dx = x1 - x0, dy = y1 - y0, L2 = dx * dx + dy * dy, near = clamp((Math.sqrt(L2) - SIGHT_NEAR[0]) / (SIGHT_NEAR[1] - SIGHT_NEAR[0]), 0, 1); let o = 0;
   if (!near) return 0;
+  o = fieldOcc(x0, y0, x1, y1);
   for (const c of M.smokes) {
     const s = smokeStr(c); if (!s) continue;
-    if (c.grid) { o += s * gridOcc(c, x0, y0, x1, y1); if (o >= 1) { o = 1; break; } continue; }
     const k = L2 ? clamp(((c.x - x0) * dx + (c.y - y0) * dy) / L2, 0, 1) : 0;
     o += s * ringOcc(Math.hypot(x0 + dx * k - c.x, y0 + dy * k - c.y), c.r); if (o >= 1) { o = 1; break; }
   }
@@ -994,7 +1031,7 @@ function updateNade(p, dt) {
   p.x = clamp(p.x, 10 - SKIRT, WW + SKIRT - 10); p.y = clamp(p.y, 10 - SKIRT, WH + SKIRT - 10);
   if (p.h === 0) { p.vx *= Math.exp(-dt * 3); p.vy *= Math.exp(-dt * 3); }
   p.rot += dt * 12; p.life -= dt;
-  if (p.life <= 0) { if (p.smoke) popSmoke(p.x, p.y, DEV.gridSmoke ? { grid: true, net: true } : undefined); else explosion(p.x, p.y, 88, 150, 90, p.src, p.team, false); }
+  if (p.life <= 0) { if (p.smoke) popSmoke(p.x, p.y); else explosion(p.x, p.y, 88, 150, 90, p.src, p.team, false); }
 }
 
 /* ---------------- soldier control ---------------- */

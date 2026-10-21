@@ -221,7 +221,7 @@ function devSections() {
 /* sight walls (hard) and windows (soft, GLASS_OCC) */
 function devSight() {
   const TL = MAP.tiled, px = r => ({ x: r.x * SUB, y: r.y * SUB, w: r.w * SUB, h: r.h * SUB });
-  MAP.sight = wallRuns(TL, v => v === C_WALL).map(px);
+  MAP.sight = wallRuns(TL, v => v === C_WALL).map(px); if (M && M.gsf) M.gsf.dirty = 1;      // the grid smoke's walls too
   MAP.glass = TL.secs.filter(s => s.glass && s.alive && s.hp >= s.mhp).flatMap(s => s.bs);     // only intact windows dim sight
 }
 
@@ -452,7 +452,7 @@ function devClearVehicles() {
   M.vehicles = M.vehicles.filter(v => !v.gone); M.wrecks.length = 0; navDirty = 1;
 }
 function devResetMap() {
-  buildDevMap(); MAP.statics.forEach((s, i) => s.idx = i); paintGround(); buildNav(); M.fogMem = null; M.wrecks.length = 0; M.smokes.length = 0;
+  buildDevMap(); MAP.statics.forEach((s, i) => s.idx = i); paintGround(); buildNav(); M.fogMem = null; M.wrecks.length = 0; M.smokes.length = 0; M.gsf = null;
   for (const sp of MAP.vehSpawns) if (!M.vehicles.some(v => v.sp.type === sp.type && !v.sp.dev)) M.vehicles.push(makeVehicle(sp));
   for (const s of M.sol) if (s.alive && !s.veh && solidAt(s.x, s.y, 4)) [s.x, s.y] = freeSpot(s.x, s.y);
   devLog('MAP RESET', '#ffe08a');

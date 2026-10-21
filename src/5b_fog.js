@@ -117,9 +117,11 @@ function fogCanvases() {
 }
 /* draws the remembered world for the whole view, then clips everything after it to what's in sight (the hard layer:
    the walls). In the dev yard the roof is remembered over the ground: whole, as it stands (ROOF_C), so out of
-   sight a house is only ever its roof as you last saw it, never its walls or a fade.
+   sight a house is only ever its roof as you last saw it, never its walls or a fade. The remembered view (FOG_OUT, what
+   smoke and windows let show through in sight too) has the roofs; in sight it's the world as it is now, the dev yard's
+   roof as you see it (rv, faded round you), so smoke in a room never shows the roof.
    Returns the sight polygons (caller restores the clip), or null when vision is off. */
-function applyFog(vw, vis, x0, y0, x1, y1) {
+function applyFog(vw, vis, x0, y0, x1, y1, rv) {
   vw._fog = null;
   const eyes = fogEyes(vw); if (!eyes.length) return null;
   const box = [x0 - 16, y0 - 16, x1 + 16, y1 + 16], polys = eyes.map(([x, y]) => visPoly(x, y, box, null, MAP.tiled ? SUB / 2 : 5)), m = fogMemory(vw);   // dev yard: strips half a wall deep, so the wall you look at shows
@@ -140,6 +142,11 @@ function applyFog(vw, vis, x0, y0, x1, y1) {
   ctx.fillStyle = '#0c140a'; ctx.fillRect(vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR);
   worldT(); ctx.imageSmoothingEnabled = false; drawSkirt(x0, y0, x1, y1);
   if (bw > 0 && bh > 0) { ctx.imageSmoothingEnabled = FOGK < 1; ctx.drawImage(m.c, bx0 * FOGK, by0 * FOGK, bw * FOGK, bh * FOGK, bx0, by0, bw, bh); ctx.imageSmoothingEnabled = false; }
+  if (bw > 0 && bh > 0 && MAP.tiled && MAP.tiled.roof) {
+    ctx.save(); polyPath(ctx, polys); ctx.clip(); ctx.drawImage(ground, bx0, by0, bw, bh, bx0, by0, bw, bh); ctx.drawImage(decals, bx0, by0, bw, bh, bx0, by0, bw, bh);
+    if (rv) ctx.drawImage(rv.c, 0, 0, rv.w, rv.h, rv.x, rv.y, rv.w, rv.h);
+    ctx.restore(); worldT();
+  }
   for (const A of MAP.arcs) { if (!vis(A.x, A.y, 50)) continue; const lost = m.arc.has(A) ? m.arc.get(A) : 0, f = lost / A.bags.length; spr(f < 0.25 ? 'bagarc0' : f < 0.75 ? 'bagarc1' : 'bagarc2', A.x, A.y, A.a); }
   for (const w of M.wrecks) if (vis(w.x, w.y, 70)) drawWreck(w);      // remembered like the statics
   worldT();
@@ -148,6 +155,7 @@ function applyFog(vw, vis, x0, y0, x1, y1) {
     if (s.type === 'fence') { ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.a); ctx.fillStyle = CFG.style === 'grit' ? '#5a4632' : '#8a6a42'; ctx.fillRect(-7, -1, 14, 2.5); ctx.fillStyle = CFG.style === 'grit' ? '#3e3022' : '#5e4428'; ctx.fillRect(-2, -3, 4, 6); ctx.restore(); }
     else { ctx.fillStyle = CFG.style === 'grit' ? '#857344' : '#c8a64e'; ctx.beginPath(); ctx.arc(s.x, s.y, 13, 0, TAU); ctx.fill(); }
   }
+  drawRoofs(vis);
   for (const s of MAP.statics) if (s.type === 'tree' && vis(s.x, s.y, 40) && (m.st.has(s) ? m.st.get(s) : true)) { img(s.pine ? SPR.pines[s.v] : SPR.trees[s.v], s.x, s.y, s.a, s.sc, 0.94); worldT(); }
   ctx.setTransform(1, 0, 0, 1, 0, 0); fogLook(ctx, vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR);
   ctx = main;
@@ -180,7 +188,6 @@ function softMask(g, ex, ey, box) {
   const FAR = 5000; let any = false; g.fillStyle = '#fff'; g.globalCompositeOperation = 'lighter';
   for (const c of M.smokes) {
     const s = smokeStr(c); if (!s || c.r < 1) continue; any = true;
-    if (c.grid) { gridMask(g, c, s, ex, ey); continue; }
     const d = Math.hypot(c.x - ex, c.y - ey), a0 = Math.atan2(c.y - ey, c.x - ex); let prev = 0;
     for (const [f, v] of SMOKE_RINGS) {
       const rho = f * c.r; g.globalAlpha = s * (v - prev); prev = v; g.beginPath();
@@ -193,6 +200,7 @@ function softMask(g, ex, ey, box) {
       g.fill();
     }
   }
+  if (M.gsf && M.gsf.act.length) any = fieldMask(g, ex, ey, box) || any;
   if (any) {   // close to the eye smoke thins out: keep (d - near0) / (near1 - near0) of it
     const [n0, n1] = SIGHT_NEAR, hb = g.createRadialGradient(ex, ey, 0, ex, ey, n1); hb.addColorStop(0, 'rgba(0,0,0,1)'); hb.addColorStop(n0 / n1, 'rgba(0,0,0,1)'); hb.addColorStop(1, 'rgba(0,0,0,0)');
     g.globalCompositeOperation = 'destination-out'; g.globalAlpha = 1; g.fillStyle = hb; g.beginPath(); g.arc(ex, ey, n1, 0, TAU); g.fill();
@@ -209,17 +217,21 @@ function softMask(g, ex, ey, box) {
   g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
   return any;
 }
-/* grid smoke on the mask: each mask pixel gets exactly gridOcc of the sight line to it (added, like the clouds) */
-const GS_MASK = document.createElement('canvas');
-function gridMask(g, c, s, ex, ey) {
-  const W = g.canvas.width, H = g.canvas.height, T = g.getTransform(), k = T.a;
-  if (GS_MASK.width !== W || GS_MASK.height !== H) { GS_MASK.width = W; GS_MASK.height = H; GS_MASK.im = null; }
-  const mg = GS_MASK.getContext('2d'), im = GS_MASK.im || (GS_MASK.im = mg.createImageData(W, H)), d = im.data; d.fill(0);
-  for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) {
-    const v = gridOcc(c, ex, ey, (px + 0.5 - T.e) / k, (py + 0.5 - T.f) / k); if (!v) continue;
-    const o = (py * W + px) * 4; d[o] = d[o + 1] = d[o + 2] = 255; d[o + 3] = v * s * 255;
+/* the grid smoke field on the mask: each tile of the box gets fieldOcc of the sight line to its centre, drawn a tile a
+   pixel and smoothed (added, like the clouds). Lines that miss the smoke's tiles cost next to nothing */
+const SMK_M = document.createElement('canvas');
+function fieldMask(g, ex, ey, box) {
+  const i0 = Math.floor(box[0] / GS), j0 = Math.floor(box[1] / GS), w = Math.ceil(box[2] / GS) - i0 + 1, h = Math.ceil(box[3] / GS) - j0 + 1;
+  if (SMK_M.width < w || SMK_M.height < h) { SMK_M.width = Math.max(w, SMK_M.width); SMK_M.height = Math.max(h, SMK_M.height); SMK_M.im = null; }
+  const mg = SMK_M.getContext('2d'), im = SMK_M.im || (SMK_M.im = mg.createImageData(SMK_M.width, SMK_M.height)), d = im.data, Wm = SMK_M.width; let any = false;
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+    const v = fieldOcc(ex, ey, (i0 + i + 0.5) * GS, (j0 + j + 0.5) * GS), o = (j * Wm + i) * 4;
+    d[o] = d[o + 1] = d[o + 2] = 255; d[o + 3] = v * 255; if (v) any = true;
   }
-  mg.putImageData(im, 0, 0); g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.drawImage(GS_MASK, 0, 0); g.restore();
+  if (!any) return false;
+  mg.putImageData(im, 0, 0, 0, 0, w, h);
+  const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = true; g.globalAlpha = 1; g.drawImage(SMK_M, 0, 0, w, h, i0 * GS, j0 * GS, w * GS, h * GS); g.imageSmoothingEnabled = sm;
+  return true;
 }
 /* the soft layers in the vision fog: the remembered view shows through the mask (smoke + windows) inside your sight.
    The hard layer (walls) is the clip around it, so the three never fight: out of sight is 100 % remembered,
@@ -227,7 +239,7 @@ function gridMask(g, c, s, ex, ey) {
    The mask is low-res (1/FOG_MS); upscaling it softens the edges. Its pixels sit on a grid fixed to the world (the
    leftover fraction is a shift when it's drawn), so moving doesn't make its edges swim. */
 function drawSoftFog(vw) {
-  const F = vw._fog; if (!F || (!M.smokes.length && !MAP.glass.length)) return;
+  const F = vw._fog; if (!F || (!smokeAny() && !MAP.glass.length)) return;
   const k = VZ * DPR / FOG_MS, ox = VOX * DPR / FOG_MS, oy = VOY * DPR / FOG_MS, mx = Math.floor(ox) + 1, my = Math.floor(oy) + 1;
   const prep = c => { const g = c.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, c.width, c.height); g.setTransform(k, 0, 0, k, mx, my); return g; };
   const mg = prep(FOG_MASK); if (!softMask(mg, F.eyes[0][0], F.eyes[0][1], F.box)) return;
