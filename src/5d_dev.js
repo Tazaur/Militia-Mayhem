@@ -385,8 +385,8 @@ function devRams(v) {
     if (!sec.glass) { sfx('crush', x, y); sparks(x, y, 3); }
   }
 }
-/* collapse dust: a smoke grenade's cloud, brown in a random shade, half opacity, 10 s */
-function devDust(x, y) { popSmoke(x, y, { tint: 'brown', shade: rint(0, 3), op: 0.5, T: 10, quiet: true }); }
+/* collapse dust: a smoke grenade's cloud, brown in a random shade, half opacity, 6-15 s */
+function devDust(x, y) { popSmoke(x, y, { tint: 'brown', shade: rint(0, 3), op: 0.5, T: rnd(6, 15), quiet: true }); }
 function devCollapse(sec) {
   const TL = MAP.tiled; sec.alive = false; sec.hp = 0;
   const bi = MAP.buildings.indexOf(sec.b); if (bi >= 0) MAP.buildings.splice(bi, 1);

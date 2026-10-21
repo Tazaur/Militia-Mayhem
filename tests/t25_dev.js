@@ -88,7 +88,7 @@ setImmediate(()=>{
     let wd=0; for(let j=sec.cy;j<sec.cy+sec.ch;j++)for(let i=sec.cx;i<sec.cx+sec.cw;i++) if((i+j)%2===0) wd++;
     const dusty=wd+ks.filter(k=>k%sc%2===0&&((k/sc)|0)%2===0).length, nc=M.smokes.slice(sm0);
     ok(nc.length>=dusty*0.9&&nc.length<=dusty&&nc.length<ks.length*0.5,'dust: wall checkerboard + roof even/even '+nc.length+'/'+dusty+' of '+ks.length);
-    ok(nc.every(c=>c.tint==='brown'&&c.op===0.5&&c.T===10),'brown, half opacity, 10 s'); ok(new Set(nc.map(c=>c.shade)).size>1,'dust shades vary');
+    ok(nc.every(c=>c.tint==='brown'&&c.op===0.5&&c.T>=6&&c.T<=15)&&new Set(nc.map(c=>c.T)).size>1,'brown, half opacity, 6-15 s'); ok(new Set(nc.map(c=>c.shade)).size>1,'dust shades vary');
     ok(ks.every(k=>T2.roof[k]===2),'its roof fell'); let left=0; for(let k=0;k<N;k++) if(T2.roof[k]===1) left++; ok(left===other,'the rest stays up');
     ok(!dd.alive||dd.hp<=dd.mhp*0.5+0.01,'roof hurts at least half: '+(dd.alive?dd.hp:'dead'));
     ok(/ROOF \d+ TILES DOWN/.test(G.DEV.log.map(l=>l.text).join('|')),'roof fall logged');
