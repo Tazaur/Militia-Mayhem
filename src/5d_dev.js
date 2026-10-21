@@ -213,17 +213,17 @@ function devSections() {
   }
   devSight();
 }
-/* sight walls for the fog (glass is see-through) and the same with the windows in (for the roof: "seen directly") */
+/* sight walls (hard) and windows (soft, GLASS_OCC) */
 function devSight() {
   const TL = MAP.tiled, px = r => ({ x: r.x * SUB, y: r.y * SUB, w: r.w * SUB, h: r.h * SUB });
-  MAP.sight = wallRuns(TL, v => v === C_WALL).map(px); MAP.sightD = wallRuns(TL, v => v === C_WALL || v === C_WIN).map(px);
+  MAP.sight = wallRuns(TL, v => v === C_WALL).map(px); MAP.glass = wallRuns(TL, v => v === C_WIN).map(px);
 }
 
 /* ---------------- roofs ---------------- */
 /* every floor cell in a house gets a roof tile, held up by one wall section: a shortest-path flood out from all the
    wall cells at once, with a random cost per cell. Each section's patch is joined to that section through its own
    tiles, so nothing is left floating when a neighbouring patch falls, and the borders between patches are ragged. */
-const ROOF_C = document.createElement('canvas'), ROOF_G = document.createElement('canvas'), ROOF_TMP = document.createElement('canvas');
+const ROOF_C = document.createElement('canvas'), ROOF_V = document.createElement('canvas');
 function devRoof() {
   const TL = MAP.tiled, { sc, sr } = TL, N = sc * sr, R = mulberry(DEV.seed * 31 + 7);
   TL.roof = new Uint8Array(N); TL.rsec = new Int16Array(N).fill(-1); TL.rdist = new Uint8Array(N);    // rdist: tiles from the holding wall
@@ -245,23 +245,21 @@ function devRoof() {
 }
 function paintRoof() {
   const TL = MAP.tiled; if (!TL.roof) return;
-  ROOF_C.width = ROOF_G.width = WW; ROOF_C.height = ROOF_G.height = WH;
+  ROOF_C.width = WW; ROOF_C.height = WH;
   for (let j = 0; j < TL.sr; j++) for (let i = 0; i < TL.sc; i++) if (TL.roof[j * TL.sc + i] === 1) paintRoofCell(i, j);
 }
 /* shingles, a dark edge wherever the roof stops */
-/* (ROOF_G: the same in the out-of-sight look, fogLook) */
 function paintRoofCell(i, j) {
   const TL = MAP.tiled, k = j * TL.sc + i, x = i * SUB, y = j * SUB;
   const t = ((Math.imul(i, 2654435761) ^ Math.imul(j, 40503)) >>> 0) % 7 - 3;
   const open = (a, b) => { if (a < 0 || b < 0 || a >= TL.sc || b >= TL.sr) return true; return TL.roof[b * TL.sc + a] !== 1; };
-  const g = ROOF_C.getContext('2d'), gg = ROOF_G.getContext('2d'); g.clearRect(x, y, SUB, SUB); gg.clearRect(x, y, SUB, SUB); if (TL.roof[k] !== 1) return;
+  const g = ROOF_C.getContext('2d'); g.clearRect(x, y, SUB, SUB); if (TL.roof[k] !== 1) return;
   g.fillStyle = `rgb(${112 + t * 3},${72 + t * 2},${56 + t * 2})`; g.fillRect(x, y, SUB, SUB);
   g.fillStyle = 'rgba(40,22,16,0.45)';
   for (let r = 0; r < 4; r++) { g.fillRect(x, y + r * 4 + 3, SUB, 1); for (let sx = (r % 2) * 4; sx < SUB; sx += 8) g.fillRect(x + sx, y + r * 4, 1, 3); }
   g.fillStyle = '#2a1a12';
   if (open(i, j - 1)) g.fillRect(x, y, SUB, 2); if (open(i + 1, j)) g.fillRect(x + SUB - 2, y, 2, SUB);
   if (open(i, j + 1)) g.fillRect(x, y + SUB - 2, SUB, 2); if (open(i - 1, j)) g.fillRect(x, y, 2, SUB);
-  gg.drawImage(ROOF_C, x, y, SUB, SUB, x, y, SUB, SUB); fogLook(gg, x, y, SUB, SUB);
 }
 function repaintRoofAround(cells) {
   const TL = MAP.tiled, done = new Set();
@@ -287,32 +285,24 @@ function devRoofTile(k, ev) {
   for (const s of M.sol) if (s.alive && !s.veh && !ev.hit.has(s) && under(s.x, s.y)) { ev.hit.add(s); hurtSoldier(s, s.mhp * rnd(0.5, 0.75), null, 'roof', 0, 0, 'ROOF'); }
   for (const v of M.vehicles) if (v.active && !v.dead && !ev.hit.has(v) && vehCircles(v, _vc).some(([x, y]) => under(x, y))) { ev.hit.add(v); hurtVehicle(v, v.type === 'tank' ? 40 : 120, null); }
 }
-/* the roof over the whole house, walls included (drawn above units and walls). Out of sight: solid, greyed like the rest of
-   the fog. In sight it fades by distance from the eye: gone within ROOF_NEAR, ROOF_CAP at ROOF_FAR and beyond; seen through glass it keeps ROOF_GLASS more */
-const ROOF_NEAR = 100, ROOF_FAR = 200, ROOF_CAP = 0.7, ROOF_GLASS = 0.15, roofOp = d => d <= ROOF_NEAR ? 0 : ROOF_CAP * Math.min(1, (d - ROOF_NEAR) / (ROOF_FAR - ROOF_NEAR));
-function devDrawRoof(vw, x0, y0, x1, y1, fogPolys) {
-  const TL = MAP.tiled; if (!TL || !TL.roof) return;
-  if (ROOF_TMP.width !== cv.width || ROOF_TMP.height !== cv.height) { ROOF_TMP.width = cv.width; ROOF_TMP.height = cv.height; }
-  const eyes = viewSols(vw).map(posOf).map(o => [o.x, o.y]);
-  const R = Math.hypot(x1 - x0, y1 - y0) / 2 + 80, pw = eyes.map(([x, y]) => visPoly(x, y, R, null, SUB)), pd = eyes.map(([x, y]) => visPoly(x, y, R, MAP.sightD, SUB));   // a cell past the wall face, so the wall you look at shows
-  const bx0 = Math.max(0, Math.floor(x0)), by0 = Math.max(0, Math.floor(y0)), bw = Math.min(WW, Math.ceil(x1)) - bx0, bh = Math.min(WH, Math.ceil(y1)) - by0; if (bw <= 0 || bh <= 0) return;
-  const g = ROOF_TMP.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR);
-  g.setTransform(VZ * DPR, 0, 0, VZ * DPR, VOX * DPR, VOY * DPR); g.imageSmoothingEnabled = false;
-  const m = fogPolys && fogMemory(vw);       // out of sight: the roof as you last saw it (grey), like the ground under it
-  if (m && m.rc) g.drawImage(m.rc, bx0 * FOGK, by0 * FOGK, bw * FOGK, bh * FOGK, bx0, by0, bw, bh); else g.drawImage(ROOF_C, bx0, by0, bw, bh, bx0, by0, bw, bh);
-  if (fogPolys && pw.length) { g.save(); polyPath(g, pw); g.clip(); g.clearRect(bx0, by0, bw, bh); g.drawImage(ROOF_C, bx0, by0, bw, bh, bx0, by0, bw, bh); g.restore(); }   // in sight: in colour
-  g.globalCompositeOperation = 'destination-out';
-  // per eye: through glass the roof keeps roofOp(d) + ROOF_GLASS; seen directly, a second pass takes it down to roofOp(d)
-  eyes.forEach(([ex, ey], n) => {
-    for (const [P, keep] of [[pw[n], d => Math.min(1, roofOp(d) + ROOF_GLASS)], [pd[n], d => roofOp(d) / Math.min(1, roofOp(d) + ROOF_GLASS)]]) {
-      const gr = g.createRadialGradient(ex, ey, 0, ex, ey, ROOF_FAR);
-      for (let d = 0; d <= ROOF_FAR; d += 10) gr.addColorStop(d / ROOF_FAR, `rgba(0,0,0,${(1 - keep(d)).toFixed(3)})`);
-      g.fillStyle = gr; polyPath(g, [P]); g.fill();
-    }
+/* the roof over the whole house, walls included, as the eyes of this view see it: gone within ROOF_NEAR, fading in to
+   ROOF_CAP at ROOF_FAR and beyond. A world-space region (rv.x, rv.y, rv.w, rv.h) drawn in sight above units and walls,
+   and remembered with the ground under it, so out of sight you see the roof as you last saw it (applyFog) */
+const ROOF_NEAR = 100, ROOF_FAR = 200, ROOF_CAP = 0.7, roofOp = d => d <= ROOF_NEAR ? 0 : ROOF_CAP * Math.min(1, (d - ROOF_NEAR) / (ROOF_FAR - ROOF_NEAR));
+function roofView(vw, x0, y0, x1, y1) {
+  const TL = MAP.tiled; if (!TL || !TL.roof) return null;
+  const x = Math.max(0, Math.floor(x0)), y = Math.max(0, Math.floor(y0)), w = Math.min(WW, Math.ceil(x1)) - x, h = Math.min(WH, Math.ceil(y1)) - y; if (w <= 0 || h <= 0) return null;
+  if (ROOF_V.width < w || ROOF_V.height < h) { ROOF_V.width = Math.max(ROOF_V.width, w); ROOF_V.height = Math.max(ROOF_V.height, h); }
+  const g = ROOF_V.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, w, h); g.drawImage(ROOF_C, x, y, w, h, 0, 0, w, h);
+  g.globalCompositeOperation = 'destination-out'; g.setTransform(1, 0, 0, 1, -x, -y);
+  // the first eye fades the whole roof to its keep; any other eye only takes its own circle down further (keep / ROOF_CAP)
+  viewSols(vw).map(posOf).forEach((o, n) => {
+    const gr = g.createRadialGradient(o.x, o.y, 0, o.x, o.y, ROOF_FAR);
+    for (let d = 0; d <= ROOF_FAR; d += 10) gr.addColorStop(d / ROOF_FAR, `rgba(0,0,0,${(1 - roofOp(d) / (n ? ROOF_CAP : 1)).toFixed(3)})`);
+    g.fillStyle = gr; if (n) { g.beginPath(); g.arc(o.x, o.y, ROOF_FAR, 0, TAU); g.fill(); } else g.fillRect(x, y, w, h);
   });
   g.globalCompositeOperation = 'source-over';
-  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(ROOF_TMP, vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR, vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR); ctx.restore();
-  vw._roof = { pw, pd };
+  return { c: ROOF_V, x, y, w, h };
 }
 
 /* ---------------- painting ---------------- */

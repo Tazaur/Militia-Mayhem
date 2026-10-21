@@ -692,11 +692,12 @@ function updateSmokes(dt) {
   }
   prune(M.smokes, c => c.t < c.T || (c.cv && SMOKE_POOL.length < 64 && SMOKE_POOL.push(c.cv), false)); }
 /* ---------------- line of sight: one rule for bots, spotting, aim help, the HUD and the vision fog ----------------
-   Hard: standing walls (MAP.sight; glass is see-through) and wrecks. Soft: smoke, in rings around each cloud's centre
-   (fraction of c.r -> occlusion, outer to core), times the cloud's strength (fades in / out; dust is half). A sight line
-   takes the deepest ring it passes through; clouds add up to 100 %; close to the eye smoke thins out (SIGHT_NEAR px).
-   drawSmokeFog paints exactly these rings, so what you see is what the bots get. */
-const SMOKE_RINGS = [[1, 0.1], [0.83, 0.35], [0.67, 0.65], [0.5, 1]], SIGHT_NEAR = [10, 60], SIGHT_MIN = 0.5;
+   Hard: standing walls (MAP.sight) and wrecks. Soft, adding up to 100 %: smoke, in rings around each cloud's centre
+   (fraction of c.r -> occlusion, outer to core), times the cloud's strength (fades in / out; dust is half), a sight line
+   taking the deepest ring it passes through, thinned close to the eye (SIGHT_NEAR px); and windows (MAP.glass),
+   GLASS_OCC each one the line crosses, looking in or out. softMask paints exactly these, so what you see is what the
+   bots get. */
+const SMOKE_RINGS = [[1, 0.1], [0.83, 0.35], [0.67, 0.65], [0.5, 1]], SIGHT_NEAR = [24, 96], SIGHT_MIN = 0.5, GLASS_OCC = 0.25;
 function smokeStr(c) { return Math.max(0, Math.min(1, c.t / 0.8) * Math.min(1, (c.T - c.t) / 3.5) * c.op); }
 function ringOcc(d, r) { let o = 0; for (const [f, v] of SMOKE_RINGS) if (d <= f * r) o = v; return o; }
 function smokeOcc(x0, y0, x1, y1) {
@@ -710,13 +711,15 @@ function smokeOcc(x0, y0, x1, y1) {
   }
   return o * near;
 }
+function glassOcc(x0, y0, x1, y1) { let o = 0; for (const b of MAP.glass) if (segRect(x0, y0, x1, y1, b, 0) >= 0) o += GLASS_OCC; return Math.min(1, o); }
+function softOcc(x0, y0, x1, y1) { return Math.min(1, smokeOcc(x0, y0, x1, y1) + glassOcc(x0, y0, x1, y1)); }
 function sightBlocked(x0, y0, x1, y1) {
   for (const b of MAP.sight) if (segRect(x0, y0, x1, y1, b, 0) >= 0) return true;
   for (const w of M.wrecks) if (segWreck(x0, y0, x1, y1, w) >= 0) return true;
   return false;
 }
-/* (x1, y1) is seen from (x0, y0): no wall or wreck between, and smoke leaves at least SIGHT_MIN */
-function sees(x0, y0, x1, y1) { return 1 - smokeOcc(x0, y0, x1, y1) >= SIGHT_MIN && !sightBlocked(x0, y0, x1, y1); }
+/* (x1, y1) is seen from (x0, y0): no wall or wreck between, and the soft layers leave at least SIGHT_MIN */
+function sees(x0, y0, x1, y1) { return 1 - softOcc(x0, y0, x1, y1) >= SIGHT_MIN && !sightBlocked(x0, y0, x1, y1); }
 /* the cannon barrel, turret pivot to muzzle (where shells leave) */
 const BARREL = 96;
 function turretPivot(v) { return [v.x - 4 * Math.cos(v.a), v.y - 4 * Math.sin(v.a)]; }

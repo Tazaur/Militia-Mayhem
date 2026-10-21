@@ -10,7 +10,7 @@ function drawWorld(vw) {
   screenT(); ctx.save(); ctx.beginPath(); ctx.rect(vw.x, vw.y, vw.w, vw.h); ctx.clip();
   ctx.fillStyle = '#0c140a'; ctx.fillRect(vw.x, vw.y, vw.w, vw.h);
   worldT(); ctx.imageSmoothingEnabled = false;
-  const fogPolys = applyFog(vw, vis, x0, y0, x1, y1), fogged = !!fogPolys;
+  const rv = MAP.tiled ? roofView(vw, x0, y0, x1, y1) : null, fogPolys = applyFog(vw, vis, x0, y0, x1, y1, rv), fogged = !!fogPolys;
   // ---- layer 0: ground + fading footprints
   drawSkirt(x0, y0, x1, y1);
   const gx0 = Math.max(0, Math.floor(x0)), gy0 = Math.max(0, Math.floor(y0)), gx1 = Math.min(WW, Math.ceil(x1)), gy1 = Math.min(WH, Math.ceil(y1));
@@ -101,17 +101,17 @@ function drawWorld(vw) {
   drawKillerGlow(vw);
   drawParticles(vis, 'low');
   // ---- layer 4: building shadows fall across units, then roofs on top
-  if (fogged) { drawSmokeFog(vw); ctx.restore(); }
+  if (rv) { worldT(); ctx.imageSmoothingEnabled = false; ctx.drawImage(rv.c, 0, 0, rv.w, rv.h, rv.x, rv.y, rv.w, rv.h); }     // dev yard roofs, in sight (out of sight they're in the memory)
+  if (fogged) { drawSoftFog(vw); ctx.restore(); }
   worldT();
   for (const b of MAP.buildings) if (b.roofC && vis(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h))) ctx.drawImage(b.roofC, b.x, b.y);
-  if (MAP.tiled) { devDrawRoof(vw, x0, y0, x1, y1, fogPolys); worldT(); }
   ctx.fillStyle = CFG.style === 'grit' ? 'rgba(0,0,0,0.38)' : 'rgba(0,0,0,0.32)';
   if (!MAP.tiled) for (const b of MAP.buildings) { if (!vis(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h))) continue; ctx.beginPath(); ctx.moveTo(b.x + b.w, b.y); ctx.lineTo(b.x + b.w + 14, b.y + 14); ctx.lineTo(b.x + b.w + 14, b.y + b.h + 14); ctx.lineTo(b.x + 14, b.y + b.h + 14); ctx.lineTo(b.x, b.y + b.h); ctx.lineTo(b.x + b.w, b.y + b.h); ctx.closePath(); ctx.fill(); }
   if (fogged) { ctx.save(); worldT(); polyPath(ctx, fogPolys); ctx.clip(); }
   // ---- layer 5: smoke and fire rise above roofs, tree canopies above everything
   drawParticles(vis, 'high');
   for (const s of MAP.statics) if (s.alive && s.type === 'tree' && vis(s.x, s.y, 40)) { const tc = s.pine ? SPR.pines[s.v] : SPR.trees[s.v]; worldT(); ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.beginPath(); ctx.arc(s.x + 6, s.y + 7, 24 * s.sc, 0, TAU); ctx.fill(); img(tc, s.x, s.y, s.a, s.sc, 0.94); }
-  drawSmokes(vis);
+  drawSmokes(vis, vw);
   drawLasers(vis);
   // tags, reticles
   worldT(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -168,13 +168,28 @@ function smokeCache(c) {
   }
   c.cvT = M.time;
 }
-function drawSmokes(vis) {
-  worldT();
+/* the clouds; around this view's eyes they thin out (SIGHT_NEAR, as the sight rules do) down to SMOKE_KEEP, so you can
+   see your feet in smoke */
+const SMOKE_HOLE = document.createElement('canvas'), SMOKE_KEEP = 0.25;
+function drawSmokes(vis, vw) {
+  worldT(); let eyes = null; const n1 = SIGHT_NEAR[1];
   for (const c of M.smokes) {
     if (c.r < 1 || !vis(c.x, c.y, c.R + 60)) continue;
     if (M.time - c.cvT > (c.t < SMOKE_GROW ? 0.1 : 0.3) || M.time < c.cvT) smokeCache(c);     // faster while it grows (puffs meet walls)
-    const e = c.r * SMOKE_EXT;
-    ctx.globalAlpha = Math.min(1, c.t / 0.5) * Math.min(1, (c.T - c.t) / 3.5) * c.op; ctx.drawImage(c.cv, c.x - e, c.y - e, e * 2, e * 2);
+    const e = c.r * SMOKE_EXT; let img = c.cv;
+    eyes = eyes || (vw ? viewSols(vw).map(posOf) : []);
+    const near = eyes.filter(o => Math.abs(o.x - c.x) < e + n1 && Math.abs(o.y - c.y) < e + n1);
+    if (near.length) {
+      const W = c.cv.width, k = W / (e * 2), g = SMOKE_HOLE.getContext('2d'); if (SMOKE_HOLE.width !== W) SMOKE_HOLE.width = SMOKE_HOLE.height = W;
+      g.globalCompositeOperation = 'copy'; g.drawImage(c.cv, 0, 0); g.globalCompositeOperation = 'destination-out';
+      for (const o of near) {
+        const x = (o.x - c.x + e) * k, y = (o.y - c.y + e) * k, gr = g.createRadialGradient(x, y, 0, x, y, n1 * k);
+        gr.addColorStop(0, `rgba(0,0,0,${1 - SMOKE_KEEP})`); gr.addColorStop(SIGHT_NEAR[0] / n1, `rgba(0,0,0,${1 - SMOKE_KEEP})`); gr.addColorStop(1, 'rgba(0,0,0,0)');
+        g.fillStyle = gr; g.fillRect(x - n1 * k, y - n1 * k, n1 * k * 2, n1 * k * 2);
+      }
+      g.globalCompositeOperation = 'source-over'; img = SMOKE_HOLE;
+    }
+    ctx.globalAlpha = Math.min(1, c.t / 0.5) * Math.min(1, (c.T - c.t) / 3.5) * c.op; ctx.drawImage(img, c.x - e, c.y - e, e * 2, e * 2);
   }
   ctx.globalAlpha = 1;
 }
@@ -193,11 +208,11 @@ function viewEyes(vw) {
   if (!M || M.demo) return [];
   return viewSols(vw).map(s => ({ x: posOf(s).x, y: posOf(s).y, team: s.team, s }));
 }
-/* an enemy in smoke: with vision on, the smoke mask already fades him (only skip him once he's gone); with it off, hidden
-   once the smoke takes him under SIGHT_MIN */
+/* an enemy in smoke / behind glass: with vision on, the soft mask already fades him (only skip him once he's gone); with it
+   off, hidden once it takes him under SIGHT_MIN */
 function smokeHides(eyes, o, vw) {
-  if (!eyes.length || !M.smokes.length || eyes.some(e => e.s === o || (!M.ffa && e.team === o.team))) return false;
-  let k = 0; for (const e of eyes) k = Math.max(k, 1 - smokeOcc(e.x, e.y, o.x, o.y));
+  if (!eyes.length || (!M.smokes.length && !MAP.glass.length) || eyes.some(e => e.s === o || (!M.ffa && e.team === o.team))) return false;
+  let k = 0; for (const e of eyes) k = Math.max(k, 1 - softOcc(e.x, e.y, o.x, o.y));
   return vw._fog ? k < 0.02 : k < SIGHT_MIN;
 }
 /* recon lasers: visible to everyone, brighter when aiming down sights; they stop at the first wall, tree, hay bale, vehicle or soldier */

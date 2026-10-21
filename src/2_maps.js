@@ -172,7 +172,7 @@ function buildMap(id) {
     if (!bad && !m.ffaSpawns.some(p => Math.hypot(p.x - x, p.y - y) < 300)) m.ffaSpawns.push({ x, y });
   }
   m.fwd = [{ x: m.flags[0].x - 60, y: m.flags[0].y }, { x: m.flags[2].x + 60, y: m.flags[2].y }];
-  m.sight = m.buildings.filter(b => !b.glass);      // what blocks sight (the dev yard keeps its own, as wall runs)
+  m.sight = m.buildings.filter(b => !b.glass); m.glass = m.buildings.filter(b => b.glass);     // what blocks sight / dims it (the dev yard keeps its own, as wall runs)
   buildHash();
 }
 /* static circle spatial hash */

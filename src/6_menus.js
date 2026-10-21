@@ -459,7 +459,7 @@ function setLabel(k) {
 }
 function setChange(k, d) {
   if (k === 'style') { CFG.style = CFG.style === 'classic' ? 'grit' : 'classic'; applyStyleAssets(); if (M) { if (M.demo) demoMatch(); else paintGround(); } }
-  if (k === 'fogLook') { CFG.fogLook = FOG_LOOKS[(FOG_LOOKS.indexOf(CFG.fogLook) + (d || 1) + 3) % 3]; if (MAP.tiled && MAP.tiled.roof) { paintRoof(); if (M) M.fogMem = null; } }   // the dev yard bakes its out-of-sight roofs in the look
+  if (k === 'fogLook') CFG.fogLook = FOG_LOOKS[(FOG_LOOKS.indexOf(CFG.fogLook) + (d || 1) + 3) % 3];
   if (k === 'teams') CFG.teamColors = CFG.teamColors === 'classic' ? 'player' : 'classic';
   if (k === 'camera') { CFG.camera = CFG.camera === 'split' ? 'shared' : 'split'; if (inMatch()) { M.cfg.camera = CFG.camera; layoutViews(); } }
   if (k === 'sound') { CFG.sound = CFG.sound === 'classic' ? 'exp' : 'classic'; engineKillAll(); }

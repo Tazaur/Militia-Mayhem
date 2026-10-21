@@ -92,12 +92,12 @@ setImmediate(()=>{
     ok(ks.every(k=>T2.roof[k]===2),'its roof fell'); let left=0; for(let k=0;k<N;k++) if(T2.roof[k]===1) left++; ok(left===other,'the rest stays up');
     ok(!dd.alive||dd.hp<=dd.mhp*0.5+0.01,'roof hurts at least half: '+(dd.alive?dd.hp:'dead'));
     ok(/ROOF \d+ TILES DOWN/.test(G.DEV.log.map(l=>l.text).join('|')),'roof fall logged');
-    // sight through a window counts for the see-through roof, but the direct sight walls block it
+    // a window doesn't cut sight (hard), it dims it (soft): GLASS_OCC through it, from either side
     const w=T2.secs.find(s=>s.glass&&s.alive), b=w.b, hz=b.w>b.h, cx=b.x+b.w/2, cy=b.y+b.h/2;
     const pa=hz?[cx,cy-60]:[cx-60,cy], pb=hz?[cx,cy+60]:[cx+60,cy];
-    const PW=G.visPoly(pa[0],pa[1],400), PD=G.visPoly(pa[0],pa[1],400,G.MAP.sightD);
-    ok(G.inPoly(pb[0],pb[1],PW)!==G.inPoly(pb[0],pb[1],PD)||!G.inPoly(pb[0],pb[1],PW),'window: seen through glass, not directly');
-    ok(G.inPoly(pb[0],pb[1],PW)&&!G.inPoly(pb[0],pb[1],PD),'window splits the two sights');
+    const PW=G.visPoly(pa[0],pa[1],[pa[0]-400,pa[1]-400,pa[0]+400,pa[1]+400]);
+    ok(G.inPoly(pb[0],pb[1],PW),'window: seen through glass');
+    ok(Math.abs(G.glassOcc(pa[0],pa[1],pb[0],pb[1])-G.GLASS_OCC)<1e-9&&Math.abs(G.glassOcc(pb[0],pb[1],pa[0],pa[1])-G.GLASS_OCC)<1e-9&&G.sees(pa[0],pa[1],pb[0],pb[1]),'window: a faint soft layer, both ways');
     G.devResetMap(); step(120); }
   // ---- junctions are their own, stronger sections
   { const T2=G.MAP.tiled, J=T2.secs.filter(s=>s.junc), S=T2.secs.filter(s=>!s.junc&&!s.glass);
