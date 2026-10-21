@@ -276,14 +276,12 @@ function devRoofFall(sec) {
   if (n) devLog(`ROOF ${n} TILES DOWN`, '#ffb060');
   return n;
 }
-/* one roof tile lands: a brown half-strength 10 s smoke cloud (on a sparse pattern), debris, a shake nearby, and whoever is under it is hurt (once per fall) */
+/* one roof tile lands: collapse dust (even row + even column only), debris, a shake nearby, and whoever is under it is hurt (once per fall) */
 function devRoofTile(k, ev) {
   const TL = MAP.tiled; if (TL.roof[k] !== 1) return; TL.roof[k] = 2;
   const i = k % TL.sc, j = (k / TL.sc) | 0, cx = (i + 0.5) * SUB, cy = (j + 0.5) * SUB;
   paintCell(i, j); repaintRoofAround([k]);
-  // dust: floor tiles on even row + even column, tiles over walls in a checkerboard
-  const wallish = TL.cell[k] === C_RUB || TL.cell[k] === C_WALL;
-  if (wallish ? (i + j) % 2 === 0 : i % 2 === 0 && j % 2 === 0) popSmoke(cx, cy, { tint: 'brown', shade: rint(0, 3), op: 0.5, T: 10, quiet: true });
+  if (i % 2 === 0 && j % 2 === 0) devDust(cx, cy);          // dust from roof tiles on an even row and even column
   { const a = rnd(0, TAU), sp = rnd(30, 120); part({ k: 'debris', x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rnd(0.4, 0.9), max: 0.9, sz: rnd(2, 4), rot: rnd(0, TAU), vr: rnd(-12, 12), drag: 3 }); }
   shakeAt(cx, cy, 2.5, 420); sfx('crush', cx, cy, 0.6);
   const under = (x, y) => ((y / SUB) | 0) * TL.sc + ((x / SUB) | 0) === k;
@@ -387,12 +385,15 @@ function devRams(v) {
     if (!sec.glass) { sfx('crush', x, y); sparks(x, y, 3); }
   }
 }
+/* collapse dust: a smoke grenade's cloud, brown in a random shade, half opacity, 10 s */
+function devDust(x, y) { popSmoke(x, y, { tint: 'brown', shade: rint(0, 3), op: 0.5, T: 10, quiet: true }); }
 function devCollapse(sec) {
   const TL = MAP.tiled; sec.alive = false; sec.hp = 0;
   const bi = MAP.buildings.indexOf(sec.b); if (bi >= 0) MAP.buildings.splice(bi, 1);
   for (let j = sec.cy; j < sec.cy + sec.ch; j++) for (let i = sec.cx; i < sec.cx + sec.cw; i++) {
     TL.cell[j * TL.sc + i] = C_RUB;
     const cx = (i + 0.5) * SUB, cy = (j + 0.5) * SUB;
+    if (!sec.glass && (i + j) % 2 === 0) devDust(cx, cy);    // dust from wall cells on a checkerboard
     if (!sec.glass) for (let q = 0; q < 3; q++) part({ k: 'dust', x: cx + rnd(-6, 6), y: cy + rnd(-6, 6), vx: rnd(-40, 40), vy: rnd(-40, 40), life: rnd(1.4, 2.4), max: 2.4, sz: rnd(14, 26), drag: 1.2 });
     for (let q = 0; q < (sec.glass ? 3 : 5); q++) { const a = rnd(0, TAU), sp = rnd(40, 190); part({ k: 'debris', x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rnd(0.4, 1), max: 1, sz: rnd(2, sec.glass ? 3 : 5), rot: rnd(0, TAU), vr: rnd(-12, 12), drag: 3 }); }
   }

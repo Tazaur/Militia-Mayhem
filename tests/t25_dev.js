@@ -85,8 +85,9 @@ setImmediate(()=>{
     G.devDamage(sec,9999,0,0); step(2);
     ok(T2.rdist[far]>=4,'patch is several tiles deep '+T2.rdist[far]); ok(T2.roof[far]===1&&ks.some(k=>T2.roof[k]===2),'cascade: near tiles first, far tiles still up');
     step(Math.ceil(T2.rdist[far]*0.07*60)+10);
-    const dusty=ks.filter(k=>{const i=k%sc,j=(k/sc)|0,c=T2.cell[k]; return c===2||c===4?(i+j)%2===0:i%2===0&&j%2===0;}).length, nc=M.smokes.slice(sm0);
-    ok(nc.length>=dusty*0.9&&nc.length<=dusty&&nc.length<ks.length*0.5,'dust on the sparse pattern only '+nc.length+'/'+dusty+' of '+ks.length);
+    let wd=0; for(let j=sec.cy;j<sec.cy+sec.ch;j++)for(let i=sec.cx;i<sec.cx+sec.cw;i++) if((i+j)%2===0) wd++;
+    const dusty=wd+ks.filter(k=>k%sc%2===0&&((k/sc)|0)%2===0).length, nc=M.smokes.slice(sm0);
+    ok(nc.length>=dusty*0.9&&nc.length<=dusty&&nc.length<ks.length*0.5,'dust: wall checkerboard + roof even/even '+nc.length+'/'+dusty+' of '+ks.length);
     ok(nc.every(c=>c.tint==='brown'&&c.op===0.5&&c.T===10),'brown, half opacity, 10 s'); ok(new Set(nc.map(c=>c.shade)).size>1,'dust shades vary');
     ok(ks.every(k=>T2.roof[k]===2),'its roof fell'); let left=0; for(let k=0;k<N;k++) if(T2.roof[k]===1) left++; ok(left===other,'the rest stays up');
     ok(!dd.alive||dd.hp<=dd.mhp*0.5+0.01,'roof hurts at least half: '+(dd.alive?dd.hp:'dead'));
