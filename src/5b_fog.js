@@ -44,10 +44,11 @@ function visPoly(ex, ey, box, walls, pad) {
     for (const q of segs) { const d = raySeg(ex, ey, dx, dy, q[0], q[1], q[2], q[3]); if (d < best) { best = d; hq = q; } }
     if (!hq) continue;
     out.push([t, ex + dx * best - hq[4], ey + dy * best - hq[5]]);
-    if (side && best > cd + 0.5) out.push([t - side * VIS_EPS, cx, cy]);
+    if (side && best > cd + 0.5) out.push([t - side * VIS_EPS, cx, cy, 1]);
   }
   out.sort((a, b) => a[0] - b[0]);
-  return out.map(o => [o[1], o[2]]);
+  const P = out.map(o => o[3] ? [o[1], o[2], 1] : [o[1], o[2]]); P.faces = segs;     // [x, y, 1] = a corner; faces for the dev view
+  return P;
 }
 function inPoly(x, y, P) { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; }
 function polyPath(g, polys) { g.beginPath(); for (const P of polys) { P.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); } }

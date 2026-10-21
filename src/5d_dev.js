@@ -17,7 +17,7 @@ const ROOM_MIN = 36, ROOM_SIDE = 5, SEC_MAX = 6;
 /* ramming, per unit of speed: damage to the wall, damage to the vehicle, speed kept; a tank always hits at least min */
 const RAM = { tank: { wall: 2.6, self: 0.15, keep: 0.8, min: 50, go: 12 }, jeep: { wall: 0.45, self: 1, keep: 0.15, min: 0, go: 25 } };
 const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];          // up, right, down, left
-const DEV = { roofQ: [], open: true, god: false, ammo: true, respawn: true, grid: true, secs: true, range: 6, sel: 1, padNav: false, log: [], nums: [], lastA: 0, over: false, B: [], R: null, seed: 1 };
+const DEV = { roofQ: [], open: true, god: false, ammo: true, respawn: true, grid: true, secs: true, sightDbg: false, range: 6, sel: 1, padNav: false, log: [], nums: [], lastA: 0, over: false, B: [], R: null, seed: 1 };
 const DEV_RANGES = [2, 4, 6, 8, 10, 15, 20, 30];
 /* structural damage per blast, keyed by blast radius: rocket 62, tank shell 78, frag 88; anything else x1 */
 const STRUCT_K = { 62: 1.6, 78: 2, 88: 0.35 };
@@ -476,6 +476,22 @@ function devTick(dt) {
 }
 
 /* ---------------- drawing ---------------- */
+/* SIGHT LINES: how the sight polygon is built, per eye - the faces it tests (orange; the view box grey), a ray to every
+   vertex (faint), the outline (cyan), ray hits (white) and exact corners (yellow), and the vertex count */
+function devSightDbg(vw, x0, y0, x1, y1) {
+  const box = [x0 - 16, y0 - 16, x1 + 16, y1 + 16], k = 1 / VZ;
+  for (const o of viewSols(vw).map(posOf)) {
+    const P = visPoly(o.x, o.y, box, null, MAP.tiled ? SUB : 5);
+    ctx.lineWidth = 2 * k; ctx.beginPath();
+    for (const q of P.faces) if (q[4] || q[5]) { ctx.moveTo(q[0], q[1]); ctx.lineTo(q[2], q[3]); }
+    ctx.strokeStyle = 'rgba(255,150,40,0.9)'; ctx.stroke();
+    ctx.lineWidth = 1 * k; ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.beginPath();
+    for (const [x, y] of P) { ctx.moveTo(o.x, o.y); ctx.lineTo(x, y); } ctx.stroke();
+    ctx.lineWidth = 1.5 * k; ctx.strokeStyle = '#40e8ff'; polyPath(ctx, [P]); ctx.stroke();
+    for (const [x, y, c] of P) { const r = (c ? 3 : 2) * k; ctx.fillStyle = c ? '#ffe040' : '#fff'; ctx.fillRect(x - r, y - r, r * 2, r * 2); }
+    stxt(`${P.length} PTS  ${P.faces.length - 4} FACES`, o.x, o.y - 30, 8, '#40e8ff', 'center', 'middle', FD);
+  }
+}
 function devDrawWorld(vw) {
   const TL = MAP.tiled; worldT();
   if (TL && DEV.grid) {
@@ -502,6 +518,7 @@ function devDrawWorld(vw) {
   }
   for (const s of M.sol) if (s.dummy && s.alive) { bar(s.x, s.y - 20, 26, s.hp / s.mhp); stxt(String(Math.ceil(s.hp)), s.x, s.y - 28, 8, '#fff', 'center', 'middle', FD); }
   for (const v of M.vehicles) if (v.active && !v.dead) { const y = v.y - (v.T.hw || 16) - 16; bar(v.x, y, 40, v.hp / v.T.hp); stxt(Math.ceil(v.hp) + '/' + v.T.hp, v.x, y - 9, 8, '#fff', 'center', 'middle', FD); }
+  if (DEV.sightDbg) devSightDbg(vw, (vw.x - VOX) / VZ - 4, (vw.y - VOY) / VZ - 4, (vw.x + vw.w - VOX) / VZ + 4, (vw.y + vw.h - VOY) / VZ + 4);     // the same box applyFog uses
   for (const n of DEV.nums) { ctx.globalAlpha = Math.min(1, n.t * 2); stxt(String(n.v), n.x, n.y, 10, n.c, 'center', 'middle', FD); }
   ctx.globalAlpha = 1;
 }
@@ -546,6 +563,7 @@ function devDrawPanel() {
   row(['GOD MODE', () => DEV.god = !DEV.god, DEV.god], ['INF AMMO', () => DEV.ammo = !DEV.ammo, DEV.ammo]);
   row(['DUMMY RESPAWN', () => DEV.respawn = !DEV.respawn, DEV.respawn], ['LINE OF SIGHT', () => M.cfg.fog = M.cfg.fog === 'off' ? 'los' : 'off', M.cfg.fog !== 'off']);
   row(['GRID', () => DEV.grid = !DEV.grid, DEV.grid], ['SECTIONS', () => DEV.secs = !DEV.secs, DEV.secs]);
+  row(['SIGHT LINES', () => DEV.sightDbg = !DEV.sightDbg, DEV.sightDbg]);
   head('WORLD');
   row(['RESET MAP', devResetMap], ['HEAL ME', devHeal]);
   row(['NEW HOUSES', () => { DEV.seed++; devResetMap(); }], ['CLEAR LOG', () => DEV.log.length = 0]);
