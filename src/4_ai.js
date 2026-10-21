@@ -17,7 +17,7 @@ function enemiesOf(s, out) {
 function autoLined(s, a) {
   const w = cw(s), st = w && WPN[w.id]; if (!st) return false;
   const R = Math.min(420, (st.spd || 900) * (st.life || 0.4) * 0.8), cone = (d, r) => Math.atan2(r, d) + 0.04;
-  const ok = (x, y, r, d) => d > 1 && d <= R && Math.abs(angDiff(a, Math.atan2(y - s.y, x - s.x))) <= cone(d, r) && los(s.x, s.y, x, y) && !smokeBlocks(s.x, s.y, x, y);
+  const ok = (x, y, r, d) => d > 1 && d <= R && Math.abs(angDiff(a, Math.atan2(y - s.y, x - s.x))) <= cone(d, r) && sees(s.x, s.y, x, y);
   for (const o of enemiesOf(s, _en)) { const d = Math.hypot(o.x - s.x, o.y - s.y); if (visibleTo(s, o, d) && ok(o.x, o.y, 10, d)) return true; }
   for (const v of M.vehicles) { if (!v.active || v.dead || !isEnemy(s.team, vehTeam(v))) continue; const d = Math.hypot(v.x - s.x, v.y - s.y); if (ok(v.x, v.y, v.T.hw || 14, d)) return true; }
   return false;
@@ -27,12 +27,12 @@ function inNestArc(s, x, y) { const v = s.veh; return !v || v.T.drive || !v.T.ar
 function findTarget(s, range) {
   let best = null, bd = range;
   enemiesOf(s, _en);
-  for (const o of _en) { const d = Math.hypot(o.x - s.x, o.y - s.y); if (d < bd && inNestArc(s, o.x, o.y) && visibleTo(s, o, d) && los(s.x, s.y, o.x, o.y) && !smokeBlocks(s.x, s.y, o.x, o.y)) { bd = d; best = { o, x: o.x, y: o.y, vx: o.vx || 0, vy: o.vy || 0, d, veh: null }; } }
+  for (const o of _en) { const d = Math.hypot(o.x - s.x, o.y - s.y); if (d < bd && inNestArc(s, o.x, o.y) && visibleTo(s, o, d) && sees(s.x, s.y, o.x, o.y)) { bd = d; best = { o, x: o.x, y: o.y, vx: o.vx || 0, vy: o.vy || 0, d, veh: null }; } }
   const wantV = (s.veh && s.veh.type === 'tank' && s.seat === 0) || (s.w && s.w[1] && WPN[s.w[1].id].rocket && s.w[1].mag + s.w[1].res > 0) || (s.veh && s.veh.T.seats[s.seat].role === 'mg');
   for (const v of M.vehicles) {
     if (!v.active || v.dead) continue; const vt = vehTeam(v); if (!isEnemy(s.team, vt)) continue;
     const d = Math.hypot(v.x - s.x, v.y - s.y); if (d > range || !inNestArc(s, v.x, v.y)) continue;
-    if ((wantV || !best) && los(s.x, s.y, v.x, v.y)) { if (!best || wantV || d < bd * 0.7) { best = { o: null, veh: v, x: v.x, y: v.y, vx: v.vx, vy: v.vy, d }; bd = d; } }
+    if ((wantV || !best) && sees(s.x, s.y, v.x, v.y)) { if (!best || wantV || d < bd * 0.7) { best = { o: null, veh: v, x: v.x, y: v.y, vx: v.vx, vy: v.vy, d }; bd = d; } }
   }
   return best;
 }
@@ -249,7 +249,7 @@ function humanInput(p) {
     I.altDist = 220; p.aimDist = (st.aimMag || 0) * 300;
     if (I.aimA !== null && s.alive) {
       enemiesOf(s, _en); let best = null, bs = st.touch ? 0.3 : 0.13;
-      for (const o of _en) { const d = Math.hypot(o.x - s.x, o.y - s.y); if (d > 460) continue; const da = Math.abs(angDiff(I.aimA, Math.atan2(o.y - s.y, o.x - s.x))); if (da < bs && los(s.x, s.y, o.x, o.y)) { bs = da; best = o; } }
+      for (const o of _en) { const d = Math.hypot(o.x - s.x, o.y - s.y); if (d > 460) continue; const da = Math.abs(angDiff(I.aimA, Math.atan2(o.y - s.y, o.x - s.x))); if (da < bs && sees(s.x, s.y, o.x, o.y)) { bs = da; best = o; } }
       if (best) I.aimA = lerp(I.aimA, I.aimA + angDiff(I.aimA, Math.atan2(best.y - s.y, best.x - s.x)), 0.45);
     }
   }

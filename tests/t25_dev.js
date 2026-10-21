@@ -163,6 +163,6 @@ setImmediate(()=>{
   step(60);
   // normal match afterwards gets the full world back
   G.CFG.mode=1; G.CFG.bots=2; G.toMenu(); step(5); G.newMatch({...G.CFG},false); step(30);
-  ok(G.WW===3000&&G.WH===2000&&!G.MAP.tiled&&!G.MAP.sight&&!G.M.dev,'normal world restored'); ok(G.NGW===100,'nav grid restored');
+  ok(G.WW===3000&&G.WH===2000&&!G.MAP.tiled&&G.MAP.sight.length===G.MAP.buildings.filter(b=>!b.glass).length&&!G.M.dev,'normal world restored'); ok(G.NGW===100,'nav grid restored');
   console.log('errs',errs+global.errs());
 });

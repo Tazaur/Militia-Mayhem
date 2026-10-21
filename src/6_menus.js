@@ -436,7 +436,7 @@ function updateNetLobby(ins) {
 
 /* ================= settings (main menu corner, lobby and pause) ================= */
 const SET = { open: false, from: null, tab: 0, sel: 0 };
-const SET_TABS = [['GRAPHICS', ['style', 'teams']], ['DISPLAY', ['camera', 'fullscreen']], ['AUDIO', ['sfx', 'mus', 'sound']], ['CONTROLS', null]];
+const SET_TABS = [['GRAPHICS', ['style', 'teams', 'fogLook']], ['DISPLAY', ['camera', 'fullscreen']], ['AUDIO', ['sfx', 'mus', 'sound']], ['CONTROLS', null]];
 const setRows = () => SET_TABS[SET.tab][1];
 const CONTROLS = [['MOVE', 'LEFT STICK', 'W A S D'], ['AIM', 'RIGHT STICK', 'MOUSE'], ['FIRE', 'RT', 'LEFT CLICK'], ['AIM DOWN SIGHTS', 'LT', 'RIGHT CLICK'],
   ['SPRINT', 'L3', 'SHIFT'], ['JUMP / VAULT', 'A', 'SPACE'], ['PRONE / STAND', 'B', 'C / Z'], ['RELOAD', 'X', 'R'],
@@ -448,6 +448,7 @@ const inMatch = () => M && !M.demo;
 function setLabel(k) {
   switch (k) {
     case 'style': return ['ART STYLE', CFG.style === 'classic' ? 'CLASSIC' : 'GRIT'];
+    case 'fogLook': return ['OUT OF SIGHT', { grey: 'GREYSCALE', partial: 'PARTLY GREY', dark: 'DARKENED' }[CFG.fogLook] || 'GREYSCALE'];
     case 'teams': return ['TEAM COLORS', (CFG.teamColors === 'classic' ? 'BLUE VS RED' : 'PLAYER COLOR') + (inMatch() ? '  (NEXT MATCH)' : '')];
     case 'camera': return ['MULTIPLAYER VIEW', CFG.camera === 'split' ? 'SPLIT SCREEN' : 'SHARED SCREEN'];
     case 'sound': return ['SOUND STYLE', CFG.sound === 'classic' ? 'CLASSIC' : 'EXPERIMENTAL'];
@@ -458,6 +459,7 @@ function setLabel(k) {
 }
 function setChange(k, d) {
   if (k === 'style') { CFG.style = CFG.style === 'classic' ? 'grit' : 'classic'; applyStyleAssets(); if (M) { if (M.demo) demoMatch(); else paintGround(); } }
+  if (k === 'fogLook') { CFG.fogLook = FOG_LOOKS[(FOG_LOOKS.indexOf(CFG.fogLook) + (d || 1) + 3) % 3]; if (MAP.tiled && MAP.tiled.roof) { paintRoof(); if (M) M.fogMem = null; } }   // the dev yard bakes its out-of-sight roofs in the look
   if (k === 'teams') CFG.teamColors = CFG.teamColors === 'classic' ? 'player' : 'classic';
   if (k === 'camera') { CFG.camera = CFG.camera === 'split' ? 'shared' : 'split'; if (inMatch()) { M.cfg.camera = CFG.camera; layoutViews(); } }
   if (k === 'sound') { CFG.sound = CFG.sound === 'classic' ? 'exp' : 'classic'; engineKillAll(); }

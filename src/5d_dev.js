@@ -249,20 +249,19 @@ function paintRoof() {
   for (let j = 0; j < TL.sr; j++) for (let i = 0; i < TL.sc; i++) if (TL.roof[j * TL.sc + i] === 1) paintRoofCell(i, j);
 }
 /* shingles, a dark edge wherever the roof stops */
-/* (ROOF_G: the same, grey and dimmed like the fog, for out of sight) */
+/* (ROOF_G: the same in the out-of-sight look, fogLook) */
 function paintRoofCell(i, j) {
   const TL = MAP.tiled, k = j * TL.sc + i, x = i * SUB, y = j * SUB;
-  const t = ((Math.imul(i, 2654435761) ^ Math.imul(j, 40503)) >>> 0) % 7 - 3, r0 = 112 + t * 3, g0 = 72 + t * 2, b0 = 56 + t * 2, L = Math.round((0.3 * r0 + 0.59 * g0 + 0.11 * b0) * 0.78);
+  const t = ((Math.imul(i, 2654435761) ^ Math.imul(j, 40503)) >>> 0) % 7 - 3;
   const open = (a, b) => { if (a < 0 || b < 0 || a >= TL.sc || b >= TL.sr) return true; return TL.roof[b * TL.sc + a] !== 1; };
-  for (const [cv2, grey] of [[ROOF_C, false], [ROOF_G, true]]) {
-    const g = cv2.getContext('2d'); g.clearRect(x, y, SUB, SUB); if (TL.roof[k] !== 1) continue;
-    g.fillStyle = grey ? `rgb(${L},${L},${L})` : `rgb(${r0},${g0},${b0})`; g.fillRect(x, y, SUB, SUB);
-    g.fillStyle = grey ? 'rgba(16,16,16,0.45)' : 'rgba(40,22,16,0.45)';
-    for (let r = 0; r < 4; r++) { g.fillRect(x, y + r * 4 + 3, SUB, 1); for (let sx = (r % 2) * 4; sx < SUB; sx += 8) g.fillRect(x + sx, y + r * 4, 1, 3); }
-    g.fillStyle = grey ? '#141414' : '#2a1a12';
-    if (open(i, j - 1)) g.fillRect(x, y, SUB, 2); if (open(i + 1, j)) g.fillRect(x + SUB - 2, y, 2, SUB);
-    if (open(i, j + 1)) g.fillRect(x, y + SUB - 2, SUB, 2); if (open(i - 1, j)) g.fillRect(x, y, 2, SUB);
-  }
+  const g = ROOF_C.getContext('2d'), gg = ROOF_G.getContext('2d'); g.clearRect(x, y, SUB, SUB); gg.clearRect(x, y, SUB, SUB); if (TL.roof[k] !== 1) return;
+  g.fillStyle = `rgb(${112 + t * 3},${72 + t * 2},${56 + t * 2})`; g.fillRect(x, y, SUB, SUB);
+  g.fillStyle = 'rgba(40,22,16,0.45)';
+  for (let r = 0; r < 4; r++) { g.fillRect(x, y + r * 4 + 3, SUB, 1); for (let sx = (r % 2) * 4; sx < SUB; sx += 8) g.fillRect(x + sx, y + r * 4, 1, 3); }
+  g.fillStyle = '#2a1a12';
+  if (open(i, j - 1)) g.fillRect(x, y, SUB, 2); if (open(i + 1, j)) g.fillRect(x + SUB - 2, y, 2, SUB);
+  if (open(i, j + 1)) g.fillRect(x, y + SUB - 2, SUB, 2); if (open(i - 1, j)) g.fillRect(x, y, 2, SUB);
+  gg.drawImage(ROOF_C, x, y, SUB, SUB, x, y, SUB, SUB); fogLook(gg, x, y, SUB, SUB);
 }
 function repaintRoofAround(cells) {
   const TL = MAP.tiled, done = new Set();

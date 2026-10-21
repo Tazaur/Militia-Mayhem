@@ -69,15 +69,7 @@ function drawWorld(vw) {
     else { ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.arc(s.x + 3, s.y + 4, 13, 0, TAU); ctx.fill(); ctx.fillStyle = CFG.style === 'grit' ? '#857344' : '#c8a64e'; ctx.beginPath(); ctx.arc(s.x, s.y, 13, 0, TAU); ctx.fill(); ctx.strokeStyle = CFG.style === 'grit' ? '#665834' : '#a0823a'; ctx.lineWidth = 1.5; for (const r of [9, 5]) { ctx.beginPath(); ctx.arc(s.x, s.y, r, s.a, s.a + 5); ctx.stroke(); } }
   }
   // wrecks
-  for (const w of M.wrecks) {
-    if (!vis(w.x, w.y, 70)) continue; const al = clamp(w.t / 2, 0, 1);   // solid cover, then gone over its last 2 s
-    worldT(); ctx.globalAlpha = 0.3 * al; ctx.fillStyle = '#000'; ctx.save(); ctx.translate(w.x + 4, w.y + 5); ctx.rotate(w.a); if (w.type === 'tank') ctx.fillRect(-52, -28, 104, 56); else ctx.fillRect(-41, -19, 82, 38); ctx.restore(); ctx.globalAlpha = 1;
-    if (w.type === 'tank') {
-      const tx = w.x - 4 * Math.cos(w.a), ty = w.y - 4 * Math.sin(w.a), c = Math.cos(w.ta), s = Math.sin(w.ta);
-      spr('hull5', w.x, w.y, w.a, 1, 1, al); spr('tur_dead', tx, ty, w.ta, 1, 1, al);
-      spr('mg_dead', tx - 6 * c + 9 * s, ty - 6 * s - 9 * c, w.ta + 0.9, 1, 1, al);
-    } else { spr('jeep4', w.x, w.y, w.a, 1, 1, al); spr('mg_dead', w.x - 27 * Math.cos(w.a), w.y - 27 * Math.sin(w.a), w.a + 2.4, 1, 1, al); }
-  }
+  for (const w of M.wrecks) if (vis(w.x, w.y, 70)) drawWreck(w);
   // ---- layer 3: standing soldiers, then vehicles (taller than a person)
   for (const s of M.sol) if (s.alive && !s.veh && s.stance === 0 && vis(s.x, s.y, 30) && !hidden(s)) drawSoldier(s, vw);
   for (const v of M.vehicles) if (v.active && v.type === 'nest' && vis(v.x, v.y, 80)) drawVehicle(v);
@@ -126,7 +118,7 @@ function drawWorld(vw) {
   const eyN = viewEyes(vw);
   for (const s of M.sol) {
     if (!s.alive || !s.player || !vis(s.x, s.y, 40)) continue;
-    if (smokeHides(eyN, s, vw) || (fogged && eyN.length && !eyN.some(e => e.s === s || (!M.ffa && e.team === s.team) || los(e.x, e.y, s.x, s.y)))) continue;
+    if (smokeHides(eyN, s, vw) || (fogged && eyN.length && !eyN.some(e => e.s === s || (!M.ffa && e.team === s.team) || sees(e.x, e.y, s.x, s.y)))) continue;
     const y = (s.veh ? s.veh.y - s.veh.T.hw - 14 : s.y - (s.down ? 30 : 16)), x = s.veh ? s.veh.x : s.x;
     ctx.font = `bold ${Math.round(8 / Math.max(0.8, VZ * 0.6))}px ${FB}`; ctx.globalAlpha = 0.5;      // small and faint: a label, not a sign
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillText(s.name, x + 1, y + 1); ctx.fillStyle = CHEX[s.color]; ctx.fillText(s.name, x, y); ctx.globalAlpha = 1;
@@ -186,15 +178,27 @@ function drawSmokes(vis) {
   }
   ctx.globalAlpha = 1;
 }
+/* a wreck: solid cover, then gone over its last 2 s (also drawn into the remembered view: it blocks sight) */
+function drawWreck(w) {
+  const al = clamp(w.t / 2, 0, 1);   // solid cover, then gone over its last 2 s
+  worldT(); ctx.globalAlpha = 0.3 * al; ctx.fillStyle = '#000'; ctx.save(); ctx.translate(w.x + 4, w.y + 5); ctx.rotate(w.a); if (w.type === 'tank') ctx.fillRect(-52, -28, 104, 56); else ctx.fillRect(-41, -19, 82, 38); ctx.restore(); ctx.globalAlpha = 1;
+  if (w.type === 'tank') {
+    const tx = w.x - 4 * Math.cos(w.a), ty = w.y - 4 * Math.sin(w.a), c = Math.cos(w.ta), s = Math.sin(w.ta);
+    spr('hull5', w.x, w.y, w.a, 1, 1, al); spr('tur_dead', tx, ty, w.ta, 1, 1, al);
+    spr('mg_dead', tx - 6 * c + 9 * s, ty - 6 * s - 9 * c, w.ta + 0.9, 1, 1, al);
+  } else { spr('jeep4', w.x, w.y, w.a, 1, 1, al); spr('mg_dead', w.x - 27 * Math.cos(w.a), w.y - 27 * Math.sin(w.a), w.a + 2.4, 1, 1, al); }
+}
 /* where this view's players are looking from */
 function viewEyes(vw) {
   if (!M || M.demo) return [];
   return viewSols(vw).map(s => ({ x: posOf(s).x, y: posOf(s).y, team: s.team, s }));
 }
+/* an enemy in smoke: with vision on, the smoke mask already fades him (only skip him once he's gone); with it off, hidden
+   once the smoke takes him under SIGHT_MIN */
 function smokeHides(eyes, o, vw) {
   if (!eyes.length || !M.smokes.length || eyes.some(e => e.s === o || (!M.ffa && e.team === o.team))) return false;
-  for (const c of M.smokes) if (c.r > 24 && c.t < c.T - 2 && Math.hypot(o.x - c.x, o.y - c.y) < c.r * 0.45) return true;
-  return eyes.every(e => smokeBlocks(e.x, e.y, o.x, o.y));
+  let k = 0; for (const e of eyes) k = Math.max(k, 1 - smokeOcc(e.x, e.y, o.x, o.y));
+  return vw._fog ? k < 0.02 : k < SIGHT_MIN;
 }
 /* recon lasers: visible to everyone, brighter when aiming down sights; they stop at the first wall, tree, hay bale, vehicle or soldier */
 function drawLasers(vis) {
@@ -801,7 +805,7 @@ function drawMinimap() {
   const mine = o => LS.some(p => p.sol === o);
   // an enemy shows when spotted, heard firing nearby, or in sight (fog on: line of sight, not through smoke; fog off: close by)
   const seenAt = (x, y, o) => (o && o.spotT > 0 && myTeams.has(o.spotTeam)) || (o && o.firedT > 0 && eyesM.some(e => Math.hypot(e.x - x, e.y - y) < 500))
-    || eyesM.some(e => { const ex = e.veh ? e.veh.x : e.x, ey = e.veh ? e.veh.y : e.y, d = Math.hypot(ex - x, ey - y); return fogOn ? d < 700 && los(ex, ey, x, y) && !smokeBlocks(ex, ey, x, y) : d < 300; });
+    || eyesM.some(e => { const ex = e.veh ? e.veh.x : e.x, ey = e.veh ? e.veh.y : e.y, d = Math.hypot(ex - x, ey - y); return fogOn ? d < 700 && sees(ex, ey, x, y) : d < 300; });
   for (const v of M.vehicles) if (v.active) {
     const t = vehTeam(v), crew = v.seats.find(o => o); if (t >= 0 && crew && !(M.ffa ? v.seats.some(o => o && mine(o)) : myTeams.has(t)) && !seenAt(v.x, v.y, crew)) continue;
     ctx.fillStyle = t < 0 ? '#bbb' : t < 2 ? TEAMHEX[t] : '#ddd'; ctx.fillRect(mx + v.x * k - 3, my + v.y * k - 2, 6, 4); }

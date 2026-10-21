@@ -12,21 +12,30 @@ function raySeg(ox, oy, dx, dy, ax, ay, bx, by) {
   const t = ((ax - ox) * sy - (ay - oy) * sx) / den, u = ((ax - ox) * dy - (ay - oy) * dx) / den;
   return t > 0 && u >= 0 && u <= 1 ? t : Infinity;
 }
+/* what the eye at (ex, ey) can see out to R: the sight walls (MAP.sight, or `walls`) and wrecks (turned boxes) cut it.
+   A ray that hits a face goes pad px (default 5) straight in through that face, so the near side of a wall shows
+   (pushing along the ray instead slid along walls seen at a slant and cut them at odd angles) */
 function visPoly(ex, ey, R, walls, pad) {
   const segs = [], angs = [];
-  for (const b of walls || MAP.sight || MAP.buildings) {   // the dev yard keeps merged wall runs in MAP.sight (windows aren't in it)
+  const edge = (ax, ay, bx, by) => { segs.push([ax, ay, bx, by]); const t = Math.atan2(ay - ey, ax - ex); angs.push(t - 0.0008, t + 0.0008); };
+  for (const b of walls || MAP.sight) {
     if (b.x > ex + R || b.x + b.w < ex - R || b.y > ey + R || b.y + b.h < ey - R) continue;
-    const c = [[b.x, b.y], [b.x + b.w, b.y], [b.x + b.w, b.y + b.h], [b.x, b.y + b.h]];
-    for (let i = 0; i < 4; i++) { const a = c[i], d = c[(i + 1) % 4]; segs.push([a[0], a[1], d[0], d[1]]); const t = Math.atan2(a[1] - ey, a[0] - ex); angs.push(t - 0.0008, t + 0.0008); }
+    edge(b.x, b.y, b.x + b.w, b.y); edge(b.x + b.w, b.y, b.x + b.w, b.y + b.h); edge(b.x + b.w, b.y + b.h, b.x, b.y + b.h); edge(b.x, b.y + b.h, b.x, b.y);
+  }
+  for (const w of M.wrecks) {
+    if (Math.abs(w.x - ex) > R + 80 || Math.abs(w.y - ey) > R + 80) continue;
+    const c = Math.cos(w.a), s = Math.sin(w.a), P = [[-w.hl, -w.hw], [w.hl, -w.hw], [w.hl, w.hw], [-w.hl, w.hw]].map(([x, y]) => [w.x + x * c - y * s, w.y + x * s + y * c]);
+    for (let i = 0; i < 4; i++) edge(P[i][0], P[i][1], P[(i + 1) % 4][0], P[(i + 1) % 4][1]);
   }
   for (let i = 0; i < 96; i++) angs.push(i / 96 * TAU - Math.PI);
   angs.sort((a, b) => a - b);
-  const pts = [];
+  const pts = [], pd = pad || 5;
   for (const t of angs) {
-    const dx = Math.cos(t), dy = Math.sin(t); let best = R;
-    for (const q of segs) { const d = raySeg(ex, ey, dx, dy, q[0], q[1], q[2], q[3]); if (d < best) best = d; }
-    if (best < R) best += pad || 5;                // let the near wall face show
-    pts.push([ex + dx * best, ey + dy * best]);
+    const dx = Math.cos(t), dy = Math.sin(t); let best = R, hq = null;
+    for (const q of segs) { const d = raySeg(ex, ey, dx, dy, q[0], q[1], q[2], q[3]); if (d < best) { best = d; hq = q; } }
+    let x = ex + dx * best, y = ey + dy * best;
+    if (hq) { const L = Math.hypot(hq[2] - hq[0], hq[3] - hq[1]) || 1, nx = (hq[3] - hq[1]) / L, ny = (hq[0] - hq[2]) / L, sg = nx * dx + ny * dy < 0 ? -1 : 1; x += nx * sg * pd; y += ny * sg * pd; }
+    pts.push([x, y]);
   }
   return pts;
 }
@@ -66,7 +75,7 @@ function applyFog(vw, vis, x0, y0, x1, y1) {
     m.g.drawImage(ground, bx0, by0, bw, bh, bx0, by0, bw, bh); m.g.drawImage(decals, bx0, by0, bw, bh, bx0, by0, bw, bh); m.g.restore();
     if (m.rg) { m.rg.save(); polyPath(m.rg, polys); m.rg.clip(); m.rg.clearRect(bx0, by0, bw, bh); m.rg.drawImage(ROOF_G, bx0, by0, bw, bh, bx0, by0, bw, bh); m.rg.restore(); }
   }
-  const seen = (x, y) => polys.some(P => inPoly(x, y, P)) && !smokeBlocks(eyes[0][0], eyes[0][1], x, y);
+  const seen = (x, y) => polys.some(P => inPoly(x, y, P)) && eyes.some(([ex, ey]) => 1 - smokeOcc(ex, ey, x, y) >= SIGHT_MIN);
   for (const s of MAP.statics) if (vis(s.x, s.y, 20) && (s.type === 'fence' || s.type === 'hay' || s.type === 'tree') && seen(s.x, s.y)) m.st.set(s, s.alive);
   for (const A of MAP.arcs) if (vis(A.x, A.y, 40) && seen(A.x, A.y)) m.arc.set(A, A.lost);
   // the remembered world goes into an offscreen layer, so smoke can reuse it later
@@ -76,6 +85,7 @@ function applyFog(vw, vis, x0, y0, x1, y1) {
   worldT(); ctx.imageSmoothingEnabled = false; drawSkirt(x0, y0, x1, y1);
   if (bw > 0 && bh > 0) { ctx.imageSmoothingEnabled = FOGK < 1; ctx.drawImage(m.c, bx0 * FOGK, by0 * FOGK, bw * FOGK, bh * FOGK, bx0, by0, bw, bh); ctx.imageSmoothingEnabled = false; }
   for (const A of MAP.arcs) { if (!vis(A.x, A.y, 50)) continue; const lost = m.arc.has(A) ? m.arc.get(A) : 0, f = lost / A.bags.length; spr(f < 0.25 ? 'bagarc0' : f < 0.75 ? 'bagarc1' : 'bagarc2', A.x, A.y, A.a); }
+  for (const w of M.wrecks) if (vis(w.x, w.y, 70)) drawWreck(w);      // they block sight, so they stay drawn where you can't see
   worldT();
   for (const s of MAP.statics) {
     if ((s.type !== 'fence' && s.type !== 'hay') || !vis(s.x, s.y, 16) || !(m.st.has(s) ? m.st.get(s) : true)) continue;
@@ -83,9 +93,7 @@ function applyFog(vw, vis, x0, y0, x1, y1) {
     else { ctx.fillStyle = CFG.style === 'grit' ? '#857344' : '#c8a64e'; ctx.beginPath(); ctx.arc(s.x, s.y, 13, 0, TAU); ctx.fill(); }
   }
   for (const s of MAP.statics) if (s.type === 'tree' && vis(s.x, s.y, 40) && (m.st.has(s) ? m.st.get(s) : true)) { img(s.pine ? SPR.pines[s.v] : SPR.trees[s.v], s.x, s.y, s.a, s.sc, 0.94); worldT(); }
-  // out of sight is drained of colour (and a little dimmer)
-  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'saturation'; ctx.fillStyle = '#808080'; ctx.fillRect(vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR);
-  ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = CFG.style === 'grit' ? 'rgba(6,6,4,0.3)' : 'rgba(4,8,6,0.22)'; ctx.fillRect(vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR);
+  ctx.setTransform(1, 0, 0, 1, 0, 0); fogLook(ctx, vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR);
   ctx = main;
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(FOG_OUT, vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR, vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR);
   vw._fog = { polys, eye: eyes[0] };
@@ -93,38 +101,43 @@ function applyFog(vw, vis, x0, y0, x1, y1) {
   worldT(); ctx.save(); polyPath(ctx, polys); ctx.clip();
   return polys;
 }
-/* smoke blocks sight like a soft-edged wall: the area behind each cloud (and its core) falls back to the remembered view */
+/* the out-of-sight look (setting OUT OF SIGHT): drained of colour fully / by half / not at all, and dimmed (more when
+   only darkened). The region of g must be opaque (a blend mode paints on transparent pixels). */
+const FOG_LOOKS = ['grey', 'partial', 'dark'];
+function fogLook(g, x, y, w, h) {
+  const L = CFG.fogLook || 'grey';
+  if (L !== 'dark') { g.globalCompositeOperation = 'saturation'; g.globalAlpha = L === 'partial' ? 0.5 : 1; g.fillStyle = '#808080'; g.fillRect(x, y, w, h); g.globalAlpha = 1; }
+  g.globalCompositeOperation = 'source-over'; g.fillStyle = L === 'dark' ? 'rgba(4,6,8,0.42)' : CFG.style === 'grit' ? 'rgba(6,6,4,0.3)' : 'rgba(4,8,6,0.22)'; g.fillRect(x, y, w, h);
+}
+/* smoke in the vision fog: the remembered view shows through by how much smoke each spot is behind, ring by ring
+   (SMOKE_RINGS, the same rings bots see by). A ring's shadow is everything whose sight line passes within its radius:
+   the disc plus the cone behind it between the tangents from the eye; standing inside a ring puts the whole view behind it.
+   Rings add (lighter) on a low-res mask; upscaling it softens the steps. */
 function drawSmokeFog(vw) {
   const F = vw._fog; if (!F || !M.smokes.length) return;
   const [ex, ey] = F.eye, k = VZ * DPR / FOG_MS, mg = FOG_MASK.getContext('2d');
   mg.setTransform(1, 0, 0, 1, 0, 0); mg.clearRect(0, 0, FOG_MASK.width, FOG_MASK.height);
   mg.setTransform(k, 0, 0, k, VOX * DPR / FOG_MS, VOY * DPR / FOG_MS);
-  let any = false; const N = 7;
+  let any = false; const FAR = 5000; mg.fillStyle = '#fff'; mg.globalCompositeOperation = 'lighter';
   for (const c of M.smokes) {
-    const a = Math.min(1, c.t / 0.8) * Math.min(1, (c.T - c.t) / 3.5); if (c.r < 20 || a <= 0.02) continue;
-    any = true; mg.fillStyle = '#fff';
-    const d = Math.hypot(c.x - ex, c.y - ey), core = c.r * 0.5;
-    // soft round core
-    const g = mg.createRadialGradient(c.x, c.y, 0, c.x, c.y, core * 1.3); g.addColorStop(0, `rgba(255,255,255,${a})`); g.addColorStop(0.7, `rgba(255,255,255,${a})`); g.addColorStop(1, 'rgba(255,255,255,0)');
-    mg.globalAlpha = 1; mg.fillStyle = g; mg.beginPath(); mg.arc(c.x, c.y, core * 1.3, 0, TAU); mg.fill(); mg.fillStyle = '#fff';
-    if (d <= core) { // standing in it: everything but a little bubble around you
-      mg.globalAlpha = a; mg.fillRect(ex - 5000, ey - 5000, 10000, 10000); mg.globalCompositeOperation = 'destination-out';
-      const h = mg.createRadialGradient(ex, ey, 10, ex, ey, 60); h.addColorStop(0, 'rgba(0,0,0,1)'); h.addColorStop(1, 'rgba(0,0,0,0)'); mg.globalAlpha = 1; mg.fillStyle = h; mg.beginPath(); mg.arc(ex, ey, 60, 0, TAU); mg.fill();
-      mg.globalCompositeOperation = 'source-over'; continue;
+    const s = smokeStr(c); if (!s || c.r < 1) continue; any = true;
+    const d = Math.hypot(c.x - ex, c.y - ey), a0 = Math.atan2(c.y - ey, c.x - ex); let prev = 0;
+    for (const [f, v] of SMOKE_RINGS) {
+      const rho = f * c.r; mg.globalAlpha = s * (v - prev); prev = v; mg.beginPath();
+      if (d <= rho) mg.rect(ex - FAR, ey - FAR, FAR * 2, FAR * 2);
+      else {
+        const h = Math.asin(rho / d), tl = Math.sqrt(d * d - rho * rho), P = [[a0 + h, tl], [a0 + h, FAR], [a0 - h, FAR], [a0 - h, tl]].map(([t, l]) => [ex + Math.cos(t) * l, ey + Math.sin(t) * l]);
+        let A = 0; for (let i = 0; i < 4; i++) A += P[i][0] * P[(i + 1) % 4][1] - P[(i + 1) % 4][0] * P[i][1]; if (A < 0) P.reverse();   // wind like arc() (+)
+        P.forEach(([x, y], i) => i ? mg.lineTo(x, y) : mg.moveTo(x, y)); mg.closePath();
+        mg.moveTo(c.x + rho, c.y); mg.arc(c.x, c.y, rho, 0, TAU);      // same winding as the cone, so one nonzero fill covers the union once
+      }
+      mg.fill();
     }
-    // shadow behind the cloud: stacked wedges of growing width give a feathered penumbra; each starts at the cloud's centre line
-    const ux = (c.x - ex) / d, uy = (c.y - ey) / d, px = -uy, py = ux;
-    for (let i = 0; i < N; i++) {
-      const w = core * (0.35 + i * 0.16), FAR = 5000;
-      const ax = c.x + px * w, ay = c.y + py * w, bx = c.x - px * w, by = c.y - py * w;
-      const la = Math.hypot(ax - ex, ay - ey), lb = Math.hypot(bx - ex, by - ey);
-      mg.globalAlpha = Math.min(1, a / N * 3); mg.globalCompositeOperation = 'lighter';
-      mg.beginPath(); mg.moveTo(ax, ay); mg.lineTo(ex + (ax - ex) / la * FAR, ey + (ay - ey) / la * FAR); mg.lineTo(ex + (bx - ex) / lb * FAR, ey + (by - ey) / lb * FAR); mg.lineTo(bx, by);
-      mg.arc(c.x, c.y, w, Math.atan2(by - c.y, bx - c.x), Math.atan2(ay - c.y, ax - c.x), true); mg.closePath(); mg.fill();
-    }
-    mg.globalCompositeOperation = 'source-over';
   }
-  mg.globalAlpha = 1; if (!any) return;
+  mg.globalCompositeOperation = 'source-over'; mg.globalAlpha = 1; if (!any) return;
+  // close to the eye smoke thins out (SIGHT_NEAR): keep (d - near0) / (near1 - near0) of the mask
+  const [n0, n1] = SIGHT_NEAR, hb = mg.createRadialGradient(ex, ey, 0, ex, ey, n1); hb.addColorStop(0, 'rgba(0,0,0,1)'); hb.addColorStop(n0 / n1, 'rgba(0,0,0,1)'); hb.addColorStop(1, 'rgba(0,0,0,0)');
+  mg.globalCompositeOperation = 'destination-out'; mg.fillStyle = hb; mg.beginPath(); mg.arc(ex, ey, n1, 0, TAU); mg.fill(); mg.globalCompositeOperation = 'source-over';
   // remembered world, cut to the soft mask (upscaling the low-res mask gives the soft edge)
   const tg = FOG_TMP.getContext('2d'), X = vw.x * DPR, Y = vw.y * DPR, Wd = vw.w * DPR, Ht = vw.h * DPR;
   tg.setTransform(1, 0, 0, 1, 0, 0); tg.globalCompositeOperation = 'source-over'; tg.clearRect(X, Y, Wd, Ht);

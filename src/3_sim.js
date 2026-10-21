@@ -442,7 +442,7 @@ function pushOutVeh(o, r, v) {
   return pushOutBox(o, r, v.x, v.y, v.a, v.T.hl, v.T.hw);
 }
 function segWreck(x0, y0, x1, y1, w) {
-  if (Math.abs((x0 + x1) / 2 - w.x) > 160 || Math.abs((y0 + y1) / 2 - w.y) > 160) return -1;
+  const m = w.hl + w.hw; if (Math.min(x0, x1) > w.x + m || Math.max(x0, x1) < w.x - m || Math.min(y0, y1) > w.y + m || Math.max(y0, y1) < w.y - m) return -1;
   const [ax, ay] = toLocal(w, x0, y0), [bx, by] = toLocal(w, x1, y1);
   return segRect(ax, ay, bx, by, { x: -w.hl, y: -w.hw, w: w.hl * 2, h: w.hw * 2 }, 0);
 }
@@ -691,14 +691,32 @@ function updateSmokes(dt) {
     const k = Math.min(1, dt * 1.5); c.x += (c.tx - c.x) * k; c.y += (c.ty - c.y) * k;
   }
   prune(M.smokes, c => c.t < c.T || (c.cv && SMOKE_POOL.length < 64 && SMOKE_POOL.push(c.cv), false)); }
-function smokeBlocks(x0, y0, x1, y1) {
+/* ---------------- line of sight: one rule for bots, spotting, aim help, the HUD and the vision fog ----------------
+   Hard: standing walls (MAP.sight; glass is see-through) and wrecks. Soft: smoke, in rings around each cloud's centre
+   (fraction of c.r -> occlusion, outer to core), times the cloud's strength (fades in / out; dust is half). A sight line
+   takes the deepest ring it passes through; clouds add up to 100 %; close to the eye smoke thins out (SIGHT_NEAR px).
+   drawSmokeFog paints exactly these rings, so what you see is what the bots get. */
+const SMOKE_RINGS = [[1, 0.1], [0.83, 0.35], [0.67, 0.65], [0.5, 1]], SIGHT_NEAR = [10, 60], SIGHT_MIN = 0.5;
+function smokeStr(c) { return Math.max(0, Math.min(1, c.t / 0.8) * Math.min(1, (c.T - c.t) / 3.5) * c.op); }
+function ringOcc(d, r) { let o = 0; for (const [f, v] of SMOKE_RINGS) if (d <= f * r) o = v; return o; }
+function smokeOcc(x0, y0, x1, y1) {
+  if (!M.smokes.length) return 0;
+  const dx = x1 - x0, dy = y1 - y0, L2 = dx * dx + dy * dy, near = clamp((Math.sqrt(L2) - SIGHT_NEAR[0]) / (SIGHT_NEAR[1] - SIGHT_NEAR[0]), 0, 1); let o = 0;
+  if (!near) return 0;
   for (const c of M.smokes) {
-    if (c.t > c.T - 2.5 || c.r < 24) continue;
-    const dx = x1 - x0, dy = y1 - y0, L2 = dx * dx + dy * dy || 1, k = clamp(((c.x - x0) * dx + (c.y - y0) * dy) / L2, 0, 1);
-    if (Math.hypot(x0 + dx * k - c.x, y0 + dy * k - c.y) < c.r * 0.5) return true;
+    const s = smokeStr(c); if (!s) continue;
+    const k = L2 ? clamp(((c.x - x0) * dx + (c.y - y0) * dy) / L2, 0, 1) : 0;
+    o += s * ringOcc(Math.hypot(x0 + dx * k - c.x, y0 + dy * k - c.y), c.r); if (o >= 1) { o = 1; break; }
   }
+  return o * near;
+}
+function sightBlocked(x0, y0, x1, y1) {
+  for (const b of MAP.sight) if (segRect(x0, y0, x1, y1, b, 0) >= 0) return true;
+  for (const w of M.wrecks) if (segWreck(x0, y0, x1, y1, w) >= 0) return true;
   return false;
 }
+/* (x1, y1) is seen from (x0, y0): no wall or wreck between, and smoke leaves at least SIGHT_MIN */
+function sees(x0, y0, x1, y1) { return 1 - smokeOcc(x0, y0, x1, y1) >= SIGHT_MIN && !sightBlocked(x0, y0, x1, y1); }
 /* the cannon barrel, turret pivot to muzzle (where shells leave) */
 const BARREL = 96;
 function turretPivot(v) { return [v.x - 4 * Math.cos(v.a), v.y - 4 * Math.sin(v.a)]; }
@@ -813,6 +831,7 @@ function segCirc(x0, y0, x1, y1, cx, cy, r) {
   if (c <= 0) return 0; if (a < 1e-9) return -1; const det = b * b - 4 * a * c; if (det < 0) return -1;
   const t = (-b - Math.sqrt(det)) / (2 * a); return t >= 0 && t <= 1 ? t : -1;
 }
+/* a clear path for blasts (sight is sees / sightK) */
 function los(x0, y0, x1, y1) {
   for (const b of MAP.buildings) if (!b.glass && segRect(x0, y0, x1, y1, b, 0) >= 0) return false;
   for (const w of M.wrecks) if (segWreck(x0, y0, x1, y1, w) >= 0) return false;
@@ -962,7 +981,7 @@ function controlSoldier(s, I, dt) {
   // spotting: mark enemies in front of you for the whole team
   if (I.spot && s.spotCd <= 0) {
     s.spotCd = 2.5; let n = 0;
-    for (const o of M.sol) { if (!o.alive || !isEnemy(s.team, o.team)) continue; const dx = o.x - s.x, dy = o.y - s.y, d = Math.hypot(dx, dy); if (d < 760 && Math.abs(angDiff(s.a, Math.atan2(dy, dx))) < 0.4 && los(s.x, s.y, o.x, o.y)) { o.spotT = 6; o.spotTeam = s.team; n++; } }
+    for (const o of M.sol) { if (!o.alive || !isEnemy(s.team, o.team)) continue; const dx = o.x - s.x, dy = o.y - s.y, d = Math.hypot(dx, dy); if (d < 760 && Math.abs(angDiff(s.a, Math.atan2(dy, dx))) < 0.4 && sees(s.x, s.y, o.x, o.y)) { o.spotT = 6; o.spotTeam = s.team; n++; } }
     if (s.player) { psfx(s.player, 'ping'); s.msg = { t: 1, txt: n ? `SPOTTED ${n}` : 'NOTHING SPOTTED' }; }
   }
   // jump / vault over low cover
@@ -1183,6 +1202,6 @@ function updateSpotting() {
   if (M.ffa) return;
   for (const r of M.sol) {
     if (!r.alive || r.kit !== 3 || r.veh) continue;
-    for (const o of M.sol) if (o.alive && isEnemy(r.team, o.team) && Math.hypot(o.x - r.x, o.y - r.y) < 520 && los(r.x, r.y, o.x, o.y) && !smokeBlocks(r.x, r.y, o.x, o.y)) { o.spotT = 1.5; o.spotTeam = r.team; }
+    for (const o of M.sol) if (o.alive && isEnemy(r.team, o.team) && Math.hypot(o.x - r.x, o.y - r.y) < 520 && sees(r.x, r.y, o.x, o.y)) { o.spotT = 1.5; o.spotTeam = r.team; }
   }
 }
