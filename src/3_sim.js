@@ -663,9 +663,34 @@ function shakeAt(x, y, amt, range) { for (const vw of M.views) { const d = Math.
 function popSmoke(x, y, o) {
   if (!o) { netEv('sm', x | 0, y | 0); o = {}; }
   const puffs = []; for (let i = 0; i < 18; i++) { const a = rnd(0, TAU), d = i ? Math.sqrt(Math.random()) * 0.72 : 0; puffs.push([Math.cos(a) * d, Math.sin(a) * d, rint(0, 3), rnd(0, TAU), rnd(0.8, 1.2), o.tint ? o.shade || 0 : rint(0, 3)]); }
-  M.smokes.push({ x, y, r: 0, R: 92, t: 0, T: o.T || 18, puffs, tint: o.tint || 'grey', shade: o.shade || 0, op: o.op !== undefined ? o.op : 1, cv: null, cvT: -9 }); if (!o.quiet) sfx('splash', x, y, 0.5); for (let i = 0; i < 8; i++) part({ k: 'smoke', x, y, vx: rnd(-60, 60), vy: rnd(-60, 60), life: 1.2, max: 1.2, sz: 12, drag: 2 });
+  M.smokes.push({ x, y, r: 0, R: 92, t: 0, T: o.T || 18, puffs, tint: o.tint || 'grey', shade: o.shade || 0, op: o.op !== undefined ? o.op : 1, cv: null, cvT: -9 }); smokeRays(M.smokes[M.smokes.length - 1]); if (!o.quiet) sfx('splash', x, y, 0.5); for (let i = 0; i < 8; i++) part({ k: 'smoke', x, y, vx: rnd(-60, 60), vy: rnd(-60, 60), life: 1.2, max: 1.2, sz: 12, drag: 2 });
 }
-function updateSmokes(dt) { for (const c of M.smokes) { c.t += dt; c.r = c.R * Math.min(1, c.t / 1.6); } prune(M.smokes, c => c.t < c.T || (c.cv && SMOKE_POOL.length < 64 && SMOKE_POOL.push(c.cv), false)); }
+/* growth eases out over SMOKE_GROW s (starts at 80 % of the old linear rate, slows to a stop) */
+const SMOKE_GROW = 4, SMOKE_RAYS = 8;
+/* smoke spreads where it has room: 8 rays from the centre (at birth, then every ~2 s or after drifting 12 px) find how far
+   it reaches each way, up to R. Each way's shortfall pushes the centre the other way (no further than that side is open),
+   so a cloud against a wall drifts off it to full size; puffs that would sit in a wall are pulled back (smokeCache) */
+function smokeRays(c) {
+  const L = c.R, F = c.free || (c.free = new Float32Array(SMOKE_RAYS));
+  for (let k = 0; k < SMOKE_RAYS; k++) {
+    const a = k * TAU / SMOKE_RAYS, x1 = c.x + Math.cos(a) * L, y1 = c.y + Math.sin(a) * L; let t = 1;
+    for (const b of MAP.buildings) { if (b.x > c.x + L || b.x + b.w < c.x - L || b.y > c.y + L || b.y + b.h < c.y - L || inRect(c.x, c.y, b)) continue; const h = segRect(c.x, c.y, x1, y1, b, 0); if (h >= 0 && h < t) t = h; }
+    F[k] = t * L;
+  }
+  c.rx = c.x; c.ry = c.y; c.rayT = c.t + rnd(-0.3, 0.3);
+  let sx = 0, sy = 0; for (let k = 0; k < SMOKE_RAYS; k++) { const a = k * TAU / SMOKE_RAYS, s = L - F[k]; sx -= Math.cos(a) * s; sy -= Math.sin(a) * s; }
+  sx /= 4; sy /= 4; const m = Math.hypot(sx, sy), k = m > 0.5 ? Math.min(1, Math.max(0, smokeFree(c, Math.atan2(sy, sx)) - 8) / m) : 0;
+  c.tx = c.x + sx * k; c.ty = c.y + sy * k;
+}
+/* how far the cloud reaches at angle a (between two rays) */
+function smokeFree(c, a) { const f = ((a / TAU * SMOKE_RAYS) % SMOKE_RAYS + SMOKE_RAYS) % SMOKE_RAYS, i = f | 0, w = f - i; return c.free[i] * (1 - w) + c.free[(i + 1) % SMOKE_RAYS] * w; }
+function updateSmokes(dt) {
+  for (const c of M.smokes) {
+    c.t += dt; const g = 1 - Math.min(1, c.t / SMOKE_GROW); c.r = c.R * (1 - g * g);
+    if (c.t - c.rayT >= 2 || Math.hypot(c.x - c.rx, c.y - c.ry) > 12) smokeRays(c);
+    const k = Math.min(1, dt * 1.5); c.x += (c.tx - c.x) * k; c.y += (c.ty - c.y) * k;
+  }
+  prune(M.smokes, c => c.t < c.T || (c.cv && SMOKE_POOL.length < 64 && SMOKE_POOL.push(c.cv), false)); }
 function smokeBlocks(x0, y0, x1, y1) {
   for (const c of M.smokes) {
     if (c.t > c.T - 2.5 || c.r < 24) continue;

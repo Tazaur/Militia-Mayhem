@@ -164,9 +164,14 @@ const SMOKE_PX = 160, SMOKE_EXT = 1.65, SMOKE_POOL = [];         // cache size; 
 function smokeCache(c) {
   const g = (c.cv || (c.cv = SMOKE_POOL.pop() || mk(SMOKE_PX, SMOKE_PX))).getContext('2d'), h = SMOKE_PX / 2, k = h / SMOKE_EXT, pal = SPR.puffs[c.tint];
   g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.clearRect(0, 0, SMOKE_PX, SMOKE_PX);
-  g.globalAlpha = 0.55; g.drawImage(pal[c.shade][0], h - k * 1.35, h - k * 1.35, k * 2.7, k * 2.7);
+  const R = c.R, open = R - 0.5, base = Math.min(1.35, (Math.min(...c.free) + 0.35 * c.r) / c.r);     // the haze under the puffs stops short of walls too
+  g.globalAlpha = 0.55; g.drawImage(pal[c.shade][0], h - k * base, h - k * base, k * base * 2, k * base * 2);
   for (const [ox, oy, v, rot, sz, sh] of c.puffs) {
-    const r = k * 0.72 * sz, x = h + (ox + Math.sin(M.time * 0.35 + rot) * 6 / c.R) * k, y = h + (oy + Math.cos(M.time * 0.27 + rot) * 5 / c.R) * k;
+    // the puff in world px from the centre; pulled back if it would sit in a wall (its soft rim may overlap a little)
+    let wx = ox * c.r + Math.sin(M.time * 0.35 + rot) * 6, wy = oy * c.r + Math.cos(M.time * 0.27 + rot) * 5;
+    const d = Math.hypot(wx, wy), f = d > 1 ? smokeFree(c, Math.atan2(wy, wx)) : R, lim = f >= open ? 1e9 : Math.max(0, f - 0.6 * 0.72 * sz * c.r);
+    if (d > lim) { wx *= lim / d; wy *= lim / d; }
+    const r = k * 0.72 * sz, x = h + wx / c.r * k, y = h + wy / c.r * k;
     g.globalAlpha = v % 2 ? 0.55 : 0.8; g.drawImage(pal[sh][v % 2], x - r, y - r, r * 2, r * 2);
   }
   c.cvT = M.time;
@@ -175,7 +180,7 @@ function drawSmokes(vis) {
   worldT();
   for (const c of M.smokes) {
     if (c.r < 1 || !vis(c.x, c.y, c.R + 60)) continue;
-    if (M.time - c.cvT > 0.3 || M.time < c.cvT) smokeCache(c);
+    if (M.time - c.cvT > (c.t < SMOKE_GROW ? 0.1 : 0.3) || M.time < c.cvT) smokeCache(c);     // faster while it grows (puffs meet walls)
     const e = c.r * SMOKE_EXT;
     ctx.globalAlpha = Math.min(1, c.t / 0.5) * Math.min(1, (c.T - c.t) / 3.5) * c.op; ctx.drawImage(c.cv, c.x - e, c.y - e, e * 2, e * 2);
   }
