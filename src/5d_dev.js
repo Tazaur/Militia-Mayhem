@@ -9,7 +9,7 @@
    broken picture) the first time a shot, a grenade or a vaulting soldier goes through it. Corners, tees and
    crosses are their own one-cell sections and are much stronger. Vehicles ramming walls hurt both (RAM).
    Roofs: every floor cell has a roof tile held up by one wall section (devRoof); it comes down with that section and
-   hurts whoever is under it. It covers the whole house (walls too): opaque out of sight, 70% see-through through a window, 90% in direct sight.
+   hurts whoever is under it. It covers the whole house (walls too): opaque out of sight; in sight it fades by distance (roofOp).
    ===================================================================== */
 const TILE = 32, SUB = 16, DEV_COLS = 48, DEV_ROWS = 32;
 const C_OUT = 0, C_FLOOR = 1, C_WALL = 2, C_WIN = 3, C_RUB = 4;
@@ -285,8 +285,9 @@ function devRoofFall(sec) {
   devLog(`ROOF ${cells.size} TILES DOWN`, '#ffb060');
   return cells.size;
 }
-/* the roof over the whole house, walls included (drawn above units and walls): opaque except where it is seen, 30% left
-   through a window, 10% seen directly. Out of sight it is drawn solid, greyed like the rest of the fog. */
+/* the roof over the whole house, walls included (drawn above units and walls). Out of sight: solid, greyed like the rest of
+   the fog. In sight it fades by distance from the eye: gone within ROOF_NEAR, 35% at ROOF_FAR and beyond; seen through glass it keeps 10% more */
+const ROOF_NEAR = 60, ROOF_FAR = 120, roofOp = d => d <= ROOF_NEAR ? 0 : 0.35 * Math.min(1, (d - ROOF_NEAR) / (ROOF_FAR - ROOF_NEAR));
 function devDrawRoof(vw, x0, y0, x1, y1, fogPolys) {
   const TL = MAP.tiled; if (!TL || !TL.roof) return;
   if (ROOF_TMP.width !== cv.width || ROOF_TMP.height !== cv.height) { ROOF_TMP.width = cv.width; ROOF_TMP.height = cv.height; }
@@ -298,8 +299,14 @@ function devDrawRoof(vw, x0, y0, x1, y1, fogPolys) {
   g.drawImage(fogPolys ? ROOF_G : ROOF_C, bx0, by0, bw, bh, bx0, by0, bw, bh);
   if (fogPolys && pw.length) { g.save(); polyPath(g, pw); g.clip(); g.clearRect(bx0, by0, bw, bh); g.drawImage(ROOF_C, bx0, by0, bw, bh, bx0, by0, bw, bh); g.restore(); }   // in sight: in colour
   g.globalCompositeOperation = 'destination-out';
-  if (pw.length) { g.fillStyle = 'rgba(0,0,0,0.7)'; polyPath(g, pw); g.fill(); }
-  if (pd.length) { g.fillStyle = 'rgba(0,0,0,0.6667)'; polyPath(g, pd); g.fill(); }
+  // per eye: through glass the roof keeps roofOp(d) + 0.1; seen directly, a second pass takes it down to roofOp(d)
+  eyes.forEach(([ex, ey], n) => {
+    for (const [P, keep] of [[pw[n], d => Math.min(1, roofOp(d) + 0.1)], [pd[n], d => roofOp(d) / Math.min(1, roofOp(d) + 0.1)]]) {
+      const gr = g.createRadialGradient(ex, ey, 0, ex, ey, ROOF_FAR);
+      for (let d = 0; d <= ROOF_FAR; d += 10) gr.addColorStop(d / ROOF_FAR, `rgba(0,0,0,${(1 - keep(d)).toFixed(3)})`);
+      g.fillStyle = gr; polyPath(g, [P]); g.fill();
+    }
+  });
   g.globalCompositeOperation = 'source-over';
   ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(ROOF_TMP, vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR, vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR); ctx.restore();
   vw._roof = { pw, pd };

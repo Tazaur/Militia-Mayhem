@@ -217,3 +217,4 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
   - With vision off the same applies, and the roof is opaque elsewhere.
 - `visPoly(ex, ey, R, walls)` now takes an optional wall list.
 - Build 74: fog memory (`FOGK`) is full resolution with no smoothing on tiled maps (set when the memory is created), so walls in shadow stay crisp. Other maps keep half resolution.
+- Build 75: in-sight roof opacity is by distance from the eye. `roofOp(d)`: 0 within 60 px, rising linearly to 0.35 at 120 px and staying there; +0.1 when seen through glass. It is a radial-gradient destination-out per eye: the glass-see-through polygon first (keep op + 0.1), then the direct polygon (keep op / (op + 0.1)). Out of sight it stays opaque grey.
