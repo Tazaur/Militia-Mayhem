@@ -276,12 +276,14 @@ function devRoofFall(sec) {
   if (n) devLog(`ROOF ${n} TILES DOWN`, '#ffb060');
   return n;
 }
-/* one roof tile lands: a brown half-strength smoke cloud, debris, a shake nearby, and whoever is under it is hurt (once per fall) */
+/* one roof tile lands: a brown half-strength 10 s smoke cloud (on a sparse pattern), debris, a shake nearby, and whoever is under it is hurt (once per fall) */
 function devRoofTile(k, ev) {
   const TL = MAP.tiled; if (TL.roof[k] !== 1) return; TL.roof[k] = 2;
   const i = k % TL.sc, j = (k / TL.sc) | 0, cx = (i + 0.5) * SUB, cy = (j + 0.5) * SUB;
   paintCell(i, j); repaintRoofAround([k]);
-  popSmoke(cx, cy, { tint: 'brown', op: 0.5, quiet: true });
+  // dust: floor tiles on even row + even column, tiles over walls in a checkerboard
+  const wallish = TL.cell[k] === C_RUB || TL.cell[k] === C_WALL;
+  if (wallish ? (i + j) % 2 === 0 : i % 2 === 0 && j % 2 === 0) popSmoke(cx, cy, { tint: 'brown', shade: rint(0, 3), op: 0.5, T: 10, quiet: true });
   { const a = rnd(0, TAU), sp = rnd(30, 120); part({ k: 'debris', x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rnd(0.4, 0.9), max: 0.9, sz: rnd(2, 4), rot: rnd(0, TAU), vr: rnd(-12, 12), drag: 3 }); }
   shakeAt(cx, cy, 2.5, 420); sfx('crush', cx, cy, 0.6);
   const under = (x, y) => ((y / SUB) | 0) * TL.sc + ((x / SUB) | 0) === k;

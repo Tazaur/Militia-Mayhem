@@ -349,12 +349,16 @@ function destroyVehicle(v, src) {
   scorch(v.x, v.y, v.type === 'tank' ? 90 : 70);
 }
 let EXP_REW = 0;                                  // a joiner's rocket/shell: its blast is judged where things were on their screen
+/* does a blast at (x, y) reach (tx, ty)? Walls shelter, glass doesn't. Starts a hair toward the target, so a blast
+   on a wall's face still reaches its own side of the wall */
+function blastReaches(x, y, tx, ty, d) { const k = Math.min(4, d) / (d || 1); return los(x + (tx - x) * k, y + (ty - y) * k, tx, ty); }
 function explosion(x, y, r, dmgS, dmgV, src, team, big, kind) {
   explosionFx(x, y, r, big); netEv('x', x | 0, y | 0, r | 0, big ? 1 : 0);
   const T = EXP_REW ? netNow() - EXP_REW : 0;
   for (const s of M.sol) {
     if (!s.alive) continue; if (s.veh && !s.veh.T.seats[s.seat].exposed) continue;
     const o = EXP_REW ? lagAt(s, T) : s, d = Math.hypot(o.x - x, o.y - y); if (d > r) continue;
+    if (!blastReaches(x, y, o.x, o.y, d)) continue;                 // a wall between: sheltered (the blast still shakes and rings)
     hurtSoldier(s, dmgS * Math.pow(1 - d / r, 0.6), src, kind || 'explosion', o.x - x + rnd(-1, 1), o.y - y + rnd(-1, 1));
   }
   for (const v of M.vehicles) {
@@ -516,6 +520,8 @@ function vehicleCollide(v, local, auth) {
   if (hit) { if (Math.abs(v.spd) > 120 && v.crashCd <= 0 && !local) { v.crashCd = 0.6; sfx('clang', v.x, v.y); if (v.type === 'jeep') hurtVehicle(v, (Math.abs(v.spd) - 110) * 0.2, null); } v.spd *= 0.6; }
 }
 function toLocal(v, x, y) { const dx = x - v.x, dy = y - v.y, c = Math.cos(-v.a), s = Math.sin(-v.a); return [dx * c - dy * s, dx * s + dy * c]; }
+/* nothing solid at all on the segment (walls and windows) */
+function clearPath(x0, y0, x1, y1) { for (const b of MAP.buildings) if (segRect(x0, y0, x1, y1, b, 0) >= 0) return false; return true; }
 function toWorld(v, lx, ly) { const c = Math.cos(v.a), s = Math.sin(v.a); return [v.x + lx * c - ly * s, v.y + lx * s + ly * c]; }
 
 /* ---------------- seats ---------------- */
@@ -533,7 +539,9 @@ function enterCandidate(s) {
     if (vt >= 0 && isEnemy(vt, s.team) && !(M.cfg.board && s.player)) continue;     // enemy boarding (players only) is a match option
     const [lx, ly] = toLocal(v, s.x, s.y);
     if (Math.abs(lx) > v.T.hl + 30 || Math.abs(ly) > v.T.hw + 30) continue;
-    const order = v.T.seats.map((sd, i) => { const an = nearAnchor(sd, lx, ly); return { i, d: Math.hypot(lx - an[0], ly - an[1]) }; }).sort((a, b) => a.d - b.d);
+    // only seats whose door you can reach: nothing solid (glass included) between you and it
+    const order = v.T.seats.map((sd, i) => { const an = nearAnchor(sd, lx, ly), [wx, wy] = toWorld(v, an[0], an[1]); return { i, d: Math.hypot(lx - an[0], ly - an[1]), ok: clearPath(s.x, s.y, wx, wy) }; }).filter(o => o.ok).sort((a, b) => a.d - b.d);
+    if (!order.length) continue;
     if (!best || order[0].d < best.order[0].d) best = { v, order };
   }
   if (!best) return null;
@@ -649,8 +657,8 @@ function throwNade(s, dist, forceFrag) {
 /* smoke screens: grow, linger, fade; they block sight lines for bots and spotting */
 /* every view near (x, y) shakes, by amt at the spot fading to nothing at range */
 function shakeAt(x, y, amt, range) { for (const vw of M.views) { const d = Math.hypot(vw.cam.x - x, vw.cam.y - y); vw.shake = Math.min(18, vw.shake + amt * Math.max(0, 1 - d / range)); } }
-/* a smoke grenade's cloud; o (optional): { tint: 'brown', op: opacity, quiet } (falling roofs use it) */
-function popSmoke(x, y, o) { if (!o) netEv('sm', x | 0, y | 0); const puffs = []; for (let i = 0; i < 18; i++) { const a = rnd(0, TAU), d = i ? Math.sqrt(Math.random()) * 0.72 : 0; puffs.push([Math.cos(a) * d, Math.sin(a) * d, rint(0, 3), rnd(0, TAU), rnd(0.8, 1.2)]); } M.smokes.push({ x, y, r: 0, R: 92, t: 0, T: 18, puffs, tint: o && o.tint, op: o && o.op !== undefined ? o.op : 1 }); if (!(o && o.quiet)) sfx('splash', x, y, 0.5); for (let i = 0; i < 8; i++) part({ k: 'smoke', x, y, vx: rnd(-60, 60), vy: rnd(-60, 60), life: 1.2, max: 1.2, sz: 12, drag: 2 }); }
+/* a smoke grenade's cloud; o (optional): { tint: 'brown', shade: 0-3, op: opacity, T: seconds, quiet } (falling roofs use it) */
+function popSmoke(x, y, o) { if (!o) netEv('sm', x | 0, y | 0); const puffs = []; for (let i = 0; i < 18; i++) { const a = rnd(0, TAU), d = i ? Math.sqrt(Math.random()) * 0.72 : 0; puffs.push([Math.cos(a) * d, Math.sin(a) * d, rint(0, 3), rnd(0, TAU), rnd(0.8, 1.2)]); } M.smokes.push({ x, y, r: 0, R: 92, t: 0, T: (o && o.T) || 18, puffs, tint: o && o.tint, shade: (o && o.shade) || 0, op: o && o.op !== undefined ? o.op : 1 }); if (!(o && o.quiet)) sfx('splash', x, y, 0.5); for (let i = 0; i < 8; i++) part({ k: 'smoke', x, y, vx: rnd(-60, 60), vy: rnd(-60, 60), life: 1.2, max: 1.2, sz: 12, drag: 2 }); }
 function updateSmokes(dt) { for (const c of M.smokes) { c.t += dt; c.r = c.R * Math.min(1, c.t / 1.6); } prune(M.smokes, c => c.t < c.T); }
 function smokeBlocks(x0, y0, x1, y1) {
   for (const c of M.smokes) {
@@ -660,10 +668,18 @@ function smokeBlocks(x0, y0, x1, y1) {
   }
   return false;
 }
+/* the cannon barrel, turret pivot to muzzle (where shells leave) */
+const BARREL = 96;
+function barrelHits(v, a) {
+  const px = v.x - 4 * Math.cos(v.a), py = v.y - 4 * Math.sin(v.a), x = px + Math.cos(a) * BARREL, y = py + Math.sin(a) * BARREL;
+  for (const b of MAP.buildings) if (!b.glass && segRect(px, py, x, y, b, 0) >= 0) return true;
+  return false;
+}
 function fireCannon(v, s) {
   const c = Math.cos(v.ta), sn = Math.sin(v.ta), px = v.x - 4 * Math.cos(v.a), py = v.y - 4 * Math.sin(v.a);
-  const x = px + c * 96, y = py + sn * 96;
-  M.proj.push({ k: 'shell', x, y, vx: c * 760, vy: sn * 760, life: 1.1, src: s, team: s.team, wname: 'CANNON' });
+  const x = px + c * BARREL, y = py + sn * BARREL, inWall = barrelHits(v, v.ta);
+  // a muzzle pushed through a wall doesn't shoot from behind it: the shell starts at the pivot and hits the wall
+  M.proj.push({ k: 'shell', x: inWall ? px : x, y: inWall ? py : y, vx: c * 760, vy: sn * 760, life: 1.1, src: s, team: s.team, wname: 'CANNON' });
   v.cd = 2.3; v.recoil = 1; v.spd -= 14; s.firedT = 2; v.cN = (v.cN || 0) + 1;
   cannonFx(v, x, y, s);
 }
@@ -1020,7 +1036,7 @@ function updateVehicle(v, dt) {
     else {
       const ox = v.x, oy = v.y;
       vehDrive(v, ctl.mx, ctl.my, dt, false);
-      if (v.type === 'tank' && driver && v.aimT !== undefined) v.tRel += clamp(angDiff(v.ta, v.aimT), -1.7 * dt, 1.7 * dt);
+      if (v.type === 'tank' && driver && v.aimT !== undefined) { const st = clamp(angDiff(v.ta, v.aimT), -1.7 * dt, 1.7 * dt); if (!barrelHits(v, v.ta + st) || barrelHits(v, v.ta)) v.tRel += st; }   // the barrel can't swing into a wall
       syncMounts(v);
       vehTrackFx(v, Math.hypot(v.x - ox, v.y - oy) + Math.abs(v.av) * dt * 20);
     }

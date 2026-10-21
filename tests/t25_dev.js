@@ -85,7 +85,9 @@ setImmediate(()=>{
     G.devDamage(sec,9999,0,0); step(2);
     ok(T2.rdist[far]>=4,'patch is several tiles deep '+T2.rdist[far]); ok(T2.roof[far]===1&&ks.some(k=>T2.roof[k]===2),'cascade: near tiles first, far tiles still up');
     step(Math.ceil(T2.rdist[far]*0.07*60)+10);
-    ok(M.smokes.length-sm0>=ks.length*0.9&&M.smokes.slice(sm0).every(c=>c.tint==='brown'&&c.op===0.5),'a brown half-opacity smoke cloud per tile');
+    const dusty=ks.filter(k=>{const i=k%sc,j=(k/sc)|0,c=T2.cell[k]; return c===2||c===4?(i+j)%2===0:i%2===0&&j%2===0;}).length, nc=M.smokes.slice(sm0);
+    ok(nc.length>=dusty*0.9&&nc.length<=dusty&&nc.length<ks.length*0.5,'dust on the sparse pattern only '+nc.length+'/'+dusty+' of '+ks.length);
+    ok(nc.every(c=>c.tint==='brown'&&c.op===0.5&&c.T===10),'brown, half opacity, 10 s'); ok(new Set(nc.map(c=>c.shade)).size>1,'dust shades vary');
     ok(ks.every(k=>T2.roof[k]===2),'its roof fell'); let left=0; for(let k=0;k<N;k++) if(T2.roof[k]===1) left++; ok(left===other,'the rest stays up');
     ok(!dd.alive||dd.hp<=dd.mhp*0.5+0.01,'roof hurts at least half: '+(dd.alive?dd.hp:'dead'));
     ok(/ROOF \d+ TILES DOWN/.test(G.DEV.log.map(l=>l.text).join('|')),'roof fall logged');
@@ -123,6 +125,31 @@ setImmediate(()=>{
     // crumbled ends next to rubble draw without error
     for(let j=0;j<T2.sr;j++)for(let i=0;i<T2.sc;i++) if(T2.cell[j*T2.sc+i]) G.paintCell(i,j);
   }
+  // ---- walls shelter from blasts; no boarding through walls; the tank barrel can't swing into or shoot through a wall
+  step(150); M.smokes.length=0;
+  { const T2=G.MAP.tiled, w=T2.secs.filter(s=>s.alive&&!s.glass&&!s.junc&&s.cw*s.ch>=5).sort((a,b)=>b.mhp-a.mhp)[0], b=w.b, hz=b.w>b.h, cx=b.x+b.w/2, cy=b.y+b.h/2;
+    const side=(k)=>hz?[cx,cy+k]:[cx+k,cy], dd=M.sol.find(s=>s.dummy&&s.alive);
+    const [ax,ay]=side(-20), [bx,by]=side(20); dd.x=bx; dd.y=by; dd.hp=dd.mhp; dd.ttk=null;
+    G.explosion(ax,ay,90,25,0,null,-1,false); ok(dd.hp===dd.mhp,'wall shelters from a blast '+dd.hp);
+    G.explosion(bx-(hz?0:14),by-(hz?14:0),90,25,0,null,-1,false); ok(dd.hp<dd.mhp,'same blast hurts on your side '+dd.hp); ok(w.alive,'wall still up '+w.hp);
+    dd.hp=dd.mhp;
+    // boarding: a jeep on the far side of the wall can't be entered
+    const jeep=M.vehicles.find(v=>v.type==='jeep'&&!v.dead); jeep.spd=0; jeep.a=hz?0:Math.PI/2; [jeep.x,jeep.y]=side(-34); me.x=bx; me.y=by-(hz?0:0); me.vx=me.vy=0;
+    if(hz) me.y=by-4; else me.x=bx-4;
+    const c1=G.enterCandidate(me); ok(!c1||c1.v!==jeep,'no boarding through a wall');
+    [jeep.x,jeep.y]=side(34); const c2=G.enterCandidate(me); ok(c2&&c2.v===jeep,'boards on your side');
+    jeep.x=4*32; jeep.y=4*32;
+    // tank beside the wall, barrel pointing along it then asked to swing into it
+    const tank=M.vehicles.find(v=>v.type==='tank'&&!v.dead); tank.spd=0; tank.a=hz?0:Math.PI/2; [tank.x,tank.y]=side(60);
+    const into=hz?-Math.PI/2:Math.PI; tank.tRel=hz?0:-Math.PI/2; tank.ta=tank.a+tank.tRel;
+    ok(!G.barrelHits(tank,tank.ta),'barrel clear to start'); ok(G.barrelHits(tank,into),"barrel would reach the wall");
+    me.x=tank.x; me.y=tank.y; const ce=G.enterCandidate(me); ok(ce&&ce.v===tank,'tank boardable'); G.enterVehicle(me,ce);
+    for(let n=0;n<120;n++){ tank.aimT=into; step(1); }
+    ok(!G.barrelHits(tank,tank.ta),'barrel stopped short of the wall'); ok(Math.abs(Math.atan2(Math.sin(tank.ta-into),Math.cos(tank.ta-into)))>0.2,'turret did not reach '+tank.ta.toFixed(2));
+    // forced through (e.g. drove up to it): the shell starts at the pivot and hits the wall
+    tank.tRel=into-tank.a; tank.ta=into; ok(G.barrelHits(tank,tank.ta),'barrel in wall'); const h0=w.hp; M.proj.length=0; tank.cd=0; G.fireCannon(tank,me);
+    const p=M.proj[M.proj.length-1]; ok(Math.hypot(p.x-tank.x,p.y-tank.y)<10,'shell starts at the pivot'); step(20); ok(!w.alive||w.hp<h0,'shell hits the wall '+w.hp+'/'+h0);
+    G.exitVehicle(me); tank.x=40*32; tank.y=4*32; }
   // ---- touch AUTO: the toggle cycles; RANGE fires only when lined up, in range and in sight
   step(150);
   M.smokes.length=0;     // roof dust clouds from the ramming above block sight
