@@ -263,3 +263,6 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 
 ## Build 106
 - A strip's very ends (no wall face beyond) are cut at 45 degrees; an edge shorter than the pad gets a shallower strip, still 45.
+
+## Build 107
+- Wrecks no longer block sight (sightBlocked, visPoly). They still block movement, bullets and blasts (los), and are still drawn in the remembered view.

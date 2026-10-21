@@ -13,7 +13,7 @@ function raySeg(ox, oy, dx, dy, ax, ay, bx, by) {
   return t > 0 && u >= 0 && u <= 1 ? t : Infinity;
 }
 /* what the eye at (ex, ey) can see inside box [x0, y0, x1, y1], as an exact polygon:
-   - every corner of every solid shape (sight walls / `walls`, wrecks), each clipped to the box (so where a wall crosses
+   - every corner of every solid shape (sight walls / `walls`), each clipped to the box (so where a wall crosses
      the box edge is a corner too), plus the box's 4 corners, gets a ray;
    - a corner the ray doesn't reach (something nearer than 1 px short of it) is dropped;
    - an outer corner (its shape wholly to one side of the ray) sends the ray on past it to the next solid or the box edge,
@@ -47,10 +47,6 @@ function visPoly(ex, ey, box, walls, pad) {
     for (let i = 0; i < n; i++) corners.push([C[i], C[(i + n - 1) % n], C[(i + 1) % n], sid, F[(i + n - 1) % n], F[i]]);
   };
   for (const b of walls || MAP.sight) if (!(b.x > X1 || b.x + b.w < X0 || b.y > Y1 || b.y + b.h < Y0)) shape([[b.x, b.y], [b.x + b.w, b.y], [b.x + b.w, b.y + b.h], [b.x, b.y + b.h]], pd);
-  for (const w of M.wrecks) {
-    const m = w.hl + w.hw; if (w.x - m > X1 || w.x + m < X0 || w.y - m > Y1 || w.y + m < Y0) continue;
-    const c = Math.cos(w.a), s = Math.sin(w.a); shape([[-w.hl, -w.hw], [w.hl, -w.hw], [w.hl, w.hw], [-w.hl, w.hw]].map(([x, y]) => [w.x + x * c - y * s, w.y + x * s + y * c]), Math.min(pd, 5));
-  }
   const BC = [[X0, Y0], [X1, Y0], [X1, Y1], [X0, Y1]];
   for (let i = 0; i < 4; i++) { const [ax, ay] = BC[i], [bx, by] = BC[(i + 1) % 4]; segs.push([ax, ay, bx, by, 0, 0, 0, 0]); corners.push([BC[i], null, null, 0, null, null]); }
   const units = [];
@@ -120,7 +116,7 @@ function fogCanvases() {
   }
 }
 /* draws the remembered world for the whole view, then clips everything after it to what's in sight (the hard layer:
-   walls and wrecks). In the dev yard the roof is remembered over the ground: whole, as it stands (ROOF_C), so out of
+   the walls). In the dev yard the roof is remembered over the ground: whole, as it stands (ROOF_C), so out of
    sight a house is only ever its roof as you last saw it, never its walls or a fade.
    Returns the sight polygons (caller restores the clip), or null when vision is off. */
 function applyFog(vw, vis, x0, y0, x1, y1) {
@@ -145,7 +141,7 @@ function applyFog(vw, vis, x0, y0, x1, y1) {
   worldT(); ctx.imageSmoothingEnabled = false; drawSkirt(x0, y0, x1, y1);
   if (bw > 0 && bh > 0) { ctx.imageSmoothingEnabled = FOGK < 1; ctx.drawImage(m.c, bx0 * FOGK, by0 * FOGK, bw * FOGK, bh * FOGK, bx0, by0, bw, bh); ctx.imageSmoothingEnabled = false; }
   for (const A of MAP.arcs) { if (!vis(A.x, A.y, 50)) continue; const lost = m.arc.has(A) ? m.arc.get(A) : 0, f = lost / A.bags.length; spr(f < 0.25 ? 'bagarc0' : f < 0.75 ? 'bagarc1' : 'bagarc2', A.x, A.y, A.a); }
-  for (const w of M.wrecks) if (vis(w.x, w.y, 70)) drawWreck(w);      // they block sight, so they stay drawn where you can't see
+  for (const w of M.wrecks) if (vis(w.x, w.y, 70)) drawWreck(w);      // remembered like the statics
   worldT();
   for (const s of MAP.statics) {
     if ((s.type !== 'fence' && s.type !== 'hay') || !vis(s.x, s.y, 16) || !(m.st.has(s) ? m.st.get(s) : true)) continue;
@@ -213,7 +209,7 @@ function softMask(g, ex, ey, box) {
   return any;
 }
 /* the soft layers in the vision fog: the remembered view shows through the mask (smoke + windows) inside your sight.
-   The hard layer (walls, wrecks) is the clip around it, so the three never fight: out of sight is 100 % remembered,
+   The hard layer (walls) is the clip around it, so the three never fight: out of sight is 100 % remembered,
    in sight it's the soft sum. Two eyes in one view: each one's mask, multiplied (seen well by either = seen well).
    The mask is low-res (1/FOG_MS); upscaling it softens the edges. Its pixels sit on a grid fixed to the world (the
    leftover fraction is a shift when it's drawn), so moving doesn't make its edges swim. */

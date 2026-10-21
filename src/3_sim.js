@@ -422,7 +422,7 @@ function pushCircleRect(o, r, b) {
   const d = Math.sqrt(d2); o.x = nx + dx / d * r; o.y = ny + dy / d * r; return true;
 }
 const LOW = { bag: 1, fence: 1, hay: 1 };
-/* wrecks are oriented boxes: blockers for movement, bullets and sight */
+/* wrecks are oriented boxes: blockers for movement, bullets and blasts (not sight) */
 function pushOutWreck(o, r, w) {
   if (Math.abs(o.x - w.x) > w.hl + r + 4 || Math.abs(o.y - w.y) > w.hl + r + 4) return false;
   return pushOutBox(o, r, w.x, w.y, w.a, w.hl, w.hw);
@@ -692,7 +692,7 @@ function updateSmokes(dt) {
   }
   prune(M.smokes, c => c.t < c.T || (c.cv && SMOKE_POOL.length < 64 && SMOKE_POOL.push(c.cv), false)); }
 /* ---------------- line of sight: one rule for bots, spotting, aim help, the HUD and the vision fog ----------------
-   Hard: standing walls (MAP.sight) and wrecks. Soft, adding up to 100 %: smoke, in rings around each cloud's centre
+   Hard: standing walls (MAP.sight). Soft, adding up to 100 %: smoke, in rings around each cloud's centre
    (fraction of c.r -> occlusion, outer to core), times the cloud's strength (fades in / out; dust is half), a sight line
    taking the deepest ring it passes through, thinned close to the eye (SIGHT_NEAR px); and windows (MAP.glass),
    GLASS_OCC each one the line crosses, looking in or out. softMask paints exactly these, so what you see is what the
@@ -715,10 +715,9 @@ function glassOcc(x0, y0, x1, y1) { let o = 0; for (const b of MAP.glass) if (se
 function softOcc(x0, y0, x1, y1) { return Math.min(1, smokeOcc(x0, y0, x1, y1) + glassOcc(x0, y0, x1, y1)); }
 function sightBlocked(x0, y0, x1, y1) {
   for (const b of MAP.sight) if (segRect(x0, y0, x1, y1, b, 0) >= 0) return true;
-  for (const w of M.wrecks) if (segWreck(x0, y0, x1, y1, w) >= 0) return true;
   return false;
 }
-/* (x1, y1) is seen from (x0, y0): no wall or wreck between, and the soft layers leave at least SIGHT_MIN */
+/* (x1, y1) is seen from (x0, y0): no wall between, and the soft layers leave at least SIGHT_MIN */
 function sees(x0, y0, x1, y1) { return 1 - softOcc(x0, y0, x1, y1) >= SIGHT_MIN && !sightBlocked(x0, y0, x1, y1); }
 /* the cannon barrel, turret pivot to muzzle (where shells leave) */
 const BARREL = 96;

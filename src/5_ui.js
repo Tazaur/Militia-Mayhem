@@ -194,7 +194,7 @@ function drawSmokes(vis, vw) {
   }
   ctx.globalAlpha = 1;
 }
-/* a wreck: solid cover, then gone over its last 2 s (also drawn into the remembered view: it blocks sight) */
+/* a wreck: solid cover, then gone over its last 2 s (also drawn into the remembered view) */
 function drawWreck(w) {
   const al = clamp(w.t / 2, 0, 1);   // solid cover, then gone over its last 2 s
   worldT(); ctx.globalAlpha = 0.3 * al; ctx.fillStyle = '#000'; ctx.save(); ctx.translate(w.x + 4, w.y + 5); ctx.rotate(w.a); if (w.type === 'tank') ctx.fillRect(-52, -28, 104, 56); else ctx.fillRect(-41, -19, 82, 38); ctx.restore(); ctx.globalAlpha = 1;
