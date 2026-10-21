@@ -18,7 +18,7 @@ function onIce(x, y) { for (const w of MAP.ice) if (inRect(x, y, w)) return true
 const SNOWY = () => MAP && MAP.id === 'snowfield';
 /* footprints live on their own layer that slowly fades (about two minutes) */
 const prints = mk(WW, WH); const px_ = prints.getContext('2d');
-/* everything left behind (bodies, blood, scorch marks, tread marks) lives on a decal layer that fades over ~3 minutes */
+/* everything left behind (bodies, blood, tread marks) lives on a decal layer that fades over ~3 minutes (craters don't: scorch) */
 const decals = mk(WW, WH); const dgx = decals.getContext('2d');
 /* every 3 s both layers lose a step: footprints 7.5 %, decals 5 % */
 let layerFadeT = 0;
@@ -361,10 +361,11 @@ function updateCorpses(dt) {
   for (const b of M.brass) b.t += dt;
   if (M.brass.length && M.brass[0].t >= BRASS_T) M.brass = M.brass.filter(b => b.t < BRASS_T);
 }
+/* a crater: burnt into the ground itself, so it stays for the match */
 function scorch(x, y, r) {
-  const g = dgx.createRadialGradient(x, y, 0, x, y, r);
+  const g = gx.createRadialGradient(x, y, 0, x, y, r);
   g.addColorStop(0, 'rgba(40,22,8,0.75)'); g.addColorStop(0.5, 'rgba(70,40,12,0.45)'); g.addColorStop(1, 'rgba(70,40,12,0)');
-  dgx.setTransform(1, 0, 0, 1, 0, 0); dgx.fillStyle = g; dgx.beginPath(); dgx.arc(x, y, r, 0, TAU); dgx.fill();
+  gx.setTransform(1, 0, 0, 1, 0, 0); gx.fillStyle = g; gx.beginPath(); gx.arc(x, y, r, 0, TAU); gx.fill();
 }
 function tread(x, y, a, w, l, al) {
   dgx.setTransform(Math.cos(a), Math.sin(a), -Math.sin(a), Math.cos(a), x, y);

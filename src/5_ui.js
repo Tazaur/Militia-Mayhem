@@ -176,6 +176,7 @@ function drawSmokes(vis, vw) {
   worldT(); let eyes = null; const n1 = SIGHT_NEAR[1];
   for (const c of M.smokes) {
     if (c.r < 1 || !vis(c.x, c.y, c.R + 60)) continue;
+    if (c.grid) { drawGridSmoke(c, eyes = eyes || (vw ? viewSols(vw).map(posOf) : [])); continue; }
     if (M.time - c.cvT > (c.t < SMOKE_GROW ? 0.1 : 0.3) || M.time < c.cvT) smokeCache(c);     // faster while it grows (puffs meet walls)
     const e = c.r * SMOKE_EXT; let img = c.cv;
     eyes = eyes || (vw ? viewSols(vw).map(posOf) : []);
@@ -193,6 +194,19 @@ function drawSmokes(vis, vw) {
     ctx.globalAlpha = Math.min(1, c.t / 0.5) * Math.min(1, (c.T - c.t) / 3.5) * c.op; ctx.drawImage(img, c.x - e, c.y - e, e * 2, e * 2);
   }
   ctx.globalAlpha = 1;
+}
+/* grid smoke: a pixel per tile, drawn GS times bigger and smoothed, so each tile blends half a tile (8 px) into its
+   neighbours; thinned near the eyes like the clouds */
+function drawGridSmoke(c, eyes) {
+  const g = c.gc.getContext('2d'), im = c.gim || (c.gim = g.createImageData(c.gw, c.gh)), d = im.data, s = smokeStr(c), [n0, n1] = SIGHT_NEAR;
+  for (let j = 0; j < c.gh; j++) for (let i = 0; i < c.gw; i++) {
+    const k = j * c.gw + i, o = k * 4; let v = gsAt(c, k) * s;
+    if (v > 0) for (const e of eyes) v *= SMOKE_KEEP + (1 - SMOKE_KEEP) * clamp((Math.hypot((c.gi + i + 0.5) * GS - e.x, (c.gj + j + 0.5) * GS - e.y) - n0) / (n1 - n0), 0, 1);
+    d[o] = d[o + 1] = d[o + 2] = c.sh[k]; d[o + 3] = v * 235;
+  }
+  g.putImageData(im, 0, 0);
+  ctx.globalAlpha = 1; ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'low';
+  ctx.drawImage(c.gc, c.gi * GS, c.gj * GS, c.gw * GS, c.gh * GS); ctx.imageSmoothingEnabled = false;
 }
 /* a wreck: solid cover, then gone over its last 2 s (also drawn into the remembered view) */
 function drawWreck(w) {

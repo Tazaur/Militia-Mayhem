@@ -266,3 +266,9 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 
 ## Build 107
 - Wrecks no longer block sight (sightBlocked, visPoly). They still block movement, bullets and blasts (los), and are still drawn in the remembered view.
+
+## Build 108
+- Craters (scorch) burn into the ground canvas: permanent for the match (decals still fade).
+- MAP.glass in the dev yard = intact window sections only (devSight reruns when a window cracks).
+- raySeg counts a hit at a segment's very end (u slack 1e-6): rays through the seam of two touching sections no longer slip through and extend (bleed probe 3 -> 0 of 25k wedges). VIS_TOL 2.
+- Grid smoke (experimental, dev GRID SMOKE): popSmoke(x, y, { grid }) -> gridSmoke: nearest-first fill of open 16 px tiles (8 ways, no diagonal squeeze), GS_N 90 tiles, GS_STEP 0.3 s per tile, density 1 -> GS_EDGE 0.15 by (d/dmax)^2. Sight: thickest tile crossed (gridOcc, DDA) in smokeOcc; fog mask per pixel from gridOcc (gridMask); drawn as 1 px/tile scaled x16 smoothed (8 px blend). Net 'sm' carries the grid flag.

@@ -17,7 +17,7 @@ const ROOM_MIN = 36, ROOM_SIDE = 5, SEC_MAX = 6;
 /* ramming, per unit of speed: damage to the wall, damage to the vehicle, speed kept; a tank always hits at least min */
 const RAM = { tank: { wall: 2.6, self: 0.15, keep: 0.8, min: 50, go: 12 }, jeep: { wall: 0.45, self: 1, keep: 0.15, min: 0, go: 25 } };
 const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];          // up, right, down, left
-const DEV = { roofQ: [], open: true, god: false, ammo: true, respawn: true, grid: true, secs: true, sightDbg: false, range: 6, sel: 1, padNav: false, log: [], nums: [], lastA: 0, over: false, B: [], R: null, seed: 1 };
+const DEV = { roofQ: [], open: true, god: false, ammo: true, respawn: true, grid: true, secs: true, sightDbg: false, gridSmoke: false, range: 6, sel: 1, padNav: false, log: [], nums: [], lastA: 0, over: false, B: [], R: null, seed: 1 };
 const DEV_RANGES = [2, 4, 6, 8, 10, 15, 20, 30];
 /* structural damage per blast, keyed by blast radius: rocket 62, tank shell 78, frag 88; anything else x1 */
 const STRUCT_K = { 62: 1.6, 78: 2, 88: 0.35 };
@@ -221,7 +221,8 @@ function devSections() {
 /* sight walls (hard) and windows (soft, GLASS_OCC) */
 function devSight() {
   const TL = MAP.tiled, px = r => ({ x: r.x * SUB, y: r.y * SUB, w: r.w * SUB, h: r.h * SUB });
-  MAP.sight = wallRuns(TL, v => v === C_WALL).map(px); MAP.glass = wallRuns(TL, v => v === C_WIN).map(px);
+  MAP.sight = wallRuns(TL, v => v === C_WALL).map(px);
+  MAP.glass = TL.secs.filter(s => s.glass && s.alive && s.hp >= s.mhp).flatMap(s => s.bs);     // only intact windows dim sight
 }
 
 /* ---------------- roofs ---------------- */
@@ -361,7 +362,7 @@ function devDamage(sec, v, x, y) {
   const intact = sec.hp >= sec.mhp;
   sec.hp -= v; sec.hitT = 0.35; devNum(x, y, v, '#ffb060');
   if (sec.hp <= 0) devCollapse(sec);
-  else if (sec.glass && intact) { devRepaint(sec, 0); sfx('glass', x, y); }
+  else if (sec.glass && intact) { devRepaint(sec, 0); devSight(); sfx('glass', x, y); }
 }
 /* a shot, a grenade or a vaulting soldier through an intact window: it cracks */
 function devGlass(sec, x, y) { if (sec.alive && sec.hp >= sec.mhp) devDamage(sec, 1, x, y); }
@@ -565,6 +566,7 @@ function devDrawPanel() {
   row(['DUMMY RESPAWN', () => DEV.respawn = !DEV.respawn, DEV.respawn], ['LINE OF SIGHT', () => M.cfg.fog = M.cfg.fog === 'off' ? 'los' : 'off', M.cfg.fog !== 'off']);
   row(['GRID', () => DEV.grid = !DEV.grid, DEV.grid], ['SECTIONS', () => DEV.secs = !DEV.secs, DEV.secs]);
   row(['SIGHT LINES', () => DEV.sightDbg = !DEV.sightDbg, DEV.sightDbg]);
+  row(['GRID SMOKE', () => DEV.gridSmoke = !DEV.gridSmoke, DEV.gridSmoke]);
   head('WORLD');
   row(['RESET MAP', devResetMap], ['HEAL ME', devHeal]);
   row(['NEW HOUSES', () => { DEV.seed++; devResetMap(); }], ['CLEAR LOG', () => DEV.log.length = 0]);

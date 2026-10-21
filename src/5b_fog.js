@@ -10,18 +10,18 @@ function fogEyes(vw) {
 function raySeg(ox, oy, dx, dy, ax, ay, bx, by) {
   const sx = bx - ax, sy = by - ay, den = dx * sy - dy * sx; if (Math.abs(den) < 1e-9) return Infinity;
   const t = ((ax - ox) * sy - (ay - oy) * sx) / den, u = ((ax - ox) * dy - (ay - oy) * dx) / den;
-  return t > 0 && u >= 0 && u <= 1 ? t : Infinity;
+  return t > 0 && u >= -1e-6 && u <= 1 + 1e-6 ? t : Infinity;     // a ray through a segment's end counts as a hit (float slack)
 }
 /* what the eye at (ex, ey) can see inside box [x0, y0, x1, y1], as an exact polygon:
    - every corner of every solid shape (sight walls / `walls`), each clipped to the box (so where a wall crosses
      the box edge is a corner too), plus the box's 4 corners, gets a ray;
-   - a corner the ray doesn't reach (something nearer than 1 px short of it) is dropped;
+   - a corner the ray doesn't reach (something nearer than VIS_TOL px short of it) is dropped;
    - an outer corner (its shape wholly to one side of the ray) sends the ray on past it to the next solid or the box edge,
      unless another shape touches it right there; that point and the corner stay together as one unit;
    - units are ordered by angle (a unit's two points: the far one first when the shape lies further round) and linked.
    Only faces turned toward the eye block (a ray always meets the front face first). Each stretch of outline that runs
    along a wall face also gets a strip pad px (default 5) deep into that wall (P.strips), so the face you see shows. */
-const VIS_TOL = 1;
+const VIS_TOL = 2;
 function clipBox(C, [X0, Y0, X1, Y1]) {      // a convex polygon cut to the box (Sutherland-Hodgman)
   for (const [ax, v, keep] of [[0, X0, 1], [0, X1, -1], [1, Y0, 1], [1, Y1, -1]]) {
     const out = [];
@@ -180,6 +180,7 @@ function softMask(g, ex, ey, box) {
   const FAR = 5000; let any = false; g.fillStyle = '#fff'; g.globalCompositeOperation = 'lighter';
   for (const c of M.smokes) {
     const s = smokeStr(c); if (!s || c.r < 1) continue; any = true;
+    if (c.grid) { gridMask(g, c, s, ex, ey); continue; }
     const d = Math.hypot(c.x - ex, c.y - ey), a0 = Math.atan2(c.y - ey, c.x - ex); let prev = 0;
     for (const [f, v] of SMOKE_RINGS) {
       const rho = f * c.r; g.globalAlpha = s * (v - prev); prev = v; g.beginPath();
@@ -207,6 +208,18 @@ function softMask(g, ex, ey, box) {
   }
   g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
   return any;
+}
+/* grid smoke on the mask: each mask pixel gets exactly gridOcc of the sight line to it (added, like the clouds) */
+const GS_MASK = document.createElement('canvas');
+function gridMask(g, c, s, ex, ey) {
+  const W = g.canvas.width, H = g.canvas.height, T = g.getTransform(), k = T.a;
+  if (GS_MASK.width !== W || GS_MASK.height !== H) { GS_MASK.width = W; GS_MASK.height = H; GS_MASK.im = null; }
+  const mg = GS_MASK.getContext('2d'), im = GS_MASK.im || (GS_MASK.im = mg.createImageData(W, H)), d = im.data; d.fill(0);
+  for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) {
+    const v = gridOcc(c, ex, ey, (px + 0.5 - T.e) / k, (py + 0.5 - T.f) / k); if (!v) continue;
+    const o = (py * W + px) * 4; d[o] = d[o + 1] = d[o + 2] = 255; d[o + 3] = v * s * 255;
+  }
+  mg.putImageData(im, 0, 0); g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.drawImage(GS_MASK, 0, 0); g.restore();
 }
 /* the soft layers in the vision fog: the remembered view shows through the mask (smoke + windows) inside your sight.
    The hard layer (walls) is the clip around it, so the three never fight: out of sight is 100 % remembered,
