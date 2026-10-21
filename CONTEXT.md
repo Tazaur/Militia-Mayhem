@@ -196,3 +196,19 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
   - OFF: the drag only aims.
   - RNG: the drag aims and fires when `autoLined(s, a)` (4_ai) finds an enemy within the gun's reach (≤420 px) inside the cone `atan(r/d) + 0.04`, with los and no smoke.
   - In OFF and RNG, holding without a drag fires after 150 ms, so starting a drag doesn't shoot.
+
+## Build 72: dev yard roofs
+- `devRoof()` (after devSections) gives every house floor cell `TL.roof[k] = 1` and `TL.rsec[k]` = the wall section holding it up.
+  - It runs Dijkstra from every non-glass wall cell at once, with a random 1–2.6 cost per floor cell.
+  - So each section's patch is connected to that section through its own tiles (no floating roof when a neighbour falls), and the borders are ragged rather than nearest-wall.
+- When a wall section collapses, `devRoofFall(sec)` sets its tiles to `roof = 2`. paintCell then draws the rubble tile over that floor, and dust/debris spawn.
+  - Soldiers whose cell is under the falling roof take 50–75% of their max hp (kind 'roof', wname 'ROOF'). Vehicles take 120 (jeep) or 40 (tank).
+  - Logged as "ROOF n TILES DOWN".
+- Drawing:
+  - `ROOF_C` is a world-sized canvas of shingle tiles, with a dark edge where the roof meets anything but a wall.
+  - applyFog draws it into the remembered view, so out of sight it is opaque and greyed.
+  - `devDrawRoof` (drawWorld layer 4) draws it on a temp canvas, then uses destination-out with two sight polygons from the eye:
+    - with glass see-through (`MAP.sight`), 0.7: 30% of the roof is left where it is seen through a window;
+    - with glass blocking (`MAP.sightD`), a further 2/3: 10% is left where it is seen directly.
+  - With vision off the same applies, and the roof is opaque elsewhere.
+- `visPoly(ex, ey, R, walls)` now takes an optional wall list.

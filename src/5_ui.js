@@ -112,6 +112,7 @@ function drawWorld(vw) {
   if (fogged) { drawSmokeFog(vw); ctx.restore(); }
   worldT();
   for (const b of MAP.buildings) if (b.roofC && vis(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h))) ctx.drawImage(b.roofC, b.x, b.y);
+  if (MAP.tiled) { devDrawRoof(vw, x0, y0, x1, y1, fogPolys); worldT(); }
   ctx.fillStyle = CFG.style === 'grit' ? 'rgba(0,0,0,0.38)' : 'rgba(0,0,0,0.32)';
   if (!MAP.tiled) for (const b of MAP.buildings) { if (!vis(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h))) continue; ctx.beginPath(); ctx.moveTo(b.x + b.w, b.y); ctx.lineTo(b.x + b.w + 14, b.y + 14); ctx.lineTo(b.x + b.w + 14, b.y + b.h + 14); ctx.lineTo(b.x + 14, b.y + b.h + 14); ctx.lineTo(b.x, b.y + b.h); ctx.lineTo(b.x + b.w, b.y + b.h); ctx.closePath(); ctx.fill(); }
   if (fogged) { ctx.save(); worldT(); polyPath(ctx, fogPolys); ctx.clip(); }

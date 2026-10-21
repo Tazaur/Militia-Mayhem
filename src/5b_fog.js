@@ -13,9 +13,9 @@ function raySeg(ox, oy, dx, dy, ax, ay, bx, by) {
   const t = ((ax - ox) * sy - (ay - oy) * sx) / den, u = ((ax - ox) * dy - (ay - oy) * dx) / den;
   return t > 0 && u >= 0 && u <= 1 ? t : Infinity;
 }
-function visPoly(ex, ey, R) {
+function visPoly(ex, ey, R, walls) {
   const segs = [], angs = [];
-  for (const b of MAP.sight || MAP.buildings) {   // the dev yard keeps merged wall runs in MAP.sight (windows aren't in it)
+  for (const b of walls || MAP.sight || MAP.buildings) {   // the dev yard keeps merged wall runs in MAP.sight (windows aren't in it)
     if (b.x > ex + R || b.x + b.w < ex - R || b.y > ey + R || b.y + b.h < ey - R) continue;
     const c = [[b.x, b.y], [b.x + b.w, b.y], [b.x + b.w, b.y + b.h], [b.x, b.y + b.h]];
     for (let i = 0; i < 4; i++) { const a = c[i], d = c[(i + 1) % 4]; segs.push([a[0], a[1], d[0], d[1]]); const t = Math.atan2(a[1] - ey, a[0] - ex); angs.push(t - 0.0008, t + 0.0008); }
@@ -81,6 +81,7 @@ function applyFog(vw, vis, x0, y0, x1, y1) {
     else { ctx.fillStyle = CFG.style === 'grit' ? '#857344' : '#c8a64e'; ctx.beginPath(); ctx.arc(s.x, s.y, 13, 0, TAU); ctx.fill(); }
   }
   for (const s of MAP.statics) if (s.type === 'tree' && vis(s.x, s.y, 40) && (m.st.has(s) ? m.st.get(s) : true)) { img(s.pine ? SPR.pines[s.v] : SPR.trees[s.v], s.x, s.y, s.a, s.sc, 0.94); worldT(); }
+  if (MAP.tiled && MAP.tiled.roof && bw > 0 && bh > 0) { worldT(); ctx.drawImage(ROOF_C, bx0, by0, bw, bh, bx0, by0, bw, bh); }     // dev yard roofs: solid out of sight
   // out of sight is drained of colour (and a little dimmer)
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'saturation'; ctx.fillStyle = '#808080'; ctx.fillRect(vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR);
   ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = CFG.style === 'grit' ? 'rgba(6,6,4,0.3)' : 'rgba(4,8,6,0.22)'; ctx.fillRect(vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR);
