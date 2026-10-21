@@ -223,13 +223,13 @@ const SMK_M = document.createElement('canvas');
 function fieldMask(g, ex, ey, box) {
   const i0 = Math.floor(box[0] / GS), j0 = Math.floor(box[1] / GS), w = Math.ceil(box[2] / GS) - i0 + 1, h = Math.ceil(box[3] / GS) - j0 + 1;
   if (SMK_M.width < w || SMK_M.height < h) { SMK_M.width = Math.max(w, SMK_M.width); SMK_M.height = Math.max(h, SMK_M.height); SMK_M.im = null; }
-  const mg = SMK_M.getContext('2d'), im = SMK_M.im || (SMK_M.im = mg.createImageData(SMK_M.width, SMK_M.height)), d = im.data, Wm = SMK_M.width; let any = false;
+  const mg = SMK_M.getContext('2d'), im = SMK_M.im || (SMK_M.im = mg.createImageData(SMK_M.width, SMK_M.height)), d = im.data, Wm = SMK_M.width; let any = false; d.fill(0);
   for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
     const v = fieldOcc(ex, ey, (i0 + i + 0.5) * GS, (j0 + j + 0.5) * GS), o = (j * Wm + i) * 4;
     d[o] = d[o + 1] = d[o + 2] = 255; d[o + 3] = v * 255; if (v) any = true;
   }
   if (!any) return false;
-  mg.putImageData(im, 0, 0, 0, 0, w, h);
+  mg.putImageData(im, 0, 0);     // all of it (smoothing reads past the drawn part's edge)
   const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = true; g.globalAlpha = 1; g.drawImage(SMK_M, 0, 0, w, h, i0 * GS, j0 * GS, w * GS, h * GS); g.imageSmoothingEnabled = sm;
   return true;
 }

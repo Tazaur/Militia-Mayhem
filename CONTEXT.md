@@ -278,3 +278,8 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - Sight: fieldOcc = sum of min(1, amount) x tiles crossed x SMK_K 0.5 (two thick tiles block), DDA in the box of smoky tiles; part of smokeOcc. Mask: fieldOcc per tile centre over the view box, a tile a pixel, smoothed (fieldMask). smokeAny() guards.
 - Drawn as a tile-a-pixel image x16 smoothed (8 px blend): per-tile grey drifting on two slow waves, brown share mixed in, an offset dark shade under it, thinned near eyes. 40 dusts: 0.03 ms per S-tick, +0.6 ms draw.
 - Soft fog now goes after roofs, fire and tree canopies (drawRoofs shared; also drawn into the remembered view), so smoke/windows fade everything in sight alike. In sight the remembered view is the world now + the dev yard's live roof (rv), so smoke in a room never shows the roof.
+
+## Build 113
+- Grid smoke spreads only downhill: a tile's neighbours lowest first, a share (~SMK_BLEED/4, random) goes only if it leaves that neighbour no higher than the tile after passing; no minimum, a tile goes when under SMK_DEL 0.01. Random-tick loss 0.01 (wider, thinner field: blocks ~14 s, gone ~20 s, ~280 tiles).
+- Grid dust ignores op (full thickness, amount SMK_DUST x T/10).
+- Smoke image and field mask clear and upload their whole canvas: smoothing read stale pixels past the drawn part (the line at the field's edge).

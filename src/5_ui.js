@@ -211,7 +211,7 @@ function drawSmokeField(vw, eyes) {
   if (SMK_C.width < w || SMK_C.height < h) { SMK_C.width = SMK_SH.width = Math.max(w, SMK_C.width); SMK_C.height = SMK_SH.height = Math.max(h, SMK_C.height); SMK_C.im = SMK_SH.im = null; }
   const g = SMK_C.getContext('2d'), gs = SMK_SH.getContext('2d'), Wc = SMK_C.width;
   const im = SMK_C.im || (SMK_C.im = g.createImageData(SMK_C.width, SMK_C.height)), sm = SMK_SH.im || (SMK_SH.im = gs.createImageData(SMK_C.width, SMK_C.height)), d = im.data, e = sm.data;
-  for (let j = 0; j < h; j++) { d.fill(0, j * Wc * 4, (j * Wc + w) * 4); e.fill(0, j * Wc * 4, (j * Wc + w) * 4); }
+  d.fill(0); e.fill(0);     // all of it: smoothing reads past the drawn part's edge, so stale pixels there would show as a line
   const T = M.time;
   for (const k of f.act) {
     const i = k % f.W - i0, j = ((k - k % f.W) / f.W) - j0; if (i < 0 || j < 0 || i >= w || j >= h) continue;
@@ -221,7 +221,7 @@ function drawSmokeField(vw, eyes) {
     d[o] = t * (1 - 0.2 * fb); d[o + 1] = t * (1 - 0.36 * fb); d[o + 2] = t * (1 - 0.52 * fb) - 3; d[o + 3] = den * 230 * thin;
     e[o + 3] = den * 70;
   }
-  g.putImageData(im, 0, 0, 0, 0, w, h); gs.putImageData(sm, 0, 0, 0, 0, w, h);
+  g.putImageData(im, 0, 0); gs.putImageData(sm, 0, 0);
   ctx.globalAlpha = 1; ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'low';
   ctx.drawImage(SMK_SH, 0, 0, w, h, i0 * GS + 4, j0 * GS + 6, w * GS, h * GS);
   ctx.drawImage(SMK_C, 0, 0, w, h, i0 * GS, j0 * GS, w * GS, h * GS); ctx.imageSmoothingEnabled = false;

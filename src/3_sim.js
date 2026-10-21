@@ -664,21 +664,22 @@ function shakeAt(x, y, amt, range) { for (const vw of M.views) { const d = Math.
 function popSmoke(x, y, o) {
   const net = !o; o = o || {}; const grid = o.grid !== undefined ? o.grid : DEV.gridSmoke;
   if (net) netEv('sm', x | 0, y | 0, grid ? 1 : 0);
-  if (grid) { smokeEmit(x, y, o.tint ? SMK_DUST * (o.op !== undefined ? o.op : 1) * (o.T || 10) / 10 : SMK_NADE, !!o.tint); if (!o.quiet) sfx('splash', x, y, 0.5); return; }
+  if (grid) { smokeEmit(x, y, o.tint ? SMK_DUST * (o.T || 10) / 10 : SMK_NADE, !!o.tint); if (!o.quiet) sfx('splash', x, y, 0.5); return; }     // dust: as thick as smoke, just less of it
   const puffs = []; for (let i = 0; i < 18; i++) { const a = rnd(0, TAU), d = i ? Math.sqrt(Math.random()) * 0.72 : 0; puffs.push([Math.cos(a) * d, Math.sin(a) * d, rint(0, 3), rnd(0, TAU), rnd(0.8, 1.2), o.tint ? o.shade || 0 : rint(0, 3)]); }
   M.smokes.push({ x, y, r: 0, R: 92, t: 0, T: o.T || 18, puffs, tint: o.tint || 'grey', shade: o.shade || 0, op: o.op !== undefined ? o.op : 1, cv: null, cvT: -9 }); smokeRays(M.smokes[M.smokes.length - 1]); if (!o.quiet) sfx('splash', x, y, 0.5); for (let i = 0; i < 8; i++) part({ k: 'smoke', x, y, vx: rnd(-60, 60), vy: rnd(-60, 60), life: 1.2, max: 1.2, sz: 12, drag: 2 });
 }
 /* grid smoke (experimental: the dev panel's GRID SMOKE; grenades, dust and falling roofs all feed it): one field of
    smoke amounts on GS px tiles (M.gsf), stepped SMK_HZ times a second (S-ticks), not every frame. Each S-tick:
    - an emitter (where a grenade / dust landed) puts SMK_EMIT of what it has left into its tile;
-   - every tile with at least SMK_MIN bleeds about SMK_BLEED of its amount (a little random) to its 4 neighbours, a
-     quarter each; a wall keeps its share, a cracked window lets SMK_LEAK of it through. That is the whole spread, so
+   - every tile bleeds about SMK_BLEED of its amount (a little random) to its 4 neighbours, a quarter each, lowest
+     first and only downhill: a share goes only if it leaves that neighbour no higher than this tile is after passing
+     it. A wall keeps its share, a cracked window lets SMK_LEAK of it through. That is the whole spread, so
      smoke flows round corners and along corridors, seeps out of broken windows, and overlapping smokes add up;
    - random ticks (Minecraft style): a tile is picked with chance SMK_RT_P and loses SMK_RT_D, so it thins raggedly.
    A tile's thickness is min(1, amount). Dust is the same smoke, brown (B: the brown part of a tile's amount).
    Cost goes with the tiles holding smoke, not the number of smokes. */
-const GS = 16, SMK_HZ = 10, SMK_EMIT = 0.15, SMK_BLEED = 0.35, SMK_LEAK = 0.25, SMK_MIN = 0.5, SMK_RT_P = 0.1, SMK_RT_D = 0.035, SMK_NADE = 70, SMK_DUST = 5, SMK_K = 0.5;
-const DIRS8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+const GS = 16, SMK_HZ = 10, SMK_EMIT = 0.15, SMK_BLEED = 0.35, SMK_LEAK = 0.25, SMK_DEL = 0.01, SMK_RT_P = 0.1, SMK_RT_D = 0.01, SMK_NADE = 70, SMK_DUST = 5, SMK_K = 0.5;
+const NB4 = new Int32Array(4), DIRS8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
 function smokeField() {
   const W = Math.ceil(WW / GS), H = Math.ceil(WH / GS); let f = M.gsf;
   if (!f || f.W !== W || f.H !== H) { const n = W * H; f = M.gsf = { W, H, A: new Float32Array(n), B: new Float32Array(n), dA: new Float32Array(n), dB: new Float32Array(n), S: new Uint8Array(n), on: new Uint8Array(n), act: [], em: [], acc: 0, box: [0, 0, 0, 0], dirty: 1 }; }
@@ -707,20 +708,24 @@ function updateSmokeField(dt) {
   for (const e of f.em) { const a = Math.min(e[1], Math.max(e[1] * SMK_EMIT, 0.5)); e[1] -= a; A[e[0]] += a; if (e[2]) B[e[0]] += a; add(e[0]); }
   if (f.em.length) f.em = f.em.filter(e => e[1] > 0.01);
   for (let q = 0, n = act.length; q < n; q++) {
-    const k = act[q], a = A[k]; if (a < SMK_MIN) continue;
-    const out = a * SMK_BLEED * (0.7 + Math.random() * 0.6) / 4, fb = B[k] / a, i = k % W, lk = S[k] === 2;
+    const k = act[q], a = A[k];
+    const out = a * SMK_BLEED * (0.7 + Math.random() * 0.6) / 4, fb = B[k] / a, i = k % W, lk = S[k] === 2; let nb = 0, gone = 0;
     for (let d = 0; d < 4; d++) {
       const nk = d === 0 ? (i + 1 < W ? k + 1 : -1) : d === 1 ? (i > 0 ? k - 1 : -1) : d === 2 ? (k + W < W * H ? k + W : -1) : k - W;
-      if (nk < 0 || S[nk] === 1) continue;
-      const m = out * (lk || S[nk] === 2 ? SMK_LEAK : 1) * (0.75 + Math.random() * 0.5);
-      dA[nk] += m; dA[k] -= m; dB[nk] += m * fb; dB[k] -= m * fb; add(nk);
+      if (nk >= 0 && S[nk] !== 1 && A[nk] < a) NB4[nb++] = nk;
+    }
+    for (let x = 1; x < nb; x++) for (let y = x; y > 0 && A[NB4[y]] < A[NB4[y - 1]]; y--) { const t = NB4[y]; NB4[y] = NB4[y - 1]; NB4[y - 1] = t; }   // lowest first
+    for (let x = 0; x < nb; x++) {
+      const nk = NB4[x], m = out * (lk || S[nk] === 2 ? SMK_LEAK : 1) * (0.75 + Math.random() * 0.5);
+      if (A[nk] + m > a - gone - m) continue;          // it would end up above this tile: not downhill
+      gone += m; dA[nk] += m; dA[k] -= m; dB[nk] += m * fb; dB[k] -= m * fb; add(nk);
     }
   }
   let w = 0, i0 = W, j0 = H, i1 = 0, j1 = 0;
   for (let q = 0; q < act.length; q++) {
     const k = act[q]; let a = A[k] + dA[k], b = B[k] + dB[k]; dA[k] = dB[k] = 0;
     if (Math.random() < SMK_RT_P) { const r = Math.max(0, a - SMK_RT_D); b = a > 0 ? b * r / a : 0; a = r; }
-    if (a < 0.01) { A[k] = B[k] = 0; on[k] = 0; continue; }
+    if (a < SMK_DEL) { A[k] = B[k] = 0; on[k] = 0; continue; }     // too thin: the tile's gone
     A[k] = a; B[k] = Math.max(0, Math.min(a, b)); act[w++] = k;
     const i = k % W, j = (k - i) / W; if (i < i0) i0 = i; if (i >= i1) i1 = i + 1; if (j < j0) j0 = j; if (j >= j1) j1 = j + 1;
   }
