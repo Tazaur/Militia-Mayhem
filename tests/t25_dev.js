@@ -66,11 +66,11 @@ setImmediate(()=>{
   const before=JSON.stringify(G.MAP.tiled.houses); G.DEV.seed++; G.devResetMap(); ok(JSON.stringify(G.MAP.tiled.houses)!==before,'new houses');
   // ---- roofs: every floor cell in a house has one, held up by a wall section through its own patch; it falls with that section
   { const T2=G.MAP.tiled, sc=T2.sc, N=sc*T2.sr; let fl=0, rf=0, bad=0;
-    for(let k=0;k<N;k++){ if(T2.cell[k]===1&&T2.bld[k]>=0) fl++; if(T2.roof[k]===1){ rf++; const s=T2.secs[T2.rsec[k]]; if(!s||s.glass) bad++; } }
-    ok(fl===rf&&rf>300,'roof over every floor cell '+rf+'/'+fl); ok(bad===0,'each roof tile held by a wall section');
+    for(let k=0;k<N;k++){ if(T2.cell[k]&&T2.bld[k]>=0) fl++; if(T2.roof[k]===1){ rf++; const s=T2.secs[T2.rsec[k]]; if(!s||s.glass) bad++; } }
+    ok(fl===rf&&rf>300,'roof over the whole house '+rf+'/'+fl); ok(bad===0,'each roof tile held by a wall section');
     // every patch reaches its own section through its own tiles (nothing floats when another patch falls)
     let floating=0, patches=0, ragged=0;
-    for(const s of T2.secs){ if(s.glass) continue; const seen=new Set(), st=[]; for(let j=s.cy;j<s.cy+s.ch;j++)for(let i=s.cx;i<s.cx+s.cw;i++) st.push(j*sc+i);
+    for(const s of T2.secs){ if(s.glass) continue; const seen=new Set(), st=[]; for(let j=s.cy;j<s.cy+s.ch;j++)for(let i=s.cx;i<s.cx+s.cw;i++){ st.push(j*sc+i); seen.add(j*sc+i); }
       while(st.length){ const k=st.pop(); const x=k%sc,y=(k/sc)|0; for(const[dx,dy] of D){ const n=(y+dy)*sc+x+dx; if(x+dx<0||y+dy<0||x+dx>=sc||y+dy>=T2.sr||seen.has(n)) continue; if(T2.roof[n]===1&&T2.rsec[n]===s.i){ seen.add(n); st.push(n);} } }
       let own=0; for(let k=0;k<N;k++) if(T2.roof[k]===1&&T2.rsec[k]===s.i) own++; if(own){ patches++; if(own!==seen.size) floating++; } }
     ok(floating===0&&patches>20,'no floating roof patches ('+patches+' patches)');
@@ -78,8 +78,8 @@ setImmediate(()=>{
     for(let k=0;k<N;k++) if(T2.roof[k]===1){ const x=k%sc,y=(k/sc)|0; let bd=1e9,bs=-1; for(const s of T2.secs){ if(s.glass) continue; const d=Math.abs(clampN(x,s.cx,s.cx+s.cw-1)-x)+Math.abs(clampN(y,s.cy,s.cy+s.ch-1)-y); if(d<bd){bd=d;bs=s.i;} } if(bs!==T2.rsec[k]) ragged++; }
     ok(ragged>10,'ragged patch borders '+ragged);
     // a wall falls: exactly its roof comes down, on a dummy standing under it
-    const S=T2.secs.filter(s=>!s.glass&&!s.junc).map(s=>[s,[...Array(N).keys()].filter(k=>T2.roof[k]===1&&T2.rsec[k]===s.i)]).filter(q=>q[1].length>=6).sort((a,b)=>b[1].length-a[1].length)[0];
-    const [sec,ks]=S, other=rf-ks.length, dd=M.sol.find(s=>s.dummy&&s.alive), k0=ks[0];
+    const S=T2.secs.filter(s=>!s.glass&&!s.junc).map(s=>[s,[...Array(N).keys()].filter(k=>T2.roof[k]===1&&T2.rsec[k]===s.i)]).filter(q=>q[1].some(k=>T2.cell[k]===1)).sort((a,b)=>b[1].length-a[1].length)[0];
+    const [sec,ks]=S, other=rf-ks.length, dd=M.sol.find(s=>s.dummy&&s.alive), k0=ks.find(k=>T2.cell[k]===1);
     dd.x=(k0%sc+0.5)*16; dd.y=(((k0/sc)|0)+0.5)*16; dd.hp=dd.mhp; dd.ttk=null;
     G.devDamage(sec,9999,0,0);
     ok(ks.every(k=>T2.roof[k]===2),'its roof fell'); let left=0; for(let k=0;k<N;k++) if(T2.roof[k]===1) left++; ok(left===other,'the rest stays up');

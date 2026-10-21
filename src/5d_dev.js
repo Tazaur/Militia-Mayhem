@@ -9,7 +9,7 @@
    broken picture) the first time a shot, a grenade or a vaulting soldier goes through it. Corners, tees and
    crosses are their own one-cell sections and are much stronger. Vehicles ramming walls hurt both (RAM).
    Roofs: every floor cell has a roof tile held up by one wall section (devRoof); it comes down with that section and
-   hurts whoever is under it. The roof is opaque out of sight, 70% see-through through a window, 90% in direct sight.
+   hurts whoever is under it. It covers the whole house (walls too): opaque out of sight, 70% see-through through a window, 90% in direct sight.
    ===================================================================== */
 const TILE = 32, SUB = 16, DEV_COLS = 48, DEV_ROWS = 32;
 const C_OUT = 0, C_FLOOR = 1, C_WALL = 2, C_WIN = 3, C_RUB = 4;
@@ -223,7 +223,7 @@ function devSight() {
 /* every floor cell in a house gets a roof tile, held up by one wall section: a shortest-path flood out from all the
    wall cells at once, with a random cost per cell. Each section's patch is joined to that section through its own
    tiles, so nothing is left floating when a neighbouring patch falls, and the borders between patches are ragged. */
-const ROOF_C = document.createElement('canvas'), ROOF_TMP = document.createElement('canvas');
+const ROOF_C = document.createElement('canvas'), ROOF_G = document.createElement('canvas'), ROOF_TMP = document.createElement('canvas');
 function devRoof() {
   const TL = MAP.tiled, { sc, sr } = TL, N = sc * sr, R = mulberry(DEV.seed * 31 + 7);
   TL.roof = new Uint8Array(N); TL.rsec = new Int16Array(N).fill(-1);
@@ -231,8 +231,9 @@ function devRoof() {
   const up = i => { while (i) { const p = (i - 1) >> 1; if (H[p][0] <= H[i][0]) break; [H[p], H[i]] = [H[i], H[p]]; i = p; } };
   const pop = () => { const top = H[0], last = H.pop(); if (H.length) { H[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < H.length && H[l][0] < H[m][0]) m = l; if (r < H.length && H[r][0] < H[m][0]) m = r; if (m === i) break; [H[m], H[i]] = [H[i], H[m]]; i = m; } } return top; };
   for (let k = 0; k < N; k++) {
-    if (TL.cell[k] === C_FLOOR && TL.bld[k] >= 0) { TL.roof[k] = 1; w[k] = 1 + R() * 1.6; }
-    else if (TL.cell[k] === C_WALL && TL.sec[k] >= 0) { cost[k] = 0; TL.rsec[k] = TL.sec[k]; H.push([0, k]); up(H.length - 1); }
+    if (TL.bld[k] < 0 || TL.cell[k] === C_OUT) continue;
+    TL.roof[k] = 1; w[k] = 1 + R() * 1.6;                     // the roof covers the whole house, walls and windows too
+    if (TL.cell[k] === C_WALL && TL.sec[k] >= 0) { cost[k] = 0; TL.rsec[k] = TL.sec[k]; H.push([0, k]); up(H.length - 1); }   // a wall holds the roof over itself
   }
   while (H.length) {
     const [c, k] = pop(); if (c > cost[k]) continue; const x = k % sc, y = (k / sc) | 0;
@@ -241,25 +242,27 @@ function devRoof() {
       if (TL.roof[n] && c + w[n] < cost[n]) { cost[n] = c + w[n]; TL.rsec[n] = TL.rsec[k]; H.push([cost[n], n]); up(H.length - 1); }
     }
   }
-  for (let k = 0; k < N; k++) if (TL.cell[k] === C_WALL) TL.rsec[k] = -1;
 }
 function paintRoof() {
   const TL = MAP.tiled; if (!TL.roof) return;
-  ROOF_C.width = WW; ROOF_C.height = WH;
+  ROOF_C.width = ROOF_G.width = WW; ROOF_C.height = ROOF_G.height = WH;
   for (let j = 0; j < TL.sr; j++) for (let i = 0; i < TL.sc; i++) if (TL.roof[j * TL.sc + i] === 1) paintRoofCell(i, j);
 }
-/* shingles, a dark edge wherever the roof stops at something other than a wall */
+/* shingles, a dark edge wherever the roof stops */
+/* (ROOF_G: the same, grey and dimmed like the fog, for out of sight) */
 function paintRoofCell(i, j) {
-  const TL = MAP.tiled, g = ROOF_C.getContext('2d'), k = j * TL.sc + i, x = i * SUB, y = j * SUB;
-  g.clearRect(x, y, SUB, SUB); if (TL.roof[k] !== 1) return;
-  const t = ((Math.imul(i, 2654435761) ^ Math.imul(j, 40503)) >>> 0) % 7 - 3;
-  g.fillStyle = `rgb(${112 + t * 3},${72 + t * 2},${56 + t * 2})`; g.fillRect(x, y, SUB, SUB);
-  g.fillStyle = 'rgba(40,22,16,0.45)';
-  for (let r = 0; r < 4; r++) { g.fillRect(x, y + r * 4 + 3, SUB, 1); for (let sx = (r % 2) * 4; sx < SUB; sx += 8) g.fillRect(x + sx, y + r * 4, 1, 3); }
-  const open = (a, b) => { if (a < 0 || b < 0 || a >= TL.sc || b >= TL.sr) return true; const n = b * TL.sc + a; return TL.roof[n] !== 1 && TL.cell[n] !== C_WALL && TL.cell[n] !== C_WIN; };
-  g.fillStyle = '#2a1a12';
-  if (open(i, j - 1)) g.fillRect(x, y, SUB, 2); if (open(i + 1, j)) g.fillRect(x + SUB - 2, y, 2, SUB);
-  if (open(i, j + 1)) g.fillRect(x, y + SUB - 2, SUB, 2); if (open(i - 1, j)) g.fillRect(x, y, 2, SUB);
+  const TL = MAP.tiled, k = j * TL.sc + i, x = i * SUB, y = j * SUB;
+  const t = ((Math.imul(i, 2654435761) ^ Math.imul(j, 40503)) >>> 0) % 7 - 3, r0 = 112 + t * 3, g0 = 72 + t * 2, b0 = 56 + t * 2, L = Math.round((0.3 * r0 + 0.59 * g0 + 0.11 * b0) * 0.78);
+  const open = (a, b) => { if (a < 0 || b < 0 || a >= TL.sc || b >= TL.sr) return true; return TL.roof[b * TL.sc + a] !== 1; };
+  for (const [cv2, grey] of [[ROOF_C, false], [ROOF_G, true]]) {
+    const g = cv2.getContext('2d'); g.clearRect(x, y, SUB, SUB); if (TL.roof[k] !== 1) continue;
+    g.fillStyle = grey ? `rgb(${L},${L},${L})` : `rgb(${r0},${g0},${b0})`; g.fillRect(x, y, SUB, SUB);
+    g.fillStyle = grey ? 'rgba(16,16,16,0.45)' : 'rgba(40,22,16,0.45)';
+    for (let r = 0; r < 4; r++) { g.fillRect(x, y + r * 4 + 3, SUB, 1); for (let sx = (r % 2) * 4; sx < SUB; sx += 8) g.fillRect(x + sx, y + r * 4, 1, 3); }
+    g.fillStyle = grey ? '#141414' : '#2a1a12';
+    if (open(i, j - 1)) g.fillRect(x, y, SUB, 2); if (open(i + 1, j)) g.fillRect(x + SUB - 2, y, 2, SUB);
+    if (open(i, j + 1)) g.fillRect(x, y + SUB - 2, SUB, 2); if (open(i - 1, j)) g.fillRect(x, y, 2, SUB);
+  }
 }
 function repaintRoofAround(cells) {
   const TL = MAP.tiled, done = new Set();
@@ -282,23 +285,23 @@ function devRoofFall(sec) {
   devLog(`ROOF ${cells.size} TILES DOWN`, '#ffb060');
   return cells.size;
 }
-/* the roof over the world (drawn above units): opaque except where it is seen, 30% left through a window, 10% seen directly.
-   Out of sight with vision on, applyFog has already drawn it (greyed) into the remembered view. */
+/* the roof over the whole house, walls included (drawn above units and walls): opaque except where it is seen, 30% left
+   through a window, 10% seen directly. Out of sight it is drawn solid, greyed like the rest of the fog. */
 function devDrawRoof(vw, x0, y0, x1, y1, fogPolys) {
   const TL = MAP.tiled; if (!TL || !TL.roof) return;
   if (ROOF_TMP.width !== cv.width || ROOF_TMP.height !== cv.height) { ROOF_TMP.width = cv.width; ROOF_TMP.height = cv.height; }
   const eyes = (vw.p ? [vw.p] : LOCALS()).map(p => p.sol).filter(s => s && s.alive).map(s => s.veh ? [s.veh.x, s.veh.y] : [s.x, s.y]);
-  const R = Math.hypot(x1 - x0, y1 - y0) / 2 + 80, pw = fogPolys || eyes.map(([x, y]) => visPoly(x, y, R)), pd = eyes.map(([x, y]) => visPoly(x, y, R, MAP.sightD));
+  const R = Math.hypot(x1 - x0, y1 - y0) / 2 + 80, pw = eyes.map(([x, y]) => visPoly(x, y, R, null, SUB)), pd = eyes.map(([x, y]) => visPoly(x, y, R, MAP.sightD, SUB));   // a cell past the wall face, so the wall you look at shows
   const bx0 = Math.max(0, Math.floor(x0)), by0 = Math.max(0, Math.floor(y0)), bw = Math.min(WW, Math.ceil(x1)) - bx0, bh = Math.min(WH, Math.ceil(y1)) - by0; if (bw <= 0 || bh <= 0) return;
   const g = ROOF_TMP.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR);
   g.setTransform(VZ * DPR, 0, 0, VZ * DPR, VOX * DPR, VOY * DPR); g.imageSmoothingEnabled = false;
-  g.drawImage(ROOF_C, bx0, by0, bw, bh, bx0, by0, bw, bh);
+  g.drawImage(fogPolys ? ROOF_G : ROOF_C, bx0, by0, bw, bh, bx0, by0, bw, bh);
+  if (fogPolys && pw.length) { g.save(); polyPath(g, pw); g.clip(); g.clearRect(bx0, by0, bw, bh); g.drawImage(ROOF_C, bx0, by0, bw, bh, bx0, by0, bw, bh); g.restore(); }   // in sight: in colour
   g.globalCompositeOperation = 'destination-out';
   if (pw.length) { g.fillStyle = 'rgba(0,0,0,0.7)'; polyPath(g, pw); g.fill(); }
   if (pd.length) { g.fillStyle = 'rgba(0,0,0,0.6667)'; polyPath(g, pd); g.fill(); }
   g.globalCompositeOperation = 'source-over';
-  ctx.save(); if (fogPolys) { worldT(); polyPath(ctx, fogPolys); ctx.clip(); }
-  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(ROOF_TMP, vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR, vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR); ctx.restore();
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(ROOF_TMP, vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR, vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR); ctx.restore();
   vw._roof = { pw, pd };
 }
 

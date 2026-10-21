@@ -197,7 +197,11 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
   - RNG: the drag aims and fires when `autoLined(s, a)` (4_ai) finds an enemy within the gun's reach (≤420 px) inside the cone `atan(r/d) + 0.04`, with los and no smoke.
   - In OFF and RNG, holding without a drag fires after 150 ms, so starting a drag doesn't shoot.
 
-## Build 72: dev yard roofs
+## Build 72-73: dev yard roofs
+- Build 73: the roof covers the whole house, walls and windows included, and is drawn above them.
+  - Wall cells are held up by their own section; window cells by the nearest wall.
+  - Out of sight it is drawn solid from `ROOF_G`, a grey, dimmed copy painted alongside `ROOF_C`; applyFog no longer draws it.
+  - The two roof sight polygons use `visPoly(..., pad = SUB)`, so the wall you're looking at shows.
 - `devRoof()` (after devSections) gives every house floor cell `TL.roof[k] = 1` and `TL.rsec[k]` = the wall section holding it up.
   - It runs Dijkstra from every non-glass wall cell at once, with a random 1–2.6 cost per floor cell.
   - So each section's patch is connected to that section through its own tiles (no floating roof when a neighbour falls), and the borders are ragged rather than nearest-wall.
