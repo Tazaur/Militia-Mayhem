@@ -164,11 +164,11 @@ function drawSmokes(vis) {
   worldT();
   for (const c of M.smokes) {
     if (!vis(c.x, c.y, c.R + 60)) continue;
-    const a = Math.min(1, c.t / 0.5) * Math.min(1, (c.T - c.t) / 3.5);
-    ctx.globalAlpha = a * 0.55; ctx.drawImage(SPR.puff, c.x - c.r * 1.35, c.y - c.r * 1.35, c.r * 2.7, c.r * 2.7);
+    const a = Math.min(1, c.t / 0.5) * Math.min(1, (c.T - c.t) / 3.5) * c.op, P = c.tint === 'brown' ? SPR.puffB : SPR.puff, PD = c.tint === 'brown' ? SPR.puffBD : SPR.puffD;
+    ctx.globalAlpha = a * 0.55; ctx.drawImage(P, c.x - c.r * 1.35, c.y - c.r * 1.35, c.r * 2.7, c.r * 2.7);
     for (const [ox, oy, v, rot, k] of c.puffs) {
       const r = c.r * 0.72 * k, x = c.x + ox * c.r + Math.sin(M.time * 0.35 + rot) * 6, y = c.y + oy * c.r + Math.cos(M.time * 0.27 + rot) * 5;
-      ctx.globalAlpha = a * (v % 2 ? 0.55 : 0.8); ctx.drawImage(v % 2 ? SPR.puffD : SPR.puff, x - r, y - r, r * 2, r * 2);
+      ctx.globalAlpha = a * (v % 2 ? 0.55 : 0.8); ctx.drawImage(v % 2 ? PD : P, x - r, y - r, r * 2, r * 2);
     }
   }
   ctx.globalAlpha = 1;

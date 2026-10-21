@@ -81,7 +81,11 @@ setImmediate(()=>{
     const S=T2.secs.filter(s=>!s.glass&&!s.junc).map(s=>[s,[...Array(N).keys()].filter(k=>T2.roof[k]===1&&T2.rsec[k]===s.i)]).filter(q=>q[1].some(k=>T2.cell[k]===1)).sort((a,b)=>b[1].length-a[1].length)[0];
     const [sec,ks]=S, other=rf-ks.length, dd=M.sol.find(s=>s.dummy&&s.alive), k0=ks.find(k=>T2.cell[k]===1);
     dd.x=(k0%sc+0.5)*16; dd.y=(((k0/sc)|0)+0.5)*16; dd.hp=dd.mhp; dd.ttk=null;
-    G.devDamage(sec,9999,0,0);
+    const sm0=M.smokes.length, far=ks.reduce((m,k)=>T2.rdist[k]>T2.rdist[m]?k:m,ks[0]);
+    G.devDamage(sec,9999,0,0); step(2);
+    ok(T2.rdist[far]>=4,'patch is several tiles deep '+T2.rdist[far]); ok(T2.roof[far]===1&&ks.some(k=>T2.roof[k]===2),'cascade: near tiles first, far tiles still up');
+    step(Math.ceil(T2.rdist[far]*0.07*60)+10);
+    ok(M.smokes.length-sm0>=ks.length*0.9&&M.smokes.slice(sm0).every(c=>c.tint==='brown'&&c.op===0.5),'a brown half-opacity smoke cloud per tile');
     ok(ks.every(k=>T2.roof[k]===2),'its roof fell'); let left=0; for(let k=0;k<N;k++) if(T2.roof[k]===1) left++; ok(left===other,'the rest stays up');
     ok(!dd.alive||dd.hp<=dd.mhp*0.5+0.01,'roof hurts at least half: '+(dd.alive?dd.hp:'dead'));
     ok(/ROOF \d+ TILES DOWN/.test(G.DEV.log.map(l=>l.text).join('|')),'roof fall logged');
@@ -121,6 +125,7 @@ setImmediate(()=>{
   }
   // ---- touch AUTO: the toggle cycles; RANGE fires only when lined up, in range and in sight
   step(150);
+  M.smokes.length=0;     // roof dust clouds from the ramming above block sight
   { const m0=G.TOUCH.auto; G.TOUCH.btn={auto:true}; G.touchState(); const m1=G.TOUCH.auto; G.TOUCH.btn={auto:true}; G.touchState(); G.TOUCH.btn={auto:true}; G.touchState();
     ok(m1!==m0&&G.TOUCH.auto===m0,'auto cycles through 3 modes '+m0+'>'+m1);
     const dd=M.sol.find(s=>s.dummy&&s.alive); me.x=dd.x-5*32; me.y=dd.y; me.vx=me.vy=0; G.cw(me).id='ar';

@@ -385,7 +385,7 @@ function explosionFx(x, y, r, big) {
   if (big) part({ k: 'boom', x: x + rnd(-15, 15), y: y + rnd(-15, 15), vx: 0, vy: 0, life: 0.7, max: 0.7, sz: r / 30, rot: rnd(0, TAU), v: rint(0, 2), drag: 0 });
   part({ k: 'ring', x, y, vx: 0, vy: 0, life: 0.35, max: 0.35, sz: r * 1.3, drag: 0 });
   if (inWater(x, y)) for (let i = 0; i < 12; i++) part({ k: 'steam', x, y, vx: rnd(-60, 60), vy: rnd(-60, 60), life: 1.4, max: 1.4, sz: rnd(10, 20), drag: 2 });
-  for (const vw of M.views) { const d = Math.hypot(vw.cam.x - x, vw.cam.y - y); vw.shake = Math.min(18, vw.shake + (big ? 14 : 8) * Math.max(0, 1 - d / 700)); }
+  shakeAt(x, y, big ? 14 : 8, 700);
   for (const p of LOCALS()) { const s = p.sol; if (!s || !s.alive) continue; const d = Math.hypot(s.x - x, s.y - y); if (d < 400) rumble(p, (1 - d / 400) * (big ? 1 : 0.6), 0.25); }
 }
 function destroyStatic(s) {
@@ -647,7 +647,10 @@ function throwNade(s, dist, forceFrag) {
   s.nadeCd = 0.8; s.throwT = 0.35; s.thrownSmoke = smoke; sfx('throw', x, y);
 }
 /* smoke screens: grow, linger, fade; they block sight lines for bots and spotting */
-function popSmoke(x, y) { netEv('sm', x | 0, y | 0); const puffs = []; for (let i = 0; i < 18; i++) { const a = rnd(0, TAU), d = i ? Math.sqrt(Math.random()) * 0.72 : 0; puffs.push([Math.cos(a) * d, Math.sin(a) * d, rint(0, 3), rnd(0, TAU), rnd(0.8, 1.2)]); } M.smokes.push({ x, y, r: 0, R: 92, t: 0, T: 18, puffs }); sfx('splash', x, y, 0.5); for (let i = 0; i < 8; i++) part({ k: 'smoke', x, y, vx: rnd(-60, 60), vy: rnd(-60, 60), life: 1.2, max: 1.2, sz: 12, drag: 2 }); }
+/* every view near (x, y) shakes, by amt at the spot fading to nothing at range */
+function shakeAt(x, y, amt, range) { for (const vw of M.views) { const d = Math.hypot(vw.cam.x - x, vw.cam.y - y); vw.shake = Math.min(18, vw.shake + amt * Math.max(0, 1 - d / range)); } }
+/* a smoke grenade's cloud; o (optional): { tint: 'brown', op: opacity, quiet } (falling roofs use it) */
+function popSmoke(x, y, o) { if (!o) netEv('sm', x | 0, y | 0); const puffs = []; for (let i = 0; i < 18; i++) { const a = rnd(0, TAU), d = i ? Math.sqrt(Math.random()) * 0.72 : 0; puffs.push([Math.cos(a) * d, Math.sin(a) * d, rint(0, 3), rnd(0, TAU), rnd(0.8, 1.2)]); } M.smokes.push({ x, y, r: 0, R: 92, t: 0, T: 18, puffs, tint: o && o.tint, op: o && o.op !== undefined ? o.op : 1 }); if (!(o && o.quiet)) sfx('splash', x, y, 0.5); for (let i = 0; i < 8; i++) part({ k: 'smoke', x, y, vx: rnd(-60, 60), vy: rnd(-60, 60), life: 1.2, max: 1.2, sz: 12, drag: 2 }); }
 function updateSmokes(dt) { for (const c of M.smokes) { c.t += dt; c.r = c.R * Math.min(1, c.t / 1.6); } prune(M.smokes, c => c.t < c.T); }
 function smokeBlocks(x0, y0, x1, y1) {
   for (const c of M.smokes) {
@@ -669,7 +672,7 @@ function cannonFx(v, x, y, s) {
   part({ k: 'flash', x, y, vx: 0, vy: 0, life: 0.1, max: 0.1, sz: 90, drag: 0 });
   for (let i = 0; i < 10; i++) { const a = v.ta + rnd(-0.5, 0.5); part({ k: 'smoke', x, y, vx: Math.cos(a) * rnd(40, 160), vy: Math.sin(a) * rnd(40, 160), life: rnd(0.6, 1.2), max: 1.2, sz: rnd(10, 20), drag: 3 }); }
   for (let i = 0; i < 8; i++) { const a = v.ta + rnd(-2.6, 2.6) + Math.PI; part({ k: 'dust', x: v.x, y: v.y, vx: Math.cos(a) * rnd(60, 140), vy: Math.sin(a) * rnd(60, 140), life: 0.7, max: 0.7, sz: rnd(14, 22), drag: 3 }); }
-  for (const vw of M.views) { const d = Math.hypot(vw.cam.x - x, vw.cam.y - y); vw.shake = Math.min(18, vw.shake + 5 * Math.max(0, 1 - d / 500)); }
+  shakeAt(x, y, 5, 500);
   if (s && s.player) rumble(s.player, 0.6, 0.2);
 }
 function mgPos(v) {

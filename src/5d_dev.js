@@ -18,7 +18,7 @@ const JUNC_HP = { 2: 200, 3: 260, 4: 320 };                 // corner, tee, cros
 /* ramming, per unit of speed: damage to the wall, damage to the vehicle, speed kept; a tank always hits at least min */
 const RAM = { tank: { wall: 2.6, self: 0.15, keep: 0.8, min: 50, go: 12 }, jeep: { wall: 0.45, self: 1, keep: 0.15, min: 0, go: 25 } };
 const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];          // up, right, down, left
-const DEV = { open: true, god: false, ammo: true, respawn: true, grid: true, secs: true, range: 6, log: [], nums: [], lastA: 0, over: false, B: [], R: null, seed: 1 };
+const DEV = { roofQ: [], open: true, god: false, ammo: true, respawn: true, grid: true, secs: true, range: 6, log: [], nums: [], lastA: 0, over: false, B: [], R: null, seed: 1 };
 const DEV_RANGES = [2, 4, 6, 8, 10, 15, 20, 30];
 /* structural damage per blast, keyed by blast radius: rocket 62, tank shell 78, frag 88; anything else x1 */
 const STRUCT_K = { 62: 1.6, 78: 2, 88: 0.35 };
@@ -152,7 +152,7 @@ function buildDevMap() {
   const TL = { cols: DEV_COLS, rows: DEV_ROWS, sc: SC, sr: SR, cell: new Uint8Array(SC * SR), bld: new Int8Array(SC * SR).fill(-1), sec: new Int16Array(SC * SR).fill(-1), secs: [], houses: [] };
   const m = { id: 'devyard', tiled: TL, arcs: [], roads: [], buildings: [], water: [], bridges: [], statics: [], flags: [], bases: [], crateSpots: [], vehSpawns: [], ffaSpawns: [], fields: [], fwd: [], ice: [] };
   MAP = m;
-  const R = mulberry(DEV.seed * 7919 + 13);
+  const R = mulberry(DEV.seed * 7919 + 13); DEV.roofQ.length = 0;
   DEV_LOTS.forEach(([ox, oy, mw, mh], hi) => {
     const h = genHouse(R, mw, mh); if (!h) return;
     TL.houses.push({ x: ox, y: oy, w: h.W, h: h.H, rooms: h.rooms });
@@ -226,7 +226,7 @@ function devSight() {
 const ROOF_C = document.createElement('canvas'), ROOF_G = document.createElement('canvas'), ROOF_TMP = document.createElement('canvas');
 function devRoof() {
   const TL = MAP.tiled, { sc, sr } = TL, N = sc * sr, R = mulberry(DEV.seed * 31 + 7);
-  TL.roof = new Uint8Array(N); TL.rsec = new Int16Array(N).fill(-1);
+  TL.roof = new Uint8Array(N); TL.rsec = new Int16Array(N).fill(-1); TL.rdist = new Uint8Array(N);    // rdist: tiles from the holding wall
   const w = new Float32Array(N), cost = new Float32Array(N).fill(1e9), H = [];
   const up = i => { while (i) { const p = (i - 1) >> 1; if (H[p][0] <= H[i][0]) break; [H[p], H[i]] = [H[i], H[p]]; i = p; } };
   const pop = () => { const top = H[0], last = H.pop(); if (H.length) { H[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < H.length && H[l][0] < H[m][0]) m = l; if (r < H.length && H[r][0] < H[m][0]) m = r; if (m === i) break; [H[m], H[i]] = [H[i], H[m]]; i = m; } } return top; };
@@ -239,7 +239,7 @@ function devRoof() {
     const [c, k] = pop(); if (c > cost[k]) continue; const x = k % sc, y = (k / sc) | 0;
     for (const [dx, dy] of DIRS) {
       const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= sc || ny >= sr) continue; const n = ny * sc + nx;
-      if (TL.roof[n] && c + w[n] < cost[n]) { cost[n] = c + w[n]; TL.rsec[n] = TL.rsec[k]; H.push([cost[n], n]); up(H.length - 1); }
+      if (TL.roof[n] && c + w[n] < cost[n]) { cost[n] = c + w[n]; TL.rsec[n] = TL.rsec[k]; TL.rdist[n] = Math.min(255, TL.rdist[k] + 1); H.push([cost[n], n]); up(H.length - 1); }
     }
   }
 }
@@ -268,22 +268,25 @@ function repaintRoofAround(cells) {
   const TL = MAP.tiled, done = new Set();
   for (const k of cells) { const i = k % TL.sc, j = (k / TL.sc) | 0; for (let b = j - 1; b <= j + 1; b++) for (let a = i - 1; a <= i + 1; a++) { const n = b * TL.sc + a; if (a < 0 || b < 0 || a >= TL.sc || b >= TL.sr || done.has(n)) continue; done.add(n); paintRoofCell(a, b); } }
 }
-/* a wall section fell: its roof comes down on whoever is under it (half their health at least) */
+/* a wall section fell: its roof comes down as a cascade, each tile ROOF_STEP s later per tile it is from the wall */
+const ROOF_STEP = 0.07;
 function devRoofFall(sec) {
-  const TL = MAP.tiled; if (!TL.roof) return 0; const cells = new Set();
-  for (let k = 0; k < TL.roof.length; k++) if (TL.roof[k] === 1 && TL.rsec[k] === sec.i) { TL.roof[k] = 2; cells.add(k); }
-  if (!cells.size) return 0;
-  for (const k of cells) {
-    const i = k % TL.sc, j = (k / TL.sc) | 0, cx = (i + 0.5) * SUB, cy = (j + 0.5) * SUB; paintCell(i, j);
-    if (Math.random() < 0.6) part({ k: 'dust', x: cx, y: cy, vx: rnd(-25, 25), vy: rnd(-25, 25), life: rnd(1.2, 2.2), max: 2.2, sz: rnd(12, 22), drag: 1.2 });
-    if (Math.random() < 0.5) { const a = rnd(0, TAU), sp = rnd(30, 120); part({ k: 'debris', x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rnd(0.4, 0.9), max: 0.9, sz: rnd(2, 4), rot: rnd(0, TAU), vr: rnd(-12, 12), drag: 3 }); }
-  }
-  repaintRoofAround(cells);
-  const under = (x, y) => cells.has(((y / SUB) | 0) * TL.sc + ((x / SUB) | 0));
-  for (const s of M.sol) if (s.alive && !s.veh && under(s.x, s.y)) hurtSoldier(s, s.mhp * rnd(0.5, 0.75), null, 'roof', 0, 0, 'ROOF');
-  for (const v of M.vehicles) if (v.active && !v.dead && vehCircles(v, _vc).some(([x, y]) => under(x, y))) hurtVehicle(v, v.type === 'tank' ? 40 : 120, null);
-  devLog(`ROOF ${cells.size} TILES DOWN`, '#ffb060');
-  return cells.size;
+  const TL = MAP.tiled; if (!TL.roof) return 0; const ev = { hit: new Set() }; let n = 0;
+  for (let k = 0; k < TL.roof.length; k++) if (TL.roof[k] === 1 && TL.rsec[k] === sec.i) { DEV.roofQ.push({ k, at: M.time + TL.rdist[k] * ROOF_STEP, ev }); n++; }
+  if (n) devLog(`ROOF ${n} TILES DOWN`, '#ffb060');
+  return n;
+}
+/* one roof tile lands: a brown half-strength smoke cloud, debris, a shake nearby, and whoever is under it is hurt (once per fall) */
+function devRoofTile(k, ev) {
+  const TL = MAP.tiled; if (TL.roof[k] !== 1) return; TL.roof[k] = 2;
+  const i = k % TL.sc, j = (k / TL.sc) | 0, cx = (i + 0.5) * SUB, cy = (j + 0.5) * SUB;
+  paintCell(i, j); repaintRoofAround([k]);
+  popSmoke(cx, cy, { tint: 'brown', op: 0.5, quiet: true });
+  { const a = rnd(0, TAU), sp = rnd(30, 120); part({ k: 'debris', x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rnd(0.4, 0.9), max: 0.9, sz: rnd(2, 4), rot: rnd(0, TAU), vr: rnd(-12, 12), drag: 3 }); }
+  shakeAt(cx, cy, 2.5, 420); sfx('crush', cx, cy, 0.6);
+  const under = (x, y) => ((y / SUB) | 0) * TL.sc + ((x / SUB) | 0) === k;
+  for (const s of M.sol) if (s.alive && !s.veh && !ev.hit.has(s) && under(s.x, s.y)) { ev.hit.add(s); hurtSoldier(s, s.mhp * rnd(0.5, 0.75), null, 'roof', 0, 0, 'ROOF'); }
+  for (const v of M.vehicles) if (v.active && !v.dead && !ev.hit.has(v) && vehCircles(v, _vc).some(([x, y]) => under(x, y))) { ev.hit.add(v); hurtVehicle(v, v.type === 'tank' ? 40 : 120, null); }
 }
 /* the roof over the whole house, walls included (drawn above units and walls). Out of sight: solid, greyed like the rest of
    the fog. In sight it fades by distance from the eye: gone within ROOF_NEAR, 35% at ROOF_FAR and beyond; seen through glass it keeps 10% more */
@@ -442,7 +445,7 @@ function devClearVehicles() {
   M.vehicles = M.vehicles.filter(v => !v.gone); M.wrecks.length = 0; navDirty = 1;
 }
 function devResetMap() {
-  buildDevMap(); MAP.statics.forEach((s, i) => s.idx = i); paintGround(); buildNav(); M.fogMem = null; M.wrecks.length = 0;
+  buildDevMap(); MAP.statics.forEach((s, i) => s.idx = i); paintGround(); buildNav(); M.fogMem = null; M.wrecks.length = 0; M.smokes.length = 0;
   for (const sp of MAP.vehSpawns) if (!M.vehicles.some(v => v.sp.type === sp.type && !v.sp.dev)) M.vehicles.push(makeVehicle(sp));
   for (const s of M.sol) if (s.alive && !s.veh && solidAt(s.x, s.y, 4)) [s.x, s.y] = freeSpot(s.x, s.y);
   devLog('MAP RESET', '#ffe08a');
@@ -455,6 +458,7 @@ function devTick(dt) {
   for (const n of DEV.nums) { n.t -= dt; n.y -= dt * 18; }
   prune(DEV.nums, n => n.t > 0);
   if (MAP.tiled) for (const sec of MAP.tiled.secs) if (sec.hitT > 0) sec.hitT -= dt;
+  if (DEV.roofQ.length) { for (const q of DEV.roofQ) if (q.at <= M.time) devRoofTile(q.k, q.ev); prune(DEV.roofQ, q => q.at > M.time); }
   const r = DEV.R, mx = KB.mouse.x, my = KB.mouse.y;
   DEV.over = !TOUCH.active && !!r && mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h;
   const p = devPlayer(); if (!p) return; const s = p.sol;

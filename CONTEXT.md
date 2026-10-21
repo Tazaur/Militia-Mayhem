@@ -218,3 +218,10 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - `visPoly(ex, ey, R, walls)` now takes an optional wall list.
 - Build 74: fog memory (`FOGK`) is full resolution with no smoothing on tiled maps (set when the memory is created), so walls in shadow stay crisp. Other maps keep half resolution.
 - Build 75: in-sight roof opacity is by distance from the eye. `roofOp(d)`: 0 within 60 px, rising linearly to 0.35 at 120 px and staying there; +0.1 when seen through glass. It is a radial-gradient destination-out per eye: the glass-see-through polygon first (keep op + 0.1), then the direct polygon (keep op / (op + 0.1)). Out of sight it stays opaque grey.
+- Build 76: roofs fall as a cascade.
+  - `TL.rdist` is the hop count from the holding wall. `devRoofFall` queues tiles in `DEV.roofQ` at `rdist × ROOF_STEP` (0.07 s), and devTick lands them with `devRoofTile`.
+  - Each landing tile spawns a real smoke-grenade cloud, `popSmoke(x, y, { tint: 'brown', op: 0.5, quiet: true })`. It blocks sight like grenade smoke, for 18 s.
+  - Each landing tile also throws debris, plays 'crush', and calls `shakeAt(x, y, 2.5, 420)`. `shakeAt` is a new shared helper, which explosions and the tank cannon now use too.
+  - Anyone under a landing tile is hurt once per fall.
+  - RESET MAP clears smoke.
+  - The rubble tile (sheet cell 2,2) was redrawn in the wall palette.
