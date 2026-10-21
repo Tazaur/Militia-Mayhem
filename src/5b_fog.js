@@ -12,46 +12,79 @@ function raySeg(ox, oy, dx, dy, ax, ay, bx, by) {
   const t = ((ax - ox) * sy - (ay - oy) * sx) / den, u = ((ax - ox) * dy - (ay - oy) * dx) / den;
   return t > 0 && u >= 0 && u <= 1 ? t : Infinity;
 }
-/* what the eye at (ex, ey) can see inside box [x0, y0, x1, y1], as an exact polygon. Only faces turned toward the eye
-   count (a ray always meets the front face first), and rays go only where the outline can bend: a hair either side of
-   each of their corners, and to the box's corners. A ray that hits a wall goes pad px (default 5) straight in through
-   that face, so the near side of the wall shows; a ray that slips past a corner gets the corner itself as a point,
-   so the shadow edge runs exactly from it. */
-const VIS_EPS = 0.0004;
-function visPoly(ex, ey, box, walls, pad) {
-  const [X0, Y0, X1, Y1] = box, segs = [], rays = [], pd = pad || 5;
-  const face = (ax, ay, bx, by, p) => {
-    if ((ex - ax) * (by - ay) - (ey - ay) * (bx - ax) <= 0) return;       // turned away
-    const L = Math.hypot(bx - ax, by - ay) || 1; segs.push([ax, ay, bx, by, (by - ay) / L * p, (ax - bx) / L * p]);
-    for (const [x, y] of [[ax, ay], [bx, by]]) { const t = Math.atan2(y - ey, x - ex), d = Math.hypot(x - ex, y - ey); rays.push([t - VIS_EPS, x, y, d, -1], [t + VIS_EPS, x, y, d, 1]); }
-  };
-  for (const b of walls || MAP.sight) {
-    if (b.x > X1 || b.x + b.w < X0 || b.y > Y1 || b.y + b.h < Y0) continue;
-    face(b.x, b.y, b.x + b.w, b.y, pd); face(b.x + b.w, b.y, b.x + b.w, b.y + b.h, pd); face(b.x + b.w, b.y + b.h, b.x, b.y + b.h, pd); face(b.x, b.y + b.h, b.x, b.y, pd);
+/* what the eye at (ex, ey) can see inside box [x0, y0, x1, y1], as an exact polygon:
+   - every corner of every solid shape (sight walls / `walls`, wrecks), each clipped to the box (so where a wall crosses
+     the box edge is a corner too), plus the box's 4 corners, gets a ray;
+   - a corner the ray doesn't reach (something nearer than 1 px short of it) is dropped;
+   - an outer corner (its shape wholly to one side of the ray) sends the ray on past it to the next solid or the box edge,
+     unless another shape touches it right there; that point and the corner stay together as one unit;
+   - units are ordered by angle (a unit's two points: the far one first when the shape lies further round) and linked.
+   Only faces turned toward the eye block (a ray always meets the front face first). Each stretch of outline that runs
+   along a wall face also gets a strip pad px (default 5) deep into that wall (P.strips), so the face you see shows. */
+const VIS_TOL = 1;
+function clipBox(C, [X0, Y0, X1, Y1]) {      // a convex polygon cut to the box (Sutherland-Hodgman)
+  for (const [ax, v, keep] of [[0, X0, 1], [0, X1, -1], [1, Y0, 1], [1, Y1, -1]]) {
+    const out = [];
+    for (let i = 0; i < C.length; i++) {
+      const a = C[i], b = C[(i + 1) % C.length], ia = (a[ax] - v) * keep >= 0, ib = (b[ax] - v) * keep >= 0;
+      if (ia) out.push(a);
+      if (ia !== ib) { const t = (v - a[ax]) / (b[ax] - a[ax]); out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]); }
+    }
+    C = out; if (C.length < 3) return null;
   }
+  return C;
+}
+function visPoly(ex, ey, box, walls, pad) {
+  const [X0, Y0, X1, Y1] = box, segs = [], corners = [], pd = pad || 5;
+  let id = 0;
+  const shape = (C, p) => {
+    C = clipBox(C, box); if (!C) return; const n = C.length, sid = ++id, F = [];
+    for (let i = 0; i < n; i++) {
+      const [ax, ay] = C[i], [bx, by] = C[(i + 1) % n], L = Math.hypot(bx - ax, by - ay) || 1;
+      F.push((ex - ax) * (by - ay) - (ey - ay) * (bx - ax) > 0 ? [ax, ay, bx, by, sid, p, (by - ay) / L, (ax - bx) / L] : null);   // front faces only
+    }
+    for (const f of F) if (f) segs.push(f);
+    for (let i = 0; i < n; i++) corners.push([C[i], C[(i + n - 1) % n], C[(i + 1) % n], sid, F[(i + n - 1) % n], F[i]]);
+  };
+  for (const b of walls || MAP.sight) if (!(b.x > X1 || b.x + b.w < X0 || b.y > Y1 || b.y + b.h < Y0)) shape([[b.x, b.y], [b.x + b.w, b.y], [b.x + b.w, b.y + b.h], [b.x, b.y + b.h]], pd);
   for (const w of M.wrecks) {
     const m = w.hl + w.hw; if (w.x - m > X1 || w.x + m < X0 || w.y - m > Y1 || w.y + m < Y0) continue;
-    const c = Math.cos(w.a), s = Math.sin(w.a), P = [[-w.hl, -w.hw], [w.hl, -w.hw], [w.hl, w.hw], [-w.hl, w.hw]].map(([x, y]) => [w.x + x * c - y * s, w.y + x * s + y * c]);
-    for (let i = 0; i < 4; i++) face(P[i][0], P[i][1], P[(i + 1) % 4][0], P[(i + 1) % 4][1], Math.min(pd, 5));
+    const c = Math.cos(w.a), s = Math.sin(w.a); shape([[-w.hl, -w.hw], [w.hl, -w.hw], [w.hl, w.hw], [-w.hl, w.hw]].map(([x, y]) => [w.x + x * c - y * s, w.y + x * s + y * c]), Math.min(pd, 5));
   }
-  const bs = [[X0, Y0, X1, Y0], [X1, Y0, X1, Y1], [X1, Y1, X0, Y1], [X0, Y1, X0, Y0]];
-  for (const q of bs) { segs.push([q[0], q[1], q[2], q[3], 0, 0]); rays.push([Math.atan2(q[1] - ey, q[0] - ex), 0, 0, 0, 0]); }
-  // every point is ordered by its own angle (a corner by its exact one), so corners that line up from the eye can't fold
-  // the outline over itself
-  const out = [];
-  for (const [t, cx, cy, cd, side] of rays) {
-    const dx = Math.cos(t), dy = Math.sin(t); let best = Infinity, hq = null;
-    for (const q of segs) { const d = raySeg(ex, ey, dx, dy, q[0], q[1], q[2], q[3]); if (d < best) { best = d; hq = q; } }
-    if (!hq) continue;
-    out.push([t, ex + dx * best - hq[4], ey + dy * best - hq[5]]);
-    if (side && best > cd + 0.5) out.push([t - side * VIS_EPS, cx, cy, 1]);
+  const BC = [[X0, Y0], [X1, Y0], [X1, Y1], [X0, Y1]];
+  for (let i = 0; i < 4; i++) { const [ax, ay] = BC[i], [bx, by] = BC[(i + 1) % 4]; segs.push([ax, ay, bx, by, 0, 0, 0, 0]); corners.push([BC[i], null, null, 0, null, null]); }
+  const units = [];
+  for (const [C, pv, nx, sid, fa, fb] of corners) {
+    const dx = C[0] - ex, dy = C[1] - ey, dc = Math.hypot(dx, dy); if (dc < 0.01) continue;
+    const ux = dx / dc, uy = dy / dc; let all = Infinity, ext = Infinity, eq = null;
+    for (const q of segs) {
+      const d = raySeg(ex, ey, ux, uy, q[0], q[1], q[2], q[3]); if (d === Infinity) continue;
+      if (d < all) all = d;
+      if (q[4] !== sid && d > dc - VIS_TOL && d < ext) { ext = d; eq = q; }
+    }
+    if (all < dc - VIS_TOL) continue;                                       // hidden: dropped
+    const t = Math.atan2(dy, dx), cv = [C[0], C[1], 1, fa, fb];
+    let side = 0;
+    if (pv) { const s1 = dx * (pv[1] - C[1]) - dy * (pv[0] - C[0]), s2 = dx * (nx[1] - C[1]) - dy * (nx[0] - C[0]); if (s1 * s2 >= 0 && (s1 || s2)) side = Math.sign(s1 + s2); }
+    if (!side || !eq || ext <= dc + VIS_TOL) { units.push([t, [cv]]); continue; }   // inner corner, a box corner, or another shape touches it
+    const hv = [ex + ux * ext, ey + uy * ext, 0, eq.length > 5 && eq[5] ? eq : null, null];
+    units.push([t, side > 0 ? [hv, cv] : [cv, hv]]);                        // shape further round: the far point first
   }
-  out.sort((a, b) => a[0] - b[0]);
-  const P = out.map(o => o[3] ? [o[1], o[2], 1] : [o[1], o[2]]); P.faces = segs;     // [x, y, 1] = a corner; faces for the dev view
-  return P;
+  units.sort((a, b) => a[0] - b[0]);
+  const P = []; for (const [, vs] of units) for (const v of vs) P.push(v);
+  // the strips: an outline edge whose two ends lie on the same wall face
+  // (geometric: a corner of one wall can sit on another wall's face)
+  const strips = [], on = (v, f) => { const sx = f[2] - f[0], sy = f[3] - f[1], L2 = sx * sx + sy * sy || 1, t = clamp(((v[0] - f[0]) * sx + (v[1] - f[1]) * sy) / L2, 0, 1); return Math.hypot(f[0] + sx * t - v[0], f[1] + sy * t - v[1]) < 0.5; };
+  for (let i = 0; i < P.length; i++) {
+    const a = P[i], b = P[(i + 1) % P.length], f = [a[3], a[4], b[3], b[4]].find(f => f && f[5] && on(a, f) && on(b, f)) || segs.find(f => f[5] && on(a, f) && on(b, f)); if (!f) continue;
+    const k = f[5]; strips.push([[a[0], a[1]], [b[0], b[1]], [b[0] - f[6] * k, b[1] - f[7] * k], [a[0] - f[6] * k, a[1] - f[7] * k]]);
+  }
+  const out = P.map(v => v[2] ? [v[0], v[1], 1] : [v[0], v[1]]); out.strips = strips; out.faces = segs;   // [x, y, 1] = a corner
+  return out;
 }
 function inPoly(x, y, P) { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; }
-function polyPath(g, polys) { g.beginPath(); for (const P of polys) { P.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); } }
+/* the sight polygons and their wall strips as one path, all wound the same way, so a nonzero fill / clip is their union */
+function polyPath(g, polys) { g.beginPath(); for (const P of polys) { pathPos(g, P); if (P.strips) for (const S of P.strips) pathPos(g, S); } }
 function fogMemory(vw) {
   M.fogMem = M.fogMem || {};
   const key = vw.p ? 'p' + vw.p.id : 'shared';

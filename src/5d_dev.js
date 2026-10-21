@@ -476,20 +476,21 @@ function devTick(dt) {
 }
 
 /* ---------------- drawing ---------------- */
-/* SIGHT LINES: how the sight polygon is built, per eye - the faces it tests (orange; the view box grey), a ray to every
-   vertex (faint), the outline (cyan), ray hits (white) and exact corners (yellow), and the vertex count */
+/* SIGHT LINES: how the sight polygon is built, per eye - the faces it tests (orange), a ray to every vertex (faint), the
+   outline (cyan), the wall strips (cyan fill), points past a corner (white) and corners (yellow), and the counts */
 function devSightDbg(vw, x0, y0, x1, y1) {
   const box = [x0 - 16, y0 - 16, x1 + 16, y1 + 16], k = 1 / VZ;
   for (const o of viewSols(vw).map(posOf)) {
     const P = visPoly(o.x, o.y, box, null, MAP.tiled ? SUB : 5);
     ctx.lineWidth = 2 * k; ctx.beginPath();
-    for (const q of P.faces) if (q[4] || q[5]) { ctx.moveTo(q[0], q[1]); ctx.lineTo(q[2], q[3]); }
+    for (const q of P.faces) if (q[4]) { ctx.moveTo(q[0], q[1]); ctx.lineTo(q[2], q[3]); }
     ctx.strokeStyle = 'rgba(255,150,40,0.9)'; ctx.stroke();
     ctx.lineWidth = 1 * k; ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.beginPath();
     for (const [x, y] of P) { ctx.moveTo(o.x, o.y); ctx.lineTo(x, y); } ctx.stroke();
-    ctx.lineWidth = 1.5 * k; ctx.strokeStyle = '#40e8ff'; polyPath(ctx, [P]); ctx.stroke();
+    ctx.fillStyle = 'rgba(64,232,255,0.25)'; for (const S of P.strips) { ctx.beginPath(); pathPos(ctx, S); ctx.fill(); }
+    ctx.lineWidth = 1.5 * k; ctx.strokeStyle = '#40e8ff'; ctx.beginPath(); pathPos(ctx, P); ctx.stroke();
     for (const [x, y, c] of P) { const r = (c ? 3 : 2) * k; ctx.fillStyle = c ? '#ffe040' : '#fff'; ctx.fillRect(x - r, y - r, r * 2, r * 2); }
-    stxt(`${P.length} PTS  ${P.faces.length - 4} FACES`, o.x, o.y - 30, 8, '#40e8ff', 'center', 'middle', FD);
+    stxt(`${P.length} PTS  ${P.faces.length - 4} FACES  ${P.strips.length} STRIPS`, o.x, o.y - 30, 8, '#40e8ff', 'center', 'middle', FD);
   }
 }
 function devDrawWorld(vw) {
