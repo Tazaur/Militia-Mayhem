@@ -42,6 +42,7 @@ function fogMemory(vw) {
     const c = mk(Math.ceil(WW * FOGK), Math.ceil(WH * FOGK)), g = c.getContext('2d');
     g.setTransform(FOGK, 0, 0, FOGK, 0, 0); g.drawImage(ground, 0, 0); g.drawImage(decals, 0, 0);
     m = M.fogMem[key] = { c, g, st: new Map(), arc: new Map() };
+    if (MAP.tiled && MAP.tiled.roof) { m.rc = mk(c.width, c.height); m.rg = m.rc.getContext('2d'); m.rg.setTransform(FOGK, 0, 0, FOGK, 0, 0); m.rg.drawImage(ROOF_G, 0, 0); }   // dev yard roofs, remembered the same way
   }
   return m;
 }
@@ -64,6 +65,7 @@ function applyFog(vw, vis, x0, y0, x1, y1) {
   if (bw > 0 && bh > 0) {
     m.g.save(); m.g.setTransform(FOGK, 0, 0, FOGK, 0, 0); polyPath(m.g, polys); m.g.clip();
     m.g.drawImage(ground, bx0, by0, bw, bh, bx0, by0, bw, bh); m.g.drawImage(decals, bx0, by0, bw, bh, bx0, by0, bw, bh); m.g.restore();
+    if (m.rg) { m.rg.save(); polyPath(m.rg, polys); m.rg.clip(); m.rg.clearRect(bx0, by0, bw, bh); m.rg.drawImage(ROOF_G, bx0, by0, bw, bh, bx0, by0, bw, bh); m.rg.restore(); }
   }
   const seen = (x, y) => polys.some(P => inPoly(x, y, P)) && !smokeBlocks(eyes[0][0], eyes[0][1], x, y);
   for (const s of MAP.statics) if (vis(s.x, s.y, 20) && (s.type === 'fence' || s.type === 'hay' || s.type === 'tree') && seen(s.x, s.y)) m.st.set(s, s.alive);

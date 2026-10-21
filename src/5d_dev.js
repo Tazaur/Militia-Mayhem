@@ -299,7 +299,8 @@ function devDrawRoof(vw, x0, y0, x1, y1, fogPolys) {
   const bx0 = Math.max(0, Math.floor(x0)), by0 = Math.max(0, Math.floor(y0)), bw = Math.min(WW, Math.ceil(x1)) - bx0, bh = Math.min(WH, Math.ceil(y1)) - by0; if (bw <= 0 || bh <= 0) return;
   const g = ROOF_TMP.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR);
   g.setTransform(VZ * DPR, 0, 0, VZ * DPR, VOX * DPR, VOY * DPR); g.imageSmoothingEnabled = false;
-  g.drawImage(fogPolys ? ROOF_G : ROOF_C, bx0, by0, bw, bh, bx0, by0, bw, bh);
+  const m = fogPolys && fogMemory(vw);       // out of sight: the roof as you last saw it (grey), like the ground under it
+  if (m && m.rc) g.drawImage(m.rc, bx0 * FOGK, by0 * FOGK, bw * FOGK, bh * FOGK, bx0, by0, bw, bh); else g.drawImage(ROOF_C, bx0, by0, bw, bh, bx0, by0, bw, bh);
   if (fogPolys && pw.length) { g.save(); polyPath(g, pw); g.clip(); g.clearRect(bx0, by0, bw, bh); g.drawImage(ROOF_C, bx0, by0, bw, bh, bx0, by0, bw, bh); g.restore(); }   // in sight: in colour
   g.globalCompositeOperation = 'destination-out';
   // per eye: through glass the roof keeps roofOp(d) + 0.1; seen directly, a second pass takes it down to roofOp(d)
@@ -396,7 +397,7 @@ function devCollapse(sec) {
   // the cells and everything around them (neighbouring walls may become crumbled ends), then the roof it held up
   devRepaint(sec, 1);
   if (!sec.glass && TL.roof) { const ks = []; for (let j = sec.cy; j < sec.cy + sec.ch; j++) for (let i = sec.cx; i < sec.cx + sec.cw; i++) ks.push(j * TL.sc + i); repaintRoofAround(ks); devRoofFall(sec); }
-  devSight(); navDirty = 1; M.fogMem = null;
+  devSight(); navDirty = 1;          // the fog's memory isn't reset: out of sight you keep seeing it standing until you look
   sfx(sec.glass ? 'glass' : 'crumble', sec.b.x + sec.b.w / 2, sec.b.y + sec.b.h / 2);
   devLog(sec.glass ? 'WINDOW BROKEN' : `WALL ${sec.cw * sec.ch} CELL${sec.cw * sec.ch > 1 ? 'S' : ''} DOWN`, '#ffb060');
 }

@@ -225,3 +225,13 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
   - Anyone under a landing tile is hurt once per fall.
   - RESET MAP clears smoke.
   - The rubble tile (sheet cell 2,2) was redrawn in the wall palette.
+- Build 76: roofs fall as a cascade.
+  - `TL.rdist` is the hop count from the holding wall. `devRoofFall` queues tiles in `DEV.roofQ` at `rdist × ROOF_STEP` (0.07 s), and devTick lands them with `devRoofTile`.
+  - Each landing tile:
+    - spawns a real smoke-grenade cloud, `popSmoke(x, y, { tint: 'brown', op: 0.5, quiet: true })`, which blocks sight like grenade smoke for 18 s;
+    - throws debris and plays 'crush';
+    - calls `shakeAt(x, y, 2.5, 420)`, a new shared helper that explosions and the tank cannon now use too;
+    - hurts anyone under it, once per fall.
+  - RESET MAP clears smoke. The rubble tile (sheet cell 2,2) was redrawn in the wall palette.
+  - Fog memory covers roofs too. `fogMemory` keeps `m.rc`, a copy of `ROOF_G` that only updates inside the sight polygons; devDrawRoof uses it as the out-of-sight base.
+  - devCollapse no longer resets `M.fogMem`, so collapses out of sight stay unseen until looked at.
