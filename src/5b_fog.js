@@ -2,7 +2,7 @@
    Buildings block sight. Outside your sight you see the map as you last saw it: a half-resolution memory of
    the ground and decals, plus sandbags / fences / hay / trees in their last-seen state, dimmed. Units, vehicles,
    projectiles and effects only appear inside your sight. */
-const FOGK = 0.5;
+let FOGK = 0.5;     // memory scale: half resolution, except the small tile-art dev yard (full, so walls stay crisp)
 function fogEyes(vw) {
   if (!M || M.demo || M.cfg.fog === 'off') return [];      // a match option (host's lobby), the same for everyone
   const ps = vw.p ? [vw.p] : M.shared ? LOCALS() : [];
@@ -38,6 +38,7 @@ function fogMemory(vw) {
   const key = vw.p ? 'p' + vw.p.id : 'shared';
   let m = M.fogMem[key];
   if (!m) {
+    FOGK = MAP.tiled ? 1 : 0.5;
     const c = mk(Math.ceil(WW * FOGK), Math.ceil(WH * FOGK)), g = c.getContext('2d');
     g.setTransform(FOGK, 0, 0, FOGK, 0, 0); g.drawImage(ground, 0, 0); g.drawImage(decals, 0, 0);
     m = M.fogMem[key] = { c, g, st: new Map(), arc: new Map() };
@@ -72,7 +73,7 @@ function applyFog(vw, vis, x0, y0, x1, y1) {
   const main = ctx; ctx = FOG_OUT.getContext('2d'); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR);
   ctx.fillStyle = '#0c140a'; ctx.fillRect(vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR);
   worldT(); ctx.imageSmoothingEnabled = false; drawSkirt(x0, y0, x1, y1);
-  if (bw > 0 && bh > 0) { ctx.imageSmoothingEnabled = true; ctx.drawImage(m.c, bx0 * FOGK, by0 * FOGK, bw * FOGK, bh * FOGK, bx0, by0, bw, bh); ctx.imageSmoothingEnabled = false; }
+  if (bw > 0 && bh > 0) { ctx.imageSmoothingEnabled = FOGK < 1; ctx.drawImage(m.c, bx0 * FOGK, by0 * FOGK, bw * FOGK, bh * FOGK, bx0, by0, bw, bh); ctx.imageSmoothingEnabled = false; }
   for (const A of MAP.arcs) { if (!vis(A.x, A.y, 50)) continue; const lost = m.arc.has(A) ? m.arc.get(A) : 0, f = lost / A.bags.length; spr(f < 0.25 ? 'bagarc0' : f < 0.75 ? 'bagarc1' : 'bagarc2', A.x, A.y, A.a); }
   worldT();
   for (const s of MAP.statics) {

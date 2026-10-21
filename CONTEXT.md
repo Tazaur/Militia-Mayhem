@@ -216,3 +216,4 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
     - with glass blocking (`MAP.sightD`), a further 2/3: 10% is left where it is seen directly.
   - With vision off the same applies, and the roof is opaque elsewhere.
 - `visPoly(ex, ey, R, walls)` now takes an optional wall list.
+- Build 74: fog memory (`FOGK`) is full resolution with no smoothing on tiled maps (set when the memory is created), so walls in shadow stay crisp. Other maps keep half resolution.
