@@ -77,7 +77,7 @@ function newMatch(cfg, demo) {
     for (const t of [0, 1]) { const nb = demo ? 7 : cfg.bots; for (let i = 0; i < nb; i++) { const b = makeSoldier({ team: t, color: teamColor[t], name: nextName(), bot: true }); b.dark = !demo && cfg.teamColors !== 'classic'; M.sol.push(b); } }
   }
   for (const s of M.sol) if (s.bot && !coop) s.respawnT = rnd(0, 0.8);
-  rainAudio(M.rain && !demo || (M.rain && demo));
+  rainAudio(M.rain);
   layoutViews();
   if (!demo) netMatchStarted();
 }
@@ -127,9 +127,10 @@ function psfx(pl, name) {
   const k = pl.id + name, n = performance.now(); if (PSFX_T[k] && n - PSFX_T[k] < 220) return; PSFX_T[k] = n; netEv('ps', pl.id, name);
 }
 function cw(s) { return s.w ? s.w[s.wi] : null; }
+const fullW = id => ({ id, mag: WPN[id].mag, res: WPN[id].res });
 function giveLoadout(s) {
   const K = KITS[s.kit] || KITS[0], p = K.p[(s.var || 0) % K.p.length], sec = K.secs[(s.sec || 0) % K.secs.length], no = NADE_OPTS(K)[(s.nt || 0) % 2];
-  s.w = [{ id: p, mag: WPN[p].mag, res: WPN[p].res }, { id: sec, mag: WPN[sec].mag, res: WPN[sec].res }];
+  s.w = [fullW(p), fullW(sec)];
   s.wi = 0; s.nades = no.f; s.smokes = no.sm; s.throwSel = s.nades > 0 ? 0 : 1; s.mines = K.g === 'mine' ? 2 : 0; s.gcd = 0;
 }
 
@@ -302,7 +303,7 @@ function spawnWaveBot(s) {
   const n = M.wv.n, p = pick(WAVE_GUNS[Math.min(n, WAVE_GUNS.length) - 1]);
   const sec = n >= 5 && Math.random() < Math.min(0.35, 0.1 + 0.03 * n) ? 'rpg' : n >= 2 ? pick(['pistol', 'mp']) : 'pistol';
   s.kit = sec === 'rpg' ? 1 : Math.max(0, KITS.findIndex(K => K.p.includes(p)));
-  s.w = [{ id: p, mag: WPN[p].mag, res: WPN[p].res }, { id: sec, mag: WPN[sec].mag, res: WPN[sec].res }]; s.wi = 0;
+  s.w = [fullW(p), fullW(sec)]; s.wi = 0;
   s.nades = n < 3 ? 0 : Math.min(3, (n - 1) >> 1); s.smokes = n < 4 ? 0 : 1; s.mines = 0; s.throwSel = s.nades ? 0 : 1;
 }
 /* out of bounds: anyone outside the battlefield (on foot or aboard) dies after OOB_T seconds; empty vehicles are wrecked after twice that */
@@ -344,7 +345,7 @@ function destroyVehicle(v, src) {
   else for (let i = 0; i < 10; i++) part({ k: 'dirt', x: v.x, y: v.y, vx: rnd(-90, 90), vy: rnd(-90, 90), life: 0.8, max: 0.8, sz: 3, drag: 3 });
   if (src && src.player && !occupied) src.msg = { t: 1.4, txt: 'EMPTY ' + v.type.toUpperCase() + ' DESTROYED' };
   feed(src, 'DESTROYED', { name: v.type === 'nest' ? 'MG NEST' : v.type.toUpperCase(), color: 'white' });
-  if (v.eng) { try { v.eng.o.stop(); } catch (e) { } v.eng = null; }
+  engineOff(v);
   v.active = false; v.respawnT = v.T.respawn;
   scorch(v.x, v.y, v.type === 'tank' ? 90 : 70);
 }
@@ -363,15 +364,14 @@ function explosion(x, y, r, dmgS, dmgV, src, team, big, kind) {
   }
   for (const v of M.vehicles) {
     if (!v.active || v.dead) continue;
-    const vo = EXP_REW ? lagAt(v, T) : v, vx = vo.x, vy = vo.y, va = vo.a;
-    let dmin = 1e9; for (const [ox, oy, cr] of v.T.circles) { const c = Math.cos(va), sn = Math.sin(va); const cx = vx + ox * c - oy * sn, cy = vy + ox * sn + oy * c; dmin = Math.min(dmin, Math.hypot(cx - x, cy - y) - cr); }
+    let dmin = 1e9; for (const [cx, cy, cr] of vehCircles(v, _vcE, EXP_REW ? lagAt(v, T) : v)) dmin = Math.min(dmin, Math.hypot(cx - x, cy - y) - cr);
     if (dmin > r * 0.6) continue;
     const f = clamp(1 - Math.max(0, dmin) / (r * 0.6), 0.25, 1);
     hurtVehicle(v, dmgV * f, src);
     if (v.T.drive) { const k = 25 / v.T.mass * f, d = Math.hypot(v.x - x, v.y - y) + 1; v.vx += (v.x - x) / d * k; v.vy += (v.y - y) / d * k; }
   }
   staticsNear(x, y, r * 0.55, _near);
-  for (const s of _near) if (Math.hypot(s.x - x, s.y - y) < r * (s.type === 'tree' ? 0.35 : 0.55)) destroyStatic(s, true);
+  for (const s of _near) if (Math.hypot(s.x - x, s.y - y) < r * (s.type === 'tree' ? 0.35 : 0.55)) destroyStatic(s);
   for (const c of M.crates) if (c.live && Math.hypot(c.x - x, c.y - y) < r * 0.5) { c.live = false; c.t = 25; }
   for (const it of M.items) if (it.k === 'mine' && it.armed !== false && Math.hypot(it.x - x, it.y - y) < r * 0.6 && !it.boom) { it.boom = true; it.t = 0; }
   if (MAP.tiled) devBlast(x, y, r, dmgS);
@@ -423,7 +423,6 @@ function pushCircleRect(o, r, b) {
 }
 const LOW = { bag: 1, fence: 1, hay: 1 };
 /* wrecks are oriented boxes: blockers for movement, bullets and sight */
-function wreckLocal(w, x, y) { const dx = x - w.x, dy = y - w.y, c = Math.cos(-w.a), s = Math.sin(-w.a); return [dx * c - dy * s, dx * s + dy * c]; }
 function pushOutWreck(o, r, w) {
   if (Math.abs(o.x - w.x) > w.hl + r + 4 || Math.abs(o.y - w.y) > w.hl + r + 4) return false;
   return pushOutBox(o, r, w.x, w.y, w.a, w.hl, w.hw);
@@ -444,7 +443,7 @@ function pushOutVeh(o, r, v) {
 }
 function segWreck(x0, y0, x1, y1, w) {
   if (Math.abs((x0 + x1) / 2 - w.x) > 160 || Math.abs((y0 + y1) / 2 - w.y) > 160) return -1;
-  const [ax, ay] = wreckLocal(w, x0, y0), [bx, by] = wreckLocal(w, x1, y1);
+  const [ax, ay] = toLocal(w, x0, y0), [bx, by] = toLocal(w, x1, y1);
   return segRect(ax, ay, bx, by, { x: -w.hl, y: -w.hw, w: w.hl * 2, h: w.hw * 2 }, 0);
 }
 function soldierCollide(s) {
@@ -457,7 +456,9 @@ function soldierCollide(s) {
   for (const o of _near) { if (s.jumpT > 0.04 && LOW[o.type]) continue; const dx = s.x - o.x, dy = s.y - o.y, d = Math.hypot(dx, dy), m = s.r + o.r; if (d < m && d > 0.01) { s.x = o.x + dx / d * m; s.y = o.y + dy / d * m; } }
   s.x = clamp(s.x, 20 - SKIRT, WW + SKIRT - 20); s.y = clamp(s.y, 20 - SKIRT, WH + SKIRT - 20);
 }
-function vehCircles(v, out) { out.length = 0; const c = Math.cos(v.a), s = Math.sin(v.a); for (const [ox, oy, r] of v.T.circles) out.push([v.x + ox * c - oy * s, v.y + ox * s + oy * c, r]); return out; }
+/* the vehicle's hit circles in the world; o: another pose to place them at (a lag-compensated {x, y, a}) */
+function vehCircles(v, out, o) { o = o || v; out.length = 0; const c = Math.cos(o.a), s = Math.sin(o.a); for (const [ox, oy, r] of v.T.circles) out.push([o.x + ox * c - oy * s, o.y + ox * s + oy * c, r]); return out; }
+const _vcE = [];
 const _vc = [], _vc2 = [];
 /* vehicles and wrecks are heavy but can be shoved: overlap is shared by mass (a jeep barely moves a tank), an
    off-centre shove turns what's hit, and shoving costs the pusher speed in proportion to what it's pushing.
@@ -480,9 +481,9 @@ function vehicleCollide(v, local, auth) {
     vehCircles(v, _vc);
     for (const [cx, cy, r] of _vc) {
       const o = { x: cx, y: cy };
-      for (const b of MAP.buildings) if (pushCircleRect(o, r, b)) { v.x += o.x - cx; v.y += o.y - cy; hit = 1; }
+      for (const b of MAP.buildings) { const px = o.x, py = o.y; if (pushCircleRect(o, r, b)) { v.x += o.x - px; v.y += o.y - py; hit = 1; } }
       for (const w of M.wrecks) { const o3 = { x: cx, y: cy }; if (pushOutWreck(o3, r, w)) { const wa = auth ? 0 : wreckMass(w) / (v.T.mass + wreckMass(w)); v.x += (o3.x - cx) * wa; v.y += (o3.y - cy) * wa; shove(w, cx, cy, -(o3.x - cx) * (1 - wa), -(o3.y - cy) * (1 - wa), local); hitV = Math.max(hitV, wa); } }
-      for (const w of MAP.water) { const o2 = { x: v.x + (cx - v.x), y: cy }; if (pushCircleRect(o2, r - 6, w)) { v.x += o2.x - cx; v.y += o2.y - cy; hit = 1; } }
+      for (const w of MAP.water) { const o2 = { x: cx, y: cy }; if (pushCircleRect(o2, r - 6, w)) { v.x += o2.x - cx; v.y += o2.y - cy; hit = 1; } }
     }
   }
   vehCircles(v, _vc);
@@ -586,7 +587,7 @@ function exitVehicle(s, forced) {
   if (!v.T.drive) tries.push([-30, 20], [-30, -20], [0, 32], [0, -32]);
   for (const [ax, ay] of tries) {
     const [wx, wy] = toWorld(v, ax * 0.95, ay * 0.95);
-    if (!solidAtExit(wx, wy, v)) { leaveSeat(s); s.x = wx; s.y = wy; s.vx = v.vx * 0.3; s.vy = v.vy * 0.3; s.a = v.T.drive ? s.a : v.mgA; sfx('door', v.x, v.y); return; }
+    if (!solidAtExit(wx, wy, v) && clearPath(v.x, v.y, wx, wy)) { leaveSeat(s); s.x = wx; s.y = wy; s.vx = v.vx * 0.3; s.vy = v.vy * 0.3; s.a = v.T.drive ? s.a : v.mgA; sfx('door', v.x, v.y); return; }
   }
   if (forced) { leaveSeat(s); const [wx, wy] = toWorld(v, 0, v.T.hw + 14); s.x = wx; s.y = wy; }
   else if (s.player) s.msg = { t: 1, txt: 'NO ROOM TO EXIT' };
@@ -625,6 +626,8 @@ function fireWeapon(s) {
   st.mag--; s.flash = 0.05; s.fireCd = W_.rate; s.firedT = 1.2; s.shotN = (s.shotN || 0) + 1;
   shotFx(s, W_, x, y);
 }
+/* fires the gun in hand, or clicks on an empty one; true if it fired */
+function pullTrigger(s) { if (cw(s).mag > 0) { fireWeapon(s); return true; } sfx('empty', s.x, s.y); s.fireCd = 0.25; return false; }
 function shotFx(s, W_, x, y) {
   sfx(W_.snd, x, y);
   part({ k: 'shell', x: s.x, y: s.y, vx: Math.cos(s.a + 1.6) * rnd(40, 80), vy: Math.sin(s.a + 1.6) * rnd(40, 80), life: 0.4, max: 0.4, sz: 1.5, rot: rnd(0, 3), vr: 20, drag: 4 });
@@ -654,7 +657,6 @@ function throwNade(s, dist, forceFrag) {
   if (smoke) s.smokes--; else s.nades--;
   s.nadeCd = 0.8; s.throwT = 0.35; s.thrownSmoke = smoke; sfx('throw', x, y);
 }
-/* smoke screens: grow, linger, fade; they block sight lines for bots and spotting */
 /* every view near (x, y) shakes, by amt at the spot fading to nothing at range */
 function shakeAt(x, y, amt, range) { for (const vw of M.views) { const d = Math.hypot(vw.cam.x - x, vw.cam.y - y); vw.shake = Math.min(18, vw.shake + amt * Math.max(0, 1 - d / range)); } }
 /* a smoke grenade's cloud; o (optional): { tint: 'brown', shade: 0-3, op: opacity, T: seconds, quiet } (falling roofs use it) */
@@ -670,13 +672,14 @@ function smokeBlocks(x0, y0, x1, y1) {
 }
 /* the cannon barrel, turret pivot to muzzle (where shells leave) */
 const BARREL = 96;
+function turretPivot(v) { return [v.x - 4 * Math.cos(v.a), v.y - 4 * Math.sin(v.a)]; }
 function barrelHits(v, a) {
-  const px = v.x - 4 * Math.cos(v.a), py = v.y - 4 * Math.sin(v.a), x = px + Math.cos(a) * BARREL, y = py + Math.sin(a) * BARREL;
+  const [px, py] = turretPivot(v), x = px + Math.cos(a) * BARREL, y = py + Math.sin(a) * BARREL;
   for (const b of MAP.buildings) if (!b.glass && segRect(px, py, x, y, b, 0) >= 0) return true;
   return false;
 }
 function fireCannon(v, s) {
-  const c = Math.cos(v.ta), sn = Math.sin(v.ta), px = v.x - 4 * Math.cos(v.a), py = v.y - 4 * Math.sin(v.a);
+  const c = Math.cos(v.ta), sn = Math.sin(v.ta), [px, py] = turretPivot(v);
   const x = px + c * BARREL, y = py + sn * BARREL, inWall = barrelHits(v, v.ta);
   // a muzzle pushed through a wall doesn't shoot from behind it: the shell starts at the pivot and hits the wall
   M.proj.push({ k: 'shell', x: inWall ? px : x, y: inWall ? py : y, vx: c * 760, vy: sn * 760, life: 1.1, src: s, team: s.team, wname: 'CANNON' });
@@ -727,12 +730,13 @@ function useGadget(s, I, dt) {
     return;
   }
   if (!I.gadgetP || s.gcd > 0) return;
-  if (K.g === 'medbag') { M.items.push({ k: 'med', x: s.x + Math.cos(s.a) * 12, y: s.y + Math.sin(s.a) * 12, t: 12, team: s.team, owner: s }); s.gcd = s.gmax = 16; s.handT = 0.45; s.handK = 'medbag'; sfx('drop', s.x, s.y); }
-  if (K.g === 'ammo') { M.items.push({ k: 'ammo', x: s.x + Math.cos(s.a) * 12, y: s.y + Math.sin(s.a) * 12, t: 15, team: s.team, owner: s, given: new Map() }); s.gcd = s.gmax = 18; s.handT = 0.45; s.handK = 'ammo'; sfx('drop', s.x, s.y); }
+  const drop = (o, d, cd, snd) => { const [x, y] = muzzle(s, d); M.items.push(Object.assign({ x, y, team: s.team, owner: s }, o)); s.gcd = s.gmax = cd; s.handT = 0.45; s.handK = K.g; sfx(snd, s.x, s.y); };
+  if (K.g === 'medbag') drop({ k: 'med', t: 12 }, 12, 16, 'drop');
+  if (K.g === 'ammo') drop({ k: 'ammo', t: 15, given: new Map() }, 12, 18, 'drop');
   if (K.g === 'mine') {
     if (s.mines <= 0) { if (s.player) s.msg = { t: 1, txt: 'OUT OF MINES' }; return; }
     const mine = M.items.filter(i => i.k === 'mine' && i.owner === s); if (mine.length >= 3) mine[0].t = -1;
-    M.items.push({ k: 'mine', x: s.x + Math.cos(s.a) * 14, y: s.y + Math.sin(s.a) * 14, t: 9999, team: s.team, owner: s, arm: 1.2 }); s.mines--; s.gcd = s.gmax = 1; s.handT = 0.45; s.handK = 'mine'; sfx('beep', s.x, s.y);
+    drop({ k: 'mine', t: 9999, arm: 1.2 }, 14, 1, 'beep'); s.mines--;
   }
 }
 function updateItems(dt) {
@@ -745,7 +749,7 @@ function updateItems(dt) {
         if (!s.alive || s.veh || s.team !== it.team || Math.hypot(s.x - it.x, s.y - it.y) > 58) continue;
         const last = it.given.get(s.id) || -9; if (M.time - last < 2) continue;
         let gave = false;
-        for (const w of s.w) { const W_ = WPN[w.id]; const add = Math.ceil(W_.res * 0.35); if (w.res < W_.res) { w.res = Math.min(W_.res, w.res + add); gave = true; } }
+        if (refillRes(s, 0.35)) gave = true;
         if (s.nades < KITS[s.kit].nades) { s.nades++; gave = true; } else if (s.smokes < 2) { s.smokes++; gave = true; }
         if (KITS[s.kit].g === 'mine' && s.mines < 2) { s.mines++; gave = true; }
         if (gave) { it.given.set(s.id, M.time); if (it.owner && it.owner !== s) addPts(it.owner, 10, 'RESUPPLY'); if (s.player) psfx(s.player, 'pickup'); }
@@ -758,7 +762,7 @@ function updateItems(dt) {
         vehCircles(v, _vc); if (_vc.some(([cx, cy, r]) => Math.hypot(cx - it.x, cy - it.y) < r + 6)) { it.boom = true; sfx('beep', it.x, it.y); }
       }
     } else if (it.k === 'pouch') {
-      for (const s of M.sol) if (s.alive && !s.veh && Math.hypot(s.x - it.x, s.y - it.y) < 16) { for (const w of s.w) w.res = Math.min(WPN[w.id].res, w.res + Math.ceil(WPN[w.id].res * 0.25)); if (s.nades < KITS[s.kit].nades) s.nades++; it.t = -1; if (s.player) { psfx(s.player, 'pickup'); s.msg = { t: 1.2, txt: 'AMMO POUCH' }; } break; }
+      for (const s of M.sol) if (s.alive && !s.veh && Math.hypot(s.x - it.x, s.y - it.y) < 16) { refillRes(s, 0.25); if (s.nades < KITS[s.kit].nades) s.nades++; it.t = -1; if (s.player) { psfx(s.player, 'pickup'); s.msg = { t: 1.2, txt: 'AMMO POUCH' }; } break; }
     }
   }
   prune(M.items, it => it.t > 0);
@@ -796,6 +800,8 @@ function bagBlocks(p, s) {
   for (const o of PRONE) if (Math.abs(o.x - s.x) < 30 && Math.abs(o.y - s.y) < 30) return true;
   return false;
 }
+/* shells and rockets: blast radius, splash to soldiers / vehicles (a vehicle hit square-on takes the direct damage instead), direct damage */
+const BLAST = { shell: { r: 78, s: 180, v: 60, big: true, tank: 210, veh: 300, sol: 200, n: 'CANNON' }, rocket: { r: 62, s: 110, v: 50, big: false, tank: 230, veh: 280, sol: 120, n: 'RPG' } };
 function updateProjectiles(dt) {
   PRONE = M.sol.filter(s => s.alive && s.stance >= 1 && !s.veh);
   for (const p of M.proj) {
@@ -839,8 +845,8 @@ function updateProjectiles(dt) {
     if (hit) {
       const hx = lerp(x0, x1, bt), hy = lerp(y0, y1, bt);
       p.life = 0;
-      if (p.k === 'shell') { explosion(hx, hy, 78, 180, 0, p.src, p.team, true); if (hit.k === 'veh') hurtVehicle(hit.v, hit.v.type === 'tank' ? 210 : 300, p.src); if (hit.k === 'sol') hurtSoldier(hit.s, 200, p.src, 'explosion', p.vx, p.vy, 'CANNON'); continue; }
-      if (p.k === 'rocket') { explosion(hx, hy, 62, 110, 0, p.src, p.team, false); if (hit.k === 'veh') hurtVehicle(hit.v, hit.v.type === 'tank' ? 230 : 280, p.src); if (hit.k === 'sol') hurtSoldier(hit.s, 120, p.src, 'explosion', p.vx, p.vy, 'RPG'); continue; }
+      const B = BLAST[p.k];
+      if (B) { explosion(hx, hy, B.r, B.s, hit.k === 'veh' ? 0 : B.v, p.src, p.team, B.big); if (hit.k === 'veh') hurtVehicle(hit.v, hit.v.type === 'tank' ? B.tank : B.veh, p.src); if (hit.k === 'sol') hurtSoldier(hit.s, B.sol, p.src, 'explosion', p.vx, p.vy, B.n); continue; }
       if (hit.k === 'sol') hurtSoldier(hit.s, p.dmg, p.src, p.mg ? 'mg' : 'bullet', p.vx, p.vy, p.wname);
       else if (hit.k === 'veh') {
         const v = hit.v; let victim = null;
@@ -852,7 +858,7 @@ function updateProjectiles(dt) {
     }
     p.x = x1; p.y = y1; p.life -= dt;
     if (p.x < -SKIRT || p.y < -SKIRT || p.x > WW + SKIRT || p.y > WH + SKIRT) p.life = 0;
-    if (p.life <= 0 && (p.k === 'rocket' || p.k === 'shell')) explosion(p.x, p.y, p.k === 'shell' ? 78 : 62, p.k === 'shell' ? 180 : 110, p.k === 'shell' ? 60 : 50, p.src, p.team, p.k === 'shell');
+    if (p.life <= 0 && BLAST[p.k]) { const B = BLAST[p.k]; explosion(p.x, p.y, B.r, B.s, B.v, p.src, p.team, B.big); }
     if (p.life <= 0 && p.k === 'bullet' && inWater(p.x, p.y)) part({ k: 'steam', x: p.x, y: p.y, vx: 0, vy: 0, life: 0.4, max: 0.4, sz: 4, drag: 0 });
   }
   EXP_REW = 0;
@@ -894,6 +900,13 @@ function updateNade(p, dt) {
 }
 
 /* ---------------- soldier control ---------------- */
+/* someone who moved d px this frame, heading ang: walk cycle, footprints (they fade over a couple of minutes), rustling, ripples */
+function stepFx(s, d, ang, dt) {
+  const pr = s.stance === 2; s.moving = d / Math.max(dt, 1e-3) > (pr ? 6 : 18); s.walkT += d;
+  if (s.moving && !s.swim && !(s.jumpT > 0)) { s.stepAcc += d; if (s.stepAcc > (pr ? 10 : 9)) { s.stepAcc = 0; s.stepSide = -s.stepSide; footprint(s.x, s.y, ang, pr ? 0 : s.stepSide, pr); } }
+  if (pr && s.moving && Math.random() < dt * 3) sfx('rustle', s.x, s.y, 0.5);
+  if (s.swim && s.moving && Math.random() < dt * 4) { sfx('splash', s.x, s.y, 0.5); part({ k: 'ripple', x: s.x, y: s.y, vx: 0, vy: 0, life: 0.9, max: 0.9, sz: 14, drag: 0 }); }
+}
 function controlSoldier(s, I, dt) {
   s.flash -= dt; s.fireCd -= dt; s.nadeCd -= dt; s.protect -= dt; s.hurtT -= dt; s.hitT -= dt; s.stanceT -= dt; s.gcd -= dt; s.firedT -= dt; s.spotT -= dt; s.meleeCd -= dt; s.meleeT -= dt; s.spotCd -= dt; s.handT = (s.handT || 0) - dt;
   s.bloom = Math.max(0, s.bloom - dt * 1.8);
@@ -939,42 +952,40 @@ function controlSoldier(s, I, dt) {
   s.ads = !!I.ads && !sprint && !s.swim;
   if (I.netPos) netAuthMove(s, I.netPos, dt);        // an online joiner moves themselves; the host checks it
   else {
-  const ice = onIce(s.x, s.y);
-  const spd = (s.swim ? 40 : s.stance === 2 ? 34 : s.stance === 1 ? 52 : sprint ? 128 : s.torch ? 30 : 82) * (s.ads ? 0.6 : 1), k = 1 - Math.exp(-dt * (ice ? 3 : 14));
-  s.vx = lerp(s.vx, mx * spd, k); s.vy = lerp(s.vy, my * spd, k);
-  if (s.jumpT > 0) {
-    s.jumpT -= dt; const along = s.vx * s.jdx + s.vy * s.jdy; if (along < 110) { s.vx += s.jdx * (110 - along); s.vy += s.jdy * (110 - along); }
-    // don't land on top of a sandbag or fence: carry on until clear
-    if (s.jumpT <= 0.04) { staticsNear(s.x, s.y, 20, _near); if ((_near.some(o => LOW[o.type] && Math.hypot(o.x - s.x, o.y - s.y) < o.r + s.r) || MAP.buildings.some(b => b.glass && inRect(s.x, s.y, b, s.r))) && s.jumpT > -0.4) s.jumpT = 0.05; else if (s.jumpT <= 0) { s.jumpT = 0; for (let i = 0; i < 3; i++) part({ k: 'dust', x: s.x, y: s.y, vx: rnd(-30, 30), vy: rnd(-30, 30), life: 0.5, max: 0.5, sz: 6, drag: 3 }); } }
+    const ice = onIce(s.x, s.y);
+    const spd = (s.swim ? 40 : s.stance === 2 ? 34 : s.stance === 1 ? 52 : sprint ? 128 : s.torch ? 30 : 82) * (s.ads ? 0.6 : 1), k = 1 - Math.exp(-dt * (ice ? 3 : 14));
+    s.vx = lerp(s.vx, mx * spd, k); s.vy = lerp(s.vy, my * spd, k);
+    if (s.jumpT > 0) {
+      s.jumpT -= dt; const along = s.vx * s.jdx + s.vy * s.jdy; if (along < 110) { s.vx += s.jdx * (110 - along); s.vy += s.jdy * (110 - along); }
+      // don't land on top of a sandbag or fence: carry on until clear
+      if (s.jumpT <= 0.04) { staticsNear(s.x, s.y, 20, _near); if ((_near.some(o => LOW[o.type] && Math.hypot(o.x - s.x, o.y - s.y) < o.r + s.r) || MAP.buildings.some(b => b.glass && inRect(s.x, s.y, b, s.r))) && s.jumpT > -0.4) s.jumpT = 0.05; else if (s.jumpT <= 0) { s.jumpT = 0; for (let i = 0; i < 3; i++) part({ k: 'dust', x: s.x, y: s.y, vx: rnd(-30, 30), vy: rnd(-30, 30), life: 0.5, max: 0.5, sz: 6, drag: 3 }); } }
+    }
+    s.x += s.vx * dt; s.y += s.vy * dt;
+    soldierCollide(s);
   }
-  s.x += s.vx * dt; s.y += s.vy * dt;
-  soldierCollide(s);
-  }
-  const v = Math.hypot(s.vx, s.vy); s.moving = v > (s.stance === 2 ? 6 : 18); s.walkT += v * dt;
-  // footprints that fade over a couple of minutes
-  if (s.moving && !s.swim && s.jumpT <= 0) { s.stepAcc += v * dt; if (s.stepAcc > (s.stance === 2 ? 10 : 9)) { s.stepAcc = 0; s.stepSide = -s.stepSide; footprint(s.x, s.y, Math.atan2(s.vy, s.vx), s.stance === 2 ? 0 : s.stepSide, s.stance === 2); } }
+  stepFx(s, Math.hypot(s.vx, s.vy) * dt, Math.atan2(s.vy, s.vx), dt);
   if (s.stance === 2 && s.moving && (I.aimA === null || I.aimA === undefined)) s.a += clamp(angDiff(s.a, Math.atan2(s.vy, s.vx)), -4 * dt, 4 * dt);
   if (sprint && (I.aimA === null || I.aimA === undefined)) s.a = Math.atan2(s.vy, s.vx);
-  if (s.stance >= 1 && s.moving && Math.random() < dt * (s.stance === 2 ? 3 : 1.5)) sfx('rustle', s.x, s.y, 0.5);
-  if (s.swim && s.moving && Math.random() < dt * 4) { sfx('splash', s.x, s.y, 0.5); part({ k: 'ripple', x: s.x, y: s.y, vx: 0, vy: 0, life: 0.9, max: 0.9, sz: 14, drag: 0 }); }
   if (s.swim) return;
   useGadget(s, I, dt);
   const st = cw(s);
   if (I.reload || (st.mag === 0 && st.res > 0 && s.reloadT <= 0)) startReload(s);
   if (I.fire && !sprint && !s.torch && s.fireCd <= 0 && s.stanceT <= 0) {
-    if (s.reloadT <= 0) { if (st.mag > 0) fireWeapon(s); else { sfx('empty', s.x, s.y); s.fireCd = 0.25; if (st.res <= 0 && s.w[1 - s.wi].mag + s.w[1 - s.wi].res > 0) { s.wi = 1 - s.wi; } } }
+    if (s.reloadT <= 0 && !pullTrigger(s) && st.res <= 0 && s.w[1 - s.wi].mag + s.w[1 - s.wi].res > 0) s.wi = 1 - s.wi;      // dry: over to the other gun
   }
   if (I.nadeCyc && s.smokes + s.nades > 0) { s.throwSel = 1 - s.throwSel; sfx('ui'); }
   if (I.alt && canThrow(s) && s.nadeCd <= 0) throwNade(s, I.altDist || 240, !!s.bot);
   for (const c of M.crates) if (c.live && Math.hypot(c.x - s.x, c.y - s.y) < 16) pickupCrate(s, c);
 }
+/* tops up every weapon's reserve by a share of a full one; true if anything went in */
+function refillRes(s, frac) { let gave = false; for (const w of s.w) { const R = WPN[w.id].res; if (w.res < R) { w.res = Math.min(R, w.res + Math.ceil(R * frac)); gave = true; } } return gave; }
 function pickupCrate(s, c) {
   c.live = false; c.t = 24;
   const r = Math.random(); let txt;
   if (s.hp < s.mhp * 0.6 && r < 0.6) { s.hp = s.mhp; txt = 'MEDKIT'; }
   else if (r < 0.45) { for (const w of s.w) { w.res = WPN[w.id].res; } txt = 'FULL AMMO'; }
   else if (r < 0.75) { s.nades = Math.min(5, s.nades + 2); txt = 'GRENADES +2'; }
-  else { s.hp = Math.min(s.mhp, s.hp + 0.4 * s.mhp); for (const w of s.w) w.res = Math.min(WPN[w.id].res, w.res + Math.ceil(WPN[w.id].res / 2)); txt = 'FIELD KIT'; }
+  else { s.hp = Math.min(s.mhp, s.hp + 0.4 * s.mhp); refillRes(s, 0.5); txt = 'FIELD KIT'; }
   if (s.player) { s.msg = { t: 1.8, txt }; psfx(s.player, 'pickup'); }
 }
 function controlSeated(s, I, dt) {
@@ -1000,7 +1011,7 @@ function controlSeated(s, I, dt) {
     if (WPN[st.id].rocket && s.w[0]) { s.wi = 0; }
     if (I.swapW) { s.wi = 1 - s.wi; if (WPN[cw(s).id].rocket) s.wi = 0; }
     if (I.reload || (cw(s).mag === 0 && cw(s).res > 0)) startReload(s);
-    if (I.fire && s.fireCd <= 0 && s.reloadT <= 0) { if (cw(s).mag > 0) fireWeapon(s); else { sfx('empty', s.x, s.y); s.fireCd = 0.25; } }
+    if (I.fire && s.fireCd <= 0 && s.reloadT <= 0) pullTrigger(s);
     if (I.alt && canThrow(s) && s.nadeCd <= 0) throwNade(s, I.altDist || 220, !!s.bot);
   }
 }

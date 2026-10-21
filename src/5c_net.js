@@ -38,7 +38,7 @@ const lerpAng = (a, b, k) => a + angDiff(a, b) * k;
    on a random one. Each side sends its whole connection offer in one message (ICE gathered first), so a join
    costs about three messages. (PeerJS's public server stopped relaying messages in Oct 2026.) */
 const P2P_PREFIX = 'militiamayhem-';
-const P2P_SIGS = () => (typeof window !== 'undefined' && window.__MM_SIG) ? [].concat(window.__MM_SIG) : ['https://ntfy.sh', 'https://ntfy.envs.net', 'https://ntfy.adminforge.de'];
+const P2P_SIGS = () => ((typeof window !== 'undefined' && window.__MM_SIG) ? [].concat(window.__MM_SIG) : ['https://ntfy.sh', 'https://ntfy.envs.net', 'https://ntfy.adminforge.de']).map(b => b.replace(/\/$/, ''));
 const P2P_TOPIC = id => 'mm1-' + id;
 const P2P_ICE = () => (typeof window !== 'undefined' && window.__MM_ICE) || [
   { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }];
@@ -74,6 +74,8 @@ function traceCand(o, mdnsKey, tr, c) {
   const m = / typ (\w+)/.exec(s), t = m ? m[1] : 'host'; if (t in o) o[t]++;
   if (/\.local /.test(s)) tr[mdnsKey]++;
 }
+const errTag = e => String(e && (e.name || e.message) || e).toUpperCase().slice(0, 40);
+const candN = o => o.host + o.srflx + o.relay + o.prflx;
 const tSum = o => 'H' + o.host + ' S' + o.srflx + ' R' + o.relay;
 function traceLine(tr, other) {
   return 'YOU ' + tSum(tr.lc) + (tr.lmdns ? ' (' + tr.lmdns + ' MDNS)' : '') + ' · ' + other + ' ' + tSum(tr.rc) + (tr.rmdns ? ' (' + tr.rmdns + ' MDNS)' : '') +
@@ -95,7 +97,7 @@ function traceCode(tr) {
   if (tr.ice === 'failed' || tr.conn === 'failed') return 301;
   if (!tr.ack) return 201;
   if (!tr.answer) return 202;
-  if (!(tr.rc.host + tr.rc.srflx + tr.rc.relay + tr.rc.prflx) || !(tr.lc.host + tr.lc.srflx + tr.lc.relay + tr.lc.prflx)) return 303;
+  if (!candN(tr.rc) || !candN(tr.lc)) return 303;
   if (tr.ice !== 'connected' && tr.ice !== 'completed') return 302;
   if (!tr.dc) return 401;
   return 501;
@@ -113,13 +115,12 @@ function netFail(code, extra) {
   NET.err = { code, title: E[0], hint: E[1], lines, t: performance.now(), re, sel: 0 };
   try { console.warn('[net] E' + code, E[0], lines.join(' | ')); } catch (e) { }
 }
-let SIG_MSG = '';
 /* Every browser listens on all the relays; a message goes out on the first one that takes it. ntfy.sh allows 250
    messages a day per internet address (a household, or a whole phone carrier's shared address), so when it says no
    the next relay carries the introduction instead. */
 function sigOpen(id) {
   return new Promise((res, rej) => {
-    const bases = P2P_SIGS().map(b => b.replace(/\/$/, ''));
+    const bases = P2P_SIGS();
     let opened = false, failed = 0;
     const seen = new Set();
     const S = {
@@ -177,7 +178,7 @@ function sigOpen(id) {
 /* ---------- the server list: hosts post a one-line listing on the relays' "mm1-list" topic (on change, at most every 20 s,
    and every 3 minutes to stay listed); the online menu listens to the last 10 minutes of it ---------- */
 function netListSend(x) {
-  const bases = P2P_SIGS().map(b => b.replace(/\/$/, '')), body = JSON.stringify(x);
+  const bases = P2P_SIGS(), body = JSON.stringify(x);
   const go = i => { if (i >= bases.length || typeof fetch === 'undefined') return; fetch(bases[i] + '/' + P2P_TOPIC('list'), { method: 'POST', body }).then(r => { if (!r.ok) go(i + 1); }).catch(() => go(i + 1)); };
   go(0);
 }
@@ -192,7 +193,7 @@ function netListWatch(on) {
   if (NET.lw && !(NET.lw.every(w => w.dead) && performance.now() - NET.lwT > 10000)) return;
   netListWatch(false); NET.lw = []; NET.lwT = performance.now();
   for (const base of P2P_SIGS()) {
-    let ws; try { ws = new WebSocket(base.replace(/\/$/, '').replace(/^http/, 'ws') + '/' + P2P_TOPIC('list') + '/ws?since=10m'); } catch (e) { continue; }
+    let ws; try { ws = new WebSocket(base.replace(/^http/, 'ws') + '/' + P2P_TOPIC('list') + '/ws?since=10m'); } catch (e) { continue; }
     ws.onmessage = e => { let m, x; try { m = JSON.parse(e.data); if (m.event !== 'message') return; x = JSON.parse(m.message); } catch (er) { return; } netListSee(x, m.time); };
     ws.onclose = ws.onerror = () => { ws.dead = true; };
     NET.lw.push(ws);
@@ -277,7 +278,7 @@ function p2pRoom(sig, hostId, trace) {
       else if (m.type === 'ANSWER' && P.sdp) { const L = R.links.get(src); if (L && !L.tr.answer) { L.tr.answer = performance.now(); L.tr.ack = L.tr.ack || L.tr.answer; for (const c of sdpCands(P.sdp)) traceCand(L.tr.rc, 'rmdns', L.tr, c); await L.pc.setRemoteDescription(P.sdp); flush(src, L); } }
       else if (m.type === 'CANDIDATE' && P.c) { const L = R.links.get(src); if (L) traceCand(L.tr.rc, 'rmdns', L.tr, P.c); if (L && L.pc.remoteDescription) L.pc.addIceCandidate(P.c).catch(e => { L.tr.err = 'BAD CANDIDATE'; }); else (R.pend[src] = R.pend[src] || []).push(P.c); }
       else if (m.type === 'LEAVE') { const L = R.links.get(src); if (L) drop(L, hostId ? 'nohost' : 'left'); }
-    } catch (e) { console.warn('p2p', e); const L = R.links.get(src); if (L) { L.tr.err = String(e && (e.name || e.message) || e).toUpperCase().slice(0, 40); drop(L, 'setup'); } }
+    } catch (e) { console.warn('p2p', e); const L = R.links.get(src); if (L) { L.tr.err = errTag(e); drop(L, 'setup'); } }
   };
   sig.onclose = () => { if (!R.dead && R.onSigLost) R.onSigLost(); };
   if (hostId && trace) sig.onsenderr = e => { trace.err = e; };
@@ -297,7 +298,7 @@ function p2pRoom(sig, hostId, trace) {
       await iceGathered(L.pc, 2500); if (!R.links.has(hostId)) return;
       sig.send({ type: 'OFFER', dst: hostId, payload: { sdp: L.pc.localDescription } }); L.sent = true; L.tr.offer = performance.now();
     }
-    catch (e) { if (L) L.tr.err = String(e && (e.name || e.message) || e).toUpperCase().slice(0, 40); if (R.onFail) R.onFail('setup'); }
+    catch (e) { if (L) L.tr.err = errTag(e); if (R.onFail) R.onFail('setup'); }
   })();
   return {
     name: sig.id,
@@ -316,30 +317,24 @@ function p2pRoom(sig, hostId, trace) {
 }
 
 /* ---------- connecting ---------- */
-async function netInit() {
-  NET.mode = p2pOK() ? 'p2p' : null; NET.avail = !!NET.mode;
-}
+function netInit() { NET.mode = p2pOK() ? 'p2p' : null; NET.avail = !!NET.mode; }
 function netErr(e) { console.warn('net', e && e.code, e && e.message); }
 function netSay(m, t) { NET.msg = m; NET.msgT = t || 3.5; }
 const sigCode = e => e === 'network' ? 101 : e === 'timeout' ? 102 : e === 'error' ? 103 : e === 'taken' ? 104 : 701;
-function netCode() { const A = 'abcdefghjkmnpqrstuvwxyz23456789'; let s = ''; for (let i = 0; i < 4; i++) s += A[Math.floor(Math.random() * A.length)]; return s; }
+const CODE_CH = 'abcdefghjkmnpqrstuvwxyz23456789';         // no 0 1 i l o
+function netCode() { let s = ''; for (let i = 0; i < 4; i++) s += pick(CODE_CH); return s; }
 async function netHost(dev) {
   if (!NET.avail || NET.role) return;
   NET.role = 'host'; NET.code = netCode(); NET.kicked = new Set(); NET.pubK = ''; NET.pubT = -1e9; NET.evLog = []; NET.lastPres = ''; NET.game = null; NET.busy = 'SETTING UP YOUR GAME…'; NET.trace = null; NET.err = null;
   try {
     let sig = null;
-    if (NET.mode === 'p2p') {
-      for (let k = 0; k < 4 && !sig; k++) { try { sig = await sigOpen(P2P_PREFIX + NET.code); } catch (e) { if (e !== 'taken') throw e; NET.code = netCode(); } }
-      if (!sig) throw 'taken';
-    }
-    if (sig) {
-      NET.game = p2pRoom(sig, null); NET.myPeer = sig.id;
-      NET.game.onSigLost = () => { if (NET.role === 'host') netSay('LOST THE GAME FINDER — NEW PLAYERS CAN’T JOIN RIGHT NOW (E801)', 12); };
-      NET.game.onJoinTry = () => { if (NET.role === 'host') netSay('SOMEONE IS JOINING…', 4); };
-      NET.game.onJoinFail = (tr, why) => { if (NET.role === 'host' && why !== 'left') netSay('SOMEONE TRIED TO JOIN BUT COULDN’T CONNECT · E' + (why === 'closed' ? 402 : traceCode(tr)) + ' · ' + traceLine(tr, 'THEM') + ' · ' + traceLine2(tr), 15); };
-    }
-    else throw 'error';
-  } catch (e) { NET.role = null; netFail(sigCode(e), e === 'error' ? SIG_MSG : ''); return; }
+    for (let k = 0; k < 4 && !sig; k++) { try { sig = await sigOpen(P2P_PREFIX + NET.code); } catch (e) { if (e !== 'taken') throw e; NET.code = netCode(); } }
+    if (!sig) throw 'taken';
+    NET.game = p2pRoom(sig, null); NET.myPeer = sig.id;
+    NET.game.onSigLost = () => { if (NET.role === 'host') netSay('LOST THE GAME FINDER — NEW PLAYERS CAN’T JOIN RIGHT NOW (E801)', 12); };
+    NET.game.onJoinTry = () => { if (NET.role === 'host') netSay('SOMEONE IS JOINING…', 4); };
+    NET.game.onJoinFail = (tr, why) => { if (NET.role === 'host' && why !== 'left') netSay('SOMEONE TRIED TO JOIN BUT COULDN’T CONNECT · E' + (why === 'closed' ? 402 : traceCode(tr)) + ' · ' + traceLine(tr, 'THEM') + ' · ' + traceLine2(tr), 15); };
+  } catch (e) { NET.role = null; netFail(sigCode(e)); return; }
   NET.busy = '';
   NET.game.onPeers(netGamePeers, netErr);
   enterLobby(dev && dev.type !== 'net' ? dev : { type: 'kb' });
@@ -350,15 +345,12 @@ async function netJoin(h, dev) {
   Object.assign(NET, { role: 'client', hostPeer: h.peer, code: h.c, dev: dev && dev.type !== 'net' ? dev : { type: 'kb' }, myPid: -1, joined: false, wasJoined: false, curMatch: -1, lastSeq: -1, buf: [], off: null, lobby: null, want: { c: '', t: -1, r: 0 }, dep: null, lastHostT: performance.now(), joinT: performance.now(), lastPres: '', game: null, demoMap: -1, gs: null, gsRaw: null, slow: null, snapN: 0, firstL: 0, doneMatch: 0, roApplied: '' });
   NET.busy = 'JOINING ' + h.c.toUpperCase() + '…'; NET.err = null; NET.trace = mkTrace();
   try {
-    let sig = null;
-    sig = await sigOpen(P2P_PREFIX + 'j-' + Math.random().toString(36).slice(2, 10));
-    {
-      NET.trace.sig = performance.now();
-      NET.hostPeer = P2P_PREFIX + h.c; NET.myPeer = sig.id;
-      NET.game = p2pRoom(sig, NET.hostPeer, NET.trace);
-      NET.game.onFail = why => { if (NET.role === 'client' && !NET.joined) netFail(why === 'nohost' ? 201 : why === 'closed' ? 402 : why === 'setup' && !NET.trace.offer ? 701 : traceCode(NET.trace)); };
-    }
-  } catch (e) { NET.role = null; netFail(sigCode(e), e === 'error' ? SIG_MSG : ''); return; }
+    const sig = await sigOpen(P2P_PREFIX + 'j-' + Math.random().toString(36).slice(2, 10));
+    NET.trace.sig = performance.now();
+    NET.hostPeer = P2P_PREFIX + h.c; NET.myPeer = sig.id;
+    NET.game = p2pRoom(sig, NET.hostPeer, NET.trace);
+    NET.game.onFail = why => { if (NET.role === 'client' && !NET.joined) netFail(why === 'nohost' ? 201 : why === 'closed' ? 402 : why === 'setup' && !NET.trace.offer ? 701 : traceCode(NET.trace)); };
+  } catch (e) { NET.role = null; netFail(sigCode(e)); return; }
   NET.busy = '';
   NET.game.onPeers(netGamePeers, netErr);
   PLAYERS = []; LOBBY.sel = 0; setState('lobby'); sfx('join');
@@ -560,17 +552,21 @@ function netEv(type, ...a) {
 function netMatchStarted() {
   if (NET.role !== 'host') return;
   NET.matchId++; NET.evLog = []; NET.bn = {}; NET.left = {};
-  NET.hdr = [M.cfg.mode, M.cfg.map, M.cfg.bots, M.cfg.limit, M.cfg.skill, M.cfg.ff ? 1 : 0, Math.max(0, ['clear', 'rain', 'snow'].indexOf(M.cfg.weather)), COLORS.indexOf(M.teamColor[0]), COLORS.indexOf(M.teamColor[1]), M.cfg.teamColors === 'classic' ? 0 : 1, M.cfg.fog === 'off' ? 0 : 1];
+  NET.hdr = [...cfgPack(M.cfg), COLORS.indexOf(M.teamColor[0]), COLORS.indexOf(M.teamColor[1]), M.cfg.teamColors === 'classic' ? 0 : 1, M.cfg.fog === 'off' ? 0 : 1];
   netRoster();
 }
+/* the match settings both net headers (match start, lobby info) open with */
+function cfgPack(C) { return [C.mode, C.map, C.bots, C.limit, C.skill, C.ff ? 1 : 0, Math.max(0, WEATHERS.indexOf(C.weather))]; }
+function cfgUnpack(c) { return { mode: clamp(c[0] | 0, 0, MODES.length - 1), map: clamp(c[1] | 0, 0, MAPNAMES.length - 1), bots: c[2] | 0, limit: c[3] | 0, skill: c[4] | 0, ff: !!c[5], weather: WEATHERS[c[6]] || 'clear' }; }
 /* who is who: a player number (or a bot name), colour and team for every soldier, in order */
 function netRoster() {
   NET.names = {}; for (const s of M.sol) if (s.player) NET.names[s.player.id] = s.name;
   NET.roster = M.sol.map(s => pk(s.player ? s.player.id + 1 : 0, 1) + pk(s.player ? 0 : BOTNAMES.indexOf(s.name), 1) + pk(COLORS.indexOf(s.color), 1) + pk(s.team, 2) + pk(s.dark ? 1 : 0, 1)).join('');
 }
+function readRoster(str) { const ro = new Rd(str), out = []; while (!ro.end) out.push({ pid: ro.u(1) - 1, ni: ro.u(1), color: COLORS[ro.u(1)] || 'red', team: ro.u(2), dark: !!ro.u(1) }); return out; }
 function netLobbyInfo() {
   const inMatch = M && !M.demo && state !== 'lobby';
-  return { st: inMatch ? 'play' : 'lobby', c: NET.code, mj: CFG.midjoin ? 1 : 0, cfg: [CFG.mode, CFG.map, CFG.bots, CFG.limit, CFG.skill, CFG.ff ? 1 : 0, Math.max(0, ['clear', 'rain', 'snow'].indexOf(CFG.weather)), CFG.teamColors === 'classic' ? 0 : 1, CFG.board ? 1 : 0, CFG.midjoin ? 1 : 0, CFG.pub === false ? 0 : 1, CFG.fog === 'off' ? 0 : 1],
+  return { st: inMatch ? 'play' : 'lobby', c: NET.code, mj: CFG.midjoin ? 1 : 0, cfg: [...cfgPack(CFG), CFG.teamColors === 'classic' ? 0 : 1, CFG.board ? 1 : 0, CFG.midjoin ? 1 : 0, CFG.pub === false ? 0 : 1, CFG.fog === 'off' ? 0 : 1],
     pl: PLAYERS.map(p => [p.id, isNet(p) ? p.dev.peer : '', p.color, p.team, p.ready ? 1 : 0, isNet(p) ? 'net' : p.dev.type, p.name || '']) };
 }
 /* the whole match in a few kilobytes */
@@ -684,7 +680,7 @@ function netClientToLobby() {
 function withHostCfg(fn) {
   if (NET.role !== 'client' || !NET.lobby || !NET.lobby.cfg) return fn();
   const keep = { mode: CFG.mode, map: CFG.map, bots: CFG.bots, limit: CFG.limit, skill: CFG.skill, ff: CFG.ff, board: CFG.board, weather: CFG.weather, teamColors: CFG.teamColors, midjoin: CFG.midjoin, pub: CFG.pub, fog: CFG.fog }, c = NET.lobby.cfg;
-  Object.assign(CFG, { mode: clamp(c[0] | 0, 0, MODES.length - 1), map: clamp(c[1] | 0, 0, MAPNAMES.length - 1), bots: c[2] | 0, limit: c[3] | 0, skill: c[4] | 0, ff: !!c[5], weather: ['clear', 'rain', 'snow'][c[6]] || 'clear', teamColors: c[7] ? 'player' : 'classic', board: !!c[8], midjoin: c[9] === undefined ? true : !!c[9], pub: c[10] !== 0, fog: c[11] === 0 ? 'off' : 'los' });
+  Object.assign(CFG, cfgUnpack(c), { teamColors: c[7] ? 'player' : 'classic', board: !!c[8], midjoin: c[9] === undefined ? true : !!c[9], pub: c[10] !== 0, fog: c[11] === 0 ? 'off' : 'los' });
   try { return fn(); } finally { Object.assign(CFG, keep); }
 }
 /* the slow half: match header and roster (to start the match), scoreboard, items, crates, wrecks */
@@ -708,12 +704,11 @@ function netSlowApply() {
 /* joiner: someone joined or left mid-match: soldiers change hands (or a new one appears) to match the host's roster */
 function netRosterSync(gs) {
   NET.roApplied = gs.ro;
-  const ro = new Rd(gs.ro), me = NET.me && NET.me.sol;
-  for (let i = 0; !ro.end; i++) {
-    const pid = ro.u(1) - 1, ni = ro.u(1), color = COLORS[ro.u(1)] || 'red', team = ro.u(2), dark = !!ro.u(1);
+  const me = NET.me && NET.me.sol;
+  readRoster(gs.ro).forEach(({ pid, ni, color, team, dark }, i) => {
     let s = M.sol[i];
     if (!s) { s = makeSoldier({ team, color, name: BOTNAMES[ni] || 'Bot', bot: true }); s.alive = false; s.respawnT = 0; M.sol.push(s); }
-    if (s === me) continue;
+    if (s === me) return;
     if (pid >= 0 && (!s.player || s.player.id !== pid)) {
       let pl = PLAYERS.find(p => p.id === pid && p !== NET.me);
       if (!pl) { pl = { id: pid, dev: { type: 'net', peer: '' }, color, team, ready: true }; PLAYERS.push(pl); }
@@ -722,7 +717,7 @@ function netRosterSync(gs) {
       s.name = cleanName(gs.nm && gs.nm[pid]).trim() || 'P' + (pid + 1);
     } else if (pid < 0 && s.player) { const op = s.player; s.player = null; if (op.sol === s) PLAYERS = PLAYERS.filter(p => p !== op); }
     s.color = color; s.team = team; s.dark = dark;
-  }
+  });
 }
 function netRecvSnap(g, pv) {
   if (typeof g.q !== 'number' || g.q === NET.lastSeq) return;
@@ -739,10 +734,9 @@ function netRecvSnap(g, pv) {
   if (NET.evq.length > 300) NET.evq.splice(0, NET.evq.length - 300);
 }
 function netClientStart(g) {
-  const h = g.h || [], ro = new Rd(g.ro), roster = [];
-  while (!ro.end) { const kind = ro.u(1), ni = ro.u(1), ci = ro.u(1), team = ro.u(2), dark = ro.u(1); roster.push({ pid: kind - 1, ni, color: COLORS[ci] || 'red', team, dark: !!dark }); }
+  const h = g.h || [], roster = readRoster(g.ro);
   if (NET.myPid < 0 || !roster.some(r => r.pid === NET.myPid)) return false;            // we're not in this match (yet)
-  const cfg = { mode: clamp(h[0] | 0, 0, MODES.length - 1), map: clamp(h[1] | 0, 0, MAPNAMES.length - 1), bots: h[2] | 0, limit: h[3] | 0, skill: h[4] | 0, ff: !!h[5], weather: ['clear', 'rain', 'snow'][h[6]] || 'clear', teamColors: h[9] ? 'player' : 'classic', camera: CFG.camera, fog: h[10] === 0 ? 'off' : 'los' };
+  const cfg = Object.assign(cfgUnpack(h), { teamColors: h[9] ? 'player' : 'classic', camera: CFG.camera, fog: h[10] === 0 ? 'off' : 'los' });
   PLAYERS = roster.filter(r => r.pid >= 0).map(r => r.pid === NET.myPid ? { id: r.pid, dev: NET.dev, color: r.color, team: r.team, ready: true, kit: 0, var: 0 } : { id: r.pid, dev: { type: 'net', peer: '' }, color: r.color, team: r.team, ready: true });
   NET.me = PLAYERS.find(p => p.id === NET.myPid);
   newMatch(cfg, false);
@@ -964,11 +958,7 @@ function netApplySnaps(now, dt) {
       s.veh = v; s.seat = ns; v.seats[ns] = s;
     } else { s.veh = null; s.seat = -1; s.seatT = 0; }
     // walking animation, footprints and the little noises of moving
-    const d = s.veh ? 0 : Math.hypot(s.x - px, s.y - py), sp = d / Math.max(dt, 1e-3);
-    s.moving = !s.veh && sp > (s.stance === 2 ? 6 : 18); s.walkT += d;
-    if (s.moving && !s.swim && !(s.jumpT > 0)) { s.stepAcc += d; if (s.stepAcc > (s.stance === 2 ? 10 : 9)) { s.stepAcc = 0; s.stepSide = -s.stepSide; footprint(s.x, s.y, Math.atan2(s.y - py, s.x - px), s.stance === 2 ? 0 : s.stepSide, s.stance === 2); } }
-    if (s.stance === 2 && s.moving && Math.random() < dt * 3) sfx('rustle', s.x, s.y, 0.5);
-    if (s.swim && s.moving && Math.random() < dt * 4) { sfx('splash', s.x, s.y, 0.5); part({ k: 'ripple', x: s.x, y: s.y, vx: 0, vy: 0, life: 0.9, max: 0.9, sz: 14, drag: 0 }); }
+    stepFx(s, s.veh ? 0 : Math.hypot(s.x - px, s.y - py), Math.atan2(s.y - py, s.x - px), dt);
     if (s._n === undefined) s._n = ra.sh;
     if (ra.sh !== s._n) { s._sfx = Math.min(3, (ra.sh - s._n + 64) % 64); s._n = ra.sh; }
   });
@@ -1033,7 +1023,6 @@ function netApplySnaps(now, dt) {
   }
   M.proj = NET.bul.concat([...NET.pmap.values()]);
 }
-/* a shot someone fired, as the host reported it: sound, flash, casing and a tracer that stops at walls */
 /* joiner: on foot we place ourselves. The host's position only wins when it says so (its correction counter moved:
    a respawn, a wall we shouldn't be in, a move it didn't believe), and then we carry on from there */
 function netOwnPos(s, i, nb, ra) {
@@ -1065,10 +1054,7 @@ function netLocalMove(s, I, dt) {
     if (!v.active || Math.abs(s.x - v.x) > 80 || Math.abs(s.y - v.y) > 80) continue;
     pushOutVeh(s, s.r, v);
   }
-  const v = Math.hypot(s.x - x0, s.y - y0) / Math.max(dt, 1e-3); s.moving = v > (s.stance === 2 ? 6 : 18); s.walkT += v * dt;
-  if (s.moving && !s.swim && !(s.jumpT > 0)) { s.stepAcc += v * dt; if (s.stepAcc > (s.stance === 2 ? 10 : 9)) { s.stepAcc = 0; s.stepSide = -s.stepSide; footprint(s.x, s.y, Math.atan2(s.vy, s.vx), s.stance === 2 ? 0 : s.stepSide, s.stance === 2); } }
-  if (s.stance === 2 && s.moving && Math.random() < dt * 3) sfx('rustle', s.x, s.y, 0.5);
-  if (s.swim && s.moving && Math.random() < dt * 4) { sfx('splash', s.x, s.y, 0.5); part({ k: 'ripple', x: s.x, y: s.y, vx: 0, vy: 0, life: 0.9, max: 0.9, sz: 14, drag: 0 }); }
+  stepFx(s, Math.hypot(s.x - x0, s.y - y0), Math.atan2(s.vy, s.vx), dt);
 }
 /* joiner driving: our vehicle answers our hands here; the host's picture only wins when its correction counter moves */
 function netOwnVeh(v, i, nb, mi) {
@@ -1119,6 +1105,7 @@ function netPredictShot(s, I, dt) {
   if (s.veh && s.veh.T.seats[s.seat].role !== 'rifle') return;
   NET.pfCd = W_.rate; NET.pred = (NET.pred | 0) + 1; NET.predT = performance.now(); netShotFx(s);
 }
+/* a shot someone fired, as the host reported it: sound, flash, casing and a tracer that stops at walls */
 function netShotFx(s) {
   if (!s.alive || (s.veh && s.veh.T.seats[s.seat].role !== 'rifle')) return;
   const W_ = WPN[cw(s).id]; if (!W_) return;
@@ -1130,9 +1117,9 @@ function netShotFx(s) {
   for (let i = 0; i < n; i++) { const a = s.a + rnd(-W_.spread, W_.spread) * sm, sp = W_.spd * (W_.pel ? rnd(0.85, 1.1) : 1); NET.bul.push({ k: 'bullet', x, y, ox: x, oy: y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: W_.life * (W_.pel ? rnd(0.8, 1.1) : 1), src: s, team: s.team, heavy: W_.dmg >= 40, low: s.stance >= 1 }); }
 }
 function netCannonFx(v) {
-  const c = Math.cos(v.ta), sn = Math.sin(v.ta), px = v.x - 4 * Math.cos(v.a), py = v.y - 4 * Math.sin(v.a);
+  const c = Math.cos(v.ta), sn = Math.sin(v.ta), [px, py] = turretPivot(v);
   const d = v.seats[0]; if (d) d.firedT = 2;
-  cannonFx(v, px + c * 96, py + sn * 96, d && d.player && !isNet(d.player) ? d : null);
+  cannonFx(v, px + c * BARREL, py + sn * BARREL, d && d.player && !isNet(d.player) ? d : null);
 }
 function netMgFx(v) {
   const [px, py] = mgPos(v), a = v.mgA + rnd(-0.05, 0.05), x = px + Math.cos(v.mgA) * 22, y = py + Math.sin(v.mgA) * 22;

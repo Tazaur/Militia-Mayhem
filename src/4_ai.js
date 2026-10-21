@@ -187,44 +187,43 @@ function botControl(s, dt) {
   }
   // ---- seated ----
   if (s.seatT > 0) return I;
-  const vt = v;
   if (sd.role === 'drive') {
-    if (vt.hp < vt.T.hp * 0.2 && Math.random() < dt * 2) { I.enter = true; return I; }
+    if (v.hp < v.T.hp * 0.2 && Math.random() < dt * 2) { I.enter = true; return I; }
     let goal = B.goal;
     if ((M.ffa || M.mode === 'tdm') && T) goal = { x: T.x, y: T.y };
-    if (vt.type === 'jeep' && T && T.o && !T.o.veh && T.d < 240) goal = { x: T.x, y: T.y };
+    if (v.type === 'jeep' && T && T.o && !T.o.veh && T.d < 240) goal = { x: T.x, y: T.y };
     if (goal) {
-      const near = Math.hypot(goal.x - vt.x, goal.y - vt.y);
-      if (near > (goal.flag ? 70 : 30)) botFollow(B, vt.x, vt.y, goal, I, dt, navV, goal.flag ? 70 : 30);
-      else if (goal.flag) { const a = Math.atan2(vt.y - goal.y, vt.x - goal.x) + 1.2; I.mx = Math.cos(a) * 0.45; I.my = Math.sin(a) * 0.45; }
+      const near = Math.hypot(goal.x - v.x, goal.y - v.y);
+      if (near > (goal.flag ? 70 : 30)) botFollow(B, v.x, v.y, goal, I, dt, navV, goal.flag ? 70 : 30);
+      else if (goal.flag) { const a = Math.atan2(v.y - goal.y, v.x - goal.x) + 1.2; I.mx = Math.cos(a) * 0.45; I.my = Math.sin(a) * 0.45; }
       if (goal.flag && goal.flag.owner === s.team && near < 150) B.goalT = Math.min(B.goalT, 1.5);
     }
     B.stuckT += dt;
-    if (B.stuckT > 1.5) { const moved = Math.hypot(vt.x - (B.sx || 0), vt.y - (B.sy || 0)); if (moved < 15 && (I.mx || I.my)) { B.unstick = 1.1; B.ua = vt.a + Math.PI + rnd(-0.8, 0.8); B.path = null; } B.sx = vt.x; B.sy = vt.y; B.stuckT = 0; }
+    if (B.stuckT > 1.5) { const moved = Math.hypot(v.x - (B.sx || 0), v.y - (B.sy || 0)); if (moved < 15 && (I.mx || I.my)) { B.unstick = 1.1; B.ua = v.a + Math.PI + rnd(-0.8, 0.8); B.path = null; } B.sx = v.x; B.sy = v.y; B.stuckT = 0; }
     if (B.unstick > 0) { B.unstick -= dt; I.mx = Math.cos(B.ua); I.my = Math.sin(B.ua); }
     // friendly fire on: swerve around (and slow for) teammates on foot in the way
     if (M.ff && (I.mx || I.my)) {
       const ml = Math.hypot(I.mx, I.my), hx = I.mx / ml, hy = I.my / ml;
       for (const o of M.sol) {
         if (!o.alive || o.veh || o.team !== s.team) continue;
-        const dx = o.x - vt.x, dy = o.y - vt.y, ahead = dx * hx + dy * hy, side = -dx * hy + dy * hx;
-        if (ahead > 0 && ahead < 110 && Math.abs(side) < vt.T.hw + 16) { const k = side > 0 ? -1 : 1; I.mx = hx * 0.35 - hy * k * 0.8; I.my = hy * 0.35 + hx * k * 0.8; if (ahead < 45) { I.mx *= 0.3; I.my *= 0.3; } break; }
+        const dx = o.x - v.x, dy = o.y - v.y, ahead = dx * hx + dy * hy, side = -dx * hy + dy * hx;
+        if (ahead > 0 && ahead < 110 && Math.abs(side) < v.T.hw + 16) { const k = side > 0 ? -1 : 1; I.mx = hx * 0.35 - hy * k * 0.8; I.my = hy * 0.35 + hx * k * 0.8; if (ahead < 45) { I.mx *= 0.3; I.my *= 0.3; } break; }
       }
     }
-    if (vt.type === 'tank' && T) I.fire = aimed && T.d < 620 && Math.random() < 0.6;
-    if (vt.type === 'jeep' && T && T.o && T.d < 60) I.fire = true;
-    if (vt.type === 'jeep' && B.goal && B.goal.flag && B.goal.flag.owner === s.team && Math.hypot(vt.x - B.goal.x, vt.y - B.goal.y) < 120 && Math.abs(vt.spd) < 30 && B.exitCd <= 0 && Math.random() < dt * 0.3) { B.exitCd = 5; I.enter = true; }
+    if (v.type === 'tank' && T) I.fire = aimed && T.d < 620 && Math.random() < 0.6;
+    if (v.type === 'jeep' && T && T.o && T.d < 60) I.fire = true;
+    if (v.type === 'jeep' && B.goal && B.goal.flag && B.goal.flag.owner === s.team && Math.hypot(v.x - B.goal.x, v.y - B.goal.y) < 120 && Math.abs(v.spd) < 30 && B.exitCd <= 0 && Math.random() < dt * 0.3) { B.exitCd = 5; I.enter = true; }
     return I;
   }
   if (T && inNestArc(s, T.x, T.y)) {
     B.burst -= dt; if (B.burst <= 0) { B.rest -= dt; if (B.rest <= 0) { B.burst = rnd(0.5, 1.3) * sk.rate; B.rest = rnd(0.2, 0.6) / sk.rate; } }
     I.fire = aimed && B.burst > 0;
-  } else I.aimA = sd.role === 'mg' && !vt.T.drive ? vt.a + Math.sin(M.time * 0.6 + s.id) * vt.T.arc * 0.7 : vt.a + (sd.role === 'mg' ? Math.PI * (vt.type === 'jeep' ? 1 : 0) + Math.sin(M.time * 0.7 + s.id) * 0.9 : (s.seat === 2 ? -1.4 : 1.4));
+  } else I.aimA = sd.role === 'mg' && !v.T.drive ? v.a + Math.sin(M.time * 0.6 + s.id) * v.T.arc * 0.7 : v.a + (sd.role === 'mg' ? Math.PI * (v.type === 'jeep' ? 1 : 0) + Math.sin(M.time * 0.7 + s.id) * 0.9 : (s.seat === 2 ? -1.4 : 1.4));
   if (!T && sd.role === 'rifle' && cw(s).mag < 20 && cw(s).res > 0) I.reload = true;
-  if (!vt.T.drive) { if (B.exitCd <= 0 && (vt.hp < vt.T.hp * 0.25 || B.idle > 14)) { B.exitCd = 6; I.enter = true; } return I; }
-  B.noDriver = !vt.seats[0] ? (B.noDriver || 0) + dt : 0;
-  const goalNear = B.goal && Math.hypot(vt.x - B.goal.x, vt.y - B.goal.y) < 170 && Math.abs(vt.spd) < 40;
-  if (B.exitCd <= 0 && (vt.hp < vt.T.hp * 0.25 || B.noDriver > 4 || (goalNear && sd.role === 'rifle' && B.goal.flag && B.goal.flag.owner !== s.team))) { B.exitCd = 4; I.enter = true; }
+  if (!v.T.drive) { if (B.exitCd <= 0 && (v.hp < v.T.hp * 0.25 || B.idle > 14)) { B.exitCd = 6; I.enter = true; } return I; }
+  B.noDriver = !v.seats[0] ? (B.noDriver || 0) + dt : 0;
+  const goalNear = B.goal && Math.hypot(v.x - B.goal.x, v.y - B.goal.y) < 170 && Math.abs(v.spd) < 40;
+  if (B.exitCd <= 0 && (v.hp < v.T.hp * 0.25 || B.noDriver > 4 || (goalNear && sd.role === 'rifle' && B.goal.flag && B.goal.flag.owner !== s.team))) { B.exitCd = 4; I.enter = true; }
   return I;
 }
 
@@ -308,8 +307,8 @@ function updateMatch(dt) {
       else if (!M.coop && s.respawnT <= 0 && (M.ffa || M.tickets[s.team] > 0)) spawnSoldier(s);
       continue;
     }
-    if (s.down) { if (s.player) { if (isNet(s.player)) netInputHost(s.player); else humanInput(s.player); } downTick(s, sdt); continue; }
-    const I = s.player ? (isNet(s.player) ? netInputHost(s.player) : humanInput(s.player)) : s.dummy ? newI() : botControl(s, sdt);
+    const I = s.player ? (isNet(s.player) ? netInputHost(s.player) : humanInput(s.player)) : s.dummy || s.down ? newI() : botControl(s, sdt);   // a downed player's input is still read (and dropped)
+    if (s.down) { downTick(s, sdt); continue; }
     const n0 = M.proj.length;
     controlSoldier(s, I, sdt);
     if (M.proj.length > n0 && s.player && isNet(s.player)) netTagShots(s.player, s, n0);
@@ -341,7 +340,7 @@ function updateMatch(dt) {
 }
 /* the purely visual side of a frame: flings landing, smoke, bodies, wreck smoke, particles, feed timers */
 function fxTick(sdt, dt) {
-  fadePrints(sdt); fadeDecals(sdt); loopsUpdate(dt);
+  fadeLayers(sdt); loopsUpdate(dt);
   for (const f of M.flings) {
     f.t += sdt; f.x += f.vx * sdt; f.y += f.vy * sdt; f.vx *= Math.exp(-sdt * 1.2); f.vy *= Math.exp(-sdt * 1.2); f.rot += f.vr * sdt;
     for (const b of MAP.buildings) if (inRect(f.x, f.y, b, 2)) { f.vx *= -0.4; f.vy *= -0.4; f.x += f.vx * sdt * 2; f.y += f.vy * sdt * 2; }

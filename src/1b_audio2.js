@@ -72,7 +72,7 @@ function sfx2(name, x, y, mul) {
 /* blasts close to a player: hearing muffles and a high whine rings for a couple of seconds */
 function earRing(x, y, r) {
   if (!AU.ctx || CFG.sound === 'classic' || !AU.sfxOn || !M || M.demo) return;
-  let k = 0; for (const p of LOCALS()) if (p.sol && p.sol.alive) { const d = Math.hypot(p.sol.x - x, p.sol.y - y); k = Math.max(k, 1 - d / (r * 1.6)); }
+  let k = 0; for (const s of localSols()) k = Math.max(k, 1 - Math.hypot(s.x - x, s.y - y) / (r * 1.6));
   if (k <= 0.05) return;
   const c = AU.ctx, now = c.currentTime, dur = 1.2 + 2.2 * k, f = AU.ear.frequency;
   f.cancelScheduledValues(now); f.setValueAtTime(Math.max(f.value, 20), now); f.exponentialRampToValueAtTime(260 + (1 - k) * 1600, now + 0.05); f.exponentialRampToValueAtTime(20000, now + dur);
@@ -108,7 +108,7 @@ function loopsUpdate(dt) {
 function loopsKillAll() { for (const L of SND.loops.values()) { try { L.s.stop(); L.lfo.stop(); } catch (e) { } } SND.loops.clear(); }
 /* engines: tanks get a two-oscillator growl, a track clatter tied to speed, and a sub-bass you feel as they close in */
 function engineUpdate2(v) {
-  if (v.eng) { try { v.eng.g.gain.setTargetAtTime(0, AU.ctx.currentTime, 0.05); v.eng.o.stop(AU.ctx.currentTime + 0.3); } catch (e) { } v.eng = null; }
+  engineStop(v);
   const driven = v.active && !v.dead && v.T.drive && v.seats[0], c = AU.ctx, now = c.currentTime, tank = v.type === 'tank';
   if (driven && !v.eng2) {
     const out = c.createGain(); out.gain.value = 0; out.connect(AU.sfx);
@@ -124,7 +124,7 @@ function engineUpdate2(v) {
   if (!driven && v.eng2) { engineStop2(v); return; }
   if (!v.eng2) return;
   const E = v.eng2, sp = Math.min(1, Math.abs(v.spd) / v.T.maxF), h = hear(v.x, v.y), on = AU.sfxOn ? 1 : 0, demo = M.demo ? 0.35 : 1, base = tank ? 34 : 64;
-  let dn = 1e9; for (const p of LOCALS()) if (p.sol && p.sol.alive) dn = Math.min(dn, Math.hypot(p.sol.x - v.x, p.sol.y - v.y));
+  let dn = 1e9; for (const s of localSols()) dn = Math.min(dn, Math.hypot(s.x - v.x, s.y - v.y));
   const near = Math.pow(clamp(1 - dn / 420, 0, 1), 2);
   E.o1.frequency.setTargetAtTime(base + sp * base * 1.5, now, 0.1); E.o2.frequency.setTargetAtTime((base + sp * base * 1.5) * 1.51, now, 0.1);
   E.lp.frequency.setTargetAtTime((tank ? 200 : 700) + sp * (tank ? 380 : 1400), now, 0.1);
@@ -134,13 +134,14 @@ function engineUpdate2(v) {
 }
 function engineStop2(v) { const E = v.eng2; if (!E) return; const now = AU.ctx.currentTime; try { E.out.gain.setTargetAtTime(0, now, 0.06); E.sg.gain.setTargetAtTime(0, now, 0.06); for (const n of [E.o1, E.o2, E.sub, E.lfo, E.ns]) n.stop(now + 0.4); } catch (e) { } v.eng2 = null; }
 /* ---------- music: a heartbeat that drives the fight ---------- */
-function m2kick(t, f0, f1, d, v) { const c = AU.ctx, o = c.createOscillator(), ws = c.createWaveShaper(); ws.curve = AU.curve; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + d * 0.7); const pre = c.createGain(); pre.gain.value = 1.8; o.connect(pre); pre.connect(ws); ws.connect(gainEnv(AU.mus, t, v, 0.003, d)); o.start(t); o.stop(t + d + 0.05); }
-function m2hat(t, v, d) { const c = AU.ctx, s = c.createBufferSource(); s.buffer = AU.noise; const f = c.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 7000; s.connect(f); f.connect(gainEnv(AU.mus, t, v, 0.001, d || 0.035)); s.start(t, Math.random()); s.stop(t + (d || 0.035) + 0.05); }
+/* drum voices: the sfx thump and noise burst, on the music bus */
+const m2kick = (t, f0, f1, d, v) => thump(AU.mus, t, f0, f1, d, v, 1.8);
+const m2hat = (t, v) => burst(AU.mus, t, { ft: 'highpass', f: 7000, t: 0.035, v, att: 0.001 });
 function m2snare(t, v) { const c = AU.ctx, s = c.createBufferSource(); s.buffer = AU.noise; const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1900; f.Q.value = 0.8; s.connect(f); f.connect(gainEnv(AU.mus, t, v, 0.001, 0.16)); s.start(t, Math.random()); s.stop(t + 0.22); const o = c.createOscillator(); o.frequency.setValueAtTime(220, t); o.frequency.exponentialRampToValueAtTime(140, t + 0.08); o.connect(gainEnv(AU.mus, t, v * 0.6, 0.002, 0.08)); o.start(t); o.stop(t + 0.12); }
 function m2note(t, f, d, v, type, cut, res) { const c = AU.ctx, o = c.createOscillator(), fl = c.createBiquadFilter(); o.type = type || 'sawtooth'; o.frequency.value = f; fl.type = 'lowpass'; fl.frequency.setValueAtTime(cut, t); fl.frequency.exponentialRampToValueAtTime(Math.max(80, cut * 0.35), t + d); fl.Q.value = res || 4; o.connect(fl); fl.connect(gainEnv(AU.mus, t, v, 0.006, d)); o.start(t); o.stop(t + d + 0.05); }
 function music2(Mu, s, st, bar, t) {
   const battle = Mu.mode !== 'menu' && M && !M.demo;
-  let hurt = 0; if (battle) for (const p of LOCALS()) if (p.sol && p.sol.alive && p.sol.hp < 40) hurt = Math.max(hurt, 1 - p.sol.hp / 40);
+  let hurt = 0; if (battle) for (const s of localSols()) if (s.hp < 40) hurt = Math.max(hurt, 1 - s.hp / 40);
   const I = battle ? Math.min(1, 0.25 + SND.int * 0.9 + hurt * 0.3) : 0;
   Mu.bpm = battle ? 116 + 30 * I : 84;
   const chord = [[55, 65.4, 82.4], [55, 65.4, 82.4], [43.65, 55, 65.4], [49, 61.7, 73.4]][bar % 4], root = chord[0];

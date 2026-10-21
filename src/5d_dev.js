@@ -294,7 +294,7 @@ const ROOF_NEAR = 60, ROOF_FAR = 120, ROOF_CAP = 0.7, ROOF_GLASS = 0.15, roofOp 
 function devDrawRoof(vw, x0, y0, x1, y1, fogPolys) {
   const TL = MAP.tiled; if (!TL || !TL.roof) return;
   if (ROOF_TMP.width !== cv.width || ROOF_TMP.height !== cv.height) { ROOF_TMP.width = cv.width; ROOF_TMP.height = cv.height; }
-  const eyes = (vw.p ? [vw.p] : LOCALS()).map(p => p.sol).filter(s => s && s.alive).map(s => s.veh ? [s.veh.x, s.veh.y] : [s.x, s.y]);
+  const eyes = viewSols(vw).map(posOf).map(o => [o.x, o.y]);
   const R = Math.hypot(x1 - x0, y1 - y0) / 2 + 80, pw = eyes.map(([x, y]) => visPoly(x, y, R, null, SUB)), pd = eyes.map(([x, y]) => visPoly(x, y, R, MAP.sightD, SUB));   // a cell past the wall face, so the wall you look at shows
   const bx0 = Math.max(0, Math.floor(x0)), by0 = Math.max(0, Math.floor(y0)), bw = Math.min(WW, Math.ceil(x1)) - bx0, bh = Math.min(WH, Math.ceil(y1)) - by0; if (bw <= 0 || bh <= 0) return;
   const g = ROOF_TMP.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR);
@@ -445,7 +445,7 @@ function devSpawnVeh(type) {
   M.vehicles.push(makeVehicle({ type, x: q[0], y: q[1], a: q[2], team: -1, dev: true }));
 }
 function devClearVehicles() {
-  for (const v of M.vehicles) if (!v.seats.some(o => o)) { if (v.eng) { try { v.eng.o.stop(); } catch (e) { } v.eng = null; } if (v.eng2) engineStop2(v); v.gone = true; }
+  for (const v of M.vehicles) if (!v.seats.some(o => o)) { engineOff(v); v.gone = true; }
   M.vehicles = M.vehicles.filter(v => !v.gone); M.wrecks.length = 0; navDirty = 1;
 }
 function devResetMap() {

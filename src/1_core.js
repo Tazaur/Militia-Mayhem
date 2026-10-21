@@ -454,14 +454,17 @@ function engineUpdate(v) {
     o.type = 'sawtooth'; f.type = 'lowpass'; f.frequency.value = v.type === 'tank' ? 260 : 600; g.gain.value = 0;
     o.connect(f); f.connect(g); g.connect(AU.sfx); o.start(); v.eng = { o, f, g };
   }
-  if (!driven && v.eng) { const e = v.eng; try { e.g.gain.setTargetAtTime(0, AU.ctx.currentTime, 0.05); e.o.stop(AU.ctx.currentTime + 0.3); } catch (er) { } v.eng = null; }
+  if (!driven) engineStop(v);
   if (v.eng) {
     const sp = Math.abs(v.spd) / v.T.maxF, h = hear(v.x, v.y), t = AU.ctx.currentTime, base = v.type === 'tank' ? 38 : 70;
     v.eng.o.frequency.setTargetAtTime(base + sp * base * 1.4, t, 0.08);
     v.eng.g.gain.setTargetAtTime((v.type === 'tank' ? 0.1 : 0.06) * (0.4 + sp) * h.v * (AU.sfxOn ? 1 : 0) * (M.demo ? 0.35 : 1), t, 0.1);
   }
 }
-function engineKillAll() { if (!M) return; for (const v of M.vehicles) { if (v.eng) { try { v.eng.o.stop(); } catch (e) { } v.eng = null; } if (v.eng2) engineStop2(v); } loopsKillAll(); }
+/* fade the classic engine out; engineOff silences both engine sets */
+function engineStop(v) { const e = v.eng; if (!e) return; try { e.g.gain.setTargetAtTime(0, AU.ctx.currentTime, 0.05); e.o.stop(AU.ctx.currentTime + 0.3); } catch (er) { } v.eng = null; }
+function engineOff(v) { engineStop(v); engineStop2(v); }
+function engineKillAll() { if (!M) return; for (const v of M.vehicles) engineOff(v); loopsKillAll(); }
 const Music = {
   step: 0, next: 0, timer: null, bpm: 112, mode: 'menu',
   start() { if (this.timer || !AU.ctx) return; this.next = AU.ctx.currentTime + 0.1; this.timer = setInterval(() => this.tick(), 25); },
@@ -575,7 +578,7 @@ function padState(i) {
   if (!cur[1] && prev[1] && P.bT > 0) { crouch = true; P.bT = -1; }
   return {
     pad: gp, mx: lx, my: ly, aim: rm > 0.25 ? Math.atan2(ry, rx) : null, aimMag: rm,
-    fire: b(7), ads: b(6), alt: pr(5), gadget: b(4), gadgetP: pr(4), interact: pr(3), swapW: false, reload: pr(2), variant: pr(2), crouch, proneT,
+    fire: b(7), ads: b(6), alt: pr(5), gadget: b(4), gadgetP: pr(4), interact: pr(3), swapW: false, reload: pr(2), crouch, proneT,
     jump: pr(0), melee: pr(11), spot: pr(12), sprint: b(10),
     seatNext: pr(1), seatDir: pr(12) ? 0 : pr(15) ? 1 : pr(13) ? 2 : pr(14) ? 3 : -1, seatIdx: -1,
     pause: pr(9), score: b(8), navX, navY, confirm: pr(0), back: pr(1), join: pr(0) || pr(9), deploy: pr(0),
@@ -598,7 +601,7 @@ function kbState() {
     kb: true, mx: (K('KeyD') || K('ArrowRight') ? 1 : 0) - (K('KeyA') || K('ArrowLeft') ? 1 : 0),
     my: (K('KeyS') || K('ArrowDown') ? 1 : 0) - (K('KeyW') || K('ArrowUp') ? 1 : 0),
     aim: null, mouse: true, fire: KB.mouse.down, ads: KB.mouse.rdown, alt: P('KeyG'), gadget: K('KeyF'), gadgetP: P('KeyF'), interact: P('KeyE'),
-    swapW: !!wheel, pickW: P('Digit1') ? 0 : P('Digit2') ? 1 : -1, reload: P('KeyR'), variant: P('KeyR'), crouch, proneT,
+    swapW: !!wheel, pickW: P('Digit1') ? 0 : P('Digit2') ? 1 : -1, reload: P('KeyR'), crouch, proneT,
     jump: P('Space'), melee: P('KeyV'), spot: P('KeyQ'), sprint: K('ShiftLeft') || K('ShiftRight'),
     seatNext: P('KeyF'), seatDir: -1, seatIdx,
     pause: P('Escape') || P('KeyP'), score: K('Tab'),
@@ -650,7 +653,7 @@ function touchState() {
   const b = T.btn, seatIdx = ['seat0', 'seat1', 'seat2', 'seat3'].findIndex(k => b[k]), pickW = b.w0 ? 0 : b.w1 ? 1 : -1;
   if (b.auto) { T.auto = AUTO_MODES[(AUTO_MODES.indexOf(T.auto) + 1) % 3]; store.set('autofire', T.auto); }
   if (b.score) T.scoreOn = !T.scoreOn; if (state !== 'play') T.scoreOn = false;     // the scoreboard button flips it open and shut
-  const s = { touch: true, mx, my, aim, aimMag, fire, ads, alt: !!b.nade, gadget: !!T.hold.gadget, gadgetP: !!b.gadget, swapW: false, pickW, interact: !!(b.enter || b.exit), jump: !!b.jump, melee: !!b.melee, spot: false, reload: !!b.reload, variant: false, stanceCycle: !!b.stance, sprint, seatNext: false, seatDir: -1, seatIdx, pause: !!b.pause, score: T.scoreOn, navX: 0, navY: 0, confirm: false, back: false, join: false, deploy: false, tabL: false, tabR: false, opt: false, mapT: !!b.map, nadeCyc: b.nadeCyc ? 1 : 0, dpX: 0, dpY: 0, stX: 0, stY: 0 };
+  const s = { touch: true, mx, my, aim, aimMag, fire, ads, alt: !!b.nade, gadget: !!T.hold.gadget, gadgetP: !!b.gadget, swapW: false, pickW, interact: !!(b.enter || b.exit), jump: !!b.jump, melee: !!b.melee, spot: false, reload: !!b.reload, stanceCycle: !!b.stance, sprint, seatNext: false, seatDir: -1, seatIdx, pause: !!b.pause, score: T.scoreOn, navX: 0, navY: 0, confirm: false, back: false, join: false, deploy: false, tabL: false, tabR: false, opt: false, mapT: !!b.map, nadeCyc: b.nadeCyc ? 1 : 0, dpX: 0, dpY: 0, stX: 0, stY: 0 };
   T.btn = {};
   return s;
 }
@@ -664,9 +667,6 @@ function touchPlayer() { return PLAYERS.find(p => p.dev.type === 'touch'); }
 
 /* ---------------- settings ---------------- */
 const CFG = Object.assign({ mode: 0, map: 0, bots: 5, limit: 1, skill: 1, ff: false, board: false, midjoin: true, camera: 'split', style: 'classic', weather: 'clear', teamColors: 'player', fog: 'los', sound: 'exp' }, store.get('cfg3', {}));
-/* soldier art sets: classic = original sheets; ramp = new design with the green ramp recoloured; marks = new design with white markings recoloured.
-   New sets cover stand / unarmed / rocket / seated; every other pose falls back to the classic frames. */
-/* soldier team display: classic sheets, or the new design as full colour / armband only / grey uniform + coloured armband */
 /* soldiers: one design (dark green, armband in the team colour); poses stand / nogun / rpg / sit / dead / leg0-2 */
 function solSpr(color, pose) { return 'sol_' + pose + '_' + color; }
 function solShadow(pose) { return ATLAS['nsh_' + pose] ? 'nsh_' + pose : null; }
@@ -674,4 +674,9 @@ let M = null, state = 'boot', stateT = 0;
 let PLAYERS = [];
 /* online play: remote players are PLAYERS with dev.type 'net'; only local ones get views, sound and HUD */
 const isNet = p => !!(p && p.dev && p.dev.type === 'net');
+const WEATHERS = ['clear', 'rain', 'snow'];
 function LOCALS() { return PLAYERS.filter(p => !isNet(p)); }
+/* living soldiers of this machine's players; of one view's players (the shared view: all of them); where one is (his vehicle if seated) */
+function localSols() { return LOCALS().map(p => p.sol).filter(s => s && s.alive); }
+function viewSols(vw) { return (vw.p ? [vw.p] : M.shared ? LOCALS() : []).map(p => p.sol).filter(s => s && s.alive); }
+const posOf = s => s.veh || s;

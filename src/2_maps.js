@@ -17,11 +17,15 @@ function inWater(x, y) { for (const w of MAP.water) if (inRect(x, y, w)) return 
 function onIce(x, y) { for (const w of MAP.ice) if (inRect(x, y, w)) return true; return false; }
 const SNOWY = () => MAP && MAP.id === 'snowfield';
 /* footprints live on their own layer that slowly fades (about two minutes) */
-const prints = mk(WW, WH); const px_ = prints.getContext('2d'); let printFadeT = 0;
+const prints = mk(WW, WH); const px_ = prints.getContext('2d');
 /* everything left behind (bodies, blood, scorch marks, tread marks) lives on a decal layer that fades over ~3 minutes */
-const decals = mk(WW, WH); const dgx = decals.getContext('2d'); let decalFadeT = 0;
-function fadeDecals(dt) { decalFadeT += dt; if (decalFadeT < 3) return; decalFadeT = 0; dgx.setTransform(1, 0, 0, 1, 0, 0); dgx.globalCompositeOperation = 'destination-out'; dgx.fillStyle = 'rgba(0,0,0,0.05)'; dgx.fillRect(0, 0, WW, WH); dgx.globalCompositeOperation = 'source-over'; }
-function fadePrints(dt) { printFadeT += dt; if (printFadeT < 3) return; printFadeT = 0; px_.globalCompositeOperation = 'destination-out'; px_.fillStyle = 'rgba(0,0,0,0.075)'; px_.fillRect(0, 0, WW, WH); px_.globalCompositeOperation = 'source-over'; }
+const decals = mk(WW, WH); const dgx = decals.getContext('2d');
+/* every 3 s both layers lose a step: footprints 7.5 %, decals 5 % */
+let layerFadeT = 0;
+function fadeLayers(dt) {
+  layerFadeT += dt; if (layerFadeT < 3) return; layerFadeT = 0;
+  for (const [g, a] of [[px_, 0.075], [dgx, 0.05]]) { g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'destination-out'; g.fillStyle = `rgba(0,0,0,${a})`; g.fillRect(0, 0, WW, WH); g.globalCompositeOperation = 'source-over'; }
+}
 function footprint(x, y, a, side, prone) {
   const snow = SNOWY() && !onRoad(x, y, 0), road = onRoad(x, y, 0);
   const al = snow ? 0.5 : road ? (road.style === 'dirt' ? 0.3 : 0.08) : 0.2;
@@ -111,7 +115,7 @@ function buildMap(id) {
     // fences along the roads, with gates
     for (const rd of m.roads) {
       const [x1, y1, x2, y2] = rd.l;
-      if (y1 === y2) { for (const sd of [-1, 1]) for (let x = 60; x < WW / 2; x += 14) { if ((Math.floor(x / 160) % 3) === 2) continue; const y = y1 + sd * 42; if (blockedFor(x, y, 2) && !onRoad(x, y, 0)) continue; if (onRoad(x, y, 0)) continue; if (m.buildings.some(b => inRect(x, y, b, 6))) continue; addStatic({ type: 'fence', x, y, a: 0, r: 5, alive: true }, true); } }
+      if (y1 === y2) { for (const sd of [-1, 1]) for (let x = 60; x < WW / 2; x += 14) { if ((Math.floor(x / 160) % 3) === 2) continue; const y = y1 + sd * 42; if (blockedFor(x, y, 2) || onRoad(x, y, 0)) continue; if (m.buildings.some(b => inRect(x, y, b, 6))) continue; addStatic({ type: 'fence', x, y, a: 0, r: 5, alive: true }, true); } }
       else if (x1 < WW / 2) { for (const sd of [-1, 1]) for (let y = 60; y < WH - 60; y += 14) { if ((Math.floor(y / 150) % 3) === 1) continue; const x = x1 + sd * 42; if (onRoad(x, y, 0)) continue; if (m.flags.some(f => Math.hypot(f.x - x, f.y - y) < 130)) continue; if (m.buildings.some(b => inRect(x, y, b, 6))) continue; addStatic({ type: 'fence', x, y, a: Math.PI / 2, r: 5, alive: true }, true); } }
     }
     // hedgerows along field edges
@@ -164,8 +168,7 @@ function buildMap(id) {
   tries = 0;
   while (m.ffaSpawns.length < 18 && tries++ < 4000) {
     const x = 80 + R() * (WW - 160), y = 80 + R() * (WH - 160);
-    let bad = m.buildings.some(b => inRect(x, y, b, 40)) || m.water.some(w => inRect(x, y, w, 30));
-    for (const s of m.statics) if (Math.hypot(s.x - x, s.y - y) < 40) bad = true;
+    const bad = m.buildings.some(b => inRect(x, y, b, 40)) || m.water.some(w => inRect(x, y, w, 30)) || m.statics.some(s => Math.hypot(s.x - x, s.y - y) < 40);
     if (!bad && !m.ffaSpawns.some(p => Math.hypot(p.x - x, p.y - y) < 300)) m.ffaSpawns.push({ x, y });
   }
   m.fwd = [{ x: m.flags[0].x - 60, y: m.flags[0].y }, { x: m.flags[2].x + 60, y: m.flags[2].y }];
@@ -387,7 +390,7 @@ function buildNav() {
     const x = (i + 0.5) * NC, y = (j + 0.5) * NC, k = j * NGW + i;
     let s = 0, v = 0;
     if (x < 30 || y < 30 || x > WW - 30 || y > WH - 30) s = v = 1;
-    if (typeof M !== 'undefined' && M && M.wrecks) for (const w of M.wrecks) { const [lx, ly] = wreckLocal(w, x, y); if (Math.abs(lx) < w.hl + 8 && Math.abs(ly) < w.hw + 8) s = 1; if (Math.abs(lx) < w.hl + 30 && Math.abs(ly) < w.hw + 30) v = 1; }
+    if (typeof M !== 'undefined' && M && M.wrecks) for (const w of M.wrecks) { const [lx, ly] = toLocal(w, x, y); if (Math.abs(lx) < w.hl + 8 && Math.abs(ly) < w.hw + 8) s = 1; if (Math.abs(lx) < w.hl + 30 && Math.abs(ly) < w.hw + 30) v = 1; }
     for (const b of MAP.buildings) { if (inRect(x, y, b, 12)) s = 1; if (inRect(x, y, b, 38)) v = 1; }
     for (const w of MAP.water) { if (inRect(x, y, w, 4)) s = 1; if (inRect(x, y, w, 30)) v = 1; }
     navS[k] = s; navV[k] = v;
@@ -403,12 +406,12 @@ function markStatic(s) {
     if ((s.type === 'tree' || s.type === 'hay') && d < 32) navV[j * NGW + i] = 1;
   }
 }
-let ASG = new Float32Array(NGW * NGH), ASF = new Int32Array(NGW * NGH), ASS = new Uint32Array(NGW * NGH);
+let ASG = new Float32Array(NGW * NGH), ASF = new Int32Array(NGW * NGH), ASS = new Uint32Array(NGW * NGH), ASC = new Uint32Array(NGW * NGH);   // cost, came-from, seen stamp, closed stamp
 /* world size: the normal maps are 3000x2000, the dev yard is smaller; canvases and path grids follow */
 function setWorld(w, h) {
   if (w === WW && h === WH) return; WW = w; WH = h;
   for (const c of [ground, prints, decals]) { c.width = w; c.height = h; }
-  NGW = Math.ceil(WW / NC); NGH = Math.ceil(WH / NC); ASG = new Float32Array(NGW * NGH); ASF = new Int32Array(NGW * NGH); ASS = new Uint32Array(NGW * NGH);
+  NGW = Math.ceil(WW / NC); NGH = Math.ceil(WH / NC); ASG = new Float32Array(NGW * NGH); ASF = new Int32Array(NGW * NGH); ASS = new Uint32Array(NGW * NGH); ASC = new Uint32Array(NGW * NGH);
 }
 let asStamp = 1;
 function nearestFree(g, i, j) {
@@ -428,19 +431,20 @@ function astar(g, sx, sy, tx, ty) {
   const s = nearestFree(g, (sx / NC) | 0, (sy / NC) | 0), t = nearestFree(g, (tx / NC) | 0, (ty / NC) | 0);
   if (!s || !t) return null;
   const S = s[1] * NGW + s[0], T = t[1] * NGW + t[0];
-  asStamp++; const heap = [S]; ASG[S] = 0; ASS[S] = asStamp; ASF[S] = -1;
+  asStamp++; const H = [], HF = []; ASG[S] = 0; ASS[S] = asStamp; ASF[S] = -1;
   const hfn = k => { const i = k % NGW, j = (k / NGW) | 0, dx = Math.abs(i - t[0]), dy = Math.abs(j - t[1]); return Math.max(dx, dy) + 0.414 * Math.min(dx, dy); };
-  const f = k => ASG[k] + hfn(k);
-  const push = k => { heap.push(k); let i = heap.length - 1; const fk = f(k); while (i > 0) { const p = (i - 1) >> 1; if (f(heap[p]) <= fk) break; heap[i] = heap[p]; i = p; } heap[i] = k; };
-  const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { let i = 0; const fl = f(last); for (; ;) { const l = 2 * i + 1, r = l + 1; let m = i, fm = fl; if (l < heap.length && f(heap[l]) < fm) { m = l; fm = f(heap[l]); } if (r < heap.length && f(heap[r]) < fm) m = r; if (m === i) break; heap[i] = heap[m]; i = m; } heap[i] = last; } return top; };
-  const closed = new Set(); let iters = 0, found = false;
-  while (heap.length && iters++ < 6000) {
-    const k = pop(); if (closed.has(k)) continue; closed.add(k);
+  // open list: a binary heap of cells (H) with their f = cost + estimate stored beside them (HF)
+  const push = k => { const fk = ASG[k] + hfn(k); let i = H.length; H.push(k); HF.push(fk); while (i > 0) { const p = (i - 1) >> 1; if (HF[p] <= fk) break; H[i] = H[p]; HF[i] = HF[p]; i = p; } H[i] = k; HF[i] = fk; };
+  const pop = () => { const top = H[0], last = H.pop(), fl = HF.pop(), n = H.length; if (n) { let i = 0; for (; ;) { const l = 2 * i + 1, r = l + 1; let m = i, fm = fl; if (l < n && HF[l] < fm) { m = l; fm = HF[l]; } if (r < n && HF[r] < fm) m = r; if (m === i) break; H[i] = H[m]; HF[i] = HF[m]; i = m; } H[i] = last; HF[i] = fl; } return top; };
+  push(S);
+  let iters = 0, found = false;
+  while (H.length && iters++ < 6000) {
+    const k = pop(); if (ASC[k] === asStamp) continue; ASC[k] = asStamp;
     if (k === T) { found = true; break; }
     const i = k % NGW, j = (k / NGW) | 0;
     for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
       if (!di && !dj) continue; const a = i + di, b = j + dj; if (a < 0 || b < 0 || a >= NGW || b >= NGH) continue;
-      const n = b * NGW + a; if (g[n] || closed.has(n)) continue;
+      const n = b * NGW + a; if (g[n] || ASC[n] === asStamp) continue;
       if (di && dj && (g[j * NGW + a] || g[b * NGW + i])) continue;
       const ng = ASG[k] + (di && dj ? 1.414 : 1);
       if (ASS[n] !== asStamp || ng < ASG[n]) { ASS[n] = asStamp; ASG[n] = ng; ASF[n] = k; push(n); }

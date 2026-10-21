@@ -70,7 +70,6 @@ function icon(kind, cx, cy, s, col, al) {
     case 'score': R(-8, -7, 3, 3); R(-3, -7, 11, 3); R(-8, -1.5, 3, 3); R(-3, -1.5, 11, 3); R(-8, 4, 3, 3); R(-3, 4, 11, 3); break;
     case 'flag': R(-6, -9, 2, 18); P([[-4, -9], [8, -5], [-4, -1]]); break;
     case 'gear': ctx.restore(); gearIcon(cx, cy, s * 0.42, c); return;
-    case 'nades': break;
   }
   ctx.restore();
 }

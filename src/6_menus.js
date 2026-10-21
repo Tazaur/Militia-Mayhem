@@ -165,7 +165,7 @@ function drawMenu() {
 
 /* ================= network menu: host a game, join one by code or from the list ================= */
 const NETM = { sel: 0, entry: null };
-const CODE_KEYS = 'abcdefghjkmnpqrstuvwxyz23456789'.split('').concat(['DEL', 'JOIN']);
+const CODE_KEYS = CODE_CH.split('').concat(['DEL', 'JOIN']);
 const netListShown = () => NET.mode === 'p2p';
 function openNetMenu(dev) { if (typeof netListRefresh === 'function') netListRefresh(); NET.err = null; NETM.sel = 0; NETM.entry = null; NETM.dev = dev && dev.type ? dev : { type: 'kb' }; setState('netmenu'); sfx('ui'); }
 function netRows() { return netAllHosts().filter(h => h.n < MAXP && (h.st === 'lobby' || h.mj)); }
@@ -590,7 +590,7 @@ function changeSetting(key, d) {
   if (key === 'fog') C.fog = C.fog === 'off' ? 'los' : 'off';
   if (key === 'midjoin') C.midjoin = !C.midjoin;
   if (key === 'pub') C.pub = C.pub === false;
-  if (key === 'weather') { const W3 = ['clear', 'rain', 'snow']; C.weather = W3[(W3.indexOf(C.weather) + d + 3) % 3]; }
+  if (key === 'weather') { C.weather = WEATHERS[(WEATHERS.indexOf(C.weather) + d + 3) % 3]; }
   if (MODES[C.mode].id === 'ffa') C.bots = Math.min(C.bots, 6);
   saveCfg(); sfx('ui');
   if (C.map !== prevMap || C.weather !== prevWeather) demoMatch();
@@ -612,6 +612,8 @@ function settingLabel(key) {
     case 'weather': return ['WEATHER', C.weather === 'clear' ? 'CLEAR' : C.weather === 'snow' ? 'SNOW' : MAPNAMES[C.map][0] === 'snowfield' ? 'STORM' : 'RAIN'];
   }
 }
+/* same settings again (a dev match keeps its own) */
+function rematch() { newMatch({ ...(M.dev ? M.cfg : CFG) }, false); setState('play'); }
 function demoMatch() { newMatch({ mode: 0, map: CFG.map, bots: 7, limit: 1, skill: 1, camera: 'shared', weather: CFG.weather }, true); }
 /* controllers have to ready up; keyboard and touch players are readied by pressing START themselves */
 const canStart = () => PLAYERS.length > 0 && PLAYERS.every(p => p.ready || (p.dev.type !== 'pad' && !isNet(p)));
@@ -765,7 +767,7 @@ function pauseAct(i) {
   if (it === 'RESUME') setState('play');
   if (it === 'SETTINGS') openSettings('pause');
   if (it === 'REDEPLOY') { const s = pauseMe(); if (NET.role === 'client') { NET.rd = (NET.rd | 0) + 1; NET.rdT = performance.now(); } else redeploy(s); setState('play'); }
-  if (it === 'RESTART MATCH') { newMatch({ ...(M.dev ? M.cfg : CFG) }, false); setState('play'); }
+  if (it === 'RESTART MATCH') rematch();
   if (it === 'BACK TO LOBBY') toLobby();
   if (it === 'QUIT TO MENU' || it === 'END GAME') toMenu();
   if (it === 'LEAVE GAME') netLeave();
@@ -809,7 +811,7 @@ function updateEnd(ins) {
   if (stateT < 1.5) return;
   if (NET.role === 'client') { for (const { st } of ins) if (st.back) { netLeave(); return; } runClicks(); return; }
   for (const { st } of ins) {
-    if (st.confirm) { newMatch({ ...CFG }, false); setState('play'); return; }
+    if (st.confirm) { rematch(); return; }
     if (st.back) { toLobby(); return; }
   }
   runClicks();
@@ -850,7 +852,7 @@ function drawEnd() {
   }
   const w2 = Math.min(280 * u, W / 2 - 24), pads = anyPad();
   if (NET.role === 'client') { button({ x: W / 2 - w2 - 8, y: by, w: w2, h: bh, label: 'WAITING FOR HOST', off: true, size: fpx(15, u, 12) }); button({ x: W / 2 + 8, y: by, w: w2, h: bh, label: 'LEAVE', off: stateT < 1.5, fn: () => netLeave(), size: fpx(16, u, 13) }); ctx.globalAlpha = 1; return; }
-  button({ x: W / 2 - w2 - 8, y: by, w: w2, h: bh, label: 'REMATCH', primary: true, off: stateT < 1.5, fn: () => { newMatch({ ...CFG }, false); setState('play'); }, size: fpx(16, u, 13) });
+  button({ x: W / 2 - w2 - 8, y: by, w: w2, h: bh, label: 'REMATCH', primary: true, off: stateT < 1.5, fn: rematch, size: fpx(16, u, 13) });
   button({ x: W / 2 + 8, y: by, w: w2, h: bh, label: 'LOBBY', off: stateT < 1.5, fn: () => toLobby(), size: fpx(16, u, 13) });
   const dv = devOf(null); if (dv !== 'touch') { badge('select', dv, W / 2 - w2 + 4, by + bh / 2, bh * 0.5); badge('back', dv, W / 2 + 20, by + bh / 2, bh * 0.5); }
   ctx.globalAlpha = 1;

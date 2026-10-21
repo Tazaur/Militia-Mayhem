@@ -158,7 +158,6 @@ function drawWorld(vw) {
   } else if (M.rain) { ctx.fillStyle = 'rgba(20,30,50,0.18)'; ctx.fillRect(vw.x, vw.y, vw.w, vw.h); }
   ctx.restore();
 }
-/* recon lasers: visible to everyone, brighter when aiming down sights */
 /* smoke screens: thick, soft-edged clouds above everything on the ground */
 function drawSmokes(vis) {
   worldT();
@@ -176,29 +175,28 @@ function drawSmokes(vis) {
 /* where this view's players are looking from */
 function viewEyes(vw) {
   if (!M || M.demo) return [];
-  const ps = vw.p ? [vw.p] : M.shared ? LOCALS() : [];
-  return ps.map(p => p.sol).filter(s => s && s.alive).map(s => ({ x: s.veh ? s.veh.x : s.x, y: s.veh ? s.veh.y : s.y, team: s.team, s }));
+  return viewSols(vw).map(s => ({ x: posOf(s).x, y: posOf(s).y, team: s.team, s }));
 }
 function smokeHides(eyes, o, vw) {
   if (!eyes.length || !M.smokes.length || eyes.some(e => e.s === o || (!M.ffa && e.team === o.team))) return false;
   for (const c of M.smokes) if (c.r > 24 && c.t < c.T - 2 && Math.hypot(o.x - c.x, o.y - c.y) < c.r * 0.45) return true;
   return eyes.every(e => smokeBlocks(e.x, e.y, o.x, o.y));
 }
+/* recon lasers: visible to everyone, brighter when aiming down sights; they stop at the first wall, tree, hay bale, vehicle or soldier */
 function drawLasers(vis) {
   worldT(); ctx.lineWidth = 1.2 / VZ + 0.4;
   for (const s of M.sol) {
     if (!s.alive || s.veh || s.swim || !s.w || !WPN[cw(s).id].scope || !vis(s.x, s.y, 900)) continue;
-    const [x, y] = gunTip(s), c = Math.cos(s.a), sn = Math.sin(s.a); let d = 0, ex = x, ey = y;
-    outer: for (d = 6; d < 900; d += 6) {
-      ex = x + c * d; ey = y + sn * d;
-      for (const b of MAP.buildings) if (!b.glass && inRect(ex, ey, b)) break outer;
-      staticsNear(ex, ey, 12, _near); for (const o of _near) if ((o.type === 'tree' || o.type === 'hay') && Math.hypot(o.x - ex, o.y - ey) < (o.type === 'hay' ? 12 : 9)) break outer;
-      for (const v of M.vehicles) if (v.active && Math.abs(v.x - ex) < 60 && Math.abs(v.y - ey) < 60) { const [lx, ly] = toLocal(v, ex, ey); if (Math.abs(lx) < v.T.hl && Math.abs(ly) < v.T.hw) break outer; }
-      for (const o of M.sol) if (o !== s && o.alive && Math.abs(o.x - ex) < 8 && Math.abs(o.y - ey) < 8) break outer;
-    }
+    const [x, y] = gunTip(s), x1 = x + Math.cos(s.a) * 900, y1 = y + Math.sin(s.a) * 900; let t = 1;
+    const hit = k => { if (k >= 0 && k < t) t = k; };
+    for (const b of MAP.buildings) if (!b.glass) hit(segRect(x, y, x1, y1, b, 0));
+    for (const o of staticsNear((x + x1) / 2, (y + y1) / 2, 462, _near)) if (o.type === 'tree' || o.type === 'hay') hit(segCirc(x, y, x1, y1, o.x, o.y, o.type === 'hay' ? 12 : 9));
+    for (const v of M.vehicles) if (v.active) { const [ax, ay] = toLocal(v, x, y), [bx, by] = toLocal(v, x1, y1); hit(segRect(ax, ay, bx, by, { x: -v.T.hl, y: -v.T.hw, w: v.T.hl * 2, h: v.T.hw * 2 }, 0)); }
+    for (const o of M.sol) if (o !== s && o.alive) hit(segRect(x, y, x1, y1, { x: o.x - 8, y: o.y - 8, w: 16, h: 16 }, 0));
+    const ex = x + (x1 - x) * t, ey = y + (y1 - y) * t;
     const al = s.ads ? 0.6 : 0.28;
     ctx.strokeStyle = `rgba(255,40,30,${al})`; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ex, ey); ctx.stroke();
-    ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = s.ads ? 0.9 : 0.6; const gd = ctx.createRadialGradient(ex, ey, 0, ex, ey, 4.5); gd.addColorStop(0, 'rgba(255,70,50,0.9)'); gd.addColorStop(1, 'rgba(255,20,10,0)'); ctx.fillStyle = gd; ctx.fillRect(ex - 4.5, ey - 4.5, 9, 9); ctx.fillStyle = '#ff3020';      // red dot where it lands ctx.fillRect(ex - 1, ey - 1, 2, 2); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+    ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = s.ads ? 0.9 : 0.6; const gd = ctx.createRadialGradient(ex, ey, 0, ex, ey, 4.5); gd.addColorStop(0, 'rgba(255,70,50,0.9)'); gd.addColorStop(1, 'rgba(255,20,10,0)'); ctx.fillStyle = gd; ctx.fillRect(ex - 4.5, ey - 4.5, 9, 9); ctx.fillStyle = '#ff3020'; ctx.fillRect(ex - 1, ey - 1, 2, 2); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';      // red dot where it lands
   }
 }
 /* snow falls between the camera and the ground: five depth layers sliding 1.3x-2.3x as far as the ground when the
@@ -219,6 +217,8 @@ function drawSnow(vw) {
   ctx.globalAlpha = 1;
 }
 function humanTeams() { return new Set(LOCALS().map(p => p.sol ? p.sol.team : p.team)); }
+/* which body sprite: hands busy (throwing / repairing / setting a gadget down), a launcher, or a rifle */
+function bodyPose(s) { const W_ = s.w ? WPN[cw(s).id] : null; return s.throwT > 0 || s.torch || s.handT > 0 ? 'nogun' : W_ && W_.rocket ? 'rpg' : 'stand'; }
 function drawRain(vw) {
   ctx.strokeStyle = CFG.style === 'grit' ? 'rgba(190,195,200,0.35)' : 'rgba(200,220,255,0.4)'; ctx.lineWidth = 1; ctx.beginPath();
   const n = Math.round(vw.w * vw.h / 3500), t = M.time;
@@ -238,9 +238,8 @@ function drawSoldier(s, vw) {
     solDraw(s, solSpr(s.color, 'nogun'), s.x, s.y, s.a, 0.85, 0.85, 0.85); return;
   }
   if (s.down) { drawDowned(s); return; }
-  const W_ = s.w ? WPN[cw(s).id] : null, rocket = W_ && W_.rocket, gunless = s.throwT > 0 || s.torch || s.handT > 0;
-  const body = gunless ? 'nogun' : rocket ? 'rpg' : 'stand', pose = body;
-  const shadow = solShadow(pose), jk = jumpK(s), lift = 1 + 0.15 * jk;
+  const W_ = s.w ? WPN[cw(s).id] : null, body = bodyPose(s), gunless = body === 'nogun';
+  const shadow = solShadow(body), jk = jumpK(s), lift = 1 + 0.15 * jk;
   if (!M.ffa) { ctx.strokeStyle = TEAMHEX[s.team]; ctx.globalAlpha = 0.6; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(s.x, s.y, shadow ? 14 : 11, shadow ? 14 : 11, 0, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1; }
   if (s.spotT > 0 && vw && vw.p && vw.p.sol && s.spotTeam === vw.p.sol.team) { ctx.strokeStyle = '#ff4030'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(s.x - 6, s.y - 22); ctx.lineTo(s.x, s.y - 16); ctx.lineTo(s.x + 6, s.y - 22); ctx.stroke(); }
   const al = s.protect > 0 && Math.floor(M.time * 12) % 2 ? 0.45 : undefined;
@@ -252,7 +251,7 @@ function drawSoldier(s, vw) {
       for (const side of [-1, 1]) { const f = ph * side * 4, lx = s.x + c * f - sn * side * w, ly = s.y + sn * f + c * side * w; ctx.fillRect(lx - 1.5, ly - 1.5, 3, 3); }
     }
     const bob = (s.moving && jk === 0 ? 1 + Math.abs(Math.sin(s.walkT / 10)) * 0.05 : 1) * lift;
-    solDraw(s, solSpr(s.color, pose), s.x, s.y, s.a + (s.meleeT > 0 ? Math.sin(s.meleeT / 0.18 * Math.PI) * 0.5 : 0), bob, bob, al);
+    solDraw(s, solSpr(s.color, body), s.x, s.y, s.a + (s.meleeT > 0 ? Math.sin(s.meleeT / 0.18 * Math.PI) * 0.5 : 0), bob, bob, al);
   }
   // what's in the soldier's hands: the repair wrench (cranking back and forth), a grenade mid-throw, or the gadget being set down
   if (s.torch) {
@@ -283,7 +282,7 @@ function drawShadowLayer(vw, vis) {
   worldT(); ctx.fillStyle = '#000'; const eyes = viewEyes(vw);
   for (const s of M.sol) {
     if (!s.alive || s.down || s.veh || s.swim || !vis(s.x, s.y, 30) || smokeHides(eyes, s, vw)) continue;
-    const W_ = s.w ? WPN[cw(s).id] : null, body = s.throwT > 0 || s.torch ? 'nogun' : W_ && W_.rocket ? 'rpg' : 'stand';
+    const body = bodyPose(s);
     const jk = jumpK(s), o = 1 + jk * 5, ox = s.x + 2.5 * o, oy = s.y + 3.5 * o;
     if (s.stance === 2) spr(solShadow(legFrame(s)), ox, oy, s.a);
     spr(solShadow(body), ox, oy, s.a);
@@ -324,7 +323,7 @@ function drawVehicle(v) {
   if (v.type === 'tank') {
     const hn = 'hull' + hullFrame(v), hm = ATLAS[hn]; sprC(vehSkin(hn, col), hm[4], hm[5], v.x, v.y, v.a);
     for (const i of [2, 3]) { const s = v.seats[i]; if (s) drawSeated(s); }
-    const px = v.x - 4 * Math.cos(v.a), py = v.y - 4 * Math.sin(v.a), kick = clamp(v.recoil, 0, 1) * 33, tm = ATLAS.tur;
+    const [px, py] = turretPivot(v), kick = clamp(v.recoil, 0, 1) * 33, tm = ATLAS.tur;
     spr('tur_gun', px - Math.cos(v.ta) * kick, py - Math.sin(v.ta) * kick, v.ta);
     sprC(vehSkin('tur', col), tm[4], tm[5], px, py, v.ta);
     const [mx, my] = mgPos(v);
@@ -392,11 +391,6 @@ function drawParticles(vis, layer) {
 /* ---------------- HUD ---------------- */
 function txt(s, x, y, size, col, align, base, font) { ctx.font = `${size}px ${font || FB}`; ctx.fillStyle = col; ctx.textAlign = align || 'left'; ctx.textBaseline = base || 'alphabetic'; ctx.fillText(s, x, y); }
 function stxt(s, x, y, size, col, align, base, font) { ctx.font = `${size}px ${font || FB}`; ctx.textAlign = align || 'left'; ctx.textBaseline = base || 'alphabetic'; ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillText(s, x + 1.5, y + 1.5); ctx.fillStyle = col; ctx.fillText(s, x, y); }
-function glyph(p, act) {
-  const pad = p.dev.type === 'pad', tc = p.dev.type === 'touch';
-  const map = { enter: pad ? 'Y' : tc ? 'USE' : 'E', reload: pad ? 'X' : tc ? 'RLD' : 'R', seat: pad ? 'B / D-PAD' : tc ? 'SEAT' : 'F / 1-4', nade: pad ? 'RB' : tc ? 'NADE' : 'G', swap: pad ? 'Y' : tc ? 'SWAP' : '1 / 2', fire: pad ? 'RT' : tc ? '' : 'CLICK', gadget: pad ? 'LB' : tc ? 'GEAR' : 'F', stance: pad ? 'B' : tc ? 'STANCE' : 'C / Z', jump: pad ? 'A' : tc ? 'JUMP' : 'SPACE', melee: pad ? 'R3' : tc ? '' : 'V', spot: pad ? 'D-UP' : tc ? '' : 'Q', ads: pad ? 'LT' : tc ? '' : 'R-CLICK', deploy: pad ? 'A' : tc ? 'TAP' : 'SPACE', spawn: pad ? '◀ ▶' : tc ? '' : 'A / D', kit: pad ? '▲ ▼' : tc ? '' : 'W / S', variant: pad ? 'X' : tc ? '' : 'R' };
-  return map[act];
-}
 function miniRect() {
   const many = M.views.length > 1, mw = clamp(W * (many ? 0.14 : 0.16), 110, 220), mh = mw * WH / WW;
   if (!many && touchPlayer() && state !== 'lobby') return { many, mw, mh, mx: SAFE.l + 12, my: SAFE.t + 52 };
@@ -502,7 +496,7 @@ function drawViewHUD(vw) {
       hintRow([{ a: 'use', icon: c.seat >= 0 ? 'enter' : 'skull' }, ...(nm ? [{ t: nm }] : []), ...(c.bump ? [{ icon: 'swap' }, { t: c.bump.name }] : [])], vw.x + vw.w / 2, y, 20 * u, dev, c.seat >= 0 ? '#fff' : '#ff8a70');
       worldT(); const an = seatAnchor(c.v, c.seat >= 0 ? c.seat : c.want, s.x, s.y); const [ax, ay] = toWorld(c.v, an[0] * 0.7, an[1] * 0.7);
       ctx.strokeStyle = CHEX[p.color]; ctx.lineWidth = 2 / VZ * 1.5; ctx.beginPath(); ctx.arc(ax, ay, 7 + Math.sin(M.time * 8) * 1.5, 0, TAU); ctx.stroke(); screenT();
-    } else if (!tc && cw(s).mag === 0 && cw(s).res > 0 && s.reloadT <= 0) { let x = R - 50 * u; if (dev !== 'touch') x += 0; const bw2 = badge('reload', dev, x, B - 12 * u, hb); icon('reload', x + bw2 + 14 * u, B - 12 * u, hb, '#fff'); }
+    } else if (!tc && cw(s).mag === 0 && cw(s).res > 0 && s.reloadT <= 0) { const x = R - 50 * u, bw2 = badge('reload', dev, x, B - 12 * u, hb); icon('reload', x + bw2 + 14 * u, B - 12 * u, hb, '#fff'); }
     else if (s.torch) icon('torch', vw.x + vw.w / 2, B - 40 * u, 28 * u, '#9fe0ff', 0.6 + 0.4 * Math.sin(M.time * 14));
   }
   if (s.hitT > 0) {
@@ -521,7 +515,6 @@ function drawViewHUD(vw) {
   if (p.mapOpen) drawMapOverlay(vw, p, u);
   ctx.restore();
 }
-/* full tactical map over the player's view (D-pad down / M / map button) */
 /* death cam overlay: who got you, while the camera sits on them */
 function drawDeathCam(vw, p, u) {
   const s = p.sol, k = s.killer, cx = vw.x + vw.w / 2, y = vw.y + (vw.y === 0 ? SAFE.t + 70 : 30) * u;
@@ -533,8 +526,7 @@ function drawDeathCam(vw, p, u) {
 }
 /* the killer glows in the victim's view during the death cam */
 function drawKillerGlow(vw) {
-  const ps = vw.p ? [vw.p] : M.shared ? LOCALS() : [];
-  for (const p of ps) {
+  for (const p of vw.p ? [vw.p] : M.shared ? LOCALS() : []) {
     const s = p.sol; if (!s || s.alive || !(s.deathT > 0) || !s.killer) continue;
     const k = s.killer, live = (k.veh && k.veh.active && !k.veh.dead) || (k.sol && k.sol.alive), r = k.veh && k.veh.active ? 62 : 18, pulse = 0.5 + 0.5 * Math.sin(M.time * 9);
     worldT(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = live ? 0.55 + 0.3 * pulse : 0.35;
@@ -547,6 +539,7 @@ function drawKillerGlow(vw) {
     else if (k.veh && k.veh.active) drawVehicle(k.veh);
   }
 }
+/* full tactical map over the player's view (D-pad down / M / map button) */
 function drawMapOverlay(vw, p, u) {
   const s = p.sol, top = vw.y === 0 ? SAFE.t + 50 : 0, x = vw.x + vw.w * 0.07, y = vw.y + top + vw.h * 0.06, w = vw.w * 0.86, h = vw.h * 0.86 - top;
   ctx.fillStyle = 'rgba(6,9,5,0.72)'; ctx.fillRect(vw.x, vw.y, vw.w, vw.h);

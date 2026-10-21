@@ -5,8 +5,7 @@
 let FOGK = 0.5;     // memory scale: half resolution, except the small tile-art dev yard (full, so walls stay crisp)
 function fogEyes(vw) {
   if (!M || M.demo || M.cfg.fog === 'off') return [];      // a match option (host's lobby), the same for everyone
-  const ps = vw.p ? [vw.p] : M.shared ? LOCALS() : [];
-  return ps.map(p => p.sol).filter(s => s && s.alive).map(s => s.veh ? [s.veh.x, s.veh.y] : [s.x, s.y]);
+  return viewSols(vw).map(posOf).map(o => [o.x, o.y]);
 }
 function raySeg(ox, oy, dx, dy, ax, ay, bx, by) {
   const sx = bx - ax, sy = by - ay, den = dx * sy - dy * sx; if (Math.abs(den) < 1e-9) return Infinity;
