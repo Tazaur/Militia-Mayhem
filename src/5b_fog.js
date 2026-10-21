@@ -36,18 +36,18 @@ function visPoly(ex, ey, box, walls, pad) {
   }
   const bs = [[X0, Y0, X1, Y0], [X1, Y0, X1, Y1], [X1, Y1, X0, Y1], [X0, Y1, X0, Y0]];
   for (const q of bs) { segs.push([q[0], q[1], q[2], q[3], 0, 0]); rays.push([Math.atan2(q[1] - ey, q[0] - ex), 0, 0, 0, 0]); }
-  rays.sort((a, b) => a[0] - b[0]);
-  const pts = [];
+  // every point is ordered by its own angle (a corner by its exact one), so corners that line up from the eye can't fold
+  // the outline over itself
+  const out = [];
   for (const [t, cx, cy, cd, side] of rays) {
     const dx = Math.cos(t), dy = Math.sin(t); let best = Infinity, hq = null;
     for (const q of segs) { const d = raySeg(ex, ey, dx, dy, q[0], q[1], q[2], q[3]); if (d < best) { best = d; hq = q; } }
     if (!hq) continue;
-    const hit = [ex + dx * best - hq[4], ey + dy * best - hq[5]], past = side && best > cd + 0.5;
-    if (past && side > 0) pts.push([cx, cy]);
-    pts.push(hit);
-    if (past && side < 0) pts.push([cx, cy]);
+    out.push([t, ex + dx * best - hq[4], ey + dy * best - hq[5]]);
+    if (side && best > cd + 0.5) out.push([t - side * VIS_EPS, cx, cy]);
   }
-  return pts;
+  out.sort((a, b) => a[0] - b[0]);
+  return out.map(o => [o[1], o[2]]);
 }
 function inPoly(x, y, P) { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; }
 function polyPath(g, polys) { g.beginPath(); for (const P of polys) { P.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); } }
@@ -70,7 +70,7 @@ const FOG_OUT = document.createElement('canvas'), FOG_TMP = document.createEleme
 function fogCanvases() {
   if (FOG_OUT.width !== cv.width || FOG_OUT.height !== cv.height) {
     FOG_OUT.width = FOG_TMP.width = cv.width; FOG_OUT.height = FOG_TMP.height = cv.height;
-    FOG_MASK.width = FOG_MASK2.width = Math.ceil(cv.width / FOG_MS); FOG_MASK.height = FOG_MASK2.height = Math.ceil(cv.height / FOG_MS);
+    FOG_MASK.width = FOG_MASK2.width = Math.ceil(cv.width / FOG_MS) + 2; FOG_MASK.height = FOG_MASK2.height = Math.ceil(cv.height / FOG_MS) + 2;
   }
 }
 /* draws the remembered world for the whole view, then clips everything after it to what's in sight (the hard layer:
@@ -168,10 +168,12 @@ function softMask(g, ex, ey, box) {
 /* the soft layers in the vision fog: the remembered view shows through the mask (smoke + windows) inside your sight.
    The hard layer (walls, wrecks) is the clip around it, so the three never fight: out of sight is 100 % remembered,
    in sight it's the soft sum. Two eyes in one view: each one's mask, multiplied (seen well by either = seen well).
-   The mask is low-res (1/FOG_MS); upscaling it softens the edges. */
+   The mask is low-res (1/FOG_MS); upscaling it softens the edges. Its pixels sit on a grid fixed to the world (the
+   leftover fraction is a shift when it's drawn), so moving doesn't make its edges swim. */
 function drawSoftFog(vw) {
   const F = vw._fog; if (!F || (!M.smokes.length && !MAP.glass.length)) return;
-  const k = VZ * DPR / FOG_MS, prep = c => { const g = c.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, c.width, c.height); g.setTransform(k, 0, 0, k, VOX * DPR / FOG_MS, VOY * DPR / FOG_MS); return g; };
+  const k = VZ * DPR / FOG_MS, ox = VOX * DPR / FOG_MS, oy = VOY * DPR / FOG_MS, mx = Math.floor(ox) + 1, my = Math.floor(oy) + 1;
+  const prep = c => { const g = c.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, c.width, c.height); g.setTransform(k, 0, 0, k, mx, my); return g; };
   const mg = prep(FOG_MASK); if (!softMask(mg, F.eyes[0][0], F.eyes[0][1], F.box)) return;
   for (let i = 1; i < F.eyes.length; i++) {
     softMask(prep(FOG_MASK2), F.eyes[i][0], F.eyes[i][1], F.box);
@@ -182,7 +184,7 @@ function drawSoftFog(vw) {
   tg.setTransform(1, 0, 0, 1, 0, 0); tg.globalCompositeOperation = 'source-over'; tg.clearRect(X, Y, Wd, Ht);
   tg.drawImage(FOG_OUT, X, Y, Wd, Ht, X, Y, Wd, Ht);
   tg.globalCompositeOperation = 'destination-in'; tg.imageSmoothingEnabled = true; tg.imageSmoothingQuality = 'high';
-  tg.drawImage(FOG_MASK, 0, 0, FOG_MASK.width, FOG_MASK.height, 0, 0, FOG_MASK.width * FOG_MS, FOG_MASK.height * FOG_MS);
+  tg.drawImage(FOG_MASK, 0, 0, FOG_MASK.width, FOG_MASK.height, (ox - mx) * FOG_MS, (oy - my) * FOG_MS, FOG_MASK.width * FOG_MS, FOG_MASK.height * FOG_MS);
   tg.globalCompositeOperation = 'source-over';
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(FOG_TMP, X, Y, Wd, Ht, X, Y, Wd, Ht); worldT();
 }

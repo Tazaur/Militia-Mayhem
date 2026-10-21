@@ -4,6 +4,7 @@
 function drawWorld(vw) {
   const sh = vw.shake;
   VZ = vw.cam.z; VOX = vw.x + vw.w / 2 - (vw.cam.x + rnd(-sh, sh) / VZ) * VZ; VOY = vw.y + vw.h / 2 - (vw.cam.y + rnd(-sh, sh) / VZ) * VZ;
+  VOX = Math.round(VOX * DPR) / DPR; VOY = Math.round(VOY * DPR) / DPR;     // whole screen pixels: pixel art (and the fog) shifts cleanly instead of crawling
   vw.VZ = VZ; vw.VOX = VOX; vw.VOY = VOY;
   const x0 = (vw.x - VOX) / VZ - 4, y0 = (vw.y - VOY) / VZ - 4, x1 = (vw.x + vw.w - VOX) / VZ + 4, y1 = (vw.y + vw.h - VOY) / VZ + 4;
   const vis = (x, y, r) => x + r > x0 && x - r < x1 && y + r > y0 && y - r < y1;

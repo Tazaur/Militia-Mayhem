@@ -14,7 +14,6 @@
 const TILE = 32, SUB = 16, DEV_COLS = 48, DEV_ROWS = 32;
 const C_OUT = 0, C_FLOOR = 1, C_WALL = 2, C_WIN = 3, C_RUB = 4;
 const ROOM_MIN = 36, ROOM_SIDE = 5, SEC_MAX = 6;
-const JUNC_HP = { 2: 200, 3: 260, 4: 320 };                 // corner, tee, cross (a straight section: 30 + 20 per cell)
 /* ramming, per unit of speed: damage to the wall, damage to the vehicle, speed kept; a tank always hits at least min */
 const RAM = { tank: { wall: 2.6, self: 0.15, keep: 0.8, min: 50, go: 12 }, jeep: { wall: 0.45, self: 1, keep: 0.15, min: 0, go: 25 } };
 const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];          // up, right, down, left
@@ -191,26 +190,32 @@ function wallRuns(TL, ok) {
 function devSections() {
   const TL = MAP.tiled, sc = TL.sc; TL.secs = []; TL.sec.fill(-1);
   const t = (x, y) => x < 0 || y < 0 || x >= sc || y >= TL.sr ? C_OUT : TL.cell[y * sc + x];
-  const add = (cx, cy, cw, ch, glass, hp, junc) => {
-    const s = { cx, cy, cw, ch, i: TL.secs.length, glass, hp, mhp: hp, alive: true, hitT: 0, junc };
-    s.b = { x: cx * SUB, y: cy * SUB, w: cw * SUB, h: ch * SUB, glass, sec: s };
+  // a section: one or more rects (s.bs, each in MAP.buildings) of cells; cx..ch is their bounding box, n the cell count
+  const hpOf = s => s.glass ? 20 : 30 + 20 * s.n;
+  const rect = (s, cx, cy, cw, ch) => {
+    const b = { x: cx * SUB, y: cy * SUB, w: cw * SUB, h: ch * SUB, glass: s.glass, sec: s }; s.bs.push(b); MAP.buildings.push(b);
     for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) TL.sec[(cy + j) * sc + cx + i] = s.i;
-    TL.secs.push(s); MAP.buildings.push(s.b);
+    const x1 = Math.max(s.cx + s.cw, cx + cw), y1 = Math.max(s.cy + s.ch, cy + ch); s.cx = Math.min(s.cx, cx); s.cy = Math.min(s.cy, cy); s.cw = x1 - s.cx; s.ch = y1 - s.cy;
+    s.n += cw * ch; s.hp = s.mhp = hpOf(s);
   };
-  // corners, tees and crosses (wall both across and along): one cell each, and strong
-  for (let y = 0; y < TL.sr; y++) for (let x = 0; x < sc; x++) {
-    if (t(x, y) !== C_WALL) continue; let n = 0, h = 0, v = 0;
-    for (let d = 0; d < 4; d++) if (t(x + DIRS[d][0], y + DIRS[d][1]) === C_WALL) { n++; if (d % 2) h = 1; else v = 1; }
-    if (h && v) add(x, y, 1, 1, false, JUNC_HP[n], n);
-  }
-  for (const r of wallRuns(TL, (v, x, y) => (v === C_WALL || v === C_WIN) && TL.sec[y * sc + x] < 0)) {
+  const add = (cx, cy, cw, ch, glass) => { const s = { cx, cy, cw, ch, n: 0, bs: [], i: TL.secs.length, glass, alive: true, hitT: 0 }; TL.secs.push(s); rect(s, cx, cy, cw, ch); };
+  // straight runs (corners, tees and crosses go with the run along their row), cut to at most SEC_MAX cells
+  for (const r of wallRuns(TL, v => v === C_WALL || v === C_WIN)) {
     const len = Math.max(r.w, r.h), n = Math.ceil(len / SEC_MAX);
     for (let k = 0; k < n; k++) {
       const a = Math.round(k * len / n), b = Math.round((k + 1) * len / n), glass = r.v === C_WIN;
-      if (r.w > 1) add(r.x + a, r.y, b - a, 1, glass, glass ? 20 : 30 + 20 * (b - a), 0);
-      else add(r.x, r.y + a, 1, b - a, glass, glass ? 20 : 30 + 20 * (b - a), 0);
+      if (r.w > 1) add(r.x + a, r.y, b - a, 1, glass); else add(r.x, r.y + a, 1, b - a, glass);
     }
   }
+  // no wall cell stands alone: a one-cell section joins the smallest wall section next to it
+  for (const s of TL.secs.slice()) {
+    if (s.glass || s.n !== 1) continue; let best = null;
+    for (const [dx, dy] of DIRS) { const q = t(s.cx + dx, s.cy + dy) === C_WALL && TL.secs[TL.sec[(s.cy + dy) * sc + s.cx + dx]]; if (q && q !== s && q.alive && (!best || q.n < best.n)) best = q; }
+    if (!best) continue;
+    s.alive = false; MAP.buildings.splice(MAP.buildings.indexOf(s.bs[0]), 1); rect(best, s.cx, s.cy, 1, 1);
+  }
+  TL.secs = TL.secs.filter(s => s.alive); TL.sec.fill(-1);
+  TL.secs.forEach((s, i) => { s.i = i; for (const b of s.bs) for (let y = b.y / SUB; y < (b.y + b.h) / SUB; y++) for (let x = b.x / SUB; x < (b.x + b.w) / SUB; x++) TL.sec[y * sc + x] = i; });
   devSight();
 }
 /* sight walls (hard) and windows (soft, GLASS_OCC) */
@@ -335,11 +340,19 @@ function paintCell(i, j) {
 }
 
 /* ---------------- structure damage ---------------- */
+/* the point of a section nearest (x, y), and how far: [nx, ny, d] */
+function secNear(sec, x, y) {
+  let best = null;
+  for (const b of sec.bs) { const nx = clamp(x, b.x, b.x + b.w), ny = clamp(y, b.y, b.y + b.h), d = Math.hypot(nx - x, ny - y); if (!best || d < best[2]) best = [nx, ny, d]; }
+  return best;
+}
+/* the cells of a section */
+function secCells(sec, f) { const TL = MAP.tiled; for (let j = sec.cy; j < sec.cy + sec.ch; j++) for (let i = sec.cx; i < sec.cx + sec.cw; i++) if (TL.sec[j * TL.sc + i] === sec.i) f(i, j); }
 function devBlast(x, y, r, dmg) {
   const R = r * 0.6, k = STRUCT_K[r] || 1;
   for (const sec of MAP.tiled.secs) {
     if (!sec.alive) continue;
-    const b = sec.b, nx = clamp(x, b.x, b.x + b.w), ny = clamp(y, b.y, b.y + b.h), d = Math.hypot(nx - x, ny - y); if (d > R) continue;
+    const [nx, ny, d] = secNear(sec, x, y); if (d > R) continue;
     devDamage(sec, dmg * k * clamp(1 - d / R, 0.3, 1), nx, ny);
   }
 }
@@ -367,7 +380,7 @@ function devRams(v) {
   const cd = v.ramCd || (v.ramCd = {});
   for (const sec of _ram) {
     if ((cd[sec.i] || 0) > M.time) continue; cd[sec.i] = M.time + 0.25;
-    const s = Math.max(sp, P.min), b = sec.b, x = clamp(v.x, b.x, b.x + b.w), y = clamp(v.y, b.y, b.y + b.h);
+    const s = Math.max(sp, P.min), [x, y] = secNear(sec, v.x, v.y);
     devDamage(sec, s * P.wall * (sec.glass ? 3 : 1), x, y);
     hurtVehicle(v, s * P.self * (sec.glass ? 0.1 : 1), null);
     v.spd *= sec.glass ? Math.max(P.keep, 0.7) : P.keep; v.crashCd = 0.6;
@@ -378,20 +391,20 @@ function devRams(v) {
 function devDust(x, y) { popSmoke(x, y, { tint: 'brown', shade: rint(0, 3), op: 0.5, T: rnd(6, 15), quiet: true }); }
 function devCollapse(sec) {
   const TL = MAP.tiled; sec.alive = false; sec.hp = 0;
-  const bi = MAP.buildings.indexOf(sec.b); if (bi >= 0) MAP.buildings.splice(bi, 1);
-  for (let j = sec.cy; j < sec.cy + sec.ch; j++) for (let i = sec.cx; i < sec.cx + sec.cw; i++) {
+  for (const b of sec.bs) { const bi = MAP.buildings.indexOf(b); if (bi >= 0) MAP.buildings.splice(bi, 1); }
+  secCells(sec, (i, j) => {
     TL.cell[j * TL.sc + i] = C_RUB;
     const cx = (i + 0.5) * SUB, cy = (j + 0.5) * SUB;
     if (!sec.glass && (i + j) % 2 === 0) devDust(cx, cy);    // dust from wall cells on a checkerboard
     if (!sec.glass) for (let q = 0; q < 3; q++) part({ k: 'dust', x: cx + rnd(-6, 6), y: cy + rnd(-6, 6), vx: rnd(-40, 40), vy: rnd(-40, 40), life: rnd(1.4, 2.4), max: 2.4, sz: rnd(14, 26), drag: 1.2 });
     for (let q = 0; q < (sec.glass ? 3 : 5); q++) { const a = rnd(0, TAU), sp = rnd(40, 190); part({ k: 'debris', x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rnd(0.4, 1), max: 1, sz: rnd(2, sec.glass ? 3 : 5), rot: rnd(0, TAU), vr: rnd(-12, 12), drag: 3 }); }
-  }
+  });
   // the cells and everything around them (neighbouring walls may become crumbled ends), then the roof it held up
   devRepaint(sec, 1);
-  if (!sec.glass && TL.roof) { const ks = []; for (let j = sec.cy; j < sec.cy + sec.ch; j++) for (let i = sec.cx; i < sec.cx + sec.cw; i++) ks.push(j * TL.sc + i); repaintRoofAround(ks); devRoofFall(sec); }
+  if (!sec.glass && TL.roof) { const ks = []; secCells(sec, (i, j) => ks.push(j * TL.sc + i)); repaintRoofAround(ks); devRoofFall(sec); }
   devSight(); navDirty = 1;          // the fog's memory isn't reset: out of sight you keep seeing it standing until you look
-  sfx(sec.glass ? 'glass' : 'crumble', sec.b.x + sec.b.w / 2, sec.b.y + sec.b.h / 2);
-  devLog(sec.glass ? 'WINDOW BROKEN' : `WALL ${sec.cw * sec.ch} CELL${sec.cw * sec.ch > 1 ? 'S' : ''} DOWN`, '#ffb060');
+  sfx(sec.glass ? 'glass' : 'crumble', (sec.cx + sec.cw / 2) * SUB, (sec.cy + sec.ch / 2) * SUB);
+  devLog(sec.glass ? 'WINDOW BROKEN' : `WALL ${sec.n} CELL${sec.n > 1 ? 'S' : ''} DOWN`, '#ffb060');
 }
 
 /* ---------------- dummies + TTK ---------------- */
@@ -476,8 +489,15 @@ function devDrawWorld(vw) {
   }
   const bar = (cx, cy, w, f) => { ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(cx - w / 2 - 1, cy - 3, w + 2, 6); ctx.fillStyle = f > 0.5 ? '#7dff7a' : f > 0.25 ? '#ffe08a' : '#ff5a45'; ctx.fillRect(cx - w / 2, cy - 2, w * clamp(f, 0, 1), 4); };
   if (TL && DEV.secs) for (const sec of TL.secs) {
-    if (!sec.alive) continue; const b = sec.b;
-    ctx.strokeStyle = sec.hitT > 0 ? '#ff6040' : sec.glass ? 'rgba(120,200,255,0.8)' : 'rgba(255,224,138,0.7)'; ctx.lineWidth = 1.5 / VZ; ctx.strokeRect(b.x + 1.5, b.y + 1.5, b.w - 3, b.h - 3);
+    if (!sec.alive) continue;
+    ctx.strokeStyle = sec.hitT > 0 ? '#ff6040' : sec.glass ? 'rgba(120,200,255,0.8)' : 'rgba(255,224,138,0.7)'; ctx.lineWidth = 1.5 / VZ;
+    secCells(sec, (i, j) => {     // its outline: the cell edges that face another section or nothing
+      const o = (a, c) => MAP.tiled.sec[c * MAP.tiled.sc + a] !== sec.i || a < 0 || c < 0 || a >= MAP.tiled.sc || c >= MAP.tiled.sr, x = i * SUB, y = j * SUB, e = 1.5, S = SUB; ctx.beginPath();
+      if (o(i, j - 1)) { ctx.moveTo(x, y + e); ctx.lineTo(x + S, y + e); } if (o(i, j + 1)) { ctx.moveTo(x, y + S - e); ctx.lineTo(x + S, y + S - e); }
+      if (o(i - 1, j)) { ctx.moveTo(x + e, y); ctx.lineTo(x + e, y + S); } if (o(i + 1, j)) { ctx.moveTo(x + S - e, y); ctx.lineTo(x + S - e, y + S); }
+      ctx.stroke();
+    });
+    const b = sec.bs.reduce((a, q) => q.w * q.h > a.w * a.h ? q : a);     // bar on its biggest rect
     if (sec.hp < sec.mhp) { bar(b.x + b.w / 2, b.y + b.h / 2, Math.max(14, Math.min(b.w, 40)), sec.hp / sec.mhp); stxt(String(Math.ceil(sec.hp)), b.x + b.w / 2, b.y + b.h / 2 - 9, 8, '#fff', 'center', 'middle', FD); }
   }
   for (const s of M.sol) if (s.dummy && s.alive) { bar(s.x, s.y - 20, 26, s.hp / s.mhp); stxt(String(Math.ceil(s.hp)), s.x, s.y - 28, 8, '#fff', 'center', 'middle', FD); }
