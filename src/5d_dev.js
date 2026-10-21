@@ -289,8 +289,8 @@ function devRoofTile(k, ev) {
   for (const v of M.vehicles) if (v.active && !v.dead && !ev.hit.has(v) && vehCircles(v, _vc).some(([x, y]) => under(x, y))) { ev.hit.add(v); hurtVehicle(v, v.type === 'tank' ? 40 : 120, null); }
 }
 /* the roof over the whole house, walls included (drawn above units and walls). Out of sight: solid, greyed like the rest of
-   the fog. In sight it fades by distance from the eye: gone within ROOF_NEAR, 35% at ROOF_FAR and beyond; seen through glass it keeps 10% more */
-const ROOF_NEAR = 60, ROOF_FAR = 120, roofOp = d => d <= ROOF_NEAR ? 0 : 0.35 * Math.min(1, (d - ROOF_NEAR) / (ROOF_FAR - ROOF_NEAR));
+   the fog. In sight it fades by distance from the eye: gone within ROOF_NEAR, ROOF_CAP at ROOF_FAR and beyond; seen through glass it keeps ROOF_GLASS more */
+const ROOF_NEAR = 60, ROOF_FAR = 120, ROOF_CAP = 0.7, ROOF_GLASS = 0.15, roofOp = d => d <= ROOF_NEAR ? 0 : ROOF_CAP * Math.min(1, (d - ROOF_NEAR) / (ROOF_FAR - ROOF_NEAR));
 function devDrawRoof(vw, x0, y0, x1, y1, fogPolys) {
   const TL = MAP.tiled; if (!TL || !TL.roof) return;
   if (ROOF_TMP.width !== cv.width || ROOF_TMP.height !== cv.height) { ROOF_TMP.width = cv.width; ROOF_TMP.height = cv.height; }
@@ -303,9 +303,9 @@ function devDrawRoof(vw, x0, y0, x1, y1, fogPolys) {
   if (m && m.rc) g.drawImage(m.rc, bx0 * FOGK, by0 * FOGK, bw * FOGK, bh * FOGK, bx0, by0, bw, bh); else g.drawImage(ROOF_C, bx0, by0, bw, bh, bx0, by0, bw, bh);
   if (fogPolys && pw.length) { g.save(); polyPath(g, pw); g.clip(); g.clearRect(bx0, by0, bw, bh); g.drawImage(ROOF_C, bx0, by0, bw, bh, bx0, by0, bw, bh); g.restore(); }   // in sight: in colour
   g.globalCompositeOperation = 'destination-out';
-  // per eye: through glass the roof keeps roofOp(d) + 0.1; seen directly, a second pass takes it down to roofOp(d)
+  // per eye: through glass the roof keeps roofOp(d) + ROOF_GLASS; seen directly, a second pass takes it down to roofOp(d)
   eyes.forEach(([ex, ey], n) => {
-    for (const [P, keep] of [[pw[n], d => Math.min(1, roofOp(d) + 0.1)], [pd[n], d => roofOp(d) / Math.min(1, roofOp(d) + 0.1)]]) {
+    for (const [P, keep] of [[pw[n], d => Math.min(1, roofOp(d) + ROOF_GLASS)], [pd[n], d => roofOp(d) / Math.min(1, roofOp(d) + ROOF_GLASS)]]) {
       const gr = g.createRadialGradient(ex, ey, 0, ex, ey, ROOF_FAR);
       for (let d = 0; d <= ROOF_FAR; d += 10) gr.addColorStop(d / ROOF_FAR, `rgba(0,0,0,${(1 - keep(d)).toFixed(3)})`);
       g.fillStyle = gr; polyPath(g, [P]); g.fill();

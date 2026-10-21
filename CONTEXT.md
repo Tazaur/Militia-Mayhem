@@ -235,3 +235,4 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
   - RESET MAP clears smoke. The rubble tile (sheet cell 2,2) was redrawn in the wall palette.
   - Fog memory covers roofs too. `fogMemory` keeps `m.rc`, a copy of `ROOF_G` that only updates inside the sight polygons; devDrawRoof uses it as the out-of-sight base.
   - devCollapse no longer resets `M.fogMem`, so collapses out of sight stay unseen until looked at.
+- Build 80: roof fade constants are `ROOF_CAP = 0.7` (opacity at 120 px and beyond, was 0.35) and `ROOF_GLASS = 0.15` (extra through glass, was 0.1).
