@@ -256,3 +256,7 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - visPoly points are ordered by their own angle (corner points by the exact corner angle).
 - Build 102: dev panel SIGHT LINES (DEV.sightDbg, devSightDbg): per eye the faces visPoly tests (orange), rays to every vertex, the outline (cyan), hits (white) and exact corners (yellow, [x, y, 1]); visPoly returns P.faces.
 - Build 104: visPoly rebuilt on the vertex rules: every corner of each solid shape (sight rects, wrecks) clipped to the view box (clipBox; where a wall crosses the box edge is a corner) + the box's 4 corners gets one ray; dropped if something is hit more than VIS_TOL (1 px) short of it; an outer corner (shape wholly to one side of the ray) extends past it to the next other-shape face or box edge (unless another shape touches it within 1 px); corner + extension are one unit in the angle sort (far point first when the shape lies further round). No pad on points: each outline edge lying on a wall face (geometric, 0.5 px) gets a strip pad px into the wall (P.strips); polyPath draws polygon + strips, all wound positive (pathPos). ~28-64 points per eye (was ~160-260).
+
+## Build 105
+- Wall strips go half way into the wall (pad SUB/2); corners where the outline turns between two faces get a square, so corner walls show in sight.
+- Out of sight a tiled house is remembered as its whole roof (ROOF_C stamped into memory): no walls under it, no ROOF_NEAR/FAR fade. roofView is only the live, faded roof in sight.

@@ -75,9 +75,15 @@ function visPoly(ex, ey, box, walls, pad) {
   // the strips: an outline edge whose two ends lie on the same wall face
   // (geometric: a corner of one wall can sit on another wall's face)
   const strips = [], on = (v, f) => { const sx = f[2] - f[0], sy = f[3] - f[1], L2 = sx * sx + sy * sy || 1, t = clamp(((v[0] - f[0]) * sx + (v[1] - f[1]) * sy) / L2, 0, 1); return Math.hypot(f[0] + sx * t - v[0], f[1] + sy * t - v[1]) < 0.5; };
+  const EF = [];       // the wall face each outline edge runs along (or none)
   for (let i = 0; i < P.length; i++) {
-    const a = P[i], b = P[(i + 1) % P.length], f = [a[3], a[4], b[3], b[4]].find(f => f && f[5] && on(a, f) && on(b, f)) || segs.find(f => f[5] && on(a, f) && on(b, f)); if (!f) continue;
+    const a = P[i], b = P[(i + 1) % P.length], f = [a[3], a[4], b[3], b[4]].find(f => f && f[5] && on(a, f) && on(b, f)) || segs.find(f => f[5] && on(a, f) && on(b, f)); EF.push(f || null); if (!f) continue;
     const k = f[5]; strips.push([[a[0], a[1]], [b[0], b[1]], [b[0] - f[6] * k, b[1] - f[7] * k], [a[0] - f[6] * k, a[1] - f[7] * k]]);
+  }
+  // where the outline turns from one wall face to another (a room's corner), the square between their strips too
+  for (let i = 0; i < P.length; i++) {
+    const f = EF[(i + P.length - 1) % P.length], g = EF[i], v = P[i]; if (!f || !g || f === g || Math.abs(f[6] * g[7] - f[7] * g[6]) < 0.5) continue;
+    const k = Math.min(f[5], g[5]), [x, y] = v; strips.push([[x, y], [x - f[6] * k, y - f[7] * k], [x - (f[6] + g[6]) * k, y - (f[7] + g[7]) * k], [x - g[6] * k, y - g[7] * k]]);
   }
   const out = P.map(v => v[2] ? [v[0], v[1], 1] : [v[0], v[1]]); out.strips = strips; out.faces = segs;   // [x, y, 1] = a corner
   return out;
@@ -108,18 +114,19 @@ function fogCanvases() {
   }
 }
 /* draws the remembered world for the whole view, then clips everything after it to what's in sight (the hard layer:
-   walls and wrecks). rv: this frame's roofs as you see them (roofView), remembered with the ground under them.
+   walls and wrecks). In the dev yard the roof is remembered over the ground: whole, as it stands (ROOF_C), so out of
+   sight a house is only ever its roof as you last saw it, never its walls or a fade.
    Returns the sight polygons (caller restores the clip), or null when vision is off. */
-function applyFog(vw, vis, x0, y0, x1, y1, rv) {
+function applyFog(vw, vis, x0, y0, x1, y1) {
   vw._fog = null;
   const eyes = fogEyes(vw); if (!eyes.length) return null;
-  const box = [x0 - 16, y0 - 16, x1 + 16, y1 + 16], polys = eyes.map(([x, y]) => visPoly(x, y, box, null, MAP.tiled ? SUB : 5)), m = fogMemory(vw);   // dev yard: a whole cell in, so the wall you look at shows
+  const box = [x0 - 16, y0 - 16, x1 + 16, y1 + 16], polys = eyes.map(([x, y]) => visPoly(x, y, box, null, MAP.tiled ? SUB / 2 : 5)), m = fogMemory(vw);   // dev yard: strips half a wall deep, so the wall you look at shows
   // remember what is in sight now, roofs and all
   const bx0 = Math.max(0, Math.floor(x0)), by0 = Math.max(0, Math.floor(y0)), bx1 = Math.min(WW, Math.ceil(x1)), by1 = Math.min(WH, Math.ceil(y1)), bw = bx1 - bx0, bh = by1 - by0;
   if (bw > 0 && bh > 0) {
     m.g.save(); m.g.setTransform(FOGK, 0, 0, FOGK, 0, 0); polyPath(m.g, polys); m.g.clip();
     m.g.drawImage(ground, bx0, by0, bw, bh, bx0, by0, bw, bh); m.g.drawImage(decals, bx0, by0, bw, bh, bx0, by0, bw, bh);
-    if (rv) m.g.drawImage(rv.c, 0, 0, rv.w, rv.h, rv.x, rv.y, rv.w, rv.h);
+    if (MAP.tiled && MAP.tiled.roof) m.g.drawImage(ROOF_C, bx0, by0, bw, bh, bx0, by0, bw, bh);
     m.g.restore();
   }
   const seen = (x, y) => polys.some(P => inPoly(x, y, P)) && eyes.some(([ex, ey]) => 1 - softOcc(ex, ey, x, y) >= SIGHT_MIN);

@@ -291,8 +291,8 @@ function devRoofTile(k, ev) {
   for (const v of M.vehicles) if (v.active && !v.dead && !ev.hit.has(v) && vehCircles(v, _vc).some(([x, y]) => under(x, y))) { ev.hit.add(v); hurtVehicle(v, v.type === 'tank' ? 40 : 120, null); }
 }
 /* the roof over the whole house, walls included, as the eyes of this view see it: gone within ROOF_NEAR, fading in to
-   ROOF_CAP at ROOF_FAR and beyond. A world-space region (rv.x, rv.y, rv.w, rv.h) drawn in sight above units and walls,
-   and remembered with the ground under it, so out of sight you see the roof as you last saw it (applyFog) */
+   ROOF_CAP at ROOF_FAR and beyond. A world-space region (rv.x, rv.y, rv.w, rv.h) drawn in sight above units and walls.
+   (Out of sight the memory holds the whole roof, unfaded: applyFog) */
 const ROOF_NEAR = 100, ROOF_FAR = 200, ROOF_CAP = 0.7, roofOp = d => d <= ROOF_NEAR ? 0 : ROOF_CAP * Math.min(1, (d - ROOF_NEAR) / (ROOF_FAR - ROOF_NEAR));
 function roofView(vw, x0, y0, x1, y1) {
   const TL = MAP.tiled; if (!TL || !TL.roof) return null;
@@ -481,7 +481,7 @@ function devTick(dt) {
 function devSightDbg(vw, x0, y0, x1, y1) {
   const box = [x0 - 16, y0 - 16, x1 + 16, y1 + 16], k = 1 / VZ;
   for (const o of viewSols(vw).map(posOf)) {
-    const P = visPoly(o.x, o.y, box, null, MAP.tiled ? SUB : 5);
+    const P = visPoly(o.x, o.y, box, null, MAP.tiled ? SUB / 2 : 5);
     ctx.lineWidth = 2 * k; ctx.beginPath();
     for (const q of P.faces) if (q[4]) { ctx.moveTo(q[0], q[1]); ctx.lineTo(q[2], q[3]); }
     ctx.strokeStyle = 'rgba(255,150,40,0.9)'; ctx.stroke();

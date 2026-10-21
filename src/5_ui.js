@@ -11,7 +11,7 @@ function drawWorld(vw) {
   screenT(); ctx.save(); ctx.beginPath(); ctx.rect(vw.x, vw.y, vw.w, vw.h); ctx.clip();
   ctx.fillStyle = '#0c140a'; ctx.fillRect(vw.x, vw.y, vw.w, vw.h);
   worldT(); ctx.imageSmoothingEnabled = false;
-  const rv = MAP.tiled ? roofView(vw, x0, y0, x1, y1) : null, fogPolys = applyFog(vw, vis, x0, y0, x1, y1, rv), fogged = !!fogPolys;
+  const rv = MAP.tiled ? roofView(vw, x0, y0, x1, y1) : null, fogPolys = applyFog(vw, vis, x0, y0, x1, y1), fogged = !!fogPolys;
   // ---- layer 0: ground + fading footprints
   drawSkirt(x0, y0, x1, y1);
   const gx0 = Math.max(0, Math.floor(x0)), gy0 = Math.max(0, Math.floor(y0)), gx1 = Math.min(WW, Math.ceil(x1)), gy1 = Math.min(WH, Math.ceil(y1));
