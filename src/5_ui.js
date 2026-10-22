@@ -200,32 +200,39 @@ function drawSmokes(vis, vw) {
   }
   ctx.globalAlpha = 1;
 }
-/* the grid smoke field: a pixel per tile over the view, drawn GS times bigger and smoothed, so a tile blends half a
-   tile (8 px) into its neighbours; first its shade on what's under it (offset, dark), then the smoke. Each tile's grey
-   drifts slowly (two slow waves, phase from the tile); thinned near the eyes like the clouds */
-const SMK_VIS = 3;     // how solid a tile looks: 1 - e^(-SMK_VIS x amount), as light through haze (0.3: 60 %, 0.5: 78 %, 1: 95 %)
+/* the grid smoke field, drawn in the clouds' soft puffs: one on every other tile (a checkerboard; a tile off it gets
+   its own when no neighbour has one), as thick as the tile (1 - e^(-SMK_VIS x amount), as light through haze) and
+   SMK_PUFF tiles in radius, SMK_GROW more per tile of room round it (f.R), less when thin. So the grid says where the
+   smoke is and the puffs make it round and smooth. They go into SMK_C, the walls are cut out of it (a puff never
+   reaches past the wall beyond it, so a room keeps its smoke), and it's drawn twice: dark and offset as its shade,
+   then the smoke. Each puff drifts and breathes slowly (phase from the tile); thinned near the eyes like the clouds */
+const SMK_VIS = 3, SMK_PUFF = 1.5, SMK_GROW = 0.9, SMK_PAD = 5;     // SMK_PAD: tiles past the view whose puffs can reach in
 const SMK_C = document.createElement('canvas'), SMK_SH = document.createElement('canvas');
 function drawSmokeField(vw, eyes) {
   const f = M.gsf, [n0, n1] = SIGHT_NEAR, V = vw ? [(vw.x - VOX) / VZ, (vw.y - VOY) / VZ, (vw.x + vw.w - VOX) / VZ, (vw.y + vw.h - VOY) / VZ].map(v => v / GS) : [-1e9, -1e9, 1e9, 1e9];
-  const i0 = Math.max(f.box[0] - 1, Math.floor(V[0]) - 1), j0 = Math.max(f.box[1] - 1, Math.floor(V[1]) - 1), i1 = Math.min(f.box[2] + 1, Math.ceil(V[2]) + 1), j1 = Math.min(f.box[3] + 1, Math.ceil(V[3]) + 1), w = i1 - i0, h = j1 - j0;
-  if (w <= 0 || h <= 0) return;
-  if (SMK_C.width < w || SMK_C.height < h) { SMK_C.width = SMK_SH.width = Math.max(w, SMK_C.width); SMK_C.height = SMK_SH.height = Math.max(h, SMK_C.height); SMK_C.im = SMK_SH.im = null; }
-  const g = SMK_C.getContext('2d'), gs = SMK_SH.getContext('2d'), Wc = SMK_C.width;
-  const im = SMK_C.im || (SMK_C.im = g.createImageData(SMK_C.width, SMK_C.height)), sm = SMK_SH.im || (SMK_SH.im = gs.createImageData(SMK_C.width, SMK_C.height)), d = im.data, e = sm.data;
-  d.fill(0); e.fill(0);     // all of it: smoothing reads past the drawn part's edge, so stale pixels there would show as a line
-  const T = M.time;
+  if (f.dirty) smokeSolid(f);
+  const i0 = Math.max(f.box[0] - SMK_PAD, Math.floor(V[0]) - SMK_PAD), j0 = Math.max(f.box[1] - SMK_PAD, Math.floor(V[1]) - SMK_PAD), i1 = Math.min(f.box[2] + SMK_PAD, Math.ceil(V[2]) + SMK_PAD), j1 = Math.min(f.box[3] + SMK_PAD, Math.ceil(V[3]) + SMK_PAD);
+  const X0 = i0 * GS, Y0 = j0 * GS, pw = (i1 - i0) * GS, ph = (j1 - j0) * GS;
+  if (pw <= 0 || ph <= 0) return;
+  if (SMK_C.width < pw || SMK_C.height < ph) { SMK_C.width = SMK_SH.width = Math.max(pw, SMK_C.width); SMK_C.height = SMK_SH.height = Math.max(ph, SMK_C.height); }
+  const g = SMK_C.getContext('2d'), gs = SMK_SH.getContext('2d'), { W, A, B, R } = f, T = M.time;
+  g.setTransform(1, 0, 0, 1, -X0, -Y0); g.globalCompositeOperation = 'source-over'; g.clearRect(X0, Y0, pw, ph);
   for (const k of f.act) {
-    const i = k % f.W - i0, j = ((k - k % f.W) / f.W) - j0; if (i < 0 || j < 0 || i >= w || j >= h) continue;
-    const a = f.A[k], den = 1 - Math.exp(-SMK_VIS * a), fb = f.B[k] / a, ph = ((k * 2654435761) >>> 0) / 4294967296 * TAU, x = (k % f.W + 0.5) * GS, y = (j + j0 + 0.5) * GS;
-    let thin = 1; for (const o of eyes) thin *= SMOKE_KEEP + (1 - SMOKE_KEEP) * clamp((Math.hypot(x - o.x, y - o.y) - n0) / (n1 - n0), 0, 1);
-    const t = 176 + 14 * Math.sin(T * 0.45 + ph) + 8 * Math.sin(T * 0.19 + ph * 2.7), o = (j * Wc + i) * 4;
-    d[o] = t * (1 - 0.2 * fb); d[o + 1] = t * (1 - 0.36 * fb); d[o + 2] = t * (1 - 0.52 * fb) - 3; d[o + 3] = den * 250 * thin;
-    e[o + 3] = den * 70;
+    const i = k % W, j = (k - i) / W; if (i < i0 || j < j0 || i >= i1 || j >= j1) continue;
+    if ((i + j) & 1 && (A[k + 1] > 0 || A[k - 1] > 0 || A[k + W] > 0 || A[k - W] > 0)) continue;
+    const a = A[k], den = 1 - Math.exp(-SMK_VIS * a), fb = B[k] / a, h = ((k * 2654435761) >>> 0) / 4294967296, p = h * TAU;
+    const x = (i + 0.5) * GS + Math.sin(T * 0.35 + p) * 3, y = (j + 0.5) * GS + Math.cos(T * 0.27 + p) * 3, r = GS * (SMK_PUFF + SMK_GROW * R[k]) * (0.6 + 0.4 * den);
+    let al = den * (0.85 + 0.15 * Math.sin(T * 0.45 + p)); for (const o of eyes) al *= SMOKE_KEEP + (1 - SMOKE_KEEP) * clamp((Math.hypot(x - o.x, y - o.y) - n0) / (n1 - n0), 0, 1);
+    const s = (h * 16 | 0) % 4, v = (h * 64 | 0) & 1, k2 = v ? 0.7 : 1;
+    if (fb < 0.98) { g.globalAlpha = al * k2 * (1 - fb); g.drawImage(SPR.puffs.grey[s][v], x - r, y - r, r * 2, r * 2); }
+    if (fb > 0.02) { g.globalAlpha = al * k2 * fb; g.drawImage(SPR.puffs.brown[s][v], x - r, y - r, r * 2, r * 2); }
   }
-  g.putImageData(im, 0, 0); gs.putImageData(sm, 0, 0);
-  ctx.globalAlpha = 1; ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'low';
-  ctx.drawImage(SMK_SH, 0, 0, w, h, i0 * GS + 4, j0 * GS + 6, w * GS, h * GS);
-  ctx.drawImage(SMK_C, 0, 0, w, h, i0 * GS, j0 * GS, w * GS, h * GS); ctx.imageSmoothingEnabled = false;
+  g.globalAlpha = 1; g.globalCompositeOperation = 'destination-out'; g.beginPath();     // the walls and intact windows: smoke stays out of them, and what's beyond
+  for (const b of MAP.buildings) if (b.x < X0 + pw && b.x + b.w > X0 && b.y < Y0 + ph && b.y + b.h > Y0 && !(b.glass && b.sec && b.sec.hp < b.sec.mhp)) g.rect(b.x, b.y, b.w, b.h);
+  g.fill(); g.globalCompositeOperation = 'source-over';
+  gs.globalCompositeOperation = 'copy'; gs.drawImage(SMK_C, 0, 0, pw, ph, 0, 0, pw, ph); gs.globalCompositeOperation = 'source-in'; gs.fillStyle = '#000'; gs.fillRect(0, 0, pw, ph); gs.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 0.28; ctx.drawImage(SMK_SH, 0, 0, pw, ph, X0 + 4, Y0 + 6, pw, ph);
+  ctx.globalAlpha = 1; ctx.drawImage(SMK_C, 0, 0, pw, ph, X0, Y0, pw, ph);
 }
 /* a wreck: solid cover, then gone over its last 2 s (also drawn into the remembered view) */
 function drawWreck(w) {

@@ -286,3 +286,6 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 
 ## Build 117
 - Grid smoke tile alpha follows haze, 1 - e^(-SMK_VIS x amount) with SMK_VIS 3 (0.3: 60%, 0.5: 78%, 1: 95%), instead of linear in amount. LoS sums along the line, so thin-looking tiles used to block sight while the soft fog showed floor and sandbags through them.
+
+## Build 118
+- Grid smoke drawn as soft puffs (the clouds' sprites) instead of a tile image: one per checkerboard tile (an off tile gets one when no neighbour has smoke), radius SMK_PUFF 1.5 tiles + SMK_GROW 0.9 per tile of room (f.R, Chebyshev distance to the nearest solid tile less one, capped 3, built in smokeSolid), scaled 0.6-1 by thickness. Walls/intact windows cut out of the puff canvas; the radius rule keeps a puff short of the far side of any wall. Shade = the puff canvas blacked, 0.28 alpha, offset (4, 6). 40 dusts: drawWorld about 1.6 ms (0.5 without).

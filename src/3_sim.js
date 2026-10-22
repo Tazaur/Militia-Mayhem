@@ -686,13 +686,21 @@ function smokeField() {
   if (f.dirty) smokeSolid(f);
   return f;
 }
-/* the tiles smoke can't enter (1: a wall, an intact window) or only seeps into (2: a cracked window), by tile centre */
+/* the tiles smoke can't enter (1: a wall, an intact window) or only seeps into (2: a cracked window), by tile centre;
+   and f.R, each tile's room: the open tiles between it and the nearest wall or window (square rings, at most 3) */
 function smokeSolid(f) {
   f.S.fill(0); f.dirty = 0;
   for (const b of MAP.buildings) {
     const v = b.glass && b.sec && b.sec.hp < b.sec.mhp ? 2 : 1, i1 = Math.min(f.W, Math.ceil((b.x + b.w - GS / 2) / GS)), j1 = Math.min(f.H, Math.ceil((b.y + b.h - GS / 2) / GS));
     for (let j = Math.max(0, Math.round(b.y / GS)); j < j1; j++) for (let i = Math.max(0, Math.round(b.x / GS)); i < i1; i++) f.S[j * f.W + i] = v;
   }
+  const { W, H, S } = f, R = f.R || (f.R = new Uint8Array(W * H));     // distance to the nearest solid tile, two passes (capped at 4), less one
+  for (let k = 0; k < R.length; k++) R[k] = S[k] ? 0 : 4;
+  for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) { const k = j * W + i; let d = R[k]; if (!d) continue;
+    if (i > 0) d = Math.min(d, R[k - 1] + 1); if (j > 0) { d = Math.min(d, R[k - W] + 1); if (i > 0) d = Math.min(d, R[k - W - 1] + 1); if (i + 1 < W) d = Math.min(d, R[k - W + 1] + 1); } R[k] = d; }
+  for (let j = H - 1; j >= 0; j--) for (let i = W - 1; i >= 0; i--) { const k = j * W + i; let d = R[k]; if (!d) continue;
+    if (i + 1 < W) d = Math.min(d, R[k + 1] + 1); if (j + 1 < H) { d = Math.min(d, R[k + W] + 1); if (i + 1 < W) d = Math.min(d, R[k + W + 1] + 1); if (i > 0) d = Math.min(d, R[k + W - 1] + 1); } R[k] = d; }
+  for (let k = 0; k < R.length; k++) R[k] = R[k] ? R[k] - 1 : 0;
 }
 /* an emitter: amt of smoke (brown: dust) let out into the tile at (x, y), or the nearest open one round it */
 function smokeEmit(x, y, amt, brown) {
