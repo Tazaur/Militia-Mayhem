@@ -21,7 +21,7 @@ setImmediate(()=>{
   press(0,4); press(0,4); press(0,13); console.log('slotSel',G.PLAYERS[0].slotSel); press(0,15); console.log('sec ->',me.sec); press(0,13); press(0,15); console.log('nt ->',me.nt);
   press(0,0); console.log('deployed',me.alive,'kit',G.KITS[me.kit].n,'weapons',me.w.map(w=>w.id).join('+'),'frag',me.nades,'smoke',me.smokes);
   me.protect=0; press(0,13); console.log('map open',!!G.PLAYERS[0].mapOpen); press(0,13); console.log('map closed',!G.PLAYERS[0].mapOpen);
-  press(0,15); console.log('throwSel',me.throwSel); press(0,5); step(120); console.log('smokes on field',G.M.smokes.length,'smoke left',me.smokes);
+  press(0,15); console.log('throwSel',me.throwSel); press(0,5); step(120); console.log('smoke on field',!!(G.M.gsf&&(G.M.gsf.act.length||G.M.gsf.em.length)),'smoke left',me.smokes);
   { const foe=G.M.sol.find(o=>o.team!==me.team&&o.alive); foe.x=me.x+60; foe.y=me.y; G.kill(me, foe, 'bullet', 1, 0, 'AR'); step(3);
     const vw=G.M.views.find(v=>v.p===G.PLAYERS[0]); console.log('dead, deathT',me.deathT.toFixed(2),'killer',me.killer&&me.killer.name);
     foe.alive=false; step(70); console.log('cam near killer last spot',Math.hypot(vw.cam.x-me.killer.x,vw.cam.y-me.killer.y).toFixed(0),'deathT',me.deathT.toFixed(2));

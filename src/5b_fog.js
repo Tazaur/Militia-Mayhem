@@ -180,26 +180,11 @@ function pathPos(g, P) {
   P.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath();
 }
 /* one eye's soft occlusion as alpha on mask g (world transform set), the same sums softOcc makes:
-   smoke ring by ring (SMOKE_RINGS): a ring's shadow is everything whose sight line passes within it, the disc plus the
-   cone behind it between the tangents from the eye (inside a ring: the whole view), thinned close to the eye (SIGHT_NEAR);
+   the smoke field (fieldMask), thinned close to the eye (SIGHT_NEAR);
    then each window, GLASS_OCC over itself and everything behind it (only windows in the view box: one outside it shadows
    only what's further out). Layers add (lighter). Returns whether anything. */
 function softMask(g, ex, ey, box) {
   const FAR = 5000; let any = false; g.fillStyle = '#fff'; g.globalCompositeOperation = 'lighter';
-  for (const c of M.smokes) {
-    const s = smokeStr(c); if (!s || c.r < 1) continue; any = true;
-    const d = Math.hypot(c.x - ex, c.y - ey), a0 = Math.atan2(c.y - ey, c.x - ex); let prev = 0;
-    for (const [f, v] of SMOKE_RINGS) {
-      const rho = f * c.r; g.globalAlpha = s * (v - prev); prev = v; g.beginPath();
-      if (d <= rho) g.rect(ex - FAR, ey - FAR, FAR * 2, FAR * 2);
-      else {
-        const h = Math.asin(rho / d), tl = Math.sqrt(d * d - rho * rho);
-        pathPos(g, [[a0 + h, tl], [a0 + h, FAR], [a0 - h, FAR], [a0 - h, tl]].map(([t, l]) => [ex + Math.cos(t) * l, ey + Math.sin(t) * l]));
-        g.moveTo(c.x + rho, c.y); g.arc(c.x, c.y, rho, 0, TAU);
-      }
-      g.fill();
-    }
-  }
   if (M.gsf && M.gsf.act.length) any = fieldMask(g, ex, ey, box) || any;
   if (any) {   // close to the eye smoke thins out: keep (d - near0) / (near1 - near0) of it
     const [n0, n1] = SIGHT_NEAR, hb = g.createRadialGradient(ex, ey, 0, ex, ey, n1); hb.addColorStop(0, 'rgba(0,0,0,1)'); hb.addColorStop(n0 / n1, 'rgba(0,0,0,1)'); hb.addColorStop(1, 'rgba(0,0,0,0)');
@@ -218,7 +203,7 @@ function softMask(g, ex, ey, box) {
   return any;
 }
 /* the grid smoke field on the mask: each tile of the box gets fieldOcc of the sight line to its centre, drawn a tile a
-   pixel and smoothed (added, like the clouds). Lines that miss the smoke's tiles cost next to nothing */
+   pixel and smoothed (added to the mask). Lines that miss the smoke's tiles cost next to nothing */
 const SMK_M = document.createElement('canvas');
 function fieldMask(g, ex, ey, box) {
   const i0 = Math.floor(box[0] / GS), j0 = Math.floor(box[1] / GS), w = Math.ceil(box[2] / GS) - i0 + 1, h = Math.ceil(box[3] / GS) - j0 + 1;

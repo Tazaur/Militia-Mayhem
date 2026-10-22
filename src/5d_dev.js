@@ -17,7 +17,7 @@ const ROOM_MIN = 36, ROOM_SIDE = 5, SEC_MAX = 6;
 /* ramming, per unit of speed: damage to the wall, damage to the vehicle, speed kept; a tank always hits at least min */
 const RAM = { tank: { wall: 2.6, self: 0.15, keep: 0.8, min: 50, go: 12 }, jeep: { wall: 0.45, self: 1, keep: 0.15, min: 0, go: 25 } };
 const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];          // up, right, down, left
-const DEV = { roofQ: [], open: true, god: false, ammo: true, respawn: true, grid: true, secs: true, sightDbg: false, gridSmoke: false, smokeDbg: false, range: 6, sel: 1, padNav: false, log: [], nums: [], lastA: 0, over: false, B: [], R: null, seed: 1 };
+const DEV = { roofQ: [], open: true, god: false, ammo: true, respawn: true, grid: true, secs: true, sightDbg: false, smokeDbg: false, range: 6, sel: 1, padNav: false, log: [], nums: [], lastA: 0, over: false, B: [], R: null, seed: 1 };
 const DEV_RANGES = [2, 4, 6, 8, 10, 15, 20, 30];
 /* structural damage per blast, keyed by blast radius: rocket 62, tank shell 78, frag 88; anything else x1 */
 const STRUCT_K = { 62: 1.6, 78: 2, 88: 0.35 };
@@ -389,7 +389,7 @@ function devRams(v) {
   }
 }
 /* collapse dust: a smoke grenade's cloud, brown in a random shade, half opacity, 6-15 s */
-function devDust(x, y) { popSmoke(x, y, { tint: 'brown', shade: rint(0, 3), op: 0.5, T: rnd(6, 15), quiet: true }); }
+function devDust(x, y) { popSmoke(x, y, { dust: true, T: rnd(6, 15), quiet: true }); }
 function devCollapse(sec) {
   const TL = MAP.tiled; sec.alive = false; sec.hp = 0;
   for (const b of sec.bs) { const bi = MAP.buildings.indexOf(b); if (bi >= 0) MAP.buildings.splice(bi, 1); }
@@ -452,7 +452,7 @@ function devClearVehicles() {
   M.vehicles = M.vehicles.filter(v => !v.gone); M.wrecks.length = 0; navDirty = 1;
 }
 function devResetMap() {
-  buildDevMap(); MAP.statics.forEach((s, i) => s.idx = i); paintGround(); buildNav(); M.fogMem = null; M.wrecks.length = 0; M.smokes.length = 0; M.gsf = null;
+  buildDevMap(); MAP.statics.forEach((s, i) => s.idx = i); paintGround(); buildNav(); M.fogMem = null; M.wrecks.length = 0; M.gsf = null;
   for (const sp of MAP.vehSpawns) if (!M.vehicles.some(v => v.sp.type === sp.type && !v.sp.dev)) M.vehicles.push(makeVehicle(sp));
   for (const s of M.sol) if (s.alive && !s.veh && solidAt(s.x, s.y, 4)) [s.x, s.y] = freeSpot(s.x, s.y);
   devLog('MAP RESET', '#ffe08a');
@@ -495,18 +495,18 @@ function devSightDbg(vw, x0, y0, x1, y1) {
   }
 }
 /* SMOKE VALUES: each grid smoke tile in view tinted by its amount, the scale moving with what's in view: the thinnest
-   tile blue, the thickest red (log between, so the thin edge doesn't all read as one colour), with the amount on it
-   once tiles are big enough on screen to read */
+   tile blue, the thickest red (log between, so the thin edge doesn't all read as one colour), with the amount on it */
 function devSmokeDbg(vw) {
   const f = M.gsf; if (!f || !f.act.length) return;
-  const x0 = (vw.x - VOX) / VZ / GS + SMK_OUT - 1, y0 = (vw.y - VOY) / VZ / GS + SMK_OUT - 1, x1 = x0 + vw.w / VZ / GS + 2, y1 = y0 + vw.h / VZ / GS + 2, num = GS * VZ >= 18;
+  const x0 = (vw.x - VOX) / VZ / GS + SMK_OUT - 1, y0 = (vw.y - VOY) / VZ / GS + SMK_OUT - 1, x1 = x0 + vw.w / VZ / GS + 2, y1 = y0 + vw.h / VZ / GS + 2, fs = clamp(11 / VZ, 4, 7), sh = 1 / VZ;     // about 11 px on screen, never wider than a tile; a 1 px shadow
   const ks = f.act.filter(k => { const i = k % f.W, j = (k - i) / f.W; return i >= x0 && j >= y0 && i <= x1 && j <= y1; }); if (!ks.length) return;
   let lo = Infinity, hi = 0; for (const k of ks) { lo = Math.min(lo, f.A[k]); hi = Math.max(hi, f.A[k]); }
   const span = Math.log(hi / lo) || 1;
   for (const k of ks) {
     const i = k % f.W, j = (k - i) / f.W, a = f.A[k], x = (i - SMK_OUT) * GS, y = (j - SMK_OUT) * GS, t = Math.log(a / lo) / span;
     ctx.fillStyle = `hsla(${240 * (1 - t)},100%,50%,0.45)`; ctx.fillRect(x, y, GS, GS);
-    if (num) stxt(a < 0.995 ? a.toFixed(2).slice(1) : a < 9.95 ? a.toFixed(1) : String(Math.round(a)), x + GS / 2, y + GS / 2, 6, '#fff', 'center', 'middle', FD);
+    const v = a < 0.995 ? a.toFixed(2).slice(1) : a < 9.95 ? a.toFixed(1) : String(Math.round(a));
+    txt(v, x + GS / 2 + sh, y + GS / 2 + sh, fs, '#000', 'center', 'middle', FB); txt(v, x + GS / 2, y + GS / 2, fs, '#fff', 'center', 'middle', FB);
   }
 }
 function devDrawWorld(vw) {
@@ -566,8 +566,8 @@ function devDrawPanel() {
   let y = y0 + 34 * u;
   const head = t => { txt(t, L, y + 8 * u, 10 * u, 'rgba(255,224,138,0.8)', 'left', 'middle', FD); y += 18 * u; };
   const row = (a, b) => { if (a) btn(...a.slice(0, 2), L, y, b ? cw2 : cw2 * 2 + gap, a[2], a[3]); if (b) btn(...b.slice(0, 2), R2, y, cw2, b[2]); y += rh + gap; };
-  // measure first so the backdrop fits
-  const H0 = 34 * u + 18 * u * 4 + (rh + gap) * 9 + Math.min(DEV.log.length, 9) * 15 * u + 16 * u;
+  // the backdrop fits what was laid out last frame (DEV.ph, in u), so it grows with any row added
+  const H0 = (DEV.ph || 560) * u;
   ctx.fillStyle = 'rgba(6,10,5,0.86)'; ctx.fillRect(x0, y0, pw, H0); ctx.strokeStyle = 'rgba(255,224,138,0.5)'; ctx.strokeRect(x0 + 0.5, y0 + 0.5, pw - 1, H0 - 1);
   DEV.R = { x: x0, y: y0, w: pw, h: H0 };
   stxt('DEV TOOLS', L, y0 + 18 * u, 15 * u, '#ffe08a', 'left', 'middle', FD);
@@ -581,14 +581,13 @@ function devDrawPanel() {
   row(['GOD MODE', () => DEV.god = !DEV.god, DEV.god], ['INF AMMO', () => DEV.ammo = !DEV.ammo, DEV.ammo]);
   row(['DUMMY RESPAWN', () => DEV.respawn = !DEV.respawn, DEV.respawn], ['LINE OF SIGHT', () => M.cfg.fog = M.cfg.fog === 'off' ? 'los' : 'off', M.cfg.fog !== 'off']);
   row(['GRID', () => DEV.grid = !DEV.grid, DEV.grid], ['SECTIONS', () => DEV.secs = !DEV.secs, DEV.secs]);
-  row(['SIGHT LINES', () => DEV.sightDbg = !DEV.sightDbg, DEV.sightDbg]);
-  row(['GRID SMOKE', () => DEV.gridSmoke = !DEV.gridSmoke, DEV.gridSmoke]);
-  row(['SMOKE VALUES', () => DEV.smokeDbg = !DEV.smokeDbg, DEV.smokeDbg]);
+  row(['SIGHT LINES', () => DEV.sightDbg = !DEV.sightDbg, DEV.sightDbg], ['SMOKE VALUES', () => DEV.smokeDbg = !DEV.smokeDbg, DEV.smokeDbg]);
   head('WORLD');
   row(['RESET MAP', devResetMap], ['HEAL ME', devHeal]);
   row(['NEW HOUSES', () => { DEV.seed++; devResetMap(); }], ['CLEAR LOG', () => DEV.log.length = 0]);
   head('LOG');
   for (const l of DEV.log) { txt(l.text, L, y + 6 * u, 10 * u, l.c, 'left', 'middle', FD); y += 15 * u; }
+  DEV.ph = (y + 4 * u - y0) / u;
 }
 /* pointerdown on the panel: run the button, swallow the click (true); a tap off the open panel closes it */
 function devClick(x, y, touch) {

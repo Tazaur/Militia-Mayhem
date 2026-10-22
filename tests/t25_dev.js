@@ -82,14 +82,13 @@ setImmediate(()=>{
     const S=T2.secs.filter(s=>!s.glass).map(s=>[s,[...Array(N).keys()].filter(k=>T2.roof[k]===1&&T2.rsec[k]===s.i)]).filter(q=>q[1].some(k=>T2.cell[k]===1)).sort((a,b)=>b[1].length-a[1].length)[0];
     const [sec,ks]=S, other=rf-ks.length, dd=M.sol.find(s=>s.dummy&&s.alive), k0=ks.find(k=>T2.cell[k]===1);
     dd.x=(k0%sc+0.5)*16; dd.y=(((k0/sc)|0)+0.5)*16; dd.hp=dd.mhp; dd.ttk=null;
-    const sm0=M.smokes.length, far=ks.reduce((m,k)=>T2.rdist[k]>T2.rdist[m]?k:m,ks[0]);
+    M.gsf=null; const far=ks.reduce((m,k)=>T2.rdist[k]>T2.rdist[m]?k:m,ks[0]);
     G.devDamage(sec,9999,0,0); step(2);
     ok(T2.rdist[far]>=4,'patch is several tiles deep '+T2.rdist[far]); ok(T2.roof[far]===1&&ks.some(k=>T2.roof[k]===2),'cascade: near tiles first, far tiles still up');
     step(Math.ceil(T2.rdist[far]*0.07*60)+10);
     let wd=0; for(let j=sec.cy;j<sec.cy+sec.ch;j++)for(let i=sec.cx;i<sec.cx+sec.cw;i++) if((i+j)%2===0) wd++;
-    const dusty=wd+ks.filter(k=>k%sc%2===0&&((k/sc)|0)%2===0).length, nc=M.smokes.slice(sm0);
-    ok(nc.length>=dusty*0.9&&nc.length<=dusty&&nc.length<ks.length*0.5,'dust: wall checkerboard + roof even/even '+nc.length+'/'+dusty+' of '+ks.length);
-    ok(nc.every(c=>c.tint==='brown'&&c.op===0.5&&c.T>=6&&c.T<=15)&&new Set(nc.map(c=>c.T)).size>1,'brown, half opacity, 6-15 s'); ok(new Set(nc.map(c=>c.shade)).size>1,'dust shades vary');
+    const F=M.gsf; let dB=0,dA=0; if(F){ for(const k of F.act){dA+=F.A[k];dB+=F.B[k];} for(const e of F.em){dA+=e[1];if(e[2])dB+=e[1];} }
+    ok(F&&dB>wd&&Math.abs(dA-dB)<1e-3,'dust: brown smoke in the field '+dB.toFixed(1)+' (all of it brown)');
     ok(ks.every(k=>T2.roof[k]===2),'its roof fell'); let left=0; for(let k=0;k<N;k++) if(T2.roof[k]===1) left++; ok(left===other,'the rest stays up');
     ok(!dd.alive||dd.hp<=dd.mhp*0.5+0.01,'roof hurts at least half: '+(dd.alive?dd.hp:'dead'));
     ok(/ROOF \d+ TILES DOWN/.test(G.DEV.log.map(l=>l.text).join('|')),'roof fall logged');
@@ -125,7 +124,7 @@ setImmediate(()=>{
     for(let j=0;j<T2.sr;j++)for(let i=0;i<T2.sc;i++) if(T2.cell[j*T2.sc+i]) G.paintCell(i,j);
   }
   // ---- walls shelter from blasts; no boarding through walls; the tank barrel can't swing into or shoot through a wall
-  step(150); M.smokes.length=0;
+  step(150); M.gsf=null;
   { const T2=G.MAP.tiled, w=T2.secs.filter(s=>s.alive&&!s.glass&&s.bs.length===1&&s.n>=5&&(q=>{const hz=q.w>q.h,cx=q.x+q.w/2,cy=q.y+q.h/2; return [-34,34].every(k=>!G.MAP.buildings.some(o=>o!==q&&G.inRect(hz?cx:cx+k,hz?cy+k:cy,o,24)));})(s.bs[0])).sort((a,b)=>b.mhp-a.mhp)[0], b=w.bs[0], hz=b.w>b.h, cx=b.x+b.w/2, cy=b.y+b.h/2;
     const side=(k)=>hz?[cx,cy+k]:[cx+k,cy], dd=M.sol.find(s=>s.dummy&&s.alive);
     for(const v of M.vehicles) if(v.type==='tank'&&!v.dead&&Math.hypot(v.x-cx,v.y-cy)<200){ v.spd=0; v.x=cx+(hz?0:-400); v.y=cy+(hz?400:0); }     // the tank from the ram test, out of the way
@@ -152,7 +151,7 @@ setImmediate(()=>{
     G.exitVehicle(me); tank.x=40*32; tank.y=4*32; }
   // ---- touch AUTO: the toggle cycles; RANGE fires only when lined up, in range and in sight
   step(150);
-  M.smokes.length=0;     // roof dust clouds from the ramming above block sight
+  M.gsf=null;     // roof dust from the ramming above blocks sight
   { const m0=G.TOUCH.auto; G.TOUCH.btn={auto:true}; G.touchState(); const m1=G.TOUCH.auto; G.TOUCH.btn={auto:true}; G.touchState(); G.TOUCH.btn={auto:true}; G.touchState();
     ok(m1!==m0&&G.TOUCH.auto===m0,'auto cycles through 3 modes '+m0+'>'+m1);
     const dd=M.sol.find(s=>s.dummy&&s.alive); me.x=dd.x-5*32; me.y=dd.y; me.vx=me.vy=0; G.cw(me).id='ar';

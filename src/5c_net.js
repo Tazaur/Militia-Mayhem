@@ -873,7 +873,7 @@ function netDoEv(a, t) {
     case 'pp': if (NET.me && a[1] === NET.me.id && NET.me.sol) { const s = NET.me.sol; s.pops.unshift({ txt: String(a[2]), t: 1.8 }); if (s.pops.length > 4) s.pops.length = 4; sfx('points'); } break;
     case 'ps': if (NET.me && a[1] === NET.me.id && typeof a[2] === 'string') sfx(a[2]); break;
     case 's': if (NETSFX[a[1]]) sfx(NETSFX[a[1]], a[2], a[3], (a[4] || 10) / 10); break;
-    case 'sm': popSmoke(a[1], a[2], { grid: !!a[3] }); break;
+    case 'sm': popSmoke(a[1], a[2], {}); break;
   }
 }
 function netKillFx(a, t) {

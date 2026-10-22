@@ -44,7 +44,7 @@ function newMatch(cfg, demo) {
   MAP.statics.forEach((s, i) => s.idx = i);
   const tk = LIMITS.team[cfg.limit] || 200;
   M = {
-    cfg, demo: !!demo, mode: mode.id, ffa, time: 0, sol: [], vehicles: [], wrecks: [], proj: [], parts: [], flings: [], corpses: [], smokes: [], crates: [], items: [], feed: [], toasts: [],
+    cfg, demo: !!demo, mode: mode.id, ffa, time: 0, sol: [], vehicles: [], wrecks: [], proj: [], parts: [], flings: [], corpses: [], crates: [], items: [], feed: [], toasts: [],
     flags: [], tickets: [tk, tk], limit: ffa ? LIMITS.ffa[cfg.limit] : 0, bleedT: 0, over: false, overT: 0, winner: -1, views: [], skill: SKILL[cfg.skill] || SKILL[1],
     brass: [], scoreHeld: false, lowWarn: [false, false], ff: !!cfg.ff && !demo, rain: cfg.weather === 'rain' && MAPNAMES[cfg.map][0] !== 'snowfield', snow: cfg.weather === 'snow' || (cfg.weather === 'rain' && MAPNAMES[cfg.map][0] === 'snowfield'), teamColor,
     coop, wv: coop ? { n: 0, queue: 0, left: 0, brk: 8, spT: 0, lim: LIMITS.surv[cfg.limit] || 0 } : null
@@ -659,16 +659,13 @@ function throwNade(s, dist, forceFrag) {
 }
 /* every view near (x, y) shakes, by amt at the spot fading to nothing at range */
 function shakeAt(x, y, amt, range) { for (const vw of M.views) { const d = Math.hypot(vw.cam.x - x, vw.cam.y - y); vw.shake = Math.min(18, vw.shake + amt * Math.max(0, 1 - d / range)); } }
-/* a smoke grenade's cloud, each puff a random grey shade; o (optional): { tint: 'brown', shade: 0-3 (the whole cloud), op: opacity, T: seconds, quiet } (falling roofs use it),
-   { grid } to pick grid smoke or not (default: the dev panel's GRID SMOKE); a grenade's (no o) goes to the clients */
+/* a smoke grenade, or with o = { dust: true, T: s, quiet } dust off a falling roof or wall (as thick, less of it: T / 10
+   of SMK_DUST): let out into the smoke field. A grenade's (no o) goes to the clients */
 function popSmoke(x, y, o) {
-  const net = !o; o = o || {}; const grid = o.grid !== undefined ? o.grid : DEV.gridSmoke;
-  if (net) netEv('sm', x | 0, y | 0, grid ? 1 : 0);
-  if (grid) { smokeEmit(x, y, o.tint ? SMK_DUST * (o.T || 10) / 10 : SMK_NADE, !!o.tint); if (!o.quiet) sfx('splash', x, y, 0.5); return; }     // dust: as thick as smoke, just less of it
-  const puffs = []; for (let i = 0; i < 18; i++) { const a = rnd(0, TAU), d = i ? Math.sqrt(Math.random()) * 0.72 : 0; puffs.push([Math.cos(a) * d, Math.sin(a) * d, rint(0, 3), rnd(0, TAU), rnd(0.8, 1.2), o.tint ? o.shade || 0 : rint(0, 3)]); }
-  M.smokes.push({ x, y, r: 0, R: 92, t: 0, T: o.T || 18, puffs, tint: o.tint || 'grey', shade: o.shade || 0, op: o.op !== undefined ? o.op : 1, cv: null, cvT: -9 }); smokeRays(M.smokes[M.smokes.length - 1]); if (!o.quiet) sfx('splash', x, y, 0.5); for (let i = 0; i < 8; i++) part({ k: 'smoke', x, y, vx: rnd(-60, 60), vy: rnd(-60, 60), life: 1.2, max: 1.2, sz: 12, drag: 2 });
+  if (!o) netEv('sm', x | 0, y | 0); o = o || {};
+  smokeEmit(x, y, o.dust ? SMK_DUST * (o.T || 10) / 10 : SMK_NADE, !!o.dust); if (!o.quiet) sfx('splash', x, y, 0.5);
 }
-/* grid smoke (experimental: the dev panel's GRID SMOKE; grenades, dust and falling roofs all feed it): one field of
+/* smoke (grenades, and dust off falling roofs and walls): one field of
    smoke amounts on GS px tiles (M.gsf), stepped SMK_HZ times a second (S-ticks), not every frame. Each S-tick:
    - an emitter (where a grenade / dust landed) lets out SMK_EMIT of what it has left into its tile, but only while
      the tiles round it (SMK_CAP_R each way) hold less than SMK_CAP, three grenades' worth: the rest is lost, so
@@ -682,7 +679,7 @@ function popSmoke(x, y, o) {
    A tile's thickness is min(1, amount). Dust is the same smoke, brown (B: the brown part of a tile's amount).
    Cost goes with the tiles holding smoke, not the number of smokes. The field reaches SMK_OUT tiles past the map's
    edges, so smoke drifts off it rather than piling up there: tile i covers world x from (i - SMK_OUT) x GS. */
-const SMK_OUT = 16, GS = 16, SMK_HZ = 10, SMK_EMIT = 0.15, SMK_BLEED = 0.35, SMK_WIN = 0.2, SMK_DEL = 0.01, SMK_RT_P = 0.1, SMK_RT_D = 0.008, SMK_RT_K = 0.05, SMK_RT_A = 1, SMK_NADE = 70, SMK_CAP = 3 * 70, SMK_CAP_R = 6, SMK_DUST = 5, SMK_K = 0.5;
+const SMK_OUT = 16, GS = 16, SMK_HZ = 10, SMK_EMIT = 0.15, SMK_BLEED = 0.35, SMK_WIN = 0.2, SMK_DEL = 0.01, SMK_RT_P = 0.1, SMK_RT_D = 0.008, SMK_RT_K = 0.05, SMK_RT_A = 1, SMK_NADE = 120, SMK_CAP = 3 * SMK_NADE, SMK_CAP_R = 6, SMK_DUST = 5, SMK_K = 0.5;
 const NB4 = new Int32Array(4), DIRS8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
 function smokeField() {
   const W = Math.ceil(WW / GS) + 2 * SMK_OUT, H = Math.ceil(WH / GS) + 2 * SMK_OUT; let f = M.gsf;
@@ -770,55 +767,18 @@ function fieldOcc(x0, y0, x1, y1) {
   }
   return Math.min(1, o * SMK_K);
 }
-/* growth eases out over SMOKE_GROW s (starts at 80 % of the old linear rate, slows to a stop) */
-const SMOKE_GROW = 4, SMOKE_RAYS = 8;
-/* smoke spreads where it has room: 8 rays from the centre (at birth, then every ~2 s or after drifting 12 px) find how far
-   it reaches each way, up to R. Each way's shortfall pushes the centre the other way (no further than that side is open),
-   so a cloud against a wall drifts off it to full size; puffs that would sit in a wall are pulled back (smokeCache) */
-function smokeRays(c) {
-  const L = c.R, F = c.free || (c.free = new Float32Array(SMOKE_RAYS));
-  for (let k = 0; k < SMOKE_RAYS; k++) {
-    const a = k * TAU / SMOKE_RAYS, x1 = c.x + Math.cos(a) * L, y1 = c.y + Math.sin(a) * L; let t = 1;
-    for (const b of MAP.buildings) { if (b.x > c.x + L || b.x + b.w < c.x - L || b.y > c.y + L || b.y + b.h < c.y - L || inRect(c.x, c.y, b)) continue; const h = segRect(c.x, c.y, x1, y1, b, 0); if (h >= 0 && h < t) t = h; }
-    F[k] = t * L;
-  }
-  c.rx = c.x; c.ry = c.y; c.rayT = c.t + rnd(-0.3, 0.3);
-  let sx = 0, sy = 0; for (let k = 0; k < SMOKE_RAYS; k++) { const a = k * TAU / SMOKE_RAYS, s = L - F[k]; sx -= Math.cos(a) * s; sy -= Math.sin(a) * s; }
-  sx /= 4; sy /= 4; const m = Math.hypot(sx, sy), k = m > 0.5 ? Math.min(1, Math.max(0, smokeFree(c, Math.atan2(sy, sx)) - 8) / m) : 0;
-  c.tx = c.x + sx * k; c.ty = c.y + sy * k;
-}
-/* how far the cloud reaches at angle a (between two rays) */
-function smokeFree(c, a) { const f = ((a / TAU * SMOKE_RAYS) % SMOKE_RAYS + SMOKE_RAYS) % SMOKE_RAYS, i = f | 0, w = f - i; return c.free[i] * (1 - w) + c.free[(i + 1) % SMOKE_RAYS] * w; }
-function updateSmokes(dt) {
-  for (const c of M.smokes) {
-    c.t += dt; const g = 1 - Math.min(1, c.t / SMOKE_GROW); c.r = c.R * (1 - g * g);
-    if (c.t - c.rayT >= 2 || Math.hypot(c.x - c.rx, c.y - c.ry) > 12) smokeRays(c);
-    const k = Math.min(1, dt * 1.5); c.x += (c.tx - c.x) * k; c.y += (c.ty - c.y) * k;
-  }
-  prune(M.smokes, c => c.t < c.T || (c.cv && SMOKE_POOL.length < 64 && SMOKE_POOL.push(c.cv), false));
-  updateSmokeField(dt); }
 /* ---------------- line of sight: one rule for bots, spotting, aim help, the HUD and the vision fog ----------------
-   Hard: standing walls (MAP.sight). Soft, adding up to 100 %: smoke, in rings around each cloud's centre
-   (fraction of c.r -> occlusion, outer to core), times the cloud's strength (fades in / out; dust is half), a sight line
-   taking the deepest ring it passes through, thinned close to the eye (SIGHT_NEAR px); and windows (MAP.glass),
+   Hard: standing walls (MAP.sight). Soft, adding up to 100 %: smoke, by the field's tiles the line crosses (fieldOcc),
+   thinned close to the eye (SIGHT_NEAR px); and windows (MAP.glass),
    GLASS_OCC each one the line crosses, looking in or out. softMask paints exactly these, so what you see is what the
    bots get. */
-const SMOKE_RINGS = [[1, 0.1], [0.83, 0.35], [0.67, 0.65], [0.5, 1]], SIGHT_NEAR = [24, 96], SIGHT_MIN = 0.5, GLASS_OCC = 0.25;
-function smokeStr(c) { return Math.max(0, Math.min(1, c.t / 0.8) * Math.min(1, (c.T - c.t) / 3.5) * c.op); }
-function ringOcc(d, r) { let o = 0; for (const [f, v] of SMOKE_RINGS) if (d <= f * r) o = v; return o; }
-/* any smoke at all (clouds or the grid field) */
-function smokeAny() { return M.smokes.length > 0 || !!(M.gsf && M.gsf.act.length); }
+const SIGHT_NEAR = [24, 96], SIGHT_MIN = 0.5, GLASS_OCC = 0.25;
+/* any smoke at all */
+function smokeAny() { return !!(M.gsf && M.gsf.act.length); }
 function smokeOcc(x0, y0, x1, y1) {
   if (!smokeAny()) return 0;
-  const dx = x1 - x0, dy = y1 - y0, L2 = dx * dx + dy * dy, near = clamp((Math.sqrt(L2) - SIGHT_NEAR[0]) / (SIGHT_NEAR[1] - SIGHT_NEAR[0]), 0, 1); let o = 0;
-  if (!near) return 0;
-  o = fieldOcc(x0, y0, x1, y1);
-  for (const c of M.smokes) {
-    const s = smokeStr(c); if (!s) continue;
-    const k = L2 ? clamp(((c.x - x0) * dx + (c.y - y0) * dy) / L2, 0, 1) : 0;
-    o += s * ringOcc(Math.hypot(x0 + dx * k - c.x, y0 + dy * k - c.y), c.r); if (o >= 1) { o = 1; break; }
-  }
-  return o * near;
+  const near = clamp((Math.hypot(x1 - x0, y1 - y0) - SIGHT_NEAR[0]) / (SIGHT_NEAR[1] - SIGHT_NEAR[0]), 0, 1);
+  return near && fieldOcc(x0, y0, x1, y1) * near;
 }
 function glassOcc(x0, y0, x1, y1) { let o = 0; for (const b of MAP.glass) if (segRect(x0, y0, x1, y1, b, 0) >= 0) o += GLASS_OCC; return Math.min(1, o); }
 function softOcc(x0, y0, x1, y1) { return Math.min(1, smokeOcc(x0, y0, x1, y1) + glassOcc(x0, y0, x1, y1)); }

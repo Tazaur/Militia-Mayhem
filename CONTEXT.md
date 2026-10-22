@@ -301,3 +301,7 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 
 ## Build 129
 - Dev panel SMOKE VALUES (DEV.smokeDbg, devSmokeDbg): grid smoke tiles in view tinted by amount, the scale moving with the view: thinnest tile in view blue, thickest red, log between; amount printed when a tile is 18+ screen px.
+
+## Build 134
+- Grid smoke is the only smoke: the cloud smoke (M.smokes, rings, smokeRays, smokeCache, SMOKE_RINGS) and DEV.gridSmoke are gone. popSmoke(x, y) = grenade (net event 'sm'), popSmoke(x, y, { dust, T, quiet }) = dust. SMK_NADE 120 (open air blocks about 13 s, room about 48 s life); SMK_CAP = 3 x SMK_NADE.
+- Dev panel backdrop height comes from last frame's layout (DEV.ph), so rows never hang off. SIGHT LINES + SMOKE VALUES share a row. SMOKE VALUES numbers always drawn, about 11 px on screen.

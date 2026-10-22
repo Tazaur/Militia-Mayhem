@@ -111,7 +111,7 @@ function drawWorld(vw) {
   for (const s of MAP.statics) if (s.alive && s.type === 'tree' && vis(s.x, s.y, 40)) { const tc = s.pine ? SPR.pines[s.v] : SPR.trees[s.v]; worldT(); ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.beginPath(); ctx.arc(s.x + 6, s.y + 7, 24 * s.sc, 0, TAU); ctx.fill(); img(tc, s.x, s.y, s.a, s.sc, 0.94); }
   // the soft layers (smoke, windows) over everything in sight alike: units, vehicles, roofs, trees, fire
   if (fogged) drawSoftFog(vw);
-  drawSmokes(vis, vw);
+  drawSmokes(vw);
   drawLasers(vis);
   // tags, reticles
   worldT(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -156,56 +156,16 @@ function drawRoofs(vis) {
   ctx.fillStyle = CFG.style === 'grit' ? 'rgba(0,0,0,0.38)' : 'rgba(0,0,0,0.32)';
   if (!MAP.tiled) for (const b of MAP.buildings) { if (!vis(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h))) continue; ctx.beginPath(); ctx.moveTo(b.x + b.w, b.y); ctx.lineTo(b.x + b.w + 14, b.y + 14); ctx.lineTo(b.x + b.w + 14, b.y + b.h + 14); ctx.lineTo(b.x + 14, b.y + b.h + 14); ctx.lineTo(b.x, b.y + b.h); ctx.lineTo(b.x + b.w, b.y + b.h); ctx.closePath(); ctx.fill(); }
 }
-/* smoke screens: thick, soft-edged clouds above everything on the ground. Each cloud's 19 puffs are composited into
-   its own small canvas a few times a second (the drift is slow) and drawn as one image, scaled with the cloud's growth */
-const SMOKE_PX = 160, SMOKE_EXT = 1.65, SMOKE_POOL = [];         // cache size; cloud extent in radii (puffs reach 1.59 + drift)
-function smokeCache(c) {
-  const g = (c.cv || (c.cv = SMOKE_POOL.pop() || mk(SMOKE_PX, SMOKE_PX))).getContext('2d'), h = SMOKE_PX / 2, k = h / SMOKE_EXT, pal = SPR.puffs[c.tint];
-  g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.clearRect(0, 0, SMOKE_PX, SMOKE_PX);
-  const R = c.R, open = R - 0.5, base = Math.min(1.35, (Math.min(...c.free) + 0.35 * c.r) / c.r);     // the haze under the puffs stops short of walls too
-  g.globalAlpha = 0.55; g.drawImage(pal[c.shade][0], h - k * base, h - k * base, k * base * 2, k * base * 2);
-  for (const [ox, oy, v, rot, sz, sh] of c.puffs) {
-    // the puff in world px from the centre; pulled back if it would sit in a wall (its soft rim may overlap a little)
-    let wx = ox * c.r + Math.sin(M.time * 0.35 + rot) * 6, wy = oy * c.r + Math.cos(M.time * 0.27 + rot) * 5;
-    const d = Math.hypot(wx, wy), f = d > 1 ? smokeFree(c, Math.atan2(wy, wx)) : R, lim = f >= open ? 1e9 : Math.max(0, f - 0.6 * 0.72 * sz * c.r);
-    if (d > lim) { wx *= lim / d; wy *= lim / d; }
-    const r = k * 0.72 * sz, x = h + wx / c.r * k, y = h + wy / c.r * k;
-    g.globalAlpha = v % 2 ? 0.55 : 0.8; g.drawImage(pal[sh][v % 2], x - r, y - r, r * 2, r * 2);
-  }
-  c.cvT = M.time;
-}
-/* the clouds; around this view's eyes they thin out (SIGHT_NEAR, as the sight rules do) down to SMOKE_KEEP, so you can
-   see your feet in smoke */
-const SMOKE_HOLE = document.createElement('canvas'), SMOKE_KEEP = 0.25;
-function drawSmokes(vis, vw) {
-  worldT(); let eyes = null; const n1 = SIGHT_NEAR[1];
-  if (M.gsf && M.gsf.act.length) drawSmokeField(vw, eyes = vw ? viewSols(vw).map(posOf) : []);
-  for (const c of M.smokes) {
-    if (c.r < 1 || !vis(c.x, c.y, c.R + 60)) continue;
-    if (M.time - c.cvT > (c.t < SMOKE_GROW ? 0.1 : 0.3) || M.time < c.cvT) smokeCache(c);     // faster while it grows (puffs meet walls)
-    const e = c.r * SMOKE_EXT; let img = c.cv;
-    eyes = eyes || (vw ? viewSols(vw).map(posOf) : []);
-    const near = eyes.filter(o => Math.abs(o.x - c.x) < e + n1 && Math.abs(o.y - c.y) < e + n1);
-    if (near.length) {
-      const W = c.cv.width, k = W / (e * 2), g = SMOKE_HOLE.getContext('2d'); if (SMOKE_HOLE.width !== W) SMOKE_HOLE.width = SMOKE_HOLE.height = W;
-      g.globalCompositeOperation = 'copy'; g.drawImage(c.cv, 0, 0); g.globalCompositeOperation = 'destination-out';
-      for (const o of near) {
-        const x = (o.x - c.x + e) * k, y = (o.y - c.y + e) * k, gr = g.createRadialGradient(x, y, 0, x, y, n1 * k);
-        gr.addColorStop(0, `rgba(0,0,0,${1 - SMOKE_KEEP})`); gr.addColorStop(SIGHT_NEAR[0] / n1, `rgba(0,0,0,${1 - SMOKE_KEEP})`); gr.addColorStop(1, 'rgba(0,0,0,0)');
-        g.fillStyle = gr; g.fillRect(x - n1 * k, y - n1 * k, n1 * k * 2, n1 * k * 2);
-      }
-      g.globalCompositeOperation = 'source-over'; img = SMOKE_HOLE;
-    }
-    ctx.globalAlpha = Math.min(1, c.t / 0.5) * Math.min(1, (c.T - c.t) / 3.5) * c.op; ctx.drawImage(img, c.x - e, c.y - e, e * 2, e * 2);
-  }
-  ctx.globalAlpha = 1;
-}
-/* the grid smoke field, drawn in the clouds' soft puffs: one on every other tile (a checkerboard; a tile off it gets
+/* the smoke field; around this view's eyes it thins out (SIGHT_NEAR, as the sight rules do) down to SMOKE_KEEP, so you
+   can see your feet in smoke */
+const SMOKE_KEEP = 0.25;
+function drawSmokes(vw) { if (M.gsf && M.gsf.act.length) { worldT(); drawSmokeField(vw, vw ? viewSols(vw).map(posOf) : []); } }
+/* the smoke field, drawn in soft puffs: one on every other tile (a checkerboard; a tile off it gets
    its own when no neighbour has one), as thick as the tile (1 - e^(-SMK_VIS x amount), as light through haze) and
    SMK_PUFF tiles in radius, SMK_GROW more per tile of room round it (f.R), less when thin. So the grid says where the
    smoke is and the puffs make it round and smooth. They go into SMK_C, the walls are cut out of it (a puff never
    reaches past the wall beyond it, so a room keeps its smoke), and it's drawn twice: dark and offset as its shade,
-   then the smoke. Each puff drifts and breathes slowly (phase from the tile); thinned near the eyes like the clouds.
+   then the smoke. Each puff drifts and breathes slowly (phase from the tile); thinned near the eyes (SMOKE_KEEP).
    A tile's look (f.V) eases to its thickness at SMK_IN a second, so new smoke swells in; a puff is fainter the smaller
    it is (down to SMK_SMALL), so a little one squeezed against a wall doesn't stand out as a hot spot */
 const SMK_VIS = 3, SMK_PUFF = 1.5, SMK_GROW = 0.9, SMK_PAD = 5, SMK_IN = 2.5, SMK_SMALL = 0.5;     // SMK_PAD: tiles past the view whose puffs can reach in
