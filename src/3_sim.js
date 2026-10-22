@@ -38,8 +38,9 @@ function newMatch(cfg, demo) {
   TEAMHEX = teamColor.map(c => CHEX[c]);
   TEAMNAME = teamNames(cfg, demo, ffa, teamColor);
   buildRings();
-  setWorld(cfg.dev ? DEV_COLS * TILE : 3000, cfg.dev ? DEV_ROWS * TILE : 2000);
-  if (cfg.dev) buildDevMap(); else buildMap(MAPNAMES[cfg.map % MAPNAMES.length][0]);
+  const mapId = MAPNAMES[cfg.map % MAPNAMES.length][0], town = !cfg.dev && mapId === 'outskirts';      // tiled maps path on the wall grid
+  setWorld(cfg.dev ? DEV_COLS * TILE : town ? 3072 : 3000, cfg.dev ? DEV_ROWS * TILE : town ? 2048 : 2000, cfg.dev || town ? SUB : 30);
+  if (cfg.dev) buildDevMap(); else buildMap(mapId);
   paintGround(); buildNav();
   MAP.statics.forEach((s, i) => s.idx = i);
   const tk = LIMITS.team[cfg.limit] || 200;
@@ -155,7 +156,7 @@ function freeSpot(x, y) {
   return [x, y];
 }
 function solidAt(x, y, r) {
-  for (const b of MAP.buildings) if (inRect(x, y, b, r)) return true;
+  for (const b of rectsIn(MAP.buildings, x - r, y - r, x + r, y + r, _rq)) if (inRect(x, y, b, r)) return true;
   staticsNear(x, y, r + 14, _near); for (const s of _near) if (Math.hypot(s.x - x, s.y - y) < s.r + r) return true;
   for (const v of M.vehicles) if (v.active && !v.dead && Math.hypot(v.x - x, v.y - y) < v.T.hl + r) return true;
   return false;
@@ -199,6 +200,7 @@ function hurtSoldier(s, dmg, src, kind, dx, dy, wname) {
   if (kind === 'explosion' || kind === 'mine') dmg *= [1, 0.8, 0.6][s.stance];
   s.hp -= dmg; s.lastHurt = M.time; s.hurtT = 0.35;
   if (s.dummy) devHit(s, dmg);
+  if (s.bot && src && src !== s && isEnemy(s.team, src.team)) botHeard(s, src.veh || src);
   if (src && src.player && src !== s) { src.hitT = 0.15; src.hitV = false; psfx(src.player, 'hit'); }
   if (s.player) rumble(s.player, Math.min(1, dmg / 60), 0.15);
   if (kind === 'bullet' || kind === 'mg') { for (let i = 0; i < 2; i++) blood(s.x, s.y, dx, dy); sfx('hurt', s.x, s.y); netEv('b', s.x | 0, s.y | 0, Math.round(dx || 0), Math.round(dy || 0)); }
@@ -447,7 +449,7 @@ function segWreck(x0, y0, x1, y1, w) {
   return segRect(ax, ay, bx, by, { x: -w.hl, y: -w.hw, w: w.hl * 2, h: w.hw * 2 }, 0);
 }
 function soldierCollide(s) {
-  for (const b of MAP.buildings) {
+  for (const b of rectsIn(MAP.buildings, s.x - s.r - 4, s.y - s.r - 4, s.x + s.r + 4, s.y + s.r + 4, _rb)) {
     if (b.glass && s.jumpT > 0.04) { if (b.sec && inRect(s.x, s.y, b, 2)) devGlass(b.sec, s.x, s.y); continue; }     // vaulting through a window
     pushCircleRect(s, s.r, b);
   }
@@ -471,7 +473,7 @@ function shove(o, cx, cy, px, py, local) {
   o.x += px; o.y += py; o.a += clamp(((cx - o.x) * py - (cy - o.y) * px) / (hl * hl) * 0.6, -0.05, 0.05);
   if (o.T && o.T.drive) return;
   // a wreck: keep it out of buildings, and let the bots' map know once it has moved a fair way
-  for (let k = -1; k <= 1; k++) { const c = { x: o.x + Math.cos(o.a) * o.hl * 0.6 * k, y: o.y + Math.sin(o.a) * o.hl * 0.6 * k }, bx = c.x, by = c.y; for (const b of MAP.buildings) if (pushCircleRect(c, o.hw, b)) { o.x += c.x - bx; o.y += c.y - by; } }
+  for (let k = -1; k <= 1; k++) { const c = { x: o.x + Math.cos(o.a) * o.hl * 0.6 * k, y: o.y + Math.sin(o.a) * o.hl * 0.6 * k }, bx = c.x, by = c.y; for (const b of rectsIn(MAP.buildings, bx - o.hw, by - o.hw, bx + o.hw, by + o.hw, _rb)) if (pushCircleRect(c, o.hw, b)) { o.x += c.x - bx; o.y += c.y - by; } }
   o.mv = (o.mv || 0) + Math.hypot(px, py); if (o.mv > 30) { o.mv = 0; navDirty = 1; }
 }
 function vehicleCollide(v, local, auth) {
@@ -481,7 +483,7 @@ function vehicleCollide(v, local, auth) {
     vehCircles(v, _vc);
     for (const [cx, cy, r] of _vc) {
       const o = { x: cx, y: cy };
-      for (const b of MAP.buildings) { const px = o.x, py = o.y; if (pushCircleRect(o, r, b)) { v.x += o.x - px; v.y += o.y - py; hit = 1; } }
+      for (const b of rectsIn(MAP.buildings, cx - r, cy - r, cx + r, cy + r, _rb)) { const px = o.x, py = o.y; if (pushCircleRect(o, r, b)) { v.x += o.x - px; v.y += o.y - py; hit = 1; } }
       for (const w of M.wrecks) { const o3 = { x: cx, y: cy }; if (pushOutWreck(o3, r, w)) { const wa = auth ? 0 : wreckMass(w) / (v.T.mass + wreckMass(w)); v.x += (o3.x - cx) * wa; v.y += (o3.y - cy) * wa; shove(w, cx, cy, -(o3.x - cx) * (1 - wa), -(o3.y - cy) * (1 - wa), local); hitV = Math.max(hitV, wa); } }
       for (const w of MAP.water) { const o2 = { x: cx, y: cy }; if (pushCircleRect(o2, r - 6, w)) { v.x += o2.x - cx; v.y += o2.y - cy; hit = 1; } }
     }
@@ -522,7 +524,7 @@ function vehicleCollide(v, local, auth) {
 }
 function toLocal(v, x, y) { const dx = x - v.x, dy = y - v.y, c = Math.cos(-v.a), s = Math.sin(-v.a); return [dx * c - dy * s, dx * s + dy * c]; }
 /* nothing solid at all on the segment (walls and windows) */
-function clearPath(x0, y0, x1, y1) { for (const b of MAP.buildings) if (segRect(x0, y0, x1, y1, b, 0) >= 0) return false; return true; }
+function clearPath(x0, y0, x1, y1) { for (const b of rectsOnSeg(MAP.buildings, x0, y0, x1, y1, _rq)) if (segRect(x0, y0, x1, y1, b, 0) >= 0) return false; return true; }
 function toWorld(v, lx, ly) { const c = Math.cos(v.a), s = Math.sin(v.a); return [v.x + lx * c - ly * s, v.y + lx * s + ly * c]; }
 
 /* ---------------- seats ---------------- */
@@ -594,7 +596,7 @@ function exitVehicle(s, forced) {
 }
 function solidAtExit(x, y, self) {
   if (x < 20 - SKIRT || y < 20 - SKIRT || x > WW + SKIRT - 20 || y > WH + SKIRT - 20) return true;
-  for (const b of MAP.buildings) if (inRect(x, y, b, 8)) return true;
+  for (const b of rectsIn(MAP.buildings, x - 8, y - 8, x + 8, y + 8, _rq)) if (inRect(x, y, b, 8)) return true;
   for (const v of M.vehicles) if (v !== self && v.active && !v.dead) { const [lx, ly] = toLocal(v, x, y); if (Math.abs(lx) < v.T.hl + 6 && Math.abs(ly) < v.T.hw + 6) return true; }
   staticsNear(x, y, 20, _near); for (const s of _near) if (Math.hypot(s.x - x, s.y - y) < s.r + 6) return true;
   return false;
@@ -649,8 +651,9 @@ function startReload(s) {
 }
 /* throws the selected throwable (frag or smoke), falling back to whatever is left */
 function canThrow(s) { return s.nades > 0 || s.smokes > 0; }
-function throwNade(s, dist, forceFrag) {
-  let smoke = !forceFrag && s.throwSel === 1 && s.smokes > 0; if (!smoke && s.nades <= 0) { if (s.smokes > 0 && !forceFrag) smoke = true; else return; }
+/* force: true a frag only (bots' default), 'smoke' a smoke only; otherwise what's selected, or whichever is left */
+function throwNade(s, dist, force) {
+  let smoke = force === 'smoke' ? s.smokes > 0 : !force && s.throwSel === 1 && s.smokes > 0; if (!smoke && (s.nades <= 0 || force === 'smoke')) { if (s.smokes > 0 && !force) smoke = true; else return; }
   const [x, y] = muzzle(s, 10); dist = clamp(dist, 60, 300);
   const sp = dist / 0.75;
   M.proj.push({ k: 'nade', smoke, x, y, vx: Math.cos(s.a) * sp, vy: Math.sin(s.a) * sp, life: smoke ? 1.4 : 1.7, src: s, team: s.team, h: 0, vh: 260, rot: 0 });
@@ -780,10 +783,10 @@ function smokeOcc(x0, y0, x1, y1) {
   const near = clamp((Math.hypot(x1 - x0, y1 - y0) - SIGHT_NEAR[0]) / (SIGHT_NEAR[1] - SIGHT_NEAR[0]), 0, 1);
   return near && fieldOcc(x0, y0, x1, y1) * near;
 }
-function glassOcc(x0, y0, x1, y1) { let o = 0; for (const b of MAP.glass) if (segRect(x0, y0, x1, y1, b, 0) >= 0) o += GLASS_OCC; return Math.min(1, o); }
+function glassOcc(x0, y0, x1, y1) { let o = 0; for (const b of rectsOnSeg(MAP.glass, x0, y0, x1, y1, _rq)) if (segRect(x0, y0, x1, y1, b, 0) >= 0) o += GLASS_OCC; return Math.min(1, o); }
 function softOcc(x0, y0, x1, y1) { return Math.min(1, smokeOcc(x0, y0, x1, y1) + glassOcc(x0, y0, x1, y1)); }
 function sightBlocked(x0, y0, x1, y1) {
-  for (const b of MAP.sight) if (segRect(x0, y0, x1, y1, b, 0) >= 0) return true;
+  for (const b of rectsOnSeg(MAP.sight, x0, y0, x1, y1, _rq)) if (segRect(x0, y0, x1, y1, b, 0) >= 0) return true;
   return false;
 }
 /* (x1, y1) is seen from (x0, y0): no wall between, and the soft layers leave at least SIGHT_MIN */
@@ -793,7 +796,7 @@ const BARREL = 96;
 function turretPivot(v) { return [v.x - 4 * Math.cos(v.a), v.y - 4 * Math.sin(v.a)]; }
 function barrelHits(v, a) {
   const [px, py] = turretPivot(v), x = px + Math.cos(a) * BARREL, y = py + Math.sin(a) * BARREL;
-  for (const b of MAP.buildings) if (!b.glass && segRect(px, py, x, y, b, 0) >= 0) return true;
+  for (const b of rectsOnSeg(MAP.buildings, px, py, x, y, _rq)) if (!b.glass && segRect(px, py, x, y, b, 0) >= 0) return true;
   return false;
 }
 function fireCannon(v, s) {
@@ -904,7 +907,7 @@ function segCirc(x0, y0, x1, y1, cx, cy, r) {
 }
 /* a clear path for blasts (sight is sees / sightK) */
 function los(x0, y0, x1, y1) {
-  for (const b of MAP.buildings) if (!b.glass && segRect(x0, y0, x1, y1, b, 0) >= 0) return false;
+  for (const b of rectsOnSeg(MAP.buildings, x0, y0, x1, y1, _rq)) if (!b.glass && segRect(x0, y0, x1, y1, b, 0) >= 0) return false;
   for (const w of M.wrecks) if (segWreck(x0, y0, x1, y1, w) >= 0) return false;
   const mx = (x0 + x1) / 2, my = (y0 + y1) / 2, r = Math.hypot(x1 - x0, y1 - y0) / 2 + 20;
   staticsNear(mx, my, r, _near);
@@ -929,7 +932,7 @@ function updateProjectiles(dt) {
     EXP_REW = p.rew || 0;
     const x0 = p.x, y0 = p.y, x1 = x0 + p.vx * dt, y1 = y0 + p.vy * dt;
     let bt = 2, hit = null, gl = null, gt = 2;
-    for (const b of MAP.buildings) {
+    for (const b of rectsOnSeg(MAP.buildings, x0, y0, x1, y1, _rb)) {
       if (b.glass) { if (b.sec && b.sec.hp >= b.sec.mhp) { const t = segRect(x0, y0, x1, y1, b, 0); if (t >= 0 && t < gt) { gt = t; gl = b; } } continue; }   // windows let shots through (an intact one cracks)
       const t = segRect(x0, y0, x1, y1, b, 0); if (t >= 0 && t < bt) { bt = t; hit = { k: 'wall' }; }
     }
@@ -1009,7 +1012,7 @@ function updateNade(p, dt) {
   p.vh -= 700 * dt; p.h = Math.max(0, p.h + p.vh * dt); if (p.h === 0 && p.vh < 0) { p.vh = -p.vh * 0.35; if (Math.abs(p.vh) > 40) sfx('clink', p.x, p.y); p.vx *= 0.6; p.vy *= 0.6; }
   const nx = p.x + p.vx * dt, ny = p.y + p.vy * dt;
   let bounced = false;
-  for (const b of MAP.buildings) if (inRect(nx, ny, b, 3)) { if (b.glass) { if (b.sec) devGlass(b.sec, nx, ny); continue; } if (p.x < b.x - 2 || p.x > b.x + b.w + 2) p.vx *= -0.5; else p.vy *= -0.5; bounced = true; }
+  for (const b of rectsIn(MAP.buildings, nx - 3, ny - 3, nx + 3, ny + 3, _rb)) if (inRect(nx, ny, b, 3)) { if (b.glass) { if (b.sec) devGlass(b.sec, nx, ny); continue; } if (p.x < b.x - 2 || p.x > b.x + b.w + 2) p.vx *= -0.5; else p.vy *= -0.5; bounced = true; }
   if (p.h < 14) { staticsNear(nx, ny, 16, _near); for (const s of _near) if (s.type !== 'fence' && Math.hypot(nx - s.x, ny - s.y) < s.r + 3) { const dx = nx - s.x, dy = ny - s.y, d = Math.hypot(dx, dy) || 1, dot = (p.vx * dx + p.vy * dy) / d; p.vx -= 1.6 * dot * dx / d; p.vy -= 1.6 * dot * dy / d; bounced = true; } }
   if (bounced) sfx('clink', p.x, p.y); else { p.x = nx; p.y = ny; }
   p.x = clamp(p.x, 10 - SKIRT, WW + SKIRT - 10); p.y = clamp(p.y, 10 - SKIRT, WH + SKIRT - 10);
@@ -1077,7 +1080,7 @@ function controlSoldier(s, I, dt) {
     if (s.jumpT > 0) {
       s.jumpT -= dt; const along = s.vx * s.jdx + s.vy * s.jdy; if (along < 110) { s.vx += s.jdx * (110 - along); s.vy += s.jdy * (110 - along); }
       // don't land on top of a sandbag or fence: carry on until clear
-      if (s.jumpT <= 0.04) { staticsNear(s.x, s.y, 20, _near); if ((_near.some(o => LOW[o.type] && Math.hypot(o.x - s.x, o.y - s.y) < o.r + s.r) || MAP.buildings.some(b => b.glass && inRect(s.x, s.y, b, s.r))) && s.jumpT > -0.4) s.jumpT = 0.05; else if (s.jumpT <= 0) { s.jumpT = 0; for (let i = 0; i < 3; i++) part({ k: 'dust', x: s.x, y: s.y, vx: rnd(-30, 30), vy: rnd(-30, 30), life: 0.5, max: 0.5, sz: 6, drag: 3 }); } }
+      if (s.jumpT <= 0.04) { staticsNear(s.x, s.y, 20, _near); if ((_near.some(o => LOW[o.type] && Math.hypot(o.x - s.x, o.y - s.y) < o.r + s.r) || rectsIn(MAP.buildings, s.x - s.r, s.y - s.r, s.x + s.r, s.y + s.r, _rq).some(b => b.glass && inRect(s.x, s.y, b, s.r))) && s.jumpT > -0.4) s.jumpT = 0.05; else if (s.jumpT <= 0) { s.jumpT = 0; for (let i = 0; i < 3; i++) part({ k: 'dust', x: s.x, y: s.y, vx: rnd(-30, 30), vy: rnd(-30, 30), life: 0.5, max: 0.5, sz: 6, drag: 3 }); } }
     }
     s.x += s.vx * dt; s.y += s.vy * dt;
     soldierCollide(s);
@@ -1093,7 +1096,7 @@ function controlSoldier(s, I, dt) {
     if (s.reloadT <= 0 && !pullTrigger(s) && st.res <= 0 && s.w[1 - s.wi].mag + s.w[1 - s.wi].res > 0) s.wi = 1 - s.wi;      // dry: over to the other gun
   }
   if (I.nadeCyc && s.smokes + s.nades > 0) { s.throwSel = 1 - s.throwSel; sfx('ui'); }
-  if (I.alt && canThrow(s) && s.nadeCd <= 0) throwNade(s, I.altDist || 240, !!s.bot);
+  if (I.alt && canThrow(s) && s.nadeCd <= 0) throwNade(s, I.altDist || 240, s.bot ? (I.smoke ? 'smoke' : true) : false);
   for (const c of M.crates) if (c.live && Math.hypot(c.x - s.x, c.y - s.y) < 16) pickupCrate(s, c);
 }
 /* tops up every weapon's reserve by a share of a full one; true if anything went in */

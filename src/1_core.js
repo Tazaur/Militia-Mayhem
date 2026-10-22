@@ -51,7 +51,7 @@ const MODES = [
   { id: 'koth', n: 'KING OF THE HILL', team: true, desc: 'One flag in the middle. Hold it.' },
   { id: 'ffa', n: 'DEATHMATCH', team: false, desc: 'Everyone for themselves.' },
   { id: 'surv', n: 'CO-OP SURVIVAL', team: false, coop: true, desc: 'Survive waves of bots together. Revive downed friends.' }];
-const MAPNAMES = [['crossroads', 'CROSSROADS'], ['farmlands', 'FARMLANDS'], ['rivertown', 'RIVER TOWN'], ['snowfield', 'SNOWFIELD']];
+const MAPNAMES = [['crossroads', 'CROSSROADS'], ['farmlands', 'FARMLANDS'], ['rivertown', 'RIVER TOWN'], ['snowfield', 'SNOWFIELD'], ['outskirts', 'OUTSKIRTS']];
 const LIMITS = { team: [100, 200, 300], ffa: [10, 20, 30], surv: [10, 20, 0] };      // survival: waves to win (0 = endless)
 
 /* weapons: dmg per bullet, vdmg = damage to light vehicles */

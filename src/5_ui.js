@@ -225,7 +225,7 @@ function drawLasers(vis) {
     if (!s.alive || s.veh || s.swim || !s.w || !WPN[cw(s).id].scope || !vis(s.x, s.y, 900)) continue;
     const [x, y] = gunTip(s), x1 = x + Math.cos(s.a) * 900, y1 = y + Math.sin(s.a) * 900; let t = 1;
     const hit = k => { if (k >= 0 && k < t) t = k; };
-    for (const b of MAP.buildings) if (!b.glass) hit(segRect(x, y, x1, y1, b, 0));
+    for (const b of rectsOnSeg(MAP.buildings, x, y, x1, y1, _rq)) if (!b.glass) hit(segRect(x, y, x1, y1, b, 0));
     for (const o of staticsNear((x + x1) / 2, (y + y1) / 2, 462, _near)) if (o.type === 'tree' || o.type === 'hay') hit(segCirc(x, y, x1, y1, o.x, o.y, o.type === 'hay' ? 12 : 9));
     for (const v of M.vehicles) if (v.active) { const [ax, ay] = toLocal(v, x, y), [bx, by] = toLocal(v, x1, y1); hit(segRect(ax, ay, bx, by, { x: -v.T.hl, y: -v.T.hw, w: v.T.hl * 2, h: v.T.hw * 2 }, 0)); }
     for (const o of M.sol) if (o !== s && o.alive) hit(segRect(x, y, x1, y1, { x: o.x - 8, y: o.y - 8, w: 16, h: 16 }, 0));

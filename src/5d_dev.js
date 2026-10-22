@@ -146,18 +146,47 @@ function genHouse(R, maxW, maxH) {
 }
 
 /* ---------------- the yard ---------------- */
+/* a tiled map's grids, w x h px; seed: the roofs' and rubble's randomness (fixed per map, so online clients build the same) */
+function newTiled(w, h, seed) {
+  const sc = w / SUB, sr = h / SUB;
+  return { cols: w / TILE, rows: h / TILE, sc, sr, seed, cell: new Uint8Array(sc * sr), bld: new Int8Array(sc * sr).fill(-1), sec: new Int16Array(sc * sr).fill(-1), secs: [], houses: [] };
+}
+/* a genHouse house into the grids with its top-left at SUB cell (ox, oy); mir: the copy turned half round the map centre */
+function stampHouse(TL, h, ox, oy, mir) {
+  const hi = TL.houses.length;
+  TL.houses.push({ x: mir ? TL.sc - ox - h.W : ox, y: mir ? TL.sr - oy - h.H : oy, w: h.W, h: h.H, rooms: h.rooms });
+  for (let y = 0; y < h.H; y++) for (let x = 0; x < h.W; x++) {
+    const v = h.g[y * h.W + x]; if (v === C_OUT) continue;
+    const k = mir ? (TL.sr - 1 - oy - y) * TL.sc + TL.sc - 1 - ox - x : (oy + y) * TL.sc + ox + x; TL.cell[k] = v; TL.bld[k] = hi;
+  }
+}
+/* houses stamped: wall sections, roofs, posts */
+function tiledFinish() { DEV.roofQ.length = 0; devSections(); devRoof(); tiledPosts(); }
+/* nothing placed earlier (trees, sandbags) stands inside a house; a sandbag crescent that lost a bag goes */
+function tiledClear(m) {
+  const TL = m.tiled; m.statics = m.statics.filter(s => { const i = (s.x / SUB) | 0, j = (s.y / SUB) | 0; return i < 0 || j < 0 || i >= TL.sc || j >= TL.sr || TL.bld[j * TL.sc + i] < 0; });
+  m.arcs = m.arcs.filter(A => A.bags.every(b => m.statics.includes(b)));
+}
+/* posts: where a bot holds a house from inside - the floor cell just in from each window and outside doorway cell,
+   a: facing out */
+function tiledPosts() {
+  const TL = MAP.tiled, { sc, sr } = TL, t = (x, y) => x < 0 || y < 0 || x >= sc || y >= sr ? C_OUT : TL.cell[y * sc + x], P = MAP.posts = [];
+  for (let y = 0; y < sr; y++) for (let x = 0; x < sc; x++) {
+    const v = t(x, y); if ((v !== C_WIN && v !== C_FLOOR) || TL.bld[y * sc + x] < 0) continue;
+    for (const [dx, dy] of DIRS) {
+      if (t(x + dx, y + dy) !== C_OUT || t(x - dx, y - dy) !== C_FLOOR) continue;
+      const px = (x - dx + 0.5) * SUB, py = (y - dy + 0.5) * SUB;
+      if (!P.some(p => Math.hypot(p.x - px, p.y - py) < 24)) P.push({ x: px, y: py, a: Math.atan2(dy, dx), door: v === C_FLOOR });
+    }
+  }
+}
 function buildDevMap() {
-  const SC = DEV_COLS * TILE / SUB, SR = DEV_ROWS * TILE / SUB;
-  const TL = { cols: DEV_COLS, rows: DEV_ROWS, sc: SC, sr: SR, cell: new Uint8Array(SC * SR), bld: new Int8Array(SC * SR).fill(-1), sec: new Int16Array(SC * SR).fill(-1), secs: [], houses: [] };
+  const TL = newTiled(DEV_COLS * TILE, DEV_ROWS * TILE, DEV.seed);
   const m = { id: 'devyard', tiled: TL, arcs: [], roads: [], buildings: [], water: [], bridges: [], statics: [], flags: [], bases: [], crateSpots: [], vehSpawns: [], ffaSpawns: [], fields: [], fwd: [], ice: [] };
   MAP = m;
-  const R = mulberry(DEV.seed * 7919 + 13); DEV.roofQ.length = 0;
-  DEV_LOTS.forEach(([ox, oy, mw, mh], hi) => {
-    const h = genHouse(R, mw, mh); if (!h) return;
-    TL.houses.push({ x: ox, y: oy, w: h.W, h: h.H, rooms: h.rooms });
-    for (let y = 0; y < h.H; y++) for (let x = 0; x < h.W; x++) { const v = h.g[y * h.W + x]; if (v === C_OUT) continue; const k = (oy + y) * SC + ox + x; TL.cell[k] = v; TL.bld[k] = hi; }
-  });
-  devSections(); devRoof();
+  const R = mulberry(DEV.seed * 7919 + 13);
+  for (const [ox, oy, mw, mh] of DEV_LOTS) { const h = genHouse(R, mw, mh); if (h) stampHouse(TL, h, ox, oy, false); }
+  tiledFinish();
   const pad = { x: 0, y: 0, w: 0, h: 0 };
   m.bases = [{ team: 0, x: tileC(3), y: tileC(16), pad }, { team: 1, x: tileC(44), y: tileC(16), pad }];
   m.fwd = m.bases.map(b => ({ x: b.x, y: b.y }));
@@ -167,9 +196,7 @@ function buildDevMap() {
   [[6, 22], [30, 14]].forEach(([i, j]) => m.statics.push({ type: 'hay', x: tileC(i), y: tileC(j), r: 13, a: 0.4, alive: true }));
   { const A = { x: tileC(20), y: tileC(15), a: 0, bags: [], lost: 0 }; m.arcs.push(A); const c = Math.cos(A.a), sn = Math.sin(A.a);
     for (const [px, py] of EXTRA.bagPts) { const st = { type: 'bag', x: A.x + px * c - py * sn, y: A.y + px * sn + py * c, a: 0, r: 8, alive: true, arc: A }; A.bags.push(st); m.statics.push(st); } }
-  // anything standing inside a house goes
-  m.statics = m.statics.filter(s => { const k = ((s.y / SUB) | 0) * SC + ((s.x / SUB) | 0); return TL.bld[k] < 0; });
-  m.arcs = m.arcs.filter(A => A.bags.every(b => m.statics.includes(b)));
+  tiledClear(m);
   buildHash();
 }
 /* wall and window cells -> sections: straight runs (corners and junctions join the run along their row),
@@ -231,7 +258,7 @@ function devSight() {
    tiles, so nothing is left floating when a neighbouring patch falls, and the borders between patches are ragged. */
 const ROOF_C = document.createElement('canvas'), ROOF_V = document.createElement('canvas');
 function devRoof() {
-  const TL = MAP.tiled, { sc, sr } = TL, N = sc * sr, R = mulberry(DEV.seed * 31 + 7);
+  const TL = MAP.tiled, { sc, sr } = TL, N = sc * sr, R = mulberry(TL.seed * 31 + 7);
   TL.roof = new Uint8Array(N); TL.rsec = new Int16Array(N).fill(-1); TL.rdist = new Uint8Array(N);    // rdist: tiles from the holding wall
   const w = new Float32Array(N), cost = new Float32Array(N).fill(1e9), H = [];
   const up = i => { while (i) { const p = (i - 1) >> 1; if (H[p][0] <= H[i][0]) break; [H[p], H[i]] = [H[i], H[p]]; i = p; } };
@@ -288,6 +315,7 @@ function devRoofTile(k, ev) {
   { const a = rnd(0, TAU), sp = rnd(30, 120); part({ k: 'debris', x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rnd(0.4, 0.9), max: 0.9, sz: rnd(2, 4), rot: rnd(0, TAU), vr: rnd(-12, 12), drag: 3 }); }
   shakeAt(cx, cy, 2.5, 420); sfx('crush', cx, cy, 0.6);
   const under = (x, y) => ((y / SUB) | 0) * TL.sc + ((x / SUB) | 0) === k;
+  if (NET.role === 'client') return;          // online: the host's roof does the hurting
   for (const s of M.sol) if (s.alive && !s.veh && !ev.hit.has(s) && under(s.x, s.y)) { ev.hit.add(s); hurtSoldier(s, s.mhp * rnd(0.5, 0.75), null, 'roof', 0, 0, 'ROOF'); }
   for (const v of M.vehicles) if (v.active && !v.dead && !ev.hit.has(v) && vehCircles(v, _vc).some(([x, y]) => under(x, y))) { ev.hit.add(v); hurtVehicle(v, v.type === 'tank' ? 40 : 120, null); }
 }
@@ -316,7 +344,11 @@ function paintDevGround() {
   gx.setTransform(1, 0, 0, 1, 0, 0); gx.globalAlpha = 1; gx.globalCompositeOperation = 'source-over'; gx.imageSmoothingEnabled = false;
   gx.fillStyle = '#5b6248'; gx.fillRect(0, 0, WW, WH);
   SKIRT_PAT = '#3c4232';
-  const TL = MAP.tiled;
+  paintTiled();
+}
+/* a tiled map's houses (and their roofs) over whatever ground is painted */
+function paintTiled() {
+  const TL = MAP.tiled; gx.setTransform(1, 0, 0, 1, 0, 0); gx.imageSmoothingEnabled = false;
   for (let j = 0; j < TL.sr; j++) for (let i = 0; i < TL.sc; i++) if (TL.cell[j * TL.sc + i] !== C_OUT) paintCell(i, j);
   paintRoof();
 }
@@ -328,7 +360,7 @@ function paintCell(i, j) {
   if (v === C_FLOOR) { gx.fillStyle = '#62513d'; gx.fillRect(x, y + (i % 2 ? 7 : 15), SUB, 1); }      // planks
   if (!WALL_IMG.complete || !WALL_IMG.width || (v === C_FLOOR && !(TL.roof && TL.roof[j * TL.sc + i] === 2))) return;
   let c, k, flip = false;
-  if (v === C_RUB || v === C_FLOOR) { const h = Math.imul(i, 73856093) ^ Math.imul(j, 19349663) ^ (DEV.seed * 83492791); c = RUB_T; k = h & 3; flip = !!(h & 4); }   // rubble: same tile, turned / flipped per cell
+  if (v === C_RUB || v === C_FLOOR) { const h = Math.imul(i, 73856093) ^ Math.imul(j, 19349663) ^ (TL.seed * 83492791); c = RUB_T; k = h & 3; flip = !!(h & 4); }   // rubble: same tile, turned / flipped per cell
   else if (v === C_WIN) { const s = TL.secs[TL.sec[j * TL.sc + i]]; c = s && s.hp < s.mhp ? WIN_BROKE : WIN_T; k = t(i - 1, j) === C_WIN || t(i + 1, j) === C_WIN ? 0 : 1; }   // windows only ever use the middle piece
   else {
     let m = 0, n = 0, rub = -1;
@@ -357,10 +389,11 @@ function devBlast(x, y, r, dmg) {
     devDamage(sec, dmg * k * clamp(1 - d / R, 0.3, 1), nx, ny);
   }
 }
-function devDamage(sec, v, x, y) {
-  if (!sec.alive) return;
+/* net: the host's word on it ('sd'); online, a client's own shots and blasts leave walls to the host */
+function devDamage(sec, v, x, y, net) {
+  if (!sec.alive || (NET.role === 'client' && !net)) return;
   const intact = sec.hp >= sec.mhp;
-  sec.hp -= v; sec.hitT = 0.35; devNum(x, y, v, '#ffb060');
+  sec.hp -= v; sec.hitT = 0.35; if (M.dev) devNum(x, y, v, '#ffb060'); netEv('sd', sec.i, Math.round(sec.hp * 10), x | 0, y | 0);
   if (sec.hp <= 0) devCollapse(sec);
   else if (sec.glass && intact) { devRepaint(sec, 0); devSight(); sfx('glass', x, y); }
 }
@@ -377,7 +410,7 @@ function devRams(v) {
   const P = RAM[v.type]; if (!P) return;
   const sp = Math.abs(v.spd); if (sp < P.go) return;
   _ram.length = 0; vehCircles(v, _vc);
-  for (const [cx, cy, r] of _vc) for (const b of MAP.buildings) if (b.sec && !_ram.includes(b.sec) && Math.hypot(clamp(cx, b.x, b.x + b.w) - cx, clamp(cy, b.y, b.y + b.h) - cy) < r + 1) _ram.push(b.sec);
+  for (const [cx, cy, r] of _vc) for (const b of rectsIn(MAP.buildings, cx - r - 1, cy - r - 1, cx + r + 1, cy + r + 1, _rb)) if (b.sec && !_ram.includes(b.sec) && Math.hypot(clamp(cx, b.x, b.x + b.w) - cx, clamp(cy, b.y, b.y + b.h) - cy) < r + 1) _ram.push(b.sec);
   const cd = v.ramCd || (v.ramCd = {});
   for (const sec of _ram) {
     if ((cd[sec.i] || 0) > M.time) continue; cd[sec.i] = M.time + 0.25;
@@ -459,13 +492,16 @@ function devResetMap() {
 }
 function devHeal() { const p = devPlayer(); if (!p) return; const s = p.sol; s.hp = s.mhp; if (s.veh) s.veh.hp = s.veh.T.hp; }
 
+/* every frame on a tiled map (the dev yard, OUTSKIRTS; host and clients): hit flashes wear off, roof tiles come down */
+function tiledTick(dt) {
+  for (const sec of MAP.tiled.secs) if (sec.hitT > 0) sec.hitT -= dt;
+  if (DEV.roofQ.length) { for (const q of DEV.roofQ) if (q.at <= M.time) devRoofTile(q.k, q.ev); prune(DEV.roofQ, q => q.at > M.time); }
+}
 /* every frame of a dev match */
 function devTick(dt) {
   if (KB.pressed.has('Backquote')) DEV.open = !DEV.open;
   for (const n of DEV.nums) { n.t -= dt; n.y -= dt * 18; }
   prune(DEV.nums, n => n.t > 0);
-  if (MAP.tiled) for (const sec of MAP.tiled.secs) if (sec.hitT > 0) sec.hitT -= dt;
-  if (DEV.roofQ.length) { for (const q of DEV.roofQ) if (q.at <= M.time) devRoofTile(q.k, q.ev); prune(DEV.roofQ, q => q.at > M.time); }
   const r = DEV.R, mx = KB.mouse.x, my = KB.mouse.y;
   DEV.over = !TOUCH.active && !!r && mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h;
   const p = devPlayer(); if (!p) return; const s = p.sol;

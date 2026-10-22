@@ -305,3 +305,12 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 ## Build 134
 - Grid smoke is the only smoke: the cloud smoke (M.smokes, rings, smokeRays, smokeCache, SMOKE_RINGS) and DEV.gridSmoke are gone. popSmoke(x, y) = grenade (net event 'sm'), popSmoke(x, y, { dust, T, quiet }) = dust. SMK_NADE 120 (open air blocks about 13 s, room about 48 s life); SMK_CAP = 3 x SMK_NADE.
 - Dev panel backdrop height comes from last frame's layout (DEV.ph), so rows never hang off. SIGHT LINES + SMOKE VALUES share a row. SMOKE VALUES numbers always drawn, about 11 px on screen.
+
+## Build 137
+- New map OUTSKIRTS (MAPNAMES[4], 3072x2048): 24 tiled houses (genHouse, placed left and mirrored 180°, stampHouse) on a road cross, flags A/B/C, bases, crescents, trees, hay. Tiled helpers shared with the dev yard: newTiled(w, h, seed), stampHouse, tiledFinish (sections, roofs, posts), tiledClear (statics out of houses), paintTiled (houses over normal ground). Roof / rubble randomness uses TL.seed (fixed per map, so online clients match).
+- tiledTick (fxTick, host and clients, any tiled map): wall hit flashes + roof-fall queue; devTick no longer does it. Wall damage is host-authoritative online: devDamage sends 'sd' (section, hp x10), clients apply it; roof falls only hurt on the host.
+- Tiled nav: NC = SUB (setWorld's 3rd arg), one nav cell per wall cell built from TL.cell: navS 0 open / 1 wall / 2 window (vaultable, +5 cost). lineFree checks ±6 px either side on the fine grid; astar cap 24000 there. Wrecks are marked per wreck in buildNav.
+- Bots: vault windows on their path (botFollow sets I.jump within 28 px); MAP.posts (floor cell just inside each window / doorway, a = facing out) used by findCover and by campers (campPost, CAMP_P 5% of new goals, 15-30 s, prone until a target shows). Cover is walked to by path when > 40 px.
+- Bot smoke: hurt (hp < 50) or pushing on across open ground under fire -> throwNade(s, d, 'smoke') at 35-50 % of the distance (I.smoke). throwNade's 3rd arg: true frag only, 'smoke' smoke only.
+- Return fire through smoke: botHeard (hit by, or hearing unseen fire within 520 px not behind a wall) stores a guess off by 15 % of the distance; for HEARD_T 2.5 s with no target the bot turns to it and fires bursts.
+- rectsIn / rectsOnSeg: 128 px bucket grid per rect list (buildings, sight, glass), rebuilt when the list's length changes; used by collision, bullets, nades, sight, glass, rams. OUTSKIRTS 7.3 -> 1.6 ms/frame in the 14-bot test.

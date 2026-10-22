@@ -31,7 +31,7 @@ setImmediate(()=>{
   // ---- the yard
   step(30); G.startDev({type:'kb'}); step(5);
   const M=G.M, T=G.MAP.tiled, P=G.PLAYERS[0];
-  ok(M.dev&&T&&G.WW===48*32&&G.WH===32*32,'dev yard '+G.WW+'x'+G.WH); ok(T.sc===96&&T.sr===64,'16 px wall grid'); ok(G.NGW===Math.ceil(G.WW/30),'nav grid follows');
+  ok(M.dev&&T&&G.WW===48*32&&G.WH===32*32,'dev yard '+G.WW+'x'+G.WH); ok(T.sc===96&&T.sr===64,'16 px wall grid'); ok(G.NGW===G.WW/16,'nav grid on the wall grid');
   ok(T.houses.length===3,'three houses'); ok(M.sol.length===1,'no bots'); ok(G.MAP.buildings.length===T.secs.reduce((a,s)=>a+s.bs.length,0),'one rect list per section');
   ok(T.secs.every(s=>s.n<=7&&s.n===s.bs.reduce((a,b)=>a+b.w*b.h/256,0)),'sections are short runs'); ok(T.secs.every(s=>s.glass||s.n>1),'no wall cell on its own');
   { let lone=0; for(let k=0;k<T.cell.length;k++) if(T.cell[k]===2&&T.sec[k]<0) lone++; ok(!lone,'every wall cell in a section '+lone); }

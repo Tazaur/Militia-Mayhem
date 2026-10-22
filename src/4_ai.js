@@ -61,29 +61,57 @@ function botFollow(B, ox, oy, goal, I, dt, grid, arrive) {
     B.path = astar(grid, ox, oy, goal.x, goal.y) || [[goal.x, goal.y]]; B.pathI = 0; B.pathT = rnd(2.5, 4); B.pathGoal = { x: goal.x, y: goal.y }; B.pathGrid = grid;
   }
   let wp = B.path[B.pathI];
-  while (wp && Math.hypot(wp[0] - ox, wp[1] - oy) < (B.pathI === B.path.length - 1 ? arrive : (grid === navV ? 45 : 22))) { B.pathI++; wp = B.path[B.pathI]; }
+  while (wp && Math.hypot(wp[0] - ox, wp[1] - oy) < (B.pathI === B.path.length - 1 ? arrive : (grid === navV ? 45 : NC < 30 ? 14 : 22))) { B.pathI++; wp = B.path[B.pathI]; }
   if (!wp) return false;
   const dx = wp[0] - ox, dy = wp[1] - oy, d = Math.hypot(dx, dy) || 1;
-  I.mx = dx / d; I.my = dy / d; return true;
+  I.mx = dx / d; I.my = dy / d;
+  // a window on the path (a point in a window cell), close and ahead: vault it
+  for (let i = B.pathI - 1; i <= B.pathI; i++) {
+    const p = B.path[i]; if (!p || grid[((p[1] / NC) | 0) * NGW + ((p[0] / NC) | 0)] !== 2) continue;
+    const qx = p[0] - ox, qy = p[1] - oy; if (Math.hypot(qx, qy) < 28 && qx * I.mx + qy * I.my > 0) I.jump = true;
+  }
+  return true;
 }
+/* cover facing T: a sandbag crescent, or on a tiled map a post (just inside a window or a doorway; worth a longer walk) */
 function findCover(s, T) {
   let best = null, bd = 150;
+  const taken = (x, y) => M.sol.some(o => o !== s && o.alive && !o.veh && Math.hypot(o.x - x, o.y - y) < 14);
   for (const A of MAP.arcs) {
     if (A.lost > 4) continue;
     const d = Math.hypot(A.x - s.x, A.y - s.y); if (d > bd) continue;
     const face = A.a + Math.PI, toT = Math.atan2(T.y - A.y, T.x - A.x);
     if (Math.abs(angDiff(face, toT)) > 1.0) continue;
-    if (M.sol.some(o => o !== s && o.alive && !o.veh && Math.hypot(o.x - A.x, o.y - A.y) < 14)) continue;
+    if (taken(A.x, A.y)) continue;
     bd = d; best = A;
+  }
+  if (MAP.posts) for (const p of MAP.posts) {
+    const d = Math.hypot(p.x - s.x, p.y - s.y) * 0.6; if (d > bd) continue;
+    if (Math.abs(angDiff(p.a, Math.atan2(T.y - p.y, T.x - p.x))) > 0.9 || taken(p.x, p.y)) continue;
+    bd = d; best = p;
   }
   return best;
 }
-function newI() { return { mx: 0, my: 0, aimA: null, fire: false, alt: false, altDist: 0, swapW: false, enter: false, reload: false, sprint: false, seatNext: false, seatDir: -1, seatIdx: -1, crouch: false, proneT: false, stanceCycle: false, gadget: false, gadgetP: false, ads: false, jump: false, melee: false, spot: false, pickW: -1, interactSwap: false }; }
+/* now and then (CAMP_P a new goal, tiled maps) a bot holds a post near where it was headed instead, for a while */
+const CAMP_P = 0.05;
+function campPost(s) {
+  const B = s.bot, P = MAP.posts; if (!P || !P.length || s.veh || !B.goal || Math.random() >= CAMP_P) return;
+  let best = null, bd = 420;
+  for (const p of P) { const d = Math.hypot(p.x - B.goal.x, p.y - B.goal.y) + rnd(0, 120); if (d < bd && !M.sol.some(o => o !== s && o.alive && o.bot && o.bot.goal && o.bot.goal.post === p)) { bd = d; best = p; } }
+  if (best) { B.goal = { x: best.x, y: best.y, post: best }; B.goalT = rnd(15, 30); }
+}
+/* where a bot thinks shots came from (hit, or heard firing it can't see): the shooter's spot off by a share of the
+   distance - a guess to shoot back at through smoke, not a fix */
+const HEARD_ERR = 0.15, HEARD_T = 2.5;
+function botHeard(s, o) {
+  const B = s.bot, e = Math.hypot(o.x - s.x, o.y - s.y) * HEARD_ERR;
+  B.heard = { x: o.x + rnd(-e, e), y: o.y + rnd(-e, e), t: M.time };
+}
+function newI() { return { mx: 0, my: 0, aimA: null, fire: false, alt: false, smoke: false, altDist: 0, swapW: false, enter: false, reload: false, sprint: false, seatNext: false, seatDir: -1, seatIdx: -1, crouch: false, proneT: false, stanceCycle: false, gadget: false, gadgetP: false, ads: false, jump: false, melee: false, spot: false, pickW: -1, interactSwap: false }; }
 function setStance(s, st) { if (st === 1) st = 2; if (s.stance !== st && !s.swim) { s.stance = st; s.stanceT = 0.25; } }
 function botControl(s, dt) {
   const B = s.bot, sk = M.skill, I = newI();
   if (M.over) return I;
-  B.thinkT -= dt; B.goalT -= dt; B.nadeCd -= dt; B.vehCd -= dt; B.exitCd -= dt; B.gadCd -= dt;
+  B.thinkT -= dt; B.goalT -= dt; B.nadeCd -= dt; B.vehCd -= dt; B.exitCd -= dt; B.gadCd -= dt; B.smokeCd = (B.smokeCd || 0) - dt;
   const v = s.veh, sd = v ? v.T.seats[s.seat] : null;
   if (B.thinkT <= 0) {
     B.thinkT = rnd(0.22, 0.36);
@@ -92,11 +120,19 @@ function botControl(s, dt) {
     if (nt && (!B.target || (B.target.o !== nt.o || B.target.veh !== nt.veh))) B.react = sk.react * rnd(0.7, 1.3);
     B.target = nt; B.err = rnd(-1, 1) * sk.err;
     B.idle = nt ? 0 : (B.idle || 0) + 0.3;
-    if (!B.goal || B.goalT <= 0 || (B.goal.flag && B.goal.flag.owner === s.team && !(B.goal.flag.cnt && B.goal.flag.cnt[1 - s.team]) && Math.hypot(B.goal.x - s.x, B.goal.y - s.y) < 90) || (B.goal.crate && !M.crates.some(c => c.live && c.x === B.goal.x && c.y === B.goal.y))) { pickGoal(s); B.path = null; }
+    if (!B.goal || B.goalT <= 0 || (B.goal.flag && B.goal.flag.owner === s.team && !(B.goal.flag.cnt && B.goal.flag.cnt[1 - s.team]) && Math.hypot(B.goal.x - s.x, B.goal.y - s.y) < 90) || (B.goal.crate && !M.crates.some(c => c.live && c.x === B.goal.x && c.y === B.goal.y))) { pickGoal(s); campPost(s); B.path = null; }
     if (!v) {
       // cover
       if (nt && nt.d < 460 && !B.cover && s.kit !== 1) B.cover = findCover(s, nt);
       if (B.cover && (!nt || B.cover.lost > 4) && B.idle > 3) B.cover = null;
+      // smoke: hurt with the shooter in sight, or heading on across open ground under fire - screen the line between
+      if (nt && nt.o && s.smokes > 0 && B.smokeCd <= 0 && nt.d > 120) {
+        const hurt = s.hp < 50, push = !B.cover && B.goal && (B.goal.flag || B.goal.post) && nt.d > 200 && Math.hypot(B.goal.x - s.x, B.goal.y - s.y) > 160;
+        if ((hurt || push) && Math.random() < (hurt ? 0.5 : 0.15)) { B.smoke = clamp(nt.d * (hurt ? 0.35 : 0.5), 70, 260); B.smokeCd = rnd(10, 18); } else B.smokeCd = 0.6;
+      }
+      // fire it can't see (smoke, a window's glare, the dark): where it came from, roughly
+      if (!nt && (!B.heard || M.time - B.heard.t > 0.6)) for (const o of enemiesOf(s, _en)) if (o.firedT > 0 && Math.hypot(o.x - s.x, o.y - s.y) < 520 && !sightBlocked(s.x, s.y, o.x, o.y)) { botHeard(s, o); break; }
+      B.blind = !nt && B.heard && M.time - B.heard.t < HEARD_T && !sightBlocked(s.x, s.y, B.heard.x, B.heard.y) ? B.heard : null;
       // repair job for engineers
       B.repairV = null;
       if (s.kit === 1 && (!nt || nt.d > 320)) { for (const w of M.vehicles) if (w.active && !w.dead && w.T.drive && w.hp < w.T.hp * 0.7 && !isEnemy(vehTeam(w), s.team) && Math.hypot(w.x - s.x, w.y - s.y) < 260 && Math.abs(w.spd) < 30) { B.repairV = w; break; } }
@@ -149,9 +185,11 @@ function botControl(s, dt) {
       const w = B.repairV, side = toWorld(w, 0, (w.T.hw + 14) * (s.id % 2 ? 1 : -1)), dx = side[0] - s.x, dy = side[1] - s.y, d = Math.hypot(dx, dy);
       if (d > 14) { I.mx = dx / d; I.my = dy / d; } else I.gadget = true;
       setStance(s, 0);
+    } else if (T && B.goal && B.goal.post && Math.hypot(B.goal.x - s.x, B.goal.y - s.y) < 14) {
+      setStance(s, 0); fighting = true;           // camping: up and shooting from the post
     } else if (B.cover && T) {
       const dx = B.cover.x - s.x, dy = B.cover.y - s.y, d = Math.hypot(dx, dy);
-      if (d > 8) { I.mx = dx / d; I.my = dy / d; setStance(s, d < 18 ? 2 : 0); } else { setStance(s, 2); }
+      if (d > 8) { if (d > 40) botFollow(B, s.x, s.y, B.cover, I, dt, navS, 6); else { I.mx = dx / d; I.my = dy / d; } setStance(s, d < 18 ? 2 : 0); } else { setStance(s, 2); }
       fighting = true;
     } else if (T && T.d < 300) {
       B.strafeT -= dt; if (B.strafeT <= 0) { B.strafeT = rnd(0.8, 1.8); B.strafe = Math.random() < 0.5 ? -1 : 1; }
@@ -161,8 +199,9 @@ function botControl(s, dt) {
     } else if (T && s.kit === 3 && T.d < 640) {
       setStance(s, 2); fighting = true;         // recon: go prone and snipe
     } else if (B.goal) {
-      const moving = botFollow(B, s.x, s.y, B.goal, I, dt, navS, B.goal.flag ? 30 : 12);
-      if (!moving && B.goal.flag) { B.strafeT -= dt; if (B.strafeT <= 0) { B.strafeT = rnd(1, 2.5); B.lx = rnd(-1, 1); B.ly = rnd(-1, 1); } I.mx = B.lx * 0.4; I.my = B.ly * 0.4; }
+      const moving = botFollow(B, s.x, s.y, B.goal, I, dt, navS, B.goal.flag ? 30 : B.goal.post ? 6 : 12);
+      if (!moving && B.goal.post) { setStance(s, 2); I.aimA = B.goal.post.a + Math.sin(M.time * 0.5 + s.id) * 0.5; }      // camping: down, watching out of the window / door
+      else if (!moving && B.goal.flag) { B.strafeT -= dt; if (B.strafeT <= 0) { B.strafeT = rnd(1, 2.5); B.lx = rnd(-1, 1); B.ly = rnd(-1, 1); } I.mx = B.lx * 0.4; I.my = B.ly * 0.4; }
       I.sprint = !T && Math.random() < 0.9;
       if (!T) I.aimA = Math.atan2(I.my || Math.sin(s.a), I.mx || Math.cos(s.a));
       if (s.stance && (I.mx || I.my) && !T) setStance(s, 0);
@@ -181,6 +220,14 @@ function botControl(s, dt) {
       if (T.o && T.d < 24) I.melee = true;
       if (s.nades > 0 && B.nadeCd <= 0 && T.d > 110 && T.d < 270 && aimed && Math.random() < 0.08) { I.alt = true; I.altDist = T.d; B.nadeCd = rnd(6, 12); }
       if (s.nades > 0 && T.veh && T.d < 200 && B.nadeCd <= 0) { I.alt = true; I.altDist = T.d; B.nadeCd = rnd(4, 8); }
+      if (B.smoke && aimed) { I.alt = I.smoke = true; I.altDist = B.smoke; B.smoke = 0; }
+    } else if (B.blind) {
+      // returning fire at a guess: turn to it, bursts once facing it
+      const H = B.blind, d = Math.hypot(H.x - s.x, H.y - s.y), W_ = WPN[cw(s).id];
+      I.aimA = Math.atan2(H.y - s.y, H.x - s.x) + Math.sin(M.time * 3 + s.id) * 0.06; I.sprint = false;
+      B.burst -= dt;
+      if (B.burst <= 0) { B.rest -= dt; if (B.rest <= 0) { B.burst = rnd(0.3, 0.8) * sk.rate; B.rest = rnd(0.4, 0.9) / sk.rate; } }
+      I.fire = B.burst > 0 && Math.abs(angDiff(s.a, I.aimA)) < 0.25 && d < (W_.scope ? 660 : 460);
     } else if (s.wi !== 0 && s.w[0].mag + s.w[0].res > 0) I.swapW = true;
     if (!T && cw(s).mag < WPN[cw(s).id].mag * 0.5 && cw(s).res > 0) I.reload = true;
     return I;
@@ -343,11 +390,11 @@ function fxTick(sdt, dt) {
   fadeLayers(sdt); loopsUpdate(dt);
   for (const f of M.flings) {
     f.t += sdt; f.x += f.vx * sdt; f.y += f.vy * sdt; f.vx *= Math.exp(-sdt * 1.2); f.vy *= Math.exp(-sdt * 1.2); f.rot += f.vr * sdt;
-    for (const b of MAP.buildings) if (inRect(f.x, f.y, b, 2)) { f.vx *= -0.4; f.vy *= -0.4; f.x += f.vx * sdt * 2; f.y += f.vy * sdt * 2; }
+    for (const b of rectsIn(MAP.buildings, f.x - 2, f.y - 2, f.x + 2, f.y + 2, _rb)) if (inRect(f.x, f.y, b, 2)) { f.vx *= -0.4; f.vy *= -0.4; f.x += f.vx * sdt * 2; f.y += f.vy * sdt * 2; }
     if (f.t >= f.T) { f.done = true; if (inWater(f.x, f.y)) { sfx('splash', f.x, f.y); part({ k: 'ripple', x: f.x, y: f.y, vx: 0, vy: 0, life: 1, max: 1, sz: 24, drag: 0 }); } else { addCorpse(f.color, f.dark, f.x, f.y, f.rot); for (let i = 0; i < 5; i++) blood(f.x, f.y, f.vx, f.vy); sfx('splat', f.x, f.y); } }
   }
   prune(M.flings, f => !f.done);
-  updateSmokeField(dt);
+  updateSmokeField(dt); if (MAP.tiled) tiledTick(sdt);
   updateCorpses(dt);
   for (const w of M.wrecks) { if (w.burn > 0 && Math.random() < sdt * 18) { part({ k: 'smoke', x: w.x + rnd(-20, 20), y: w.y + rnd(-15, 15), vx: rnd(-8, 8) + 6, vy: rnd(-8, 8) - 4, life: 2.2, max: 2.2, sz: rnd(12, 22), drag: 0.8 }); if (Math.random() < 0.5) part({ k: 'fire', x: w.x + rnd(-20, 20), y: w.y + rnd(-12, 12), vx: rnd(-6, 6), vy: rnd(-6, 6), life: 0.5, max: 0.5, sz: rnd(10, 20), drag: 1 }); } }
   for (const q of M.parts) {

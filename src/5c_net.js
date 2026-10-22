@@ -874,6 +874,7 @@ function netDoEv(a, t) {
     case 'ps': if (NET.me && a[1] === NET.me.id && typeof a[2] === 'string') sfx(a[2]); break;
     case 's': if (NETSFX[a[1]]) sfx(NETSFX[a[1]], a[2], a[3], (a[4] || 10) / 10); break;
     case 'sm': popSmoke(a[1], a[2], {}); break;
+    case 'sd': { const sec = MAP.tiled && MAP.tiled.secs[a[1]]; if (sec) devDamage(sec, sec.hp - a[2] / 10, a[3], a[4], true); break; }     // a wall section's hp
   }
 }
 function netKillFx(a, t) {

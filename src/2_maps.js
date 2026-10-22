@@ -37,13 +37,20 @@ function footprint(x, y, a, side, prone) {
 }
 
 function buildMap(id) {
-  const R = mulberry(id === 'crossroads' ? 1987 : id === 'farmlands' ? 2311 : id === 'snowfield' ? 6151 : 4099);
+  const R = mulberry(id === 'crossroads' ? 1987 : id === 'farmlands' ? 2311 : id === 'snowfield' ? 6151 : id === 'outskirts' ? 8807 : 4099);
   const m = { id, arcs: [], roads: [], buildings: [], water: [], bridges: [], statics: [], flags: [], bases: [], crateSpots: [], vehSpawns: [], ffaSpawns: [], fields: [], fwd: [], ice: [] };
-  m.bases = [{ team: 0, x: 130, y: 1000, pad: { x: 20, y: 800, w: 340, h: 400 } }, { team: 1, x: 2870, y: 1000, pad: { x: WW - 360, y: 800, w: 340, h: 400 } }];
+  m.bases = [{ team: 0, x: 130, y: WH / 2, pad: { x: 20, y: WH / 2 - 200, w: 340, h: 400 } }, { team: 1, x: WW - 130, y: WH / 2, pad: { x: WW - 360, y: WH / 2 - 200, w: 340, h: 400 } }];
   MAP = m;
   const sym = (arr, o, mir) => { arr.push(o); arr.push(mir(o)); };
+  /* a tiled house (OUTSKIRTS) within pad of (x, y) */
+  const inHouse = (x, y, pad) => {
+    const TL = m.tiled; if (!TL) return false;
+    for (const [a, b] of [[x, y], [x - pad, y - pad], [x + pad, y - pad], [x - pad, y + pad], [x + pad, y + pad]]) { const i = (a / SUB) | 0, j = (b / SUB) | 0; if (i >= 0 && j >= 0 && i < TL.sc && j < TL.sr && TL.bld[j * TL.sc + i] >= 0) return true; }
+    return false;
+  };
   const blockedFor = (x, y, pad) => {
     if (x < 50 || y < 50 || x > WW - 50 || y > WH - 50) return true;
+    if (inHouse(x, y, pad + 8)) return true;
     if (onRoad(x, y, pad)) return true;
     for (const w of m.water) if (inRect(x, y, w, pad + 10)) return true;
     for (const b of m.buildings) if (inRect(x, y, b, pad + 6)) return true;
@@ -138,6 +145,26 @@ function buildMap(id) {
     crescent(400, 880, 0, true); crescent(400, 1120, 0, true);
     scatter(8, 110, 40, (x, y) => { if (!m.ice.some(i => inRect(x, y, i, 30))) crescent(x, y, R() * TAU, true); });
     scatter(70, 40, 24, (x, y) => { if (!m.ice.some(i => inRect(x, y, i, 24))) tree(x, y, true); });
+  } else if (id === 'outskirts') {
+    // outskirts: a bigger town of tiled houses (the dev yard's: walls that break, windows to shoot and vault through,
+    // roofs) around a road cross. Each house is placed on the left and mirrored; its lot holds the space while placing
+    m.roads = [[0, WH / 2, WW, WH / 2], [860, 0, 860, WH], [WW - 860, 0, WW - 860, WH]].map(l => ({ l, w: 64, side: 12, style: 'asphalt' }));
+    m.flags = [{ name: 'A', x: 600, y: WH / 2 + 480 }, { name: 'B', x: WW / 2, y: WH / 2 }, { name: 'C', x: WW - 600, y: WH / 2 - 480 }];
+    const TL = m.tiled = newTiled(WW, WH, 8807);
+    for (let n = 0, k = 0; n < 60 && k < 12; n++) {
+      const h = genHouse(R, 24, 20); if (!h) continue;
+      for (let t = 0; t < 150; t++) {
+        const ox = 4 + Math.floor(R() * (TL.sc / 2 + 6 - h.W)), oy = 4 + Math.floor(R() * (TL.sr - 8 - h.H)), r = { x: ox * SUB, y: oy * SUB, w: h.W * SUB, h: h.H * SUB };
+        if (!rectFree(r, 64)) continue;
+        sym(m.buildings, r, mirrorRect); stampHouse(TL, h, ox, oy, false); stampHouse(TL, h, ox, oy, true); k++; break;
+      }
+    }
+    m.buildings.length = 0; tiledFinish();
+    for (const f of m.flags) for (let k = 0; k < 3; k++) { const c = k * TAU / 3 + 0.3; crescent(f.x + Math.cos(c) * 112, f.y + Math.sin(c) * 112, c, false); }
+    crescent(400, WH / 2 - 120, 0, true); crescent(400, WH / 2 + 120, 0, true);
+    scatter(8, 110, 40, (x, y) => crescent(x, y, R() * TAU, true));
+    scatter(34, 44, 26, (x, y) => tree(x, y, true));
+    scatter(8, 60, 24, (x, y) => addStatic({ type: 'hay', x, y, r: 13, a: R() * TAU, alive: true }, true));
   } else {
     // river town
     m.roads = [[0, 350, 3000, 350], [0, 1000, 3000, 1000], [0, 1650, 3000, 1650], [700, 0, 700, 2000], [2300, 0, 2300, 2000]].map(l => ({ l, w: 72, side: 14, style: 'asphalt' }));
@@ -157,22 +184,23 @@ function buildMap(id) {
   // crate spots, nests, spawns (shared)
   let tries = 0; while (m.crateSpots.length < 14 && tries++ < 3000) { const x = 80 + R() * (WW / 2 - 100), y = 80 + R() * (WH - 160); if (blockedFor(x, y, 10) && !onRoad(x, y, 0)) continue; if (m.buildings.some(b => inRect(x, y, b, 14)) || m.water.some(w => inRect(x, y, w, 14))) continue; if (m.statics.some(s => Math.hypot(s.x - x, s.y - y) < 30)) continue; if (m.crateSpots.some(c => Math.hypot(c.x - x, c.y - y) < 260)) continue; m.crateSpots.push({ x, y }); const [mx, my] = mirrorPt(x, y); m.crateSpots.push({ x: mx, y: my }); }
   for (const t of [0, 1]) {
-    const L = [['tank', 230, 880, 0], ['jeep', 230, 1120, 0], ['jeep', 100, 1125, 0]];
+    const L = [['tank', 230, WH / 2 - 120, 0], ['jeep', 230, WH / 2 + 120, 0], ['jeep', 100, WH / 2 + 125, 0]];
     for (const [type, x, y, a] of L) { if (t === 0) m.vehSpawns.push({ type, x, y, a, team: 0 }); else { const [mx, my] = mirrorPt(x, y); m.vehSpawns.push({ type, x: mx, y: my, a: a + Math.PI, team: 1 }); } }
   }
   // machine-gun nests: covering the near flag, facing the centre
-  { const f = m.flags[0]; const a = Math.atan2(1000 - f.y, 1500 - f.x);
-    let best = null; for (let k = 0; k < 40; k++) { const d = 150 + k * 3, aa = a + (k % 2 ? 1 : -1) * k * 0.05; const x = f.x + Math.cos(aa) * d, y = f.y + Math.sin(aa) * d; if (!blockedFor(x, y, 18) || onRoad(x, y, 0)) { if (m.buildings.some(b => inRect(x, y, b, 30)) || m.water.some(w => inRect(x, y, w, 30)) || onRoad(x, y, 0)) continue; if (m.statics.some(s => Math.hypot(s.x - x, s.y - y) < 34)) continue; best = [x, y]; break; } }
-    if (best) { const [x, y] = best, fa = Math.atan2(1000 - y, 1500 - x); m.vehSpawns.push({ type: 'nest', x, y, a: fa, team: -1 }); const [mx, my] = mirrorPt(x, y); m.vehSpawns.push({ type: 'nest', x: mx, y: my, a: fa + Math.PI, team: -1 }); }
+  { const f = m.flags[0]; const a = Math.atan2(WH / 2 - f.y, WW / 2 - f.x);
+    let best = null; for (let k = 0; k < 40; k++) { const d = 150 + k * 3, aa = a + (k % 2 ? 1 : -1) * k * 0.05; const x = f.x + Math.cos(aa) * d, y = f.y + Math.sin(aa) * d; if (!blockedFor(x, y, 18) || onRoad(x, y, 0)) { if (m.buildings.some(b => inRect(x, y, b, 30)) || m.water.some(w => inRect(x, y, w, 30)) || onRoad(x, y, 0)) continue; if (m.statics.some(s => Math.hypot(s.x - x, s.y - y) < 34) || inHouse(x, y, 30)) continue; best = [x, y]; break; } }
+    if (best) { const [x, y] = best, fa = Math.atan2(WH / 2 - y, WW / 2 - x); m.vehSpawns.push({ type: 'nest', x, y, a: fa, team: -1 }); const [mx, my] = mirrorPt(x, y); m.vehSpawns.push({ type: 'nest', x: mx, y: my, a: fa + Math.PI, team: -1 }); }
   }
   tries = 0;
   while (m.ffaSpawns.length < 18 && tries++ < 4000) {
     const x = 80 + R() * (WW - 160), y = 80 + R() * (WH - 160);
-    const bad = m.buildings.some(b => inRect(x, y, b, 40)) || m.water.some(w => inRect(x, y, w, 30)) || m.statics.some(s => Math.hypot(s.x - x, s.y - y) < 40);
+    const bad = m.buildings.some(b => inRect(x, y, b, 40)) || m.water.some(w => inRect(x, y, w, 30)) || m.statics.some(s => Math.hypot(s.x - x, s.y - y) < 40) || inHouse(x, y, 30);
     if (!bad && !m.ffaSpawns.some(p => Math.hypot(p.x - x, p.y - y) < 300)) m.ffaSpawns.push({ x, y });
   }
   m.fwd = [{ x: m.flags[0].x - 60, y: m.flags[0].y }, { x: m.flags[2].x + 60, y: m.flags[2].y }];
-  m.sight = m.buildings.filter(b => !b.glass); m.glass = m.buildings.filter(b => b.glass);     // what blocks sight / dims it (the dev yard keeps its own, as wall runs)
+  if (m.tiled) tiledClear(m);       // tiled: sight and glass are kept as wall runs (devSight)
+  else { m.sight = m.buildings.filter(b => !b.glass); m.glass = m.buildings.filter(b => b.glass); }     // what blocks sight / dims it
   buildHash();
 }
 /* static circle spatial hash */
@@ -185,6 +213,24 @@ function staticsNear(x, y, r, out) {
   return out;
 }
 const _near = [];
+/* the rects of a list (MAP.buildings, MAP.sight, MAP.glass) touching a box, through a bucket grid (RB px) kept per list
+   and rebuilt when its length changes (a wall coming down); short lists are just scanned. _rb for loops that act on
+   what they find, _rq for yes / no questions (so one can ask inside the other's loop) */
+const RB = 128, _rgrid = new WeakMap(), _rb = [], _rq = []; let _rstamp = 0;
+function rectsIn(list, x0, y0, x1, y1, out) {
+  out.length = 0;
+  if (list.length < 40) { for (const b of list) if (b.x <= x1 && b.x + b.w >= x0 && b.y <= y1 && b.y + b.h >= y0) out.push(b); return out; }
+  let g = _rgrid.get(list);
+  if (!g || g.n !== list.length || g.ww !== WW || g.wh !== WH) {
+    const gw = Math.ceil(WW / RB), gh = Math.ceil(WH / RB), cells = Array.from({ length: gw * gh }, () => []), ci = (v, n) => clamp(Math.floor(v / RB), 0, n - 1);
+    for (const b of list) for (let j = ci(b.y, gh); j <= ci(b.y + b.h, gh); j++) for (let i = ci(b.x, gw); i <= ci(b.x + b.w, gw); i++) cells[j * gw + i].push(b);
+    g = { n: list.length, ww: WW, wh: WH, gw, gh, cells }; _rgrid.set(list, g);
+  }
+  const st = ++_rstamp, { gw, gh, cells } = g, ci = (v, n) => clamp(Math.floor(v / RB), 0, n - 1);
+  for (let j = ci(y0, gh); j <= ci(y1, gh); j++) for (let i = ci(x0, gw); i <= ci(x1, gw); i++) for (const b of cells[j * gw + i]) if (b._rs !== st && b.x <= x1 && b.x + b.w >= x0 && b.y <= y1 && b.y + b.h >= y0) { b._rs = st; out.push(b); }
+  return out;
+}
+function rectsOnSeg(list, x0, y0, x1, y1, out) { return rectsIn(list, Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1), out); }
 
 /* ---------------- ground painting ---------------- */
 const PALS = {
@@ -212,7 +258,7 @@ function drawSkirt(x0, y0, x1, y1) {
 function paintGround() {
   const grit = CFG.style === 'grit', P = SNOWY() ? (grit ? PALS.snowGrit : PALS.snow) : (PALS[CFG.style] || PALS.classic), RF = ROOFS[CFG.style] || ROOFS.classic;
   px_.setTransform(1, 0, 0, 1, 0, 0); px_.clearRect(0, 0, WW, WH); dgx.setTransform(1, 0, 0, 1, 0, 0); dgx.clearRect(0, 0, WW, WH); if (typeof M !== 'undefined' && M) M.fogMem = null;
-  if (MAP.tiled) { paintDevGround(); return; }
+  if (MAP.id === 'devyard') { paintDevGround(); return; }
   const R = mulberry(4242);
   gx.setTransform(1, 0, 0, 1, 0, 0); gx.globalAlpha = 1; gx.globalCompositeOperation = 'source-over';
   gx.fillStyle = SKIRT_PAT = pattern(96, 96, (g, w, h) => {
@@ -297,7 +343,7 @@ function paintGround() {
     }
     for (let i = 0; i < 26; i++) { const x = 100 + R() * (WW - 200), y = 100 + R() * (WH - 200); if (MAP.buildings.some(b => inRect(x, y, b, 20))) continue; scorch(x, y, 25 + R() * 30); }
   }
-  buildRoofs(RF, grit);
+  if (MAP.tiled) paintTiled(); else buildRoofs(RF, grit);
   gx.fillStyle = 'rgba(0,0,0,0.35)'; gx.fillRect(0, 0, WW, 12); gx.fillRect(0, WH - 12, WW, 12); gx.fillRect(0, 0, 12, WH); gx.fillRect(WW - 12, 0, 12, WH);
 }
 /* roofs are separate sprites so they draw ABOVE soldiers and vehicles (height layering) */
@@ -384,18 +430,32 @@ function bloodDrop(g, x, y, sz, rot, al) {
 }
 
 /* ---------------- nav grids + A* ---------------- */
-const NC = 30; let NGW = Math.ceil(WW / NC), NGH = Math.ceil(WH / NC);
+let NC = 30, NGW = Math.ceil(WW / NC), NGH = Math.ceil(WH / NC);       // tiled maps: NC = SUB, a nav cell per wall cell
 let navS = null, navV = null, navDirty = 0;
+/* navS (on foot): 0 open, 1 blocked, 2 a window (open to a vault, at a cost). navV: vehicles, kept further off */
 function buildNav() {
   navS = new Uint8Array(NGW * NGH); navV = new Uint8Array(NGW * NGH);
+  const TL = MAP.tiled && NC === SUB ? MAP.tiled : null;
+  if (TL) for (let k = 0; k < NGW * NGH; k++) {
+    const c = TL.cell[k]; if (c !== C_WALL && c !== C_WIN) continue;
+    navS[k] = c === C_WALL ? 1 : 2;
+    const i = k % NGW, j = (k / NGW) | 0;
+    for (let b = Math.max(0, j - 2); b <= Math.min(NGH - 1, j + 2); b++) for (let a = Math.max(0, i - 2); a <= Math.min(NGW - 1, i + 2); a++) navV[b * NGW + a] = 1;
+  }
   for (let j = 0; j < NGH; j++) for (let i = 0; i < NGW; i++) {
     const x = (i + 0.5) * NC, y = (j + 0.5) * NC, k = j * NGW + i;
     let s = 0, v = 0;
     if (x < 30 || y < 30 || x > WW - 30 || y > WH - 30) s = v = 1;
-    if (typeof M !== 'undefined' && M && M.wrecks) for (const w of M.wrecks) { const [lx, ly] = toLocal(w, x, y); if (Math.abs(lx) < w.hl + 8 && Math.abs(ly) < w.hw + 8) s = 1; if (Math.abs(lx) < w.hl + 30 && Math.abs(ly) < w.hw + 30) v = 1; }
-    for (const b of MAP.buildings) { if (inRect(x, y, b, 12)) s = 1; if (inRect(x, y, b, 38)) v = 1; }
+    if (!TL) for (const b of MAP.buildings) { if (inRect(x, y, b, 12)) s = 1; if (inRect(x, y, b, 38)) v = 1; }
     for (const w of MAP.water) { if (inRect(x, y, w, 4)) s = 1; if (inRect(x, y, w, 30)) v = 1; }
-    navS[k] = s; navV[k] = v;
+    if (s) navS[k] = 1; if (v) navV[k] = 1;
+  }
+  if (typeof M !== 'undefined' && M && M.wrecks) for (const w of M.wrecks) {
+    const R = Math.hypot(w.hl, w.hw) + 30;
+    for (let j = Math.max(0, Math.floor((w.y - R) / NC)); j <= Math.min(NGH - 1, Math.floor((w.y + R) / NC)); j++) for (let i = Math.max(0, Math.floor((w.x - R) / NC)); i <= Math.min(NGW - 1, Math.floor((w.x + R) / NC)); i++) {
+      const [lx, ly] = toLocal(w, (i + 0.5) * NC, (j + 0.5) * NC), k = j * NGW + i;
+      if (Math.abs(lx) < w.hl + 8 && Math.abs(ly) < w.hw + 8) navS[k] = 1; if (Math.abs(lx) < w.hl + 30 && Math.abs(ly) < w.hw + 30) navV[k] = 1;
+    }
   }
   for (const s of MAP.statics) if (s.alive) markStatic(s);
 }
@@ -409,11 +469,11 @@ function markStatic(s) {
   }
 }
 let ASG = new Float32Array(NGW * NGH), ASF = new Int32Array(NGW * NGH), ASS = new Uint32Array(NGW * NGH), ASC = new Uint32Array(NGW * NGH);   // cost, came-from, seen stamp, closed stamp
-/* world size: the normal maps are 3000x2000, the dev yard is smaller; canvases and path grids follow */
-function setWorld(w, h) {
-  if (w === WW && h === WH) return; WW = w; WH = h;
-  for (const c of [ground, prints, decals]) { c.width = w; c.height = h; }
-  NGW = Math.ceil(WW / NC); NGH = Math.ceil(WH / NC); ASG = new Float32Array(NGW * NGH); ASF = new Int32Array(NGW * NGH); ASS = new Uint32Array(NGW * NGH); ASC = new Uint32Array(NGW * NGH);
+/* world size (the normal maps are 3000x2000, OUTSKIRTS 3072x2048, the dev yard smaller) and nav cell size; canvases and path grids follow */
+function setWorld(w, h, nc) {
+  nc = nc || 30; if (w === WW && h === WH && nc === NC) return;
+  if (w !== WW || h !== WH) { WW = w; WH = h; for (const c of [ground, prints, decals]) { c.width = w; c.height = h; } }
+  NC = nc; NGW = Math.ceil(WW / NC); NGH = Math.ceil(WH / NC); ASG = new Float32Array(NGW * NGH); ASF = new Int32Array(NGW * NGH); ASS = new Uint32Array(NGW * NGH); ASC = new Uint32Array(NGW * NGH);
 }
 let asStamp = 1;
 function nearestFree(g, i, j) {
@@ -424,9 +484,12 @@ function nearestFree(g, i, j) {
   }
   return null;
 }
+/* a straight walk from (x0, y0) to (x1, y1) crosses no blocked cell; on the fine (tiled) grid with a body's width
+   either side, so string-pulled paths don't clip wall corners */
 function lineFree(g, x0, y0, x1, y1) {
-  const d = Math.hypot(x1 - x0, y1 - y0), n = Math.ceil(d / (NC * 0.5));
-  for (let k = 1; k < n; k++) { const x = lerp(x0, x1, k / n), y = lerp(y0, y1, k / n); const i = (x / NC) | 0, j = (y / NC) | 0; if (i < 0 || j < 0 || i >= NGW || j >= NGH || g[j * NGW + i]) return false; }
+  const d = Math.hypot(x1 - x0, y1 - y0), n = Math.ceil(d / (NC * 0.5)), w = NC < 30 && d ? 6 / d : 0, px = -(y1 - y0) * w, py = (x1 - x0) * w;
+  const bad = (x, y) => { const i = (x / NC) | 0, j = (y / NC) | 0; return i < 0 || j < 0 || i >= NGW || j >= NGH || g[j * NGW + i]; };
+  for (let k = 1; k < n; k++) { const x = lerp(x0, x1, k / n), y = lerp(y0, y1, k / n); if (bad(x, y) || (w && (bad(x + px, y + py) || bad(x - px, y - py)))) return false; }
   return true;
 }
 function astar(g, sx, sy, tx, ty) {
@@ -440,15 +503,15 @@ function astar(g, sx, sy, tx, ty) {
   const pop = () => { const top = H[0], last = H.pop(), fl = HF.pop(), n = H.length; if (n) { let i = 0; for (; ;) { const l = 2 * i + 1, r = l + 1; let m = i, fm = fl; if (l < n && HF[l] < fm) { m = l; fm = HF[l]; } if (r < n && HF[r] < fm) m = r; if (m === i) break; H[i] = H[m]; HF[i] = HF[m]; i = m; } H[i] = last; HF[i] = fl; } return top; };
   push(S);
   let iters = 0, found = false;
-  while (H.length && iters++ < 6000) {
+  while (H.length && iters++ < (NC < 30 ? 24000 : 6000)) {
     const k = pop(); if (ASC[k] === asStamp) continue; ASC[k] = asStamp;
     if (k === T) { found = true; break; }
     const i = k % NGW, j = (k / NGW) | 0;
     for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
       if (!di && !dj) continue; const a = i + di, b = j + dj; if (a < 0 || b < 0 || a >= NGW || b >= NGH) continue;
-      const n = b * NGW + a; if (g[n] || ASC[n] === asStamp) continue;
-      if (di && dj && (g[j * NGW + a] || g[b * NGW + i])) continue;
-      const ng = ASG[k] + (di && dj ? 1.414 : 1);
+      const n = b * NGW + a; if (g[n] === 1 || ASC[n] === asStamp) continue;
+      if (di && dj && (g[j * NGW + a] || g[b * NGW + i] || g[n])) continue;
+      const ng = ASG[k] + (di && dj ? 1.414 : 1) + (g[n] === 2 ? 5 : 0);         // a window: straight through, and only if a door is well out of the way
       if (ASS[n] !== asStamp || ng < ASG[n]) { ASS[n] = asStamp; ASG[n] = ng; ASF[n] = k; push(n); }
     }
   }
