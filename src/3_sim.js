@@ -670,16 +670,19 @@ function popSmoke(x, y, o) {
 }
 /* grid smoke (experimental: the dev panel's GRID SMOKE; grenades, dust and falling roofs all feed it): one field of
    smoke amounts on GS px tiles (M.gsf), stepped SMK_HZ times a second (S-ticks), not every frame. Each S-tick:
-   - an emitter (where a grenade / dust landed) puts SMK_EMIT of what it has left into its tile;
+   - an emitter (where a grenade / dust landed) lets out SMK_EMIT of what it has left into its tile, but only while
+     the tiles round it (SMK_CAP_R each way) hold less than SMK_CAP, three grenades' worth: the rest is lost, so
+     stacking smoke stops thickening after the third;
    - every tile bleeds about SMK_BLEED of its amount (a little random) to its 4 neighbours, a quarter each, lowest
      first and only downhill: a share goes only if it leaves that neighbour no higher than this tile is after passing
-     it. A wall keeps its share, a cracked window lets SMK_LEAK of it through. That is the whole spread, so
-     smoke flows round corners and along corridors, seeps out of broken windows, and overlapping smokes add up;
-   - random ticks (Minecraft style): a tile is picked with chance SMK_RT_P and loses SMK_RT_D, so it thins raggedly.
+     it. A wall keeps its share; a cracked window is open but takes only SMK_WIN. That is the whole spread, so
+     smoke flows round corners and along corridors, out of broken windows, and overlapping smokes add up;
+   - random ticks (Minecraft style): a tile is picked with chance SMK_RT_P and loses SMK_RT_D, plus SMK_RT_K of its
+     amount (counted up to SMK_RT_A), so it thins raggedly, and thick smoke shut in a room still clears.
    A tile's thickness is min(1, amount). Dust is the same smoke, brown (B: the brown part of a tile's amount).
    Cost goes with the tiles holding smoke, not the number of smokes. The field reaches SMK_OUT tiles past the map's
    edges, so smoke drifts off it rather than piling up there: tile i covers world x from (i - SMK_OUT) x GS. */
-const SMK_OUT = 16, GS = 16, SMK_HZ = 10, SMK_EMIT = 0.15, SMK_BLEED = 0.35, SMK_LEAK = 0.25, SMK_DEL = 0.01, SMK_RT_P = 0.1, SMK_RT_D = 0.01, SMK_NADE = 70, SMK_DUST = 5, SMK_K = 0.5;
+const SMK_OUT = 16, GS = 16, SMK_HZ = 10, SMK_EMIT = 0.15, SMK_BLEED = 0.35, SMK_WIN = 0.2, SMK_DEL = 0.01, SMK_RT_P = 0.1, SMK_RT_D = 0.008, SMK_RT_K = 0.05, SMK_RT_A = 1, SMK_NADE = 70, SMK_CAP = 3 * 70, SMK_CAP_R = 6, SMK_DUST = 5, SMK_K = 0.5;
 const NB4 = new Int32Array(4), DIRS8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
 function smokeField() {
   const W = Math.ceil(WW / GS) + 2 * SMK_OUT, H = Math.ceil(WH / GS) + 2 * SMK_OUT; let f = M.gsf;
@@ -687,7 +690,7 @@ function smokeField() {
   if (f.dirty) smokeSolid(f);
   return f;
 }
-/* the tiles smoke can't enter (1: a wall, an intact window) or only seeps into (2: a cracked window), by tile centre;
+/* the tiles smoke can't enter (1: a wall, an intact window) or takes less of (2: a cracked window), by tile centre;
    and f.R, each tile's room: the open tiles between it and the nearest wall or window (square rings, at most 3) */
 function smokeSolid(f) {
   f.S.fill(0); f.dirty = 0;
@@ -714,18 +717,24 @@ function updateSmokeField(dt) {
   f.acc += dt; if (f.acc < 1 / SMK_HZ) return; f.acc = Math.min(f.acc - 1 / SMK_HZ, 1 / SMK_HZ);      // one S-tick a frame at most
   if (f.dirty) smokeSolid(f);
   const { W, H, A, B, dA, dB, S, on, act } = f, add = k => { if (!on[k]) { on[k] = 1; f.V[k] = 0; act.push(k); } };
-  for (const e of f.em) { const a = Math.min(e[1], Math.max(e[1] * SMK_EMIT, 0.5)); e[1] -= a; A[e[0]] += a; if (e[2]) B[e[0]] += a; add(e[0]); }
+  for (const e of f.em) {
+    let a = Math.min(e[1], Math.max(e[1] * SMK_EMIT, 0.5)), n = 0; e[1] -= a;
+    const ci = e[0] % W, cj = (e[0] - ci) / W;
+    for (let j = Math.max(0, cj - SMK_CAP_R); j <= Math.min(H - 1, cj + SMK_CAP_R); j++) for (let i = Math.max(0, ci - SMK_CAP_R), k = j * W + i; i <= Math.min(W - 1, ci + SMK_CAP_R); i++, k++) n += A[k];
+    a = Math.min(a, SMK_CAP - n); if (a <= 0) continue;
+    A[e[0]] += a; if (e[2]) B[e[0]] += a; add(e[0]);
+  }
   if (f.em.length) f.em = f.em.filter(e => e[1] > 0.01);
   for (let q = 0, n = act.length; q < n; q++) {
     const k = act[q], a = A[k];
-    const out = a * SMK_BLEED * (0.7 + Math.random() * 0.6) / 4, fb = B[k] / a, i = k % W, lk = S[k] === 2; let nb = 0, gone = 0;
+    const out = a * SMK_BLEED * (0.7 + Math.random() * 0.6) / 4, fb = B[k] / a, i = k % W; let nb = 0, gone = 0;
     for (let d = 0; d < 4; d++) {
       const nk = d === 0 ? (i + 1 < W ? k + 1 : -1) : d === 1 ? (i > 0 ? k - 1 : -1) : d === 2 ? (k + W < W * H ? k + W : -1) : k - W;
       if (nk >= 0 && S[nk] !== 1 && A[nk] < a) NB4[nb++] = nk;
     }
     for (let x = 1; x < nb; x++) for (let y = x; y > 0 && A[NB4[y]] < A[NB4[y - 1]]; y--) { const t = NB4[y]; NB4[y] = NB4[y - 1]; NB4[y - 1] = t; }   // lowest first
     for (let x = 0; x < nb; x++) {
-      const nk = NB4[x], m = out * (lk || S[nk] === 2 ? SMK_LEAK : 1) * (0.75 + Math.random() * 0.5);
+      const nk = NB4[x], m = out * (S[nk] === 2 ? SMK_WIN / SMK_BLEED : 1) * (0.75 + Math.random() * 0.5);
       if (A[nk] + m > a - gone - m) continue;          // it would end up above this tile: not downhill
       gone += m; dA[nk] += m; dA[k] -= m; dB[nk] += m * fb; dB[k] -= m * fb; add(nk);
     }
@@ -733,7 +742,7 @@ function updateSmokeField(dt) {
   let w = 0, i0 = W, j0 = H, i1 = 0, j1 = 0;
   for (let q = 0; q < act.length; q++) {
     const k = act[q]; let a = A[k] + dA[k], b = B[k] + dB[k]; dA[k] = dB[k] = 0;
-    if (Math.random() < SMK_RT_P) { const r = Math.max(0, a - SMK_RT_D); b = a > 0 ? b * r / a : 0; a = r; }
+    if (Math.random() < SMK_RT_P) { const r = Math.max(0, a - SMK_RT_D - SMK_RT_K * Math.min(a, SMK_RT_A)); b = a > 0 ? b * r / a : 0; a = r; }
     if (a < SMK_DEL) { A[k] = B[k] = 0; on[k] = 0; continue; }     // too thin: the tile's gone
     A[k] = a; B[k] = Math.max(0, Math.min(a, b)); act[w++] = k;
     const i = k % W, j = (k - i) / W; if (i < i0) i0 = i; if (i >= i1) i1 = i + 1; if (j < j0) j0 = j; if (j >= j1) j1 = j + 1;

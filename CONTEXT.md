@@ -293,3 +293,8 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 ## Build 119
 - Grid smoke: tile look f.V eases to its thickness at SMK_IN 2.5/s (reset to 0 when a tile turns on), so smoke swells in; puff alpha x (SMK_SMALL 0.5 .. 1) by radius / 3 tiles, so small wall-squeezed puffs are fainter.
 - The field reaches SMK_OUT 16 tiles past every map edge (tile i covers world x from (i - SMK_OUT) x GS); fieldOcc shifts its inputs, smokeSolid / smokeEmit / drawSmokeField offset indices. fieldMask unchanged (world tiles).
+
+## Build 126
+- Grid smoke random tick loses SMK_RT_D 0.008 + SMK_RT_K 0.05 x min(amount, SMK_RT_A 1): one grenade in an 80-tile room lasts about 37 s (was 73), open air about 20 s (was 24, blocking 9 s).
+- Stack cap: an emitter only adds while the 13x13 tiles round it (SMK_CAP_R 6) hold under SMK_CAP = 3 grenades (210); the rest is lost. 5 stacked = 3 stacked.
+- Cracked windows are open tiles that take SMK_WIN 0.2 instead of SMK_BLEED 0.35 (SMK_LEAK gone, nothing limits flow out of them).
