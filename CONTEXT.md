@@ -289,3 +289,7 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 
 ## Build 118
 - Grid smoke drawn as soft puffs (the clouds' sprites) instead of a tile image: one per checkerboard tile (an off tile gets one when no neighbour has smoke), radius SMK_PUFF 1.5 tiles + SMK_GROW 0.9 per tile of room (f.R, Chebyshev distance to the nearest solid tile less one, capped 3, built in smokeSolid), scaled 0.6-1 by thickness. Walls/intact windows cut out of the puff canvas; the radius rule keeps a puff short of the far side of any wall. Shade = the puff canvas blacked, 0.28 alpha, offset (4, 6). 40 dusts: drawWorld about 1.6 ms (0.5 without).
+
+## Build 119
+- Grid smoke: tile look f.V eases to its thickness at SMK_IN 2.5/s (reset to 0 when a tile turns on), so smoke swells in; puff alpha x (SMK_SMALL 0.5 .. 1) by radius / 3 tiles, so small wall-squeezed puffs are fainter.
+- The field reaches SMK_OUT 16 tiles past every map edge (tile i covers world x from (i - SMK_OUT) x GS); fieldOcc shifts its inputs, smokeSolid / smokeEmit / drawSmokeField offset indices. fieldMask unchanged (world tiles).

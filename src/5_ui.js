@@ -205,24 +205,26 @@ function drawSmokes(vis, vw) {
    SMK_PUFF tiles in radius, SMK_GROW more per tile of room round it (f.R), less when thin. So the grid says where the
    smoke is and the puffs make it round and smooth. They go into SMK_C, the walls are cut out of it (a puff never
    reaches past the wall beyond it, so a room keeps its smoke), and it's drawn twice: dark and offset as its shade,
-   then the smoke. Each puff drifts and breathes slowly (phase from the tile); thinned near the eyes like the clouds */
-const SMK_VIS = 3, SMK_PUFF = 1.5, SMK_GROW = 0.9, SMK_PAD = 5;     // SMK_PAD: tiles past the view whose puffs can reach in
+   then the smoke. Each puff drifts and breathes slowly (phase from the tile); thinned near the eyes like the clouds.
+   A tile's look (f.V) eases to its thickness at SMK_IN a second, so new smoke swells in; a puff is fainter the smaller
+   it is (down to SMK_SMALL), so a little one squeezed against a wall doesn't stand out as a hot spot */
+const SMK_VIS = 3, SMK_PUFF = 1.5, SMK_GROW = 0.9, SMK_PAD = 5, SMK_IN = 2.5, SMK_SMALL = 0.5;     // SMK_PAD: tiles past the view whose puffs can reach in
 const SMK_C = document.createElement('canvas'), SMK_SH = document.createElement('canvas');
 function drawSmokeField(vw, eyes) {
-  const f = M.gsf, [n0, n1] = SIGHT_NEAR, V = vw ? [(vw.x - VOX) / VZ, (vw.y - VOY) / VZ, (vw.x + vw.w - VOX) / VZ, (vw.y + vw.h - VOY) / VZ].map(v => v / GS) : [-1e9, -1e9, 1e9, 1e9];
+  const f = M.gsf, [n0, n1] = SIGHT_NEAR, V = vw ? [(vw.x - VOX) / VZ, (vw.y - VOY) / VZ, (vw.x + vw.w - VOX) / VZ, (vw.y + vw.h - VOY) / VZ].map(v => v / GS + SMK_OUT) : [-1e9, -1e9, 1e9, 1e9];
   if (f.dirty) smokeSolid(f);
   const i0 = Math.max(f.box[0] - SMK_PAD, Math.floor(V[0]) - SMK_PAD), j0 = Math.max(f.box[1] - SMK_PAD, Math.floor(V[1]) - SMK_PAD), i1 = Math.min(f.box[2] + SMK_PAD, Math.ceil(V[2]) + SMK_PAD), j1 = Math.min(f.box[3] + SMK_PAD, Math.ceil(V[3]) + SMK_PAD);
-  const X0 = i0 * GS, Y0 = j0 * GS, pw = (i1 - i0) * GS, ph = (j1 - j0) * GS;
+  const X0 = (i0 - SMK_OUT) * GS, Y0 = (j0 - SMK_OUT) * GS, pw = (i1 - i0) * GS, ph = (j1 - j0) * GS;
   if (pw <= 0 || ph <= 0) return;
   if (SMK_C.width < pw || SMK_C.height < ph) { SMK_C.width = SMK_SH.width = Math.max(pw, SMK_C.width); SMK_C.height = SMK_SH.height = Math.max(ph, SMK_C.height); }
-  const g = SMK_C.getContext('2d'), gs = SMK_SH.getContext('2d'), { W, A, B, R } = f, T = M.time;
+  const g = SMK_C.getContext('2d'), gs = SMK_SH.getContext('2d'), { W, A, B, R, V: Vs } = f, T = M.time, ease = Math.min(1, clamp(T - f.vt, 0, 0.1) * SMK_IN); f.vt = T;
   g.setTransform(1, 0, 0, 1, -X0, -Y0); g.globalCompositeOperation = 'source-over'; g.clearRect(X0, Y0, pw, ph);
   for (const k of f.act) {
     const i = k % W, j = (k - i) / W; if (i < i0 || j < j0 || i >= i1 || j >= j1) continue;
     if ((i + j) & 1 && (A[k + 1] > 0 || A[k - 1] > 0 || A[k + W] > 0 || A[k - W] > 0)) continue;
-    const a = A[k], den = 1 - Math.exp(-SMK_VIS * a), fb = B[k] / a, h = ((k * 2654435761) >>> 0) / 4294967296, p = h * TAU;
-    const x = (i + 0.5) * GS + Math.sin(T * 0.35 + p) * 3, y = (j + 0.5) * GS + Math.cos(T * 0.27 + p) * 3, r = GS * (SMK_PUFF + SMK_GROW * R[k]) * (0.6 + 0.4 * den);
-    let al = den * (0.85 + 0.15 * Math.sin(T * 0.45 + p)); for (const o of eyes) al *= SMOKE_KEEP + (1 - SMOKE_KEEP) * clamp((Math.hypot(x - o.x, y - o.y) - n0) / (n1 - n0), 0, 1);
+    const a = A[k], den = Vs[k] += (1 - Math.exp(-SMK_VIS * a) - Vs[k]) * ease, fb = B[k] / a, h = ((k * 2654435761) >>> 0) / 4294967296, p = h * TAU;
+    const x = (i - SMK_OUT + 0.5) * GS + Math.sin(T * 0.35 + p) * 3, y = (j - SMK_OUT + 0.5) * GS + Math.cos(T * 0.27 + p) * 3, r = GS * (SMK_PUFF + SMK_GROW * R[k]) * (0.6 + 0.4 * den);
+    let al = den * (0.85 + 0.15 * Math.sin(T * 0.45 + p)) * (SMK_SMALL + (1 - SMK_SMALL) * Math.min(1, r / (GS * 3))); for (const o of eyes) al *= SMOKE_KEEP + (1 - SMOKE_KEEP) * clamp((Math.hypot(x - o.x, y - o.y) - n0) / (n1 - n0), 0, 1);
     const s = (h * 16 | 0) % 4, v = (h * 64 | 0) & 1, k2 = v ? 0.7 : 1;
     if (fb < 0.98) { g.globalAlpha = al * k2 * (1 - fb); g.drawImage(SPR.puffs.grey[s][v], x - r, y - r, r * 2, r * 2); }
     if (fb > 0.02) { g.globalAlpha = al * k2 * fb; g.drawImage(SPR.puffs.brown[s][v], x - r, y - r, r * 2, r * 2); }

@@ -677,12 +677,13 @@ function popSmoke(x, y, o) {
      smoke flows round corners and along corridors, seeps out of broken windows, and overlapping smokes add up;
    - random ticks (Minecraft style): a tile is picked with chance SMK_RT_P and loses SMK_RT_D, so it thins raggedly.
    A tile's thickness is min(1, amount). Dust is the same smoke, brown (B: the brown part of a tile's amount).
-   Cost goes with the tiles holding smoke, not the number of smokes. */
-const GS = 16, SMK_HZ = 10, SMK_EMIT = 0.15, SMK_BLEED = 0.35, SMK_LEAK = 0.25, SMK_DEL = 0.01, SMK_RT_P = 0.1, SMK_RT_D = 0.01, SMK_NADE = 70, SMK_DUST = 5, SMK_K = 0.5;
+   Cost goes with the tiles holding smoke, not the number of smokes. The field reaches SMK_OUT tiles past the map's
+   edges, so smoke drifts off it rather than piling up there: tile i covers world x from (i - SMK_OUT) x GS. */
+const SMK_OUT = 16, GS = 16, SMK_HZ = 10, SMK_EMIT = 0.15, SMK_BLEED = 0.35, SMK_LEAK = 0.25, SMK_DEL = 0.01, SMK_RT_P = 0.1, SMK_RT_D = 0.01, SMK_NADE = 70, SMK_DUST = 5, SMK_K = 0.5;
 const NB4 = new Int32Array(4), DIRS8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
 function smokeField() {
-  const W = Math.ceil(WW / GS), H = Math.ceil(WH / GS); let f = M.gsf;
-  if (!f || f.W !== W || f.H !== H) { const n = W * H; f = M.gsf = { W, H, A: new Float32Array(n), B: new Float32Array(n), dA: new Float32Array(n), dB: new Float32Array(n), S: new Uint8Array(n), on: new Uint8Array(n), act: [], em: [], acc: 0, box: [0, 0, 0, 0], dirty: 1 }; }
+  const W = Math.ceil(WW / GS) + 2 * SMK_OUT, H = Math.ceil(WH / GS) + 2 * SMK_OUT; let f = M.gsf;
+  if (!f || f.W !== W || f.H !== H) { const n = W * H; f = M.gsf = { W, H, A: new Float32Array(n), B: new Float32Array(n), V: new Float32Array(n), vt: 0, dA: new Float32Array(n), dB: new Float32Array(n), S: new Uint8Array(n), on: new Uint8Array(n), act: [], em: [], acc: 0, box: [0, 0, 0, 0], dirty: 1 }; }
   if (f.dirty) smokeSolid(f);
   return f;
 }
@@ -691,8 +692,8 @@ function smokeField() {
 function smokeSolid(f) {
   f.S.fill(0); f.dirty = 0;
   for (const b of MAP.buildings) {
-    const v = b.glass && b.sec && b.sec.hp < b.sec.mhp ? 2 : 1, i1 = Math.min(f.W, Math.ceil((b.x + b.w - GS / 2) / GS)), j1 = Math.min(f.H, Math.ceil((b.y + b.h - GS / 2) / GS));
-    for (let j = Math.max(0, Math.round(b.y / GS)); j < j1; j++) for (let i = Math.max(0, Math.round(b.x / GS)); i < i1; i++) f.S[j * f.W + i] = v;
+    const v = b.glass && b.sec && b.sec.hp < b.sec.mhp ? 2 : 1, i1 = Math.min(f.W, Math.ceil((b.x + b.w - GS / 2) / GS) + SMK_OUT), j1 = Math.min(f.H, Math.ceil((b.y + b.h - GS / 2) / GS) + SMK_OUT);
+    for (let j = Math.max(0, Math.round(b.y / GS) + SMK_OUT); j < j1; j++) for (let i = Math.max(0, Math.round(b.x / GS) + SMK_OUT); i < i1; i++) f.S[j * f.W + i] = v;
   }
   const { W, H, S } = f, R = f.R || (f.R = new Uint8Array(W * H));     // distance to the nearest solid tile, two passes (capped at 4), less one
   for (let k = 0; k < R.length; k++) R[k] = S[k] ? 0 : 4;
@@ -704,15 +705,15 @@ function smokeSolid(f) {
 }
 /* an emitter: amt of smoke (brown: dust) let out into the tile at (x, y), or the nearest open one round it */
 function smokeEmit(x, y, amt, brown) {
-  const f = smokeField(); let i = clamp(Math.floor(x / GS), 0, f.W - 1), j = clamp(Math.floor(y / GS), 0, f.H - 1);
-  if (f.S[j * f.W + i] === 1) { let best = Infinity; const ci = i, cj = j; for (const [dx, dy] of DIRS8) { const a = ci + dx, b = cj + dy, d = Math.hypot((a + 0.5) * GS - x, (b + 0.5) * GS - y); if (a >= 0 && b >= 0 && a < f.W && b < f.H && f.S[b * f.W + a] !== 1 && d < best) { best = d; i = a; j = b; } } }
+  const f = smokeField(); let i = clamp(Math.floor(x / GS) + SMK_OUT, 0, f.W - 1), j = clamp(Math.floor(y / GS) + SMK_OUT, 0, f.H - 1);
+  if (f.S[j * f.W + i] === 1) { let best = Infinity; const ci = i, cj = j; for (const [dx, dy] of DIRS8) { const a = ci + dx, b = cj + dy, d = Math.hypot((a - SMK_OUT + 0.5) * GS - x, (b - SMK_OUT + 0.5) * GS - y); if (a >= 0 && b >= 0 && a < f.W && b < f.H && f.S[b * f.W + a] !== 1 && d < best) { best = d; i = a; j = b; } } }
   f.em.push([j * f.W + i, amt, brown ? 1 : 0]);
 }
 function updateSmokeField(dt) {
   const f = M.gsf; if (!f || (!f.act.length && !f.em.length)) return;
   f.acc += dt; if (f.acc < 1 / SMK_HZ) return; f.acc = Math.min(f.acc - 1 / SMK_HZ, 1 / SMK_HZ);      // one S-tick a frame at most
   if (f.dirty) smokeSolid(f);
-  const { W, H, A, B, dA, dB, S, on, act } = f, add = k => { if (!on[k]) { on[k] = 1; act.push(k); } };
+  const { W, H, A, B, dA, dB, S, on, act } = f, add = k => { if (!on[k]) { on[k] = 1; f.V[k] = 0; act.push(k); } };
   for (const e of f.em) { const a = Math.min(e[1], Math.max(e[1] * SMK_EMIT, 0.5)); e[1] -= a; A[e[0]] += a; if (e[2]) B[e[0]] += a; add(e[0]); }
   if (f.em.length) f.em = f.em.filter(e => e[1] > 0.01);
   for (let q = 0, n = act.length; q < n; q++) {
@@ -743,6 +744,7 @@ function updateSmokeField(dt) {
    tiles), times SMK_K (two thick tiles: all of it). Cut to the box of tiles holding smoke, then tile by tile */
 function fieldOcc(x0, y0, x1, y1) {
   const f = M.gsf; if (!f || !f.act.length) return 0;
+  const O = SMK_OUT * GS; x0 += O; y0 += O; x1 += O; y1 += O;     // to the field's own px
   const X0 = f.box[0] * GS, Y0 = f.box[1] * GS, X1 = f.box[2] * GS, Y1 = f.box[3] * GS, dx = x1 - x0, dy = y1 - y0; let t0 = 0, t1 = 1;
   for (const [p, q] of [[-dx, x0 - X0], [dx, X1 - x0], [-dy, y0 - Y0], [dy, Y1 - y0]]) {
     if (!p) { if (q < 0) return 0; continue; }
