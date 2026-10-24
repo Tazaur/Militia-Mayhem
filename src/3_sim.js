@@ -19,7 +19,7 @@ const VT = {
     seats: [
       { n: 'DRIVER', anchor: [2, -36], pos: [-1, -8], exposed: true, role: 'drive' },
       { n: 'PASSENGER', anchor: [2, 36], pos: [-1, 8], exposed: true, role: 'rifle' },
-      { n: 'GUNNER', anchor: [-60, 0], pos: [-27, 0], exposed: true, role: 'mg' }],
+      { n: 'GUNNER', anchor: [-60, 0], pos: [-22, 0], exposed: true, role: 'mg' }],
     dpad: [0, 1, 2, 0]
   },
   nest: {
@@ -343,7 +343,7 @@ function destroyVehicle(v, src) {
   explosion(v.x, v.y, v.type === 'tank' ? 110 : 80, 120, 150, src, -2, true);
   if (src && occupied && isEnemy(src.team, vt)) { src.vk++; addPts(src, v.type === 'tank' ? 300 : 200, (v.type === 'nest' ? 'NEST' : v.type.toUpperCase()) + ' DESTROYED'); }
   for (const s of crew) if (s.alive) { s.protect = 0; kill(s, src, 'explosion', rnd(-1, 1), rnd(-1, 1)); }
-  if (v.type !== 'nest') M.wrecks.push({ type: v.type, x: v.x, y: v.y, a: v.a, ta: v.ta, t: 180, T: 180, burn: 14, hl: v.T.hl * 0.92, hw: v.T.hw * 0.9, vx: 0, vy: 0 }) && (navDirty = 1);
+  if (v.type !== 'nest') M.wrecks.push({ type: v.type, x: v.x, y: v.y, a: v.a, ta: v.ta, t: 180, T: 180, burn: 14, hl: v.T.hl * 0.92, hw: v.T.hw * 0.9, vx: 0, vy: 0, bw: v.type === 'jeep' && Math.random() < JEEP_BW ? rint(0, 3) : -1 }) && (navDirty = 1);
   else for (let i = 0; i < 10; i++) part({ k: 'dirt', x: v.x, y: v.y, vx: rnd(-90, 90), vy: rnd(-90, 90), life: 0.8, max: 0.8, sz: 3, drag: 3 });
   if (src && src.player && !occupied) src.msg = { t: 1.4, txt: 'EMPTY ' + v.type.toUpperCase() + ' DESTROYED' };
   feed(src, 'DESTROYED', { name: v.type === 'nest' ? 'MG NEST' : v.type.toUpperCase(), color: 'white' });
@@ -818,7 +818,7 @@ function cannonFx(v, x, y, s) {
 function mgPos(v) {
   const c = Math.cos(v.mgA) * 4, s = Math.sin(v.mgA) * 4;
   if (v.type === 'tank') { const [lx, ly] = seatLocal(v, 1), [x, y] = toWorld(v, lx, ly); return [x + c, y + s]; }
-  const [x, y] = toWorld(v, v.type === 'nest' ? 2 : -27, 0); return [x + c, y + s];
+  const [x, y] = toWorld(v, v.type === 'nest' ? 2 : -22, 0); return [x + c, y + s];
 }
 function fireMG(v, s) {
   if (v.over > 0) return;
@@ -972,7 +972,8 @@ function updateProjectiles(dt) {
       if (hit.k === 'sol') hurtSoldier(hit.s, p.dmg, p.src, p.mg ? 'mg' : 'bullet', p.vx, p.vy, p.wname);
       else if (hit.k === 'veh') {
         const v = hit.v; let victim = null;
-        for (const o of v.seats) { if (!o || !v.T.seats[o.seat].exposed || !canHurt(p.src, o)) continue; const oo = p.rew ? lagAt(o, netNow() - p.rew) : o; if (Math.hypot(oo.x - hx, oo.y - hy) < 13) victim = o; }
+        const sp = Math.hypot(p.vx, p.vy) || 1, L = v.T.hl * 2 + 10, ex = hx + p.vx / sp * L, ey = hy + p.vy / sp * L; let vt = 2;     // exposed crew on the shot's line on through the vehicle (a nest gunner behind the bags)
+        for (const o of v.seats) { if (!o || !v.T.seats[o.seat].exposed || !canHurt(p.src, o)) continue; const oo = p.rew ? lagAt(o, netNow() - p.rew) : o, t = Math.hypot(oo.x - hx, oo.y - hy) < 13 ? 0 : segCirc(hx, hy, ex, ey, oo.x, oo.y, 9); if (t >= 0 && t < vt) { vt = t; victim = o; } }
         if (victim && Math.random() < 0.6) hurtSoldier(victim, p.dmg, p.src, p.mg ? 'mg' : 'bullet', p.vx, p.vy, p.wname);
         else { hurtVehicle(v, v.type === 'tank' ? p.vdmg * 0.2 : p.vdmg, p.src); sfx('ting', hx, hy); sparks(hx, hy, 3); }
       } else { sparks(hx, hy, 2); if (hit.k === 'static' && hit.s.type === 'bag') part({ k: 'dirt', x: hx, y: hy, vx: -p.vx * 0.05 + rnd(-20, 20), vy: -p.vy * 0.05 + rnd(-20, 20), life: 0.3, max: 0.3, sz: 2, drag: 4 }); }
@@ -1095,7 +1096,8 @@ function controlSoldier(s, I, dt) {
   if (I.fire && !sprint && !s.torch && s.fireCd <= 0 && s.stanceT <= 0) {
     if (s.reloadT <= 0 && !pullTrigger(s) && st.res <= 0 && s.w[1 - s.wi].mag + s.w[1 - s.wi].res > 0) s.wi = 1 - s.wi;      // dry: over to the other gun
   }
-  if (I.nadeCyc && s.smokes + s.nades > 0) { s.throwSel = 1 - s.throwSel; sfx('ui'); }
+  if (I.nadeCyc && s.smokes > 0 && s.nades > 0) { s.throwSel = 1 - s.throwSel; sfx('ui'); }
+  if (!(s.throwSel ? s.smokes : s.nades) && (s.throwSel ? s.nades : s.smokes)) s.throwSel = 1 - s.throwSel;     // one kind ran out: the other is up
   if (I.alt && canThrow(s) && s.nadeCd <= 0) throwNade(s, I.altDist || 240, s.bot ? (I.smoke ? 'smoke' : true) : false);
   for (const c of M.crates) if (c.live && Math.hypot(c.x - s.x, c.y - s.y) < 16) pickupCrate(s, c);
 }
@@ -1194,6 +1196,8 @@ function updateVehicle(v, dt) {
   vehDamageFx(v, dt);
   engineUpdate(v);
 }
+/* a jeep's top speed: down to JEEP_SLOW of it as it loses health. A wreck has a broken-off wheel JEEP_BW of the time */
+const JEEP_SLOW = 0.7, JEEP_BW = 0.6;
 /* engine, steering and grip for one step. `local`: a joiner driving their own vehicle, where collisions only move
    this vehicle (the host does the crushing, the shoving and the damage) */
 function vehDrive(v, mx, my, dt, local) {
@@ -1206,7 +1210,7 @@ function vehDrive(v, mx, my, dt, local) {
     const align = Math.cos(d);
     throttle = (v.rev ? -1 : 1) * m * (v.type === 'tank' ? Math.pow(Math.max(0, align), 3) : Math.max(0.3, align));
   }
-  const target = throttle * (throttle >= 0 ? T.maxF : T.maxR);
+  const target = throttle * (throttle >= 0 ? T.maxF : T.maxR) * (v.type === 'jeep' ? JEEP_SLOW + (1 - JEEP_SLOW) * clamp(v.hp / T.hp, 0, 1) : 1);
   const rate = m < 0.15 ? T.drag : (Math.sign(target) !== Math.sign(v.spd) && Math.abs(v.spd) > 5 ? T.brake : T.acc);
   v.spd = approach(v.spd, target, rate * dt);
   v.av = v.type === 'tank' ? steer * T.turn : steer * T.turn * clamp(Math.abs(v.spd) / 80, 0, 1);

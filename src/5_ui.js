@@ -204,7 +204,27 @@ function drawWreck(w) {
     const tx = w.x - 4 * Math.cos(w.a), ty = w.y - 4 * Math.sin(w.a), c = Math.cos(w.ta), s = Math.sin(w.ta);
     spr('hull5', w.x, w.y, w.a, 1, 1, al); spr('tur_dead', tx, ty, w.ta, 1, 1, al);
     spr('mg_dead', tx - 6 * c + 9 * s, ty - 6 * s - 9 * c, w.ta + 0.9, 1, 1, al);
-  } else { spr('jeep4', w.x, w.y, w.a, 1, 1, al); spr('mg_dead', w.x - 27 * Math.cos(w.a), w.y - 27 * Math.sin(w.a), w.a + 2.4, 1, 1, al); }
+  } else { drawJeepWheels(w.x, w.y, w.a, 0, al, w.bw); spr('jeep4', w.x, w.y, w.a, 1, 1, al); spr('mg_dead', w.x - 22 * Math.cos(w.a), w.y - 22 * Math.sin(w.a), w.a + 2.4, 1, 1, al); }
+}
+/* a jeep's front tyres in their wells (EXTRA.jeepWells), under the body, turned by steer; bw >= 0: that well (0 / 1 front,
+   2 / 3 rear) has the broken-off wheel instead */
+function drawJeepWheels(x, y, a, steer, al, bw) {
+  const c = Math.cos(a), s = Math.sin(a), at = (i, sd) => { const [wx, wy] = EXTRA.jeepWells[i]; return [x + c * wx - s * wy * sd, y + s * wx + c * wy * sd]; };
+  for (const sd of [-1, 1]) { if (bw === (sd < 0 ? 0 : 1)) continue; const [tx, ty] = at(0, sd); spr('jeep_tire', tx, ty, a + steer, 1, 1, al); }
+  if (bw >= 0) { const [tx, ty] = at(bw < 2 ? 0 : 1, bw % 2 ? 1 : -1); spr('jeep_wheel', tx, ty, a + bw * 1.7, 1, 1, al); }
+}
+/* the front wheels' angle from how the jeep is turning (tan δ = turn rate x wheelbase / speed), eased; works the same for
+   joiners, from the motion they see. Reversing turns them the right way round too */
+const JEEP_WB = 46, JEEP_LOCK = 0.55;
+function jeepSteer(v) {
+  const t = M.time, dt = t - (v._sT || 0);
+  if (dt > 0 && dt < 0.5) {
+    const fwd = ((v.x - v._sx) * Math.cos(v.a) + (v.y - v._sy) * Math.sin(v.a)) / dt, w = angDiff(v._sa, v.a) / dt;
+    const want = Math.abs(fwd) > 12 ? clamp(Math.atan(w * JEEP_WB / fwd), -JEEP_LOCK, JEEP_LOCK) : v._wa || 0;
+    v._wa = lerp(v._wa || 0, want, 1 - Math.exp(-dt * 10));
+  }
+  if (dt) { v._sT = t; v._sx = v.x; v._sy = v.y; v._sa = v.a; }
+  return v._wa || 0;
 }
 /* where this view's players are looking from */
 function viewEyes(vw) {
@@ -367,7 +387,8 @@ function drawVehicle(v) {
     const g = v.seats[1]; if (g) drawSeated(g, true);
     if (v.recoil > 0.85) flashAt(px + Math.cos(v.ta) * 100, py + Math.sin(v.ta) * 100, 26);
   } else {
-    const jn = 'jeep' + Math.min(3, Math.floor(hullFrame(v) * 0.7)), jm = ATLAS[jn];
+    const f = v.hp / v.T.hp, jn = 'jeep' + (f > 0.75 ? 0 : f > 0.5 ? 1 : f > 0.25 ? 2 : 3), jm = ATLAS[jn];
+    drawJeepWheels(v.x, v.y, v.a, jeepSteer(v), 1, -1);
     sprC(vehSkin(jn, col), jm[4], jm[5], v.x, v.y, v.a);
     for (const i of [0, 1]) { const s = v.seats[i]; if (s) drawSeated(s); }
     const [mx, my] = mgPos(v);

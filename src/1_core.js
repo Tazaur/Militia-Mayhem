@@ -259,9 +259,10 @@ function vehSkin(name, color) {
   g.imageSmoothingEnabled = false;
   g.drawImage(SRC, m[0], m[1], m[2], m[3], 0, 0, m[2], m[3]);
   const px = m[4], py = m[5];
-  // the artist's colour pieces only: turret stripe bar, jeep hood emblem
+  // the artist's colour pieces only: turret stripe bar, jeep hood emblem (white while the jeep is empty, faded to 70 %
+  // on the last damage frame, none on the wreck)
   if (color && name === 'tur') { const d = ATLAS.bar; g.drawImage(tinted('bar', color), Math.round(12 - d[4] + 0.5), Math.round(py - d[5])); }
-  if (color && name.startsWith('jeep') && name !== 'jeep4') { const d = ATLAS.decal, o = EXTRA.jeepStar; g.drawImage(tinted('decal', color), Math.round(px + o[0] - d[4]), Math.round(py + o[1] - d[5])); }
+  if (/^jeep[0-3]$/.test(name)) { const d = ATLAS.decal, o = EXTRA.jeepStar; g.globalAlpha = name === 'jeep3' ? 0.7 : 1; g.drawImage(tinted('decal', color), Math.round(px + o[0] - d[4]), Math.round(py + o[1] - d[5])); g.globalAlpha = 1; }
   SKINS.set(key, c); return c;
 }
 /* darker copies of soldier sprites for bots, so a team reads as one colour family */
