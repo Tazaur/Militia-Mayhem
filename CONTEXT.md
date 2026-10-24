@@ -365,3 +365,6 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 ## Build 148
 - Height spans: HC G = 255 - bottom x 4 (R = top), so a pixel is a span bottom..top ('lighten' keeps the highest top and the lowest bottom). The sun and point-light marches block only where the ray is inside a span (blk), so something with an air gap under it throws a shadow that starts away from its base; walls / hulls run from the ground. (G was reflectivity in matSpr; nothing read it yet: phase 3 needs another home for it.)
 - Every part / shape: a start and an add. Start = the top of what it rests on (hUnder) + SUNP[name].lift (air gap); add = px taller than painted (SUNP[name].add, or o.add). SUNP keys: sprite name less its frame digits, or the SUNH shape name (wall, tree, hay, fence, crate, nest). Now: tur_gun lift 4 (gun at 16, floating past the hull). Soldiers: legs as add 7 (solid from the ground), a jump lifts them off it (SUNB.jump 4 x jumpK); the jeep gunner stands in the bed (add 7).
+
+## Build 149
+- atlas_m.png repaint: soldiers (stand / nogun / rpg / sit) 13 px (standing: + 7 legs = 20), tank gun 6 px barrel / 8 muzzle brake (at 16: 16..22, under the turret top 23), turret 11, jeep tyres 6.
