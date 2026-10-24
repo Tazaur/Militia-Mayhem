@@ -5,10 +5,15 @@ in white, and the game recolours them once at load (src/1_core.js buildTeamSprit
 The atlas itself is the source of truth: every sprite already in it is copied pixel-for-pixel (hand edits to atlas.png survive
 a repack). Source files are only read for sprites the atlas doesn't have yet: soldier bases + shadows (art/art3/sheet.png),
 HUD icons (art/art4/icons.png), MG / dead turret / sandbag crescents (mounts.py). `python atlas_pack.py --sync` writes atlas
-edits of the 1:1 sprites (icons, MGs, dead turret) back into their source files."""
+edits of the 1:1 sprites (icons, MGs, dead turret) back into their source files.
+
+atlas_m.png is the material atlas, same layout, opaque (the silhouette is atlas.png's alpha): R = height above the object's
+base, 4 per px (0..63 px), G = reflectivity, B = glow. Painted in heightmap/ (the editor); a repack carries every sprite's
+material along with it, and a sprite that has none gets a first pass from its outline (rounded edges, flat top, a little
+relief from the art's shading). `--remat` regenerates them all."""
 from PIL import Image
 import numpy as np, json, os, sys
-SYNC = '--sync' in sys.argv
+SYNC = '--sync' in sys.argv; REMAT = '--remat' in sys.argv
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 from mounts import mount_sprites, bag_frames
 
@@ -16,6 +21,7 @@ meta = json.load(open('atlas.json')); meta.pop('_strip', None)
 A = np.array(Image.open('atlas.png').convert('RGBA'))
 extra = json.load(open('atlas_extra.json'))
 def old(n): x, y, w, h, px, py = meta[n]; return (A[y:y + h, x:x + w].copy(), px, py)
+AM = np.array(Image.open('atlas_m.png').convert('RGB')) if os.path.exists('atlas_m.png') and not REMAT else None
 
 S = {}                                            # name -> (arr, px, py)
 # ---- vehicles: hulls, jeeps, turret (body + separate cannon), wreck parts, mounted MG, white paint pieces
@@ -116,6 +122,33 @@ H = y + rowh; atlas = np.zeros((H, W, 4), np.uint8)
 for n, x, y in places: a = S[n][0]; atlas[y:y + a.shape[0], x:x + a.shape[1]] = a
 Image.fromarray(atlas).save('atlas.png', optimize=True)
 json.dump(out, open('atlas.json', 'w'))
+# ---- material atlas: carried over per sprite (same size as before), else the first pass
+MAT = {  # prefix: (height px, bevel px or 0 = a dome over the whole shape, reflectivity, relief px from shading)
+    'hull': (12, 4, 90, 1.5), 'tur_gun': (3, 0, 110, 0), 'tur_dead': (8, 4, 50, 1.5), 'tur': (10, 4, 90, 1.5), 'jeep_': (4, 0, 25, 0),
+    'jeep': (10, 5, 70, 1.5), 'mg': (3, 0, 110, 0), 'bagarc': (10, 5, 15, 1), 'sol_': (8, 0, 30, 1), 'smoke': (14, 0, 0, 0),
+    'dust': (6, 0, 0, 0), 'boom': (16, 0, 0, 0), 'fire': (10, 0, 0, 0)}
+def matgen(a, n):
+    m = np.zeros(a.shape[:2] + (3,), np.uint8); al = a[:, :, 3]
+    p = next((k for k in MAT if n.startswith(k)), None)
+    if p is None: return m                                         # shadows, colour pieces, HUD: no material
+    cap, B, refl, rel = MAT[p]; inside = al > 0; d = np.zeros(al.shape, float); e = inside.copy(); k = 0
+    while e.any():                                                 # distance to the edge: erode, alternating 4 / 8 neighbours
+        k += 1; d[e] = k; q = np.pad(e, 1)
+        e = q[1:-1, 1:-1] & q[:-2, 1:-1] & q[2:, 1:-1] & q[1:-1, :-2] & q[1:-1, 2:]
+        if k % 2: e &= q[:-2, :-2] & q[:-2, 2:] & q[2:, :-2] & q[2:, 2:]
+    t = np.clip((d - 0.5) / (B or max(k, 1)), 0, 1); h = cap * np.sqrt(1 - (1 - t) ** 2) * al / 255
+    lum = a[:, :, :3].astype(float) @ [0.3, 0.59, 0.11]
+    if rel and inside.any(): h += (lum - np.median(lum[inside])) / 255 * rel * 2
+    m[:, :, 0] = np.where(inside, np.clip(np.round(h), 0, 63) * 4, 0)
+    m[:, :, 1] = np.where(inside, refl, 0)
+    if p in ('fire', 'boom'): m[:, :, 2] = np.clip((lum - 90) * 1.6, 0, 255) * al / 255
+    return m
+AMn = np.zeros((H, W, 3), np.uint8); gen = 0
+for n, x, y in places:
+    a = S[n][0]; h, w = a.shape[:2]
+    if AM is not None and n in meta and meta[n][2:4] == [w, h]: ox, oy = meta[n][:2]; AMn[y:y + h, x:x + w] = AM[oy:oy + h, ox:ox + w]
+    else: AMn[y:y + h, x:x + w] = matgen(a, n); gen += 1
+Image.fromarray(AMn).save('atlas_m.png', optimize=True)
 extra['tips'] = {k: v for k, v in extra.get('tips', {}).items() if k.startswith('n_')}
 json.dump(extra, open('atlas_extra.json', 'w'))
-print('atlas', W, H, len(out), 'sprites', os.path.getsize('atlas.png'), 'bytes')
+print('atlas', W, H, len(out), 'sprites', os.path.getsize('atlas.png'), 'bytes; material', gen, 'generated')
