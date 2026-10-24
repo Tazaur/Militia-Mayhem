@@ -384,3 +384,7 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 
 ## Build 152
 - Height painter: Settings → Pen check… shows the live pointer / mouse events (type, pointerType, buttons, pressure), whether hover arrives, any-hover / any-pointer media and the UA. For the S Pen hover not reaching the page. Known causes (research): Chrome on Android stops sending stylus hover to a tab after its file chooser opens (Import PNG) or a PWA switch, until a new tab (reload doesn't help); installed-app pages never get it; autofill services (1Password) kill hovers; Samsung Air View features can swallow hover.
+
+## Build 153
+- Height painter: art overlay button back on the top bar (next to the channels). Context and value rows are fixed height and only hide their contents (visibility), so the views never shift when the tool changes.
+- 3D view Lit look (default; Channel = the old tinted view, toggle on the 3D view): sun + hemisphere sky ambient, reflectivity mirrors the sky with fresnel and a sun highlight that sharpens with it, glow emits and blooms (MSAA scene + glow target, glow blurred twice at half res, added with a soft shoulder). Scene menu (sun button on the 3D view): sky presets Game / Clear day / Overcast / Dusk / Night, sun turn, sun height, reflection and bloom strength. Art off = plain grey to judge materials alone.

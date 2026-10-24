@@ -16,7 +16,7 @@ button, select { flex: none; display: inline-flex; align-items: center; justify-
 button.on { background: var(--on); }
 button:active { filter: brightness(1.35); }
 button svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-select { flex: 1; min-width: 110px; padding: 0 10px; }
+select { flex: 1; min-width: 64px; padding: 0 10px; }
 .seg { display: flex; flex: none; background: var(--btn); border-radius: 9px; padding: 2px; gap: 2px; }
 .seg button { height: 34px; background: transparent; border-radius: 7px; }
 .seg button.on { background: var(--on); }
@@ -25,11 +25,18 @@ select { flex: 1; min-width: 110px; padding: 0 10px; }
 .lab { color: var(--dim); font-size: 12px; padding: 0 2px; flex: none; white-space: nowrap; }
 #views { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 #views canvas { display: block; width: 100%; min-height: 0; touch-action: none; }
-#v3 { flex: 0 0 40%; background: #0b0c0f; border-bottom: 1px solid var(--line); }
+#w3 { position: relative; flex: 0 0 40%; min-height: 0; display: flex; background: #0b0c0f; border-bottom: 1px solid var(--line); }
+#w3 canvas { flex: 1; height: 100%; }
+#w3 .ov { position: absolute; right: 6px; top: 6px; display: flex; gap: 4px; }
+#w3 .ov button { height: 32px; min-width: 32px; padding: 0 8px; background: #000a; font-size: 12px; }
+#w3 .ov button.on { background: var(--on); }
 #v2 { flex: 1; }
-#views.only2 #v3, #views.only3 #v2 { display: none; }
-#views.only3 #v3 { flex: 1; }
-@media (orientation: landscape) { #views { flex-direction: row; } #v3 { flex: 0 0 45%; border-bottom: 0; border-right: 1px solid var(--line); } #views canvas { height: 100%; } }
+#views.only2 #w3, #views.only3 #v2 { display: none; }
+#views.only3 #w3 { flex: 1; }
+#cbar, #vbar { flex: none; height: 49px; }
+.menu .rng { display: flex; align-items: center; gap: 8px; padding: 4px 10px; color: var(--dim); font-size: 12px; }
+.menu .rng input { flex: 1; accent-color: var(--on); }
+@media (orientation: landscape) { #views { flex-direction: row; } #w3 { flex: 0 0 45%; border-bottom: 0; border-right: 1px solid var(--line); } #views canvas { height: 100%; } }
 #val { flex: 1; min-width: 80px; accent-color: var(--on); }
 .num { min-width: 40px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
 #status { color: var(--dim); font-size: 12px; flex: none; white-space: nowrap; }
@@ -71,9 +78,9 @@ button.hov { outline: 2px solid #ff4fd8; outline-offset: -2px; }
   </div>
   <div class="bar">
     <button id="prev" data-i="left" title="Previous sprite"></button><select id="spr"></select><button id="next" data-i="right" title="Next sprite"></button>
-    <div class="seg"><button id="chH" class="on">Height</button><button id="chR">Refl</button><button id="chE">Glow</button></div>
+    <div class="seg"><button id="chH" class="on">Height</button><button id="chR">Refl</button><button id="chE">Glow</button></div><button id="ovlB" data-i="color" data-tip="Show the art (color overlay)"></button>
   </div>
-  <div id="views"><canvas id="v3"></canvas><canvas id="v2"></canvas></div>
+  <div id="views"><div id="w3"><canvas id="v3"></canvas><div class="ov"><button id="look" data-tip="3D: as in game (lit) / the channel alone">Lit</button><button class="dd" data-menu="mScene" data-i="sun" data-tip="Sky, sun, bloom"></button></div></div><canvas id="v2"></canvas></div>
   <div class="bar" id="cbar">
     <span id="opts" style="display:contents">
       <button id="size" data-i="square" title="Brush size"></button>
@@ -118,6 +125,14 @@ button.hov { outline: 2px solid #ff4fd8; outline-offset: -2px; }
   <button id="lay0" data-i="layout">2D + 3D</button><button id="lay1" data-i="square">2D only</button><button id="lay2" data-i="cube">3D only</button><hr>
   <button id="vFit" data-i="fit">Fit to screen</button>
 </div>
+<div class="menu" id="mScene">
+  <div class="h">3D look</div><button id="look0" data-i="sun">Lit (as in game)</button><button id="look1" data-i="layers">Channel only</button><hr>
+  <div class="h">Sky</div><button id="sky0">Game</button><button id="sky1">Clear day</button><button id="sky2">Overcast</button><button id="sky3">Dusk</button><button id="sky4">Night</button><hr>
+  <label class="rng">Sun turn<input id="sunAz" type="range" min="0" max="360"></label>
+  <label class="rng">Sun height<input id="sunEl" type="range" min="5" max="90"></label>
+  <label class="rng">Reflection<input id="reflK" type="range" min="0" max="200"></label>
+  <label class="rng">Bloom<input id="bloomK" type="range" min="0" max="200"></label>
+</div>
 <div class="menu" id="mSet">
   <div class="h">Hold on the canvas to pick</div>
   <button id="hold0">Off</button><button id="hold1">Short<span class="k">0.3 s</span></button><button id="hold2">Normal<span class="k">0.5 s</span></button><button id="hold3">Long<span class="k">0.8 s</span></button><hr>
@@ -159,6 +174,7 @@ const ICONS = {
   gridI: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>', info: '<circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/>',
   cube: '<path d="m21 16-9 5-9-5V8l9-5 9 5Z"/><path d="m3 8 9 5 9-5M12 13v8"/>', fit: '<path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/>',
   layers: '<path d="m12 2 10 5-10 5L2 7Z"/><path d="m2 12 10 5 10-5M2 17l10 5 10-5"/>', buzz: '<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M3 8v8M21 8v8"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   revert: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
 };
 /* tooltips: a hovering pen (or mouse) outlines the button under it and, held there a moment, says what it does */
@@ -184,10 +200,11 @@ addEventListener('pointerdown', tipHide, true);
 for (const b of document.querySelectorAll('[data-i]')) b.insertAdjacentHTML('afterbegin', `<svg viewBox="0 0 24 24">${ICONS[b.dataset.i]}</svg>`);
 const MAXV = [63, 255, 255], NRANGE = [[8, 32, 32], [16, 64, 64], [32, 128, 128], [63, 255, 255]], HOLDMS = [0, 300, 500, 800], SIZES = [1, 2, 3, 5, 8], TOLS = [[0, 1, 2, 4, 8], [0, 8, 16, 32, 64], [0, 8, 16, 32, 64]];
 let W = 0, H = 0, META = {}, NAMES = [], COL = null, CH = null, FILE = null;
-const DEF = { hold: 2, pickAll: false, buzz: true, nr: 1, grid: true, rdo: true };
+const DEF = { hold: 2, pickAll: false, buzz: true, nr: 1, grid: true, rdo: true, look: 0, sky: 0, sunAz: 135, sunEl: 40, reflK: 100, bloomK: 100 };
 const st = { ...DEF, spr: '', ch: 0, tool: 'pen', prev: 'pen', mode: 'set', val: [8, 100, 0], nud: [1, 8, 8], size: 0, tol: [1, 1, 1], ovl: true, mask: true, lay: 0, smode: 0, gap: 0, pch: 0 };
 const GAPS = [0, 1, 2, 3, 4, 6, 8, 12];
 try { Object.assign(st, JSON.parse(localStorage.getItem('hp-prefs') || '{}')); } catch (e) {}
+for (const k of ['look', 'sky', 'sunAz', 'sunEl', 'reflK', 'bloomK']) if (st[k] === undefined) st[k] = DEF[k];
 if (st.tool === 'up' || st.tool === 'down') { st.tool = 'pen'; st.mode = 'nudge'; }     // the old +1 / -1 tools
 const savePrefs = () => { try { localStorage.setItem('hp-prefs', JSON.stringify(st)); } catch (e) {} };
 const toast = (t) => { const e = $('toast'); e.textContent = t; e.style.opacity = 1; clearTimeout(toast.t); toast.t = setTimeout(() => e.style.opacity = 0, 1600); };
@@ -462,53 +479,111 @@ function toolUp() {
   end();
 }
 
-/* ---------------- 3D view: one instanced box per pixel, as tall as its height; lines mark each voxel */
-const v3 = $('v3'), gl = v3.getContext('webgl2', { antialias: true });
-let prog, vao, ibuf, nInst = 0, dirty3 = true, need3 = true;
+/* ---------------- 3D view: one instanced box per pixel, as tall as its height; lines mark each voxel.
+   Lit: the art lit by a sun and a sky (hemisphere ambient), reflectivity mirrors the sky and catches the sun (sharper the
+   more reflective), glow emits its colour and blooms. Channel: the painted channel alone, as the 2D view shows it.
+   Drawn multisampled into two targets (colour, glow), the glow blurred at half size and added back */
+const v3 = $('v3'), gl = v3.getContext('webgl2', { antialias: false });
+let prog, bgP, blP, coP, vao, vao0, ibuf, nInst = 0, dirty3 = true, need3 = true, FB = null;
 const cam = { yaw: 0.6, pitch: 0.75, dist: 120, tx: 0, ty: 0, tz: 0 };
+/* skies: zenith, horizon, ground, sun colour (x strength), ambient; Game = the game's sun (warm sun, blue-grey shade) */
+const SKIES = [
+  { zen: [0.42, 0.52, 0.66], hor: [0.78, 0.8, 0.82], gnd: [0.3, 0.32, 0.26], sun: [1, 0.93, 0.8], k: 1.05, amb: 0.55, az: 135, el: 40 },
+  { zen: [0.22, 0.45, 0.85], hor: [0.7, 0.82, 0.95], gnd: [0.32, 0.34, 0.28], sun: [1, 0.97, 0.9], k: 1.2, amb: 0.5, az: 150, el: 60 },
+  { zen: [0.6, 0.63, 0.67], hor: [0.75, 0.76, 0.78], gnd: [0.34, 0.34, 0.32], sun: [0.9, 0.92, 0.95], k: 0.45, amb: 0.85, az: 135, el: 55 },
+  { zen: [0.2, 0.22, 0.42], hor: [0.95, 0.55, 0.3], gnd: [0.18, 0.14, 0.12], sun: [1, 0.6, 0.3], k: 1.0, amb: 0.4, az: 250, el: 8 },
+  { zen: [0.02, 0.03, 0.08], hor: [0.07, 0.09, 0.16], gnd: [0.02, 0.02, 0.03], sun: [0.55, 0.65, 0.9], k: 0.35, amb: 0.35, az: 60, el: 35 },
+];
 function fitCam() { const [rx, ry, rw, rh] = rect(); cam.tx = rx + rw / 2; cam.tz = ry + rh / 2; cam.ty = 0; cam.dist = Math.max(rw, rh) * 1.5 + 20; need3 = true; }
+const SKYF = `uniform vec3 ZEN, HOR, GND, SL, SC;
+vec3 sky(vec3 d) { return d.y > 0. ? mix(HOR, ZEN, pow(d.y, 0.55)) : mix(HOR, GND, pow(-d.y, 0.35)); }`;
+const FSV = `#version 300 es
+out vec2 uv; void main() { vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)); uv = p; gl_Position = vec4(p * 2. - 1., 0., 1.); }`;
 function initGL() {
   if (!gl) { const g = v3.getContext('2d'); v3.width = v3.clientWidth; v3.height = v3.clientHeight; g.fillStyle = '#888'; g.fillText('WebGL2 not available', 10, 20); return; }
   const sh = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
-  prog = gl.createProgram();
-  gl.attachShader(prog, sh(gl.VERTEX_SHADER, `#version 300 es
-layout(location=0) in vec3 p; layout(location=1) in vec3 n; layout(location=2) in vec3 inst; layout(location=3) in vec3 col;
-uniform mat4 VP; uniform vec3 C; out vec3 vn, vc, wp;
-void main() { float h = inst.z > 0. ? inst.z : 0.15; vec3 w = vec3(inst.x + p.x, p.y * h, inst.y + p.z); wp = w; vn = n; vc = col; gl_Position = VP * vec4(w - C, 1.); }`));
-  gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, `#version 300 es
-precision highp float; in vec3 vn, vc, wp; uniform vec4 cur; out vec4 o;
+  const mk = (vs, fs) => { const P = gl.createProgram(); gl.attachShader(P, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(P, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(P); if (!gl.getProgramParameter(P, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(P)); P.u = {}; return P; };
+  prog = mk(`#version 300 es
+layout(location=0) in vec3 p; layout(location=1) in vec3 n; layout(location=2) in vec3 inst; layout(location=3) in vec3 col; layout(location=4) in vec3 mat;
+uniform mat4 VP; uniform vec3 C; out vec3 vn, vc, wp, vm;
+void main() { float h = inst.z > 0. ? inst.z : 0.15; vec3 w = vec3(inst.x + p.x, p.y * h, inst.y + p.z); wp = w; vn = n; vc = col; vm = mat; gl_Position = VP * vec4(w - C, 1.); }`, `#version 300 es
+precision highp float; in vec3 vn, vc, wp, vm; uniform vec4 cur; uniform float LIT, AMB, RK; uniform vec3 E;
+${SKYF}
+layout(location=0) out vec4 o; layout(location=1) out vec4 ob;
 float edge(float v) { float f = fract(v), e = min(f, 1. - f); return 1. - smoothstep(0., 1.2, e / max(fwidth(v), 1e-4)); }
 void main() {
-  vec3 L = normalize(vec3(-0.45, 0.8, -0.35)); vec3 c = vc * (0.5 + 0.5 * max(dot(vn, L), 0.)) + vc * 0.08 * vn.y;
   float e = abs(vn.y) < 0.5 ? max(edge(wp.y), abs(vn.x) > 0.5 ? edge(wp.z) : edge(wp.x)) : max(edge(wp.x), edge(wp.z));
-  c *= 1. - 0.35 * e * (1. - smoothstep(0.12, 0.35, fwidth(wp.y) + fwidth(wp.x) + fwidth(wp.z)));     // the lines fade out before they crowd together
+  e *= 1. - smoothstep(0.12, 0.35, fwidth(wp.y) + fwidth(wp.x) + fwidth(wp.z));     // the lines fade out before they crowd together
+  vec3 c, bl = vec3(0.);
+  if (LIT < 0.5) {
+    vec3 L = normalize(vec3(-0.45, 0.8, -0.35)); c = vc * (0.5 + 0.5 * max(dot(vn, L), 0.)) + vc * 0.08 * vn.y; c *= 1. - 0.35 * e;
+  } else {
+    vec3 N = vn, V = normalize(E - wp), R = reflect(-V, N); float rf = clamp(vm.x * RK, 0., 1.), gw = vm.y, nl = max(dot(N, SL), 0.);
+    vec3 dif = vc * (sky(N) * AMB + SC * nl);
+    float fr = rf * (0.6 + 0.4 * pow(1. - max(dot(N, V), 0.), 5.));      // more at grazing angles
+    vec3 env = sky(R) * mix(vec3(1.), vc, 0.4), sp = SC * pow(max(dot(R, SL), 0.), mix(6., 220., rf)) * rf * 1.6 * step(0., dot(N, SL));
+    c = mix(dif, env, fr) + sp; c *= 1. - 0.18 * e;
+    vec3 em = mix(vc, vec3(1.), 0.15) * gw * 1.4; c += em; bl = em + max(sp - 0.6, 0.);
+  }
   vec2 q = floor(wp.xz - vn.xz * 0.01); if (q.x >= cur.x && q.y >= cur.y && q.x <= cur.z && q.y <= cur.w) c = mix(c, vec3(1., .31, .85), .55);
-  o = vec4(c, 1.);
-}`));
-  gl.linkProgram(prog); if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+  o = vec4(c, 1.); ob = vec4(bl, 1.);
+}`);
+  bgP = mk(FSV, `#version 300 es
+precision highp float; in vec2 uv; uniform mat4 IV; uniform vec3 EY; uniform float LIT;
+${SKYF}
+layout(location=0) out vec4 o; layout(location=1) out vec4 ob;
+void main() {
+  if (LIT < 0.5) { o = vec4(0.043, 0.047, 0.06, 1.); ob = vec4(0., 0., 0., 1.); return; }
+  vec4 w = IV * vec4(uv * 2. - 1., 1., 1.); vec3 d = normalize(w.xyz / w.w - EY), s = SC * smoothstep(0.9985, 0.9995, dot(d, SL));
+  o = vec4(sky(d) + s, 1.); ob = vec4(s * 0.8, 1.);
+}`);
+  blP = mk(FSV, `#version 300 es
+precision highp float; in vec2 uv; uniform sampler2D T; uniform vec2 D; out vec4 o;
+void main() { vec3 c = texture(T, uv).rgb * 0.227; float w[4] = float[](0.194, 0.122, 0.054, 0.016);
+  for (int i = 0; i < 4; i++) { vec2 d = D * float(i + 1); c += (texture(T, uv + d).rgb + texture(T, uv - d).rgb) * w[i]; } o = vec4(c, 1.); }`);
+  coP = mk(FSV, `#version 300 es
+precision highp float; in vec2 uv; uniform sampler2D S, B; uniform float K; out vec4 o;
+void main() { vec3 c = texture(S, uv).rgb + texture(B, uv).rgb * K; o = vec4(c / (1. + max(c - 1., 0.) * 0.6), 1.); }`);     // soft shoulder over 1
   const F = [[[1, 0, 0], [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]]], [[-1, 0, 0], [[0, 0, 1], [0, 1, 1], [0, 1, 0], [0, 0, 0]]], [[0, 1, 0], [[0, 1, 0], [0, 1, 1], [1, 1, 1], [1, 1, 0]]],
              [[0, -1, 0], [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1]]], [[0, 0, 1], [[1, 0, 1], [1, 1, 1], [0, 1, 1], [0, 0, 1]]], [[0, 0, -1], [[0, 0, 0], [0, 1, 0], [1, 1, 0], [1, 0, 0]]]];
   const v = []; for (const [n, q] of F) for (const k of [0, 1, 2, 0, 2, 3]) v.push(...q[k], ...n);
+  vao0 = gl.createVertexArray();
   vao = gl.createVertexArray(); gl.bindVertexArray(vao);
   const vb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vb); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW);
   gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 24, 0); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 24, 12);
   ibuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, ibuf);
-  gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 24, 0); gl.vertexAttribDivisor(2, 1);
-  gl.enableVertexAttribArray(3); gl.vertexAttribPointer(3, 3, gl.FLOAT, false, 24, 12); gl.vertexAttribDivisor(3, 1);
+  for (const [l, o] of [[2, 0], [3, 12], [4, 24]]) { gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l, 3, gl.FLOAT, false, 36, o); gl.vertexAttribDivisor(l, 1); }
+  gl.bindVertexArray(null);
+}
+const U = (P, n) => P.u[n] ?? (P.u[n] = gl.getUniformLocation(P, n));
+/* the render targets, made again when the view changes size: 4x MSAA colour + glow + depth, resolved into textures */
+function targets(w, h) {
+  if (FB && FB.w === w && FB.h === h) return FB;
+  if (FB) { for (const t of FB.del) (t instanceof WebGLTexture ? gl.deleteTexture : t instanceof WebGLRenderbuffer ? gl.deleteRenderbuffer : gl.deleteFramebuffer).call(gl, t); }
+  const del = [], ns = Math.min(4, gl.getParameter(gl.MAX_SAMPLES));
+  const rb = (fmt) => { const r = gl.createRenderbuffer(); gl.bindRenderbuffer(gl.RENDERBUFFER, r); gl.renderbufferStorageMultisample(gl.RENDERBUFFER, ns, fmt, w, h); del.push(r); return r; };
+  const tex = (tw, th) => { const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t); gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, tw, th); for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v); del.push(t); return t; };
+  const fb = (...att) => { const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f); att.forEach(([pt, o]) => o instanceof WebGLTexture ? gl.framebufferTexture2D(gl.FRAMEBUFFER, pt, gl.TEXTURE_2D, o, 0) : gl.framebufferRenderbuffer(gl.FRAMEBUFFER, pt, gl.RENDERBUFFER, o)); del.push(f); return f; };
+  const hw = Math.max(1, w >> 1), hh = Math.max(1, h >> 1), sc = tex(w, h), gw = tex(w, h), b1 = tex(hw, hh), b2 = tex(hw, hh);
+  FB = { w, h, hw, hh, del, sc, gw, b1, b2,
+    ms: fb([gl.COLOR_ATTACHMENT0, rb(gl.RGBA8)], [gl.COLOR_ATTACHMENT1, rb(gl.RGBA8)], [gl.DEPTH_ATTACHMENT, rb(gl.DEPTH_COMPONENT24)]),
+    fs: fb([gl.COLOR_ATTACHMENT0, sc]), fg: fb([gl.COLOR_ATTACHMENT0, gw]), f1: fb([gl.COLOR_ATTACHMENT0, b1]), f2: fb([gl.COLOR_ATTACHMENT0, b2]) };
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null); return FB;
 }
 let inst = new Float32Array(0);
 function rebuild3() {
-  const [rx, ry, rw, rh] = rect(); if (inst.length < rw * rh * 6) inst = new Float32Array(rw * rh * 6); let k = 0; const c = CH[st.ch], hh = CH[0];
+  const [rx, ry, rw, rh] = rect(); if (inst.length < rw * rh * 9) inst = new Float32Array(rw * rh * 9); let k = 0; const c = CH[st.ch], hh = CH[0], lit = !st.look;
   for (let y = ry; y < ry + rh; y++) for (let x = rx; x < rx + rw; x++) {
     const i = y * W + x, o = i * 4, al = COL[o + 3], h = hh[i]; if (!al && !h) continue;
     const v = c[i] / MAXV[st.ch]; let r, g, b;
     if (!al) { r = 0.85; g = 0.15; b = 0.7; }
+    else if (lit) { if (st.ovl) { r = COL[o] / 255; g = COL[o + 1] / 255; b = COL[o + 2] / 255; } else r = g = b = 0.62; }     // the art (or plain grey, for the materials alone)
     else if (st.ovl) { r = COL[o] / 255; g = COL[o + 1] / 255; b = COL[o + 2] / 255; if (st.ch) { const t = TINT[st.ch]; r = r * 0.6 + t[0] / 255 * v * 0.5; g = g * 0.6 + t[1] / 255 * v * 0.5; b = b * 0.6 + t[2] / 255 * v * 0.5; } }
     else if (st.ch) { const t = TINT[st.ch]; r = 0.2 + t[0] / 255 * v * 0.8; g = 0.22 + t[1] / 255 * v * 0.8; b = 0.26 + t[2] / 255 * v * 0.8; }
     else { [r, g, b] = ramp(h); r /= 255; g /= 255; b /= 255; }
-    inst[k++] = x; inst[k++] = y; inst[k++] = h; inst[k++] = r; inst[k++] = g; inst[k++] = b;
+    inst[k++] = x; inst[k++] = y; inst[k++] = h; inst[k++] = r; inst[k++] = g; inst[k++] = b; inst[k++] = CH[1][i] / 255; inst[k++] = CH[2][i] / 255; inst[k++] = 0;
   }
-  nInst = k / 6; gl.bindBuffer(gl.ARRAY_BUFFER, ibuf); gl.bufferData(gl.ARRAY_BUFFER, inst.subarray(0, k), gl.DYNAMIC_DRAW); dirty3 = false; need3 = true;
+  nInst = k / 9; gl.bindBuffer(gl.ARRAY_BUFFER, ibuf); gl.bufferData(gl.ARRAY_BUFFER, inst.subarray(0, k), gl.DYNAMIC_DRAW); dirty3 = false; need3 = true;
 }
 function mat(fov, asp, eye, at) {
   const f = 1 / Math.tan(fov / 2), nr = 1, fr = 5000, P = [f / asp, 0, 0, 0, 0, f, 0, 0, 0, 0, (fr + nr) / (nr - fr), -1, 0, 0, 2 * fr * nr / (nr - fr), 0];
@@ -516,18 +591,57 @@ function mat(fov, asp, eye, at) {
   const zz = nrm(sub(eye, at)), xx = nrm(cr([0, 1, 0], zz)), yy = cr(zz, xx), V = [xx[0], yy[0], zz[0], 0, xx[1], yy[1], zz[1], 0, xx[2], yy[2], zz[2], 0, -dt(xx, eye), -dt(yy, eye), -dt(zz, eye), 1];
   const R = new Float32Array(16); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) { let s = 0; for (let k = 0; k < 4; k++) s += P[k * 4 + r] * V[c * 4 + k]; R[c * 4 + r] = s; } return R;
 }
+function inv4(m) {         // a 4x4 inverse (column-major), for the sky's view rays
+  const a = m, o = new Float32Array(16);
+  o[0] = a[5] * a[10] * a[15] - a[5] * a[11] * a[14] - a[9] * a[6] * a[15] + a[9] * a[7] * a[14] + a[13] * a[6] * a[11] - a[13] * a[7] * a[10];
+  o[4] = -a[4] * a[10] * a[15] + a[4] * a[11] * a[14] + a[8] * a[6] * a[15] - a[8] * a[7] * a[14] - a[12] * a[6] * a[11] + a[12] * a[7] * a[10];
+  o[8] = a[4] * a[9] * a[15] - a[4] * a[11] * a[13] - a[8] * a[5] * a[15] + a[8] * a[7] * a[13] + a[12] * a[5] * a[11] - a[12] * a[7] * a[9];
+  o[12] = -a[4] * a[9] * a[14] + a[4] * a[10] * a[13] + a[8] * a[5] * a[14] - a[8] * a[6] * a[13] - a[12] * a[5] * a[10] + a[12] * a[6] * a[9];
+  o[1] = -a[1] * a[10] * a[15] + a[1] * a[11] * a[14] + a[9] * a[2] * a[15] - a[9] * a[3] * a[14] - a[13] * a[2] * a[11] + a[13] * a[3] * a[10];
+  o[5] = a[0] * a[10] * a[15] - a[0] * a[11] * a[14] - a[8] * a[2] * a[15] + a[8] * a[3] * a[14] + a[12] * a[2] * a[11] - a[12] * a[3] * a[10];
+  o[9] = -a[0] * a[9] * a[15] + a[0] * a[11] * a[13] + a[8] * a[1] * a[15] - a[8] * a[3] * a[13] - a[12] * a[1] * a[11] + a[12] * a[3] * a[9];
+  o[13] = a[0] * a[9] * a[14] - a[0] * a[10] * a[13] - a[8] * a[1] * a[14] + a[8] * a[2] * a[13] + a[12] * a[1] * a[10] - a[12] * a[2] * a[9];
+  o[2] = a[1] * a[6] * a[15] - a[1] * a[7] * a[14] - a[5] * a[2] * a[15] + a[5] * a[3] * a[14] + a[13] * a[2] * a[7] - a[13] * a[3] * a[6];
+  o[6] = -a[0] * a[6] * a[15] + a[0] * a[7] * a[14] + a[4] * a[2] * a[15] - a[4] * a[3] * a[14] - a[12] * a[2] * a[7] + a[12] * a[3] * a[6];
+  o[10] = a[0] * a[5] * a[15] - a[0] * a[7] * a[13] - a[4] * a[1] * a[15] + a[4] * a[3] * a[13] + a[12] * a[1] * a[7] - a[12] * a[3] * a[5];
+  o[14] = -a[0] * a[5] * a[14] + a[0] * a[6] * a[13] + a[4] * a[1] * a[14] - a[4] * a[2] * a[13] - a[12] * a[1] * a[6] + a[12] * a[2] * a[5];
+  o[3] = -a[1] * a[6] * a[11] + a[1] * a[7] * a[10] + a[5] * a[2] * a[11] - a[5] * a[3] * a[10] - a[9] * a[2] * a[7] + a[9] * a[3] * a[6];
+  o[7] = a[0] * a[6] * a[11] - a[0] * a[7] * a[10] - a[4] * a[2] * a[11] + a[4] * a[3] * a[10] + a[8] * a[2] * a[7] - a[8] * a[3] * a[6];
+  o[11] = -a[0] * a[5] * a[11] + a[0] * a[7] * a[9] + a[4] * a[1] * a[11] - a[4] * a[3] * a[9] - a[8] * a[1] * a[7] + a[8] * a[3] * a[5];
+  o[15] = a[0] * a[5] * a[10] - a[0] * a[6] * a[9] - a[4] * a[1] * a[10] + a[4] * a[2] * a[9] + a[8] * a[1] * a[6] - a[8] * a[2] * a[5];
+  const d = a[0] * o[0] + a[1] * o[4] + a[2] * o[8] + a[3] * o[12]; for (let i = 0; i < 16; i++) o[i] /= d; return o;
+}
 function draw3() {
   if (!gl) return; const dpr = Math.min(devicePixelRatio || 1, 2), cw = v3.clientWidth, chh = v3.clientHeight; if (!cw || !chh) return;
   if (v3.width !== Math.round(cw * dpr) || v3.height !== Math.round(chh * dpr)) { v3.width = Math.round(cw * dpr); v3.height = Math.round(chh * dpr); }
   if (dirty3) rebuild3();
-  gl.viewport(0, 0, v3.width, v3.height); gl.clearColor(0.043, 0.047, 0.06, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST); gl.enable(gl.CULL_FACE);
-  gl.useProgram(prog); gl.bindVertexArray(vao);
-  const cp = Math.cos(cam.pitch), eye = [cam.dist * cp * Math.sin(cam.yaw), cam.dist * Math.sin(cam.pitch), cam.dist * cp * Math.cos(cam.yaw)];
-  gl.uniformMatrix4fv(gl.getUniformLocation(prog, 'VP'), false, mat(0.7, cw / chh, eye, [0, cam.ty, 0]));
-  gl.uniform3f(gl.getUniformLocation(prog, 'C'), cam.tx, 0, cam.tz);
+  const T = targets(v3.width, v3.height), lit = st.look ? 0 : 1, S = SKIES[st.sky], az = st.sunAz * Math.PI / 180, el = st.sunEl * Math.PI / 180;
+  const SL = [Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az)], SC = S.sun.map(v => v * S.k);
+  const cp = Math.cos(cam.pitch), eye = [cam.dist * cp * Math.sin(cam.yaw), cam.dist * Math.sin(cam.pitch), cam.dist * cp * Math.cos(cam.yaw)], VP = mat(0.7, cw / chh, eye, [0, cam.ty, 0]);
+  const sky = P => { gl.uniform3fv(U(P, 'ZEN'), S.zen); gl.uniform3fv(U(P, 'HOR'), S.hor); gl.uniform3fv(U(P, 'GND'), S.gnd); gl.uniform3fv(U(P, 'SL'), SL); gl.uniform3fv(U(P, 'SC'), SC); gl.uniform1f(U(P, 'LIT'), lit); };
+  // the scene, multisampled: sky behind, then the voxels
+  gl.bindFramebuffer(gl.FRAMEBUFFER, T.ms); gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]); gl.viewport(0, 0, T.w, T.h);
+  gl.disable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE); gl.clear(gl.DEPTH_BUFFER_BIT);
+  gl.useProgram(bgP); gl.bindVertexArray(vao0); sky(bgP); gl.uniformMatrix4fv(U(bgP, 'IV'), false, inv4(VP)); gl.uniform3fv(U(bgP, 'EY'), eye); gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.enable(gl.DEPTH_TEST); gl.enable(gl.CULL_FACE);
+  gl.useProgram(prog); gl.bindVertexArray(vao); sky(prog);
+  gl.uniformMatrix4fv(U(prog, 'VP'), false, VP); gl.uniform3f(U(prog, 'C'), cam.tx, 0, cam.tz); gl.uniform3f(U(prog, 'E'), eye[0] + cam.tx, eye[1], eye[2] + cam.tz);
+  gl.uniform1f(U(prog, 'AMB'), S.amb); gl.uniform1f(U(prog, 'RK'), st.reflK / 100);
   const s = SIZES[st.size], o = Math.floor((s - 1) / 2), one = st.tool === 'fill' || st.tool === 'pick' || st.tool === 'sel';
-  gl.uniform4f(gl.getUniformLocation(prog, 'cur'), ...(cur ? (one ? [cur[0], cur[1], cur[0], cur[1]] : [cur[0] - o, cur[1] - o, cur[0] - o + s - 1, cur[1] - o + s - 1]) : [-9, -9, -9, -9]));
-  gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, nInst); need3 = false;
+  gl.uniform4f(U(prog, 'cur'), ...(cur ? (one ? [cur[0], cur[1], cur[0], cur[1]] : [cur[0] - o, cur[1] - o, cur[0] - o + s - 1, cur[1] - o + s - 1]) : [-9, -9, -9, -9]));
+  gl.drawArraysInstanced(gl.TRIANGLES, 0, 36, nInst); gl.bindVertexArray(null);
+  // resolve both targets
+  gl.disable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE);
+  for (const [k, f] of [[0, T.fs], [1, T.fg]]) { gl.bindFramebuffer(gl.READ_FRAMEBUFFER, T.ms); gl.readBuffer(gl.COLOR_ATTACHMENT0 + k); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, f); gl.blitFramebuffer(0, 0, T.w, T.h, 0, 0, T.w, T.h, gl.COLOR_BUFFER_BIT, gl.NEAREST); }
+  // bloom: the glow blurred twice at half size (wider the second time), then added
+  gl.useProgram(blP); gl.bindVertexArray(vao0); gl.activeTexture(gl.TEXTURE0); gl.uniform1i(U(blP, 'T'), 0); gl.viewport(0, 0, T.hw, T.hh);
+  const pass = (src, dst, dx, dy) => { gl.bindFramebuffer(gl.FRAMEBUFFER, dst); gl.bindTexture(gl.TEXTURE_2D, src); gl.uniform2f(U(blP, 'D'), dx, dy); gl.drawArrays(gl.TRIANGLES, 0, 3); };
+  const bk = lit ? st.bloomK / 100 : 0;
+  if (bk > 0) { const px = 1 / T.hw, py = 1 / T.hh; pass(T.gw, T.f1, px * 1.5, 0); pass(T.b1, T.f2, 0, py * 1.5); pass(T.b2, T.f1, px * 3.5, 0); pass(T.b1, T.f2, 0, py * 3.5); }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, T.w, T.h); gl.useProgram(coP);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, T.sc); gl.uniform1i(U(coP, 'S'), 0);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, T.b2); gl.uniform1i(U(coP, 'B'), 1); gl.uniform1f(U(coP, 'K'), bk * 1.6);
+  gl.drawArrays(gl.TRIANGLES, 0, 3); gl.activeTexture(gl.TEXTURE0); gl.bindVertexArray(null); need3 = false;
 }
 /* one finger orbits, two pinch-zoom and pan, double tap re-centres; mouse: drag orbits, right drag pans, wheel zooms */
 const P3 = new Map(); let g3 = null, tap3 = 0;
@@ -559,7 +673,9 @@ function ui() {
   const ch = st.ch, t = st.tool, nud = st.mode === 'nudge', lab = (id, html) => { const e = $(id), v = e.querySelector('svg'); e.innerHTML = (v ? v.outerHTML : '') + html; };
   $('chH').classList.toggle('on', ch === 0); $('chR').classList.toggle('on', ch === 1); $('chE').classList.toggle('on', ch === 2);
   const on = (id, v) => $(id).classList.toggle('on', !!v);
-  on('ovl', st.ovl); on('msk', st.mask); on('grid', st.grid); on('rdo', st.rdo); on('pAll', st.pickAll); on('buzz', st.buzz);
+  on('ovl', st.ovl); on('ovlB', st.ovl); on('msk', st.mask); on('look', !st.look); $('look').textContent = st.look ? 'Channel' : 'Lit';
+  for (let k = 0; k < 2; k++) on('look' + k, st.look === k); for (let k = 0; k < 5; k++) on('sky' + k, st.sky === k);
+  for (const k of ['sunAz', 'sunEl', 'reflK', 'bloomK']) $(k).value = st[k]; on('grid', st.grid); on('rdo', st.rdo); on('pAll', st.pickAll); on('buzz', st.buzz);
   for (let k = 0; k < 3; k++) on('lay' + k, st.lay === k); for (let k = 0; k < 4; k++) { on('hold' + k, st.hold === k); on('nr' + k, st.nr === k); }
   for (const id of ['eCpy', 'eLift', 'eNone']) $(id).disabled = !sel || !!flt; $('ePst').disabled = !clip || !!flt;
   for (const b of document.querySelectorAll('#tools button')) b.classList.toggle('on', b.dataset.t === t);
@@ -567,7 +683,7 @@ function ui() {
   for (const b of document.querySelectorAll('#mode button')) b.classList.toggle('on', b.dataset.m === st.mode);
   const val = $('val'), v = nud ? st.nud[ch] : st.val[ch]; val.min = nud ? -NRANGE[st.nr][ch] : 0; val.max = nud ? NRANGE[st.nr][ch] : MAXV[ch]; val.value = v;
   $('vNum').textContent = nud && v > 0 ? '+' + v : v;
-  $('vbar').hidden = !(t === 'pen' || t === 'fill' || sel) || !!flt;
+  $('vbar').style.visibility = !(t === 'pen' || t === 'fill' || sel) || flt ? 'hidden' : '';     // hidden, not gone: the views keep their place
   // the context row: this tool's options, then the selection / clipboard, or the floating paste
   $('size').hidden = !(t === 'pen' || t === 'erase'); lab('size', SIZES[st.size]);
   $('tol').hidden = t !== 'fill'; $('tol').textContent = 'Tol ' + TOLS[ch][st.tol[ch]];
@@ -581,7 +697,7 @@ function ui() {
   setL('sUp', 'Nudge up ' + nn); setL('sDn', 'Nudge down ' + nn); setL('sFill2', st.mode === 'nudge' ? 'Apply nudge ' + (st.nud[ch] > 0 ? '+' : '') + st.nud[ch] : 'Apply set ' + st.val[ch]);
   $('fbar').hidden = !flt; if (flt) { $('fLab').textContent = (flt.ang % 360) + '°'; $('fx').classList.toggle('on', flt.fx); $('fy').classList.toggle('on', flt.fy); }
   const anyOpt = [...$('opts').children].some(e => !e.hidden); $('optDiv').hidden = !(anyOpt && (showSel || flt));
-  $('cbar').hidden = !anyOpt && !showSel && !flt;
+  $('cbar').style.visibility = !anyOpt && !showSel && !flt ? 'hidden' : '';
   $('views').className = ['', 'only2', 'only3'][st.lay]; $('mShare').hidden = !navigator.canShare; $('info').hidden = !st.rdo;
   need2 = need3 = true; savePrefs(); requestAnimationFrame(() => { need2 = need3 = true; });
 }
@@ -595,8 +711,12 @@ for (const b of document.querySelectorAll('.dd')) b.onclick = e => {
   m.style.top = (r.bottom + 4) + 'px'; m.style.left = clamp(r.left, 6, innerWidth - m.offsetWidth - 6) + 'px';
 };
 addEventListener('pointerdown', e => { if (!e.target.closest('.menu, .dd')) closeMenus(); });
-for (const m of document.querySelectorAll('.menu')) m.addEventListener('click', e => { const b = e.target.closest('button'); if (b && !/^(ovl|msk|grid|rdo|pAll|buzz|hold\d|nr\d|lay\d)$/.test(b.id)) closeMenus(); });
-$('ovl').onclick = () => { st.ovl = !st.ovl; full2 = true; dirty3 = true; ui(); };
+for (const m of document.querySelectorAll('.menu')) m.addEventListener('click', e => { const b = e.target.closest('button'); if (b && !/^(ovl|msk|grid|rdo|pAll|buzz|hold\d|nr\d|lay\d|look\d|sky\d)$/.test(b.id)) closeMenus(); });
+$('ovl').onclick = $('ovlB').onclick = () => { st.ovl = !st.ovl; full2 = true; dirty3 = true; ui(); };
+$('look').onclick = () => { st.look = st.look ? 0 : 1; dirty3 = true; ui(); };
+for (let k = 0; k < 2; k++) $('look' + k).onclick = () => { st.look = k; dirty3 = true; ui(); };
+for (let k = 0; k < 5; k++) $('sky' + k).onclick = () => { st.sky = k; if (SKIES[k].az !== undefined) { st.sunAz = SKIES[k].az; st.sunEl = SKIES[k].el; } ui(); };
+for (const k of ['sunAz', 'sunEl', 'reflK', 'bloomK']) $(k).oninput = () => { st[k] = +$(k).value; need3 = true; savePrefs(); };
 $('msk').onclick = () => { st.mask = !st.mask; ui(); };
 $('grid').onclick = () => { st.grid = !st.grid; ui(); }; $('rdo').onclick = () => { st.rdo = !st.rdo; ui(); };
 $('pAll').onclick = () => { st.pickAll = !st.pickAll; ui(); }; $('buzz').onclick = () => { st.buzz = !st.buzz; ui(); };
