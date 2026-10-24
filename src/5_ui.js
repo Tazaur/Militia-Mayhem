@@ -91,7 +91,7 @@ function drawWorld(vw) {
       ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(Math.atan2(p.vy, p.vx));
       ctx.fillStyle = p.k === 'shell' ? '#2b2b2b' : '#5a6a50'; ctx.fillRect(-7, -2, 12, 4); ctx.fillStyle = '#d0c070'; ctx.fillRect(4, -1.5, 3, 3);
       ctx.restore();
-      if (p.k === 'rocket') spr('fire5', p.x - p.vx * 0.02, p.y - p.vy * 0.02, M.time * 20, 0.45, 0.45, 0.9);
+      if (p.k === 'rocket') { spr('fire5', p.x - p.vx * 0.02, p.y - p.vy * 0.02, M.time * 20, 0.45, 0.45, 0.9); light(p.x - p.vx * 0.02, p.y - p.vy * 0.02, 80, 14, rnd(0.5, 0.65)); }     // its exhaust
       worldT();
     }
   }
@@ -318,7 +318,7 @@ function drawSoldier(s, vw) {
     ctx.fillStyle = '#2a2a26'; ctx.fillRect(10.5, -5.4, 9, 10.8); ctx.fillStyle = '#b4b6b0'; ctx.fillRect(11.5, -4.4, 7, 2.8); ctx.fillRect(11.5, 1.6, 7, 2.8); ctx.fillRect(11.5, -4.4, 2.6, 8.8);
     ctx.restore();
   } else if (s.handT > 0 && s.handK) { worldT(); const [hx, hy] = muzzle(s, 11); icon(gadgetIconKind(s.handK), hx, hy, 9); }
-  if (s.flash > 0 && !gunless) { const [gx, gy] = gunTip(s), r = W_ && W_.dmg >= 40 ? 14 : 10, c = Math.cos(s.a), sn = Math.sin(s.a); flashAt(gx + c * r * 0.55, gy + sn * r * 0.55, r); }
+  if (s.flash > 0 && !gunless) { const [gx, gy] = gunTip(s), r = W_ && W_.dmg >= 40 ? 14 : 10, c = Math.cos(s.a), sn = Math.sin(s.a); flashAt(gx + c * r * 0.55, gy + sn * r * 0.55, r); light(gx + c * r, gy + sn * r, r * 9, 14, rnd(0.6, 0.8)); }     // shoulder height
 }
 /* co-op: a downed player lies on the ground with a pulsing marker; the red ring is the time left to bleed out, the green one the revive */
 function drawDowned(s) {
@@ -370,6 +370,7 @@ function flashAt(x, y, r, soft) {
 function hullFrame(v) { const f = v.hp / v.T.hp; return f > 0.82 ? 0 : f > 0.66 ? 1 : f > 0.5 ? 2 : f > 0.34 ? 3 : f > 0.18 ? 4 : 5; }
 function drawVehicle(v) {
   worldT(); FLASH = v.hitFlash > 0 ? 0.45 : 0;
+  if (v.type !== 'nest' && v.hp < v.T.hp * 0.25) light(v.x, v.y, 100, 30, 0.3 + 0.12 * Math.sin(M.time * 23 + v.x) * Math.sin(M.time * 9.7), v);     // on fire (as a burning wreck flickers)
   const col = vehColor(v);
   if (v.type === 'nest') {
     ctx.fillStyle = CFG.style === 'grit' ? '#3e3a2c' : '#5a5236'; ctx.beginPath(); ctx.arc(v.x, v.y, 18, 0, TAU); ctx.fill();
@@ -413,7 +414,7 @@ function drawSeated(s, mg) {
   // drivers and jeep passengers sit; MG gunners stand at the gun; tank riders keep their rifle up
   const pose = role === 'drive' || mg || (jeep && role === 'rifle' && !s.flash) ? 'sit' : 'stand';
   const fl = FLASH; FLASH = 0; solDraw(s, solSpr(s.color, pose), s.x, s.y, s.a, 0.9, 0.9); FLASH = fl;     // the crew doesn't flash with the vehicle
-  if (s.flash > 0 && !mg && role !== 'drive') { const [mx, my] = muzzle(s, 20); flashAt(mx, my, 8); }
+  if (s.flash > 0 && !mg && role !== 'drive') { const [mx, my] = muzzle(s, 20); flashAt(mx, my, 8); light(mx, my, 90, 18, rnd(0.6, 0.8)); }
 }
 const FIRE = ['fire0', 'fire2', 'fire3', 'fire4'], SMOKE = ['smoke0', 'smoke1', 'smoke2', 'smoke3'], BOOM = ['boom0', 'boom1', 'boom2'];
 const HIGHP = { smoke: 1, fire: 1, boom: 1, steam: 1, flash: 1, spark: 1, ring: 1 };

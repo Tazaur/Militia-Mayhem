@@ -355,3 +355,6 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 ## Build 145
 - atlas_m.png: Tazaur's hand-painted pass from heightmap/ (jeep bodies: bed 2 px, seats 5, hood 10, windshield + MG post 21; jeep tyres 11 px; sandbag arcs reshaped; boom0 / smoke3 glow).
 - Parts stack (hpart): each starts on top of what's already under its rest point (pivot, or the MG mount 4 px behind mgPos, or the seat): hUnder reads the painted heights (atlas_m) of the parts kept so far (hull, turret, jeep body), max within 1 px. Computed now: tank gun / turret 12, tank MG 22, jeep MG 21 (its post), crews on their seats. SUNB keeps only the leg / tripod minimums (stand 7, nest MG 4). Repainting a hull / post moves what sits on it.
+
+## Build 146
+- More point lights (light(), so both the sun shader and the CPU path): infantry gunfire (r = flash x 9, 14 px up, k 0.6-0.8, at the flash), soldiers firing from a seat (r 90, 18 px), rocket exhaust in flight (r 80, 14 px), vehicles burning below 25% hp (r 100, 30 px, the wreck flicker). Already lit: cannon, mounted MGs, explosions (lightFx), burning wrecks. LMAX 10 keeps the strongest (k x r).
