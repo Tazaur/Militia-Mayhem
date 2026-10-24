@@ -690,7 +690,7 @@ function rumble(pl, s, d) {
 function touchPlayer() { return PLAYERS.find(p => p.dev.type === 'touch'); }
 
 /* ---------------- settings ---------------- */
-const CFG = Object.assign({ mode: 0, map: 0, bots: 5, limit: 1, skill: 1, ff: false, board: false, midjoin: true, camera: 'split', style: 'classic', fogLook: 'grey', weather: 'clear', teamColors: 'player', fog: 'los', sound: 'exp' }, store.get('cfg3', {}));
+const CFG = Object.assign({ mode: 0, map: 0, bots: 5, limit: 1, skill: 1, ff: false, board: false, midjoin: true, camera: 'split', style: 'classic', fogLook: 'grey', weather: 'clear', teamColors: 'player', fog: 'los', sound: 'exp', sun: true }, store.get('cfg3', {}));
 /* soldiers: one design (dark green, armband in the team colour); poses stand / nogun / rpg / sit / dead / leg0-2 */
 function solSpr(color, pose) { return 'sol_' + pose + '_' + color; }
 function solShadow(pose) { return ATLAS['nsh_' + pose] ? 'nsh_' + pose : null; }

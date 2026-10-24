@@ -125,7 +125,7 @@ json.dump(out, open('atlas.json', 'w'))
 # ---- material atlas: carried over per sprite (same size as before), else the first pass
 MAT = {  # prefix: (height px, bevel px or 0 = a dome over the whole shape, reflectivity, relief px from shading)
     'hull': (12, 4, 90, 1.5), 'tur_gun': (3, 0, 110, 0), 'tur_dead': (8, 4, 50, 1.5), 'tur': (10, 4, 90, 1.5), 'jeep_': (4, 0, 25, 0),
-    'jeep': (10, 5, 70, 1.5), 'mg': (3, 0, 110, 0), 'bagarc': (10, 5, 15, 1), 'sol_': (8, 0, 30, 1), 'smoke': (14, 0, 0, 0),
+    'jeep': (14, 5, 70, 1.5), 'mg': (3, 0, 110, 0), 'bagarc': (10, 5, 15, 1), 'sol_': (8, 0, 30, 1), 'smoke': (14, 0, 0, 0),
     'dust': (6, 0, 0, 0), 'boom': (16, 0, 0, 0), 'fire': (10, 0, 0, 0)}
 def matgen(a, n):
     m = np.zeros(a.shape[:2] + (3,), np.uint8); al = a[:, :, 3]
