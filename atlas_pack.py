@@ -20,40 +20,39 @@ def old(n): x, y, w, h, px, py = meta[n]; return (A[y:y + h, x:x + w].copy(), px
 S = {}                                            # name -> (arr, px, py)
 # ---- vehicles: hulls, jeeps, turret (body + separate cannon), wreck parts, mounted MG, white paint pieces
 for n in ['hull%d' % i for i in range(6)] + ['jeep%d' % i for i in range(5)]: S[n] = old(n)
-# ---- jeep v2 (art/art4/jeep.png, front to the right): five frames (100 / 75 / 50 / 25 % / wreck) lined up on frame 0
-# (offsets found by overlaying the frames), the hood decal, a front tyre seen from above, a broken-off wheel. Imported
-# once (extra.jeepV), then the atlas copies are the source like everything else
-if extra.get('jeepV') != 2:
+# ---- jeep v3 (art/art4/jeep.png, front to the right): five frames (100 / 75 / 50 / 25 % / wreck, pivots found by overlaying
+# them on the v2 frame 0), the hood decal, a front tyre seen from above, a broken-off wheel and a flattened one, and the
+# mounted MG (idle / firing, drawn 2 px kicked back / destroyed). Imported once (extra.jeepV), then the atlas copies are the
+# source like everything else
+if extra.get('jeepV') != 3:
     J = np.array(Image.open('art/art4/jeep.png').convert('RGBA'))
-    WIN = [(0, 0, 92, 46, 0, 0), (94, 0, 192, 46, 2, 0), (0, 45, 92, 91, 0, 0), (89, 45, 192, 93, 7, 0), (0, 89, 96, 140, 0, 1)]
-    PX, PY, CW, CH = 44, 22, 90, 47                    # pivot (body centre) in frame-0 cell coordinates; common canvas
-    for i, (x0, y0, x1, y1, dx, dy) in enumerate(WIN):
-        c = np.zeros((CH, CW, 4), np.uint8); src = J[y0:y1, x0:x1]
-        for yy, xx in zip(*np.where(src[:, :, 3] > 0)):
-            ty, tx = yy - dy, xx - dx
-            if 0 <= ty < CH and 0 <= tx < CW: c[ty, tx] = src[yy, xx]
-        ys, xs = np.where(c[:, :, 3] > 0); S['jeep%d' % i] = (c[ys.min():ys.max() + 1, xs.min():xs.max() + 1].copy(), PX - xs.min(), PY - ys.min())
+    def cut(x0, y0, x1, y1, px, py):                   # window, pivot in sheet coordinates -> tight sprite
+        c = J[y0:y1, x0:x1]; ys, xs = np.where(c[:, :, 3] > 0)
+        return c[ys.min():ys.max() + 1, xs.min():xs.max() + 1].copy(), px - x0 - xs.min(), py - y0 - ys.min()
     def piece(x0, y0, x1, y1):
-        c = J[y0:y1, x0:x1]; ys, xs = np.where(c[:, :, 3] > 0); c = c[ys.min():ys.max() + 1, xs.min():xs.max() + 1].copy()
-        return c, c.shape[1] / 2, c.shape[0] / 2
-    d = piece(108, 95, 134, 114); a = d[0]; L = a[:, :, 0].astype(int)
+        c, _, _ = cut(x0, y0, x1, y1, 0, 0); return c, c.shape[1] / 2, c.shape[0] / 2
+    for i, w in enumerate([(0, 0, 87, 45, 44, 22), (96, 0, 184, 45, 140, 22), (0, 46, 89, 90, 44, 67), (96, 46, 185, 90, 140, 67), (1, 90, 90, 136, 45, 112)]):
+        S['jeep%d' % i] = cut(*w)
+    d = piece(116, 97, 127, 112); a = d[0]; L = a[:, :, 0].astype(int)
     a[:, :, 0] = a[:, :, 1] = a[:, :, 2] = np.where(L >= 185, 245, np.where(L >= 120, 200, L))   # greys onto the tint's bands: paint, shade, dark
-    S['decal'] = d; S['jeep_tire'] = piece(108, 114, 136, 126); S['jeep_wheel'] = piece(138, 104, 166, 132)
+    S['decal'] = d; S['jeep_tire'] = piece(112, 116, 131, 122); S['jeep_wheel'] = piece(142, 108, 162, 128); S['jeep_flat'] = piece(166, 109, 187, 127)
+    S['mg'] = cut(201, 36, 238, 51, 207.5, 45.5); S['mg_f'] = cut(200, 54, 250, 77, 208.5, 65.5); S['mg_dead'] = cut(201, 80, 237, 95, 207.5, 89.5)
     extra['jeepStar'] = [24, 0]                        # hood centre, from the pivot
-    extra['jeepWells'] = [[24, 15], [-22, 15]]         # front / rear wheel well centres (and mirrored to -y)
-    extra['jeepV'] = 2
+    extra['jeepWells'] = [[24, 16], [-22, 16]]         # front / rear wheel well centres (and mirrored to -y)
+    extra['jeepV'] = 3
 if 'tur11' in meta:                               # first run: split the full-length turret frame into body + cannon
     t, px, py = old('tur11'); CUT = 51            # columns 0..50 = turret + mantlet (identical in every recoil frame)
     S['tur'] = (t[:, :CUT].copy(), px, py); S['tur_gun'] = (t[:, CUT:].copy(), px - CUT, py)
 else: S['tur'] = old('tur'); S['tur_gun'] = old('tur_gun')
 S['bar'] = old('bar' if 'bar' in meta else 'bar_white')
 if 'decal' not in S: S['decal'] = old('decal' if 'decal' in meta else 'decal_white')
-for n in ['jeep_tire', 'jeep_wheel']:
+for n in ['jeep_tire', 'jeep_wheel', 'jeep_flat']:
     if n not in S: S[n] = old(n)
-for n, v in mount_sprites(np.array(Image.open('art/art4/mounts.png').convert('RGBA'))).items(): S[n] = old(n) if n in meta else v
+for n, v in mount_sprites(np.array(Image.open('art/art4/mounts.png').convert('RGBA'))).items():
+    if n not in S: S[n] = old(n) if n in meta else v
 if SYNC:
     MT = np.array(Image.open('art/art4/mounts.png').convert('RGBA'))
-    for n, (y, x, h, w) in {'mg': (52, 66, 16, 35), 'mg_f': (52, 14, 16, 35), 'mg_dead': (68, 100, 20, 34), 'tur_dead': (0, 128, 42, 128)}.items():
+    for n, (y, x, h, w) in {'tur_dead': (0, 128, 42, 128)}.items():
         box = MT[y:y + h, x:x + w]; ys, xs = np.where(box[:, :, 3] > 0); a = old(n)[0]
         assert a.shape[:2] == (ys.max() + 1 - ys.min(), xs.max() + 1 - xs.min()), n
         box[ys.min():ys.max() + 1, xs.min():xs.max() + 1] = a

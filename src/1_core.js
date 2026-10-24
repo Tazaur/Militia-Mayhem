@@ -277,6 +277,7 @@ function darkSpr(name) {
 }
 /* world->screen transform for the viewport being drawn */
 let VZ = 1, VOX = 0, VOY = 0;
+let FLASH = 0;                                   // > 0: sprites drawn now are brightened by this much (a vehicle taking a hit)
 function worldT() { ctx.setTransform(VZ * DPR, 0, 0, VZ * DPR, VOX * DPR, VOY * DPR); }
 let UIS = 1;                                     // extra scale while menus are drawn on the shrunken virtual screen (see uiScaled)
 function screenT() { ctx.setTransform(DPR * UIS, 0, 0, DPR * UIS, 0, 0); }
@@ -286,13 +287,17 @@ function spr(n, x, y, a, sx, sy, al) {
   ctx.setTransform(c * k * sx, s * k * sx, -s * k * sy, c * k * sy, (x * VZ + VOX) * DPR, (y * VZ + VOY) * DPR);
   if (al !== undefined) ctx.globalAlpha = al;
   ctx.drawImage(SRC, m[0], m[1], m[2], m[3], -m[4], -m[5], m[2], m[3]);
+  if (FLASH) lit(() => ctx.drawImage(SRC, m[0], m[1], m[2], m[3], -m[4], -m[5], m[2], m[3]), al);
   if (al !== undefined) ctx.globalAlpha = 1;
 }
+/* the same draw again, added on top: the art itself brightens, nothing outside its pixels */
+function lit(draw, al) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = FLASH * (al === undefined ? 1 : al); draw(); ctx.globalAlpha = al === undefined ? 1 : al; ctx.globalCompositeOperation = 'source-over'; }
 function sprC(c, px, py, x, y, a, al) {
   const cs = Math.cos(a), sn = Math.sin(a), k = VZ * DPR;
   ctx.setTransform(cs * k, sn * k, -sn * k, cs * k, (x * VZ + VOX) * DPR, (y * VZ + VOY) * DPR);
   if (al !== undefined) ctx.globalAlpha = al;
   ctx.drawImage(c, -px, -py);
+  if (FLASH) lit(() => ctx.drawImage(c, -px, -py), al);
   if (al !== undefined) ctx.globalAlpha = 1;
 }
 function img(c, x, y, a, s, al) {
@@ -300,6 +305,7 @@ function img(c, x, y, a, s, al) {
   ctx.setTransform(cs * k, sn * k, -sn * k, cs * k, (x * VZ + VOX) * DPR, (y * VZ + VOY) * DPR);
   if (al !== undefined) ctx.globalAlpha = al;
   ctx.drawImage(c, -c.width / 2, -c.height / 2);
+  if (FLASH) lit(() => ctx.drawImage(c, -c.width / 2, -c.height / 2), al);
   if (al !== undefined) ctx.globalAlpha = 1;
 }
 /* screen-space sprite with rotation, drawn from the active art style */

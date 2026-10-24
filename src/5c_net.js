@@ -610,7 +610,7 @@ function netSnapSlow() {
   let I = '', ni = 0;
   for (const it of M.items) { if (ni++ >= 40) break; I += pk(['med', 'ammo', 'mine', 'pouch'].indexOf(it.k), 1) + pk(it.x, 2) + pk(it.y, 2) + pk(it.team < 0 ? 4095 : it.team, 2); }
   let C = ''; for (let i = 0; i < M.crates.length; i += 6) { let b = 0; for (let j = 0; j < 6 && i + j < M.crates.length; j++) if (M.crates[i + j].live) b |= 1 << j; C += B64[b]; }
-  const Wr = M.wrecks.map(w => pk(w.type === 'tank' ? 0 : 1 + 2 * ((w.bw | 0) + 1), 1) + pk(w.x, 2) + pk(w.y, 2) + angE(w.a) + angE(w.ta || 0) + pk(w.t * 10, 2)).join('');
+  const Wr = M.wrecks.map(w => pk(w.type === 'tank' ? 0 : 1 + 2 * ((w.bw | 0) + 1 + (w.bf ? 5 : 0)), 1) + pk(w.x, 2) + pk(w.y, 2) + angE(w.a) + angE(w.ta || 0) + pk(w.t * 10, 2)).join('');
   const R = M.sol.map(s => pk(s.pts, 3) + pk(s.k, 2) + pk(s.d, 2) + pk(s.caps, 1) + pk(s.vk, 1)).join('');
   const gs = { id: NET.matchId, q: ++NET.seqS, h: NET.hdr, ro: NET.roster, nm: NET.names, I, C, W: Wr, R };
   if (NET.bn && Object.keys(NET.bn).length) gs.bn = NET.bn;
@@ -698,7 +698,7 @@ function netSlowApply() {
   const I = [], ri = new Rd(gs.I);
   while (!ri.end) { const k = ri.u(1), x = ri.u(2), y = ri.u(2), t = ri.u(2); I.push({ k: ['med', 'ammo', 'mine', 'pouch'][k] || 'pouch', x, y, team: t === 4095 ? -1 : t, t: 9 }); }
   const W2 = [], rw = new Rd(gs.W);
-  while (!rw.end) { const k = rw.u(1), x = rw.u(2), y = rw.u(2), a = angD(rw.u(2)), ta = angD(rw.u(2)), t = rw.u(2) / 10, T = VT[k ? 'jeep' : 'tank']; W2.push({ type: k ? 'jeep' : 'tank', x, y, a, ta, t, T: 180, burn: t - 166, hl: T.hl * 0.92, hw: T.hw * 0.9, bw: k ? (k >> 1) - 1 : -1 }); }
+  while (!rw.end) { const k = rw.u(1), x = rw.u(2), y = rw.u(2), a = angD(rw.u(2)), ta = angD(rw.u(2)), t = rw.u(2) / 10, T = VT[k ? 'jeep' : 'tank']; W2.push({ type: k ? 'jeep' : 'tank', x, y, a, ta, t, T: 180, burn: t - 166, hl: T.hl * 0.92, hw: T.hw * 0.9, bw: k ? (k >> 1) % 5 - 1 : -1, bf: k >> 1 >= 5 }); }
   return NET.slow = { I, W: W2, C: String(gs.C || ''), R: String(gs.R || ''), A: gs.A };
 }
 /* joiner: someone joined or left mid-match: soldiers change hands (or a new one appears) to match the host's roster */
@@ -1087,7 +1087,7 @@ function netWrecksSync(W) {
   for (const h of W) {
     let best = null, bd = 80;
     for (const w of old) { if (used.has(w) || w.type !== h.type) continue; const d = Math.hypot(w.hx - h.x, w.hy - h.y); if (d < bd) { bd = d; best = w; } }
-    const w = best || Object.assign({}, h, { sx: h.x, sy: h.y });
+    const w = best || wreckWheel(Object.assign({}, h, { sx: h.x, sy: h.y }));
     used.add(w); w.hx = h.x; w.hy = h.y; w.ha = h.a; w.ta = h.ta; w.t = h.t; w.burn = h.burn; out.push(w);
   }
   NET.wl = out; M.wrecks = out;

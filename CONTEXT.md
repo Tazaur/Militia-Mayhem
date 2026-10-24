@@ -322,3 +322,10 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - Jeep top speed scales to JEEP_SLOW (70 %) with health. Gunner seat / MG mount moved -27 -> -22.
 - Grenades: swap only when both kinds remain; when one runs out the selection jumps to the other.
 - Exposed crew vs bullets hitting the vehicle: victim = crew on the shot's line on through the vehicle (segCirc r 9), not only within 13 px of the hull hit, so a nest gunner can be shot from the front (60 % gate as before).
+
+## Build 140
+- Jeep v3 art (art/art4/jeep.png replaced; atlas_pack imports once while extra.jeepV != 3): new frames, decal, tyre, broken wheel jeep_wheel + flattened jeep_flat, and the mounted MG (mg / mg_f / mg_dead) now from this sheet everywhere (mounts.png no longer supplies them; --sync only writes tur_dead back). mg_f's pivot puts it 2 px kicked back from mg; the glow sits 31 px out.
+- Hit flash: FLASH (1_core) > 0 makes spr / sprC / img draw the art a second time with 'lighter' (lit()), so only the art's pixels brighten; drawVehicle sets it from v.hitFlash (0.45), crew are drawn with it off. The white rectangle is gone.
+- Wreck shadow: the live vehicle's rounded rect (VT hl / hw, radius 8, offset 4 / 6).
+- Wall crashes (vehicleCollide, solid() helper for every solid push): jeep damage JEEP_CRASH (0.0024) x (|spd| - CRASH_V 140)^2: about 0-1 below 160, 11 head-on at top speed (was 8-10 / 28).
+- Tyres: wells at y 16. Broken-off wheel: wreckWheel(w) puts it on the ground 3 px out past its well (w.bx / by / ba), so it stays when the wreck is pushed; bf = flattened (50 %). Net type byte 1 + 2 * (bw + 1 + 5 * bf); joiners place it when they first see the wreck.

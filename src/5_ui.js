@@ -199,19 +199,18 @@ function drawSmokeField(vw, eyes) {
 /* a wreck: solid cover, then gone over its last 2 s (also drawn into the remembered view) */
 function drawWreck(w) {
   const al = clamp(w.t / 2, 0, 1);   // solid cover, then gone over its last 2 s
-  worldT(); ctx.globalAlpha = 0.3 * al; ctx.fillStyle = '#000'; ctx.save(); ctx.translate(w.x + 4, w.y + 5); ctx.rotate(w.a); if (w.type === 'tank') ctx.fillRect(-52, -28, 104, 56); else ctx.fillRect(-41, -19, 82, 38); ctx.restore(); ctx.globalAlpha = 1;
+  worldT(); ctx.globalAlpha = 0.3 * al; ctx.fillStyle = '#000'; const T = VT[w.type]; ctx.save(); ctx.translate(w.x + 4, w.y + 6); ctx.rotate(w.a); rr(ctx, -T.hl, -T.hw, T.hl * 2, T.hw * 2, 8); ctx.fill(); ctx.restore(); ctx.globalAlpha = 1;     // the live vehicle's shadow
   if (w.type === 'tank') {
     const tx = w.x - 4 * Math.cos(w.a), ty = w.y - 4 * Math.sin(w.a), c = Math.cos(w.ta), s = Math.sin(w.ta);
     spr('hull5', w.x, w.y, w.a, 1, 1, al); spr('tur_dead', tx, ty, w.ta, 1, 1, al);
     spr('mg_dead', tx - 6 * c + 9 * s, ty - 6 * s - 9 * c, w.ta + 0.9, 1, 1, al);
-  } else { drawJeepWheels(w.x, w.y, w.a, 0, al, w.bw); spr('jeep4', w.x, w.y, w.a, 1, 1, al); spr('mg_dead', w.x - 22 * Math.cos(w.a), w.y - 22 * Math.sin(w.a), w.a + 2.4, 1, 1, al); }
+  } else { if (w.bx !== undefined) spr(w.bf ? 'jeep_flat' : 'jeep_wheel', w.bx, w.by, w.ba, 1, 1, al); drawJeepWheels(w.x, w.y, w.a, 0, al, w.bw); spr('jeep4', w.x, w.y, w.a, 1, 1, al); spr('mg_dead', w.x - 22 * Math.cos(w.a), w.y - 22 * Math.sin(w.a), w.a + 2.4, 1, 1, al); }
 }
-/* a jeep's front tyres in their wells (EXTRA.jeepWells), under the body, turned by steer; bw >= 0: that well (0 / 1 front,
-   2 / 3 rear) has the broken-off wheel instead */
+/* a jeep's front tyres in their wells (EXTRA.jeepWells), under the body, turned by steer; bw 0 / 1: that one broke off
+   (it lies on the ground on its own, see wreckWheel) */
 function drawJeepWheels(x, y, a, steer, al, bw) {
-  const c = Math.cos(a), s = Math.sin(a), at = (i, sd) => { const [wx, wy] = EXTRA.jeepWells[i]; return [x + c * wx - s * wy * sd, y + s * wx + c * wy * sd]; };
-  for (const sd of [-1, 1]) { if (bw === (sd < 0 ? 0 : 1)) continue; const [tx, ty] = at(0, sd); spr('jeep_tire', tx, ty, a + steer, 1, 1, al); }
-  if (bw >= 0) { const [tx, ty] = at(bw < 2 ? 0 : 1, bw % 2 ? 1 : -1); spr('jeep_wheel', tx, ty, a + bw * 1.7, 1, 1, al); }
+  const c = Math.cos(a), s = Math.sin(a), [wx, wy] = EXTRA.jeepWells[0];
+  for (const sd of [-1, 1]) if (bw !== (sd < 0 ? 0 : 1)) spr('jeep_tire', x + c * wx - s * wy * sd, y + s * wx + c * wy * sd, a + steer, 1, 1, al);
 }
 /* the front wheels' angle from how the jeep is turning (tan δ = turn rate x wheelbase / speed), eased; works the same for
    joiners, from the motion they see. Reversing turns them the right way round too */
@@ -364,7 +363,7 @@ function solDraw(s, n, x, y, a, sx, sy, al) {
 function flashAt(x, y, r) { worldT(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.9; ctx.drawImage(SPR.flash, x - r, y - r, r * 2, r * 2); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
 function hullFrame(v) { const f = v.hp / v.T.hp; return f > 0.82 ? 0 : f > 0.66 ? 1 : f > 0.5 ? 2 : f > 0.34 ? 3 : f > 0.18 ? 4 : 5; }
 function drawVehicle(v) {
-  worldT();
+  worldT(); FLASH = v.hitFlash > 0 ? 0.45 : 0;
   const col = vehColor(v);
   if (v.type === 'nest') {
     ctx.fillStyle = CFG.style === 'grit' ? '#3e3a2c' : '#5a5236'; ctx.beginPath(); ctx.arc(v.x, v.y, 18, 0, TAU); ctx.fill();
@@ -373,6 +372,7 @@ function drawVehicle(v) {
     const [mx, my] = mgPos(v);
     drawMG(v, mx, my);
     const g = v.seats[0]; if (g) drawSeated(g, true);
+    FLASH = 0;
     if (v.hp < v.T.hp && v.hitFlash > -2) { const f = v.hp / v.T.hp; ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(v.x - 14, v.y - 26, 28, 3); ctx.fillStyle = f > 0.5 ? '#7dff7a' : '#ff9a30'; ctx.fillRect(v.x - 14, v.y - 26, 28 * f, 3); }
     return;
   }
@@ -395,18 +395,18 @@ function drawVehicle(v) {
     drawMG(v, mx, my);
     const g = v.seats[2]; if (g) drawSeated(g, true);
   }
-  if (v.hitFlash > 0) { worldT(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.25; ctx.fillStyle = '#fff'; ctx.save(); ctx.translate(v.x, v.y); ctx.rotate(v.a); ctx.fillRect(-v.T.hl, -v.T.hw, v.T.hl * 2, v.T.hw * 2); ctx.restore(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
+  FLASH = 0;
 }
-/* the mounted MG (art/art4/mounts.png): firing frame + a soft glow while it shoots; drawn under its gunner, who holds the grips */
+/* the mounted MG (art/art4/jeep.png): firing frame + a soft glow while it shoots; drawn under its gunner, who holds the grips */
 function drawMG(v, mx, my) {
   const f = v.mgFlash > 0; spr(f ? 'mg_f' : 'mg', mx, my, v.mgA);
-  if (f) flashAt(mx + Math.cos(v.mgA) * 21, my + Math.sin(v.mgA) * 21, 6);
+  if (f) flashAt(mx + Math.cos(v.mgA) * 31, my + Math.sin(v.mgA) * 31, 6);
 }
 function drawSeated(s, mg) {
   const role = s.veh.T.seats[s.seat].role, jeep = s.veh.type === 'jeep';
   // drivers and jeep passengers sit; MG gunners stand at the gun; tank riders keep their rifle up
   const pose = role === 'drive' || mg || (jeep && role === 'rifle' && !s.flash) ? 'sit' : 'stand';
-  solDraw(s, solSpr(s.color, pose), s.x, s.y, s.a, 0.9, 0.9);
+  const fl = FLASH; FLASH = 0; solDraw(s, solSpr(s.color, pose), s.x, s.y, s.a, 0.9, 0.9); FLASH = fl;     // the crew doesn't flash with the vehicle
   if (s.flash > 0 && !mg && role !== 'drive') { const [mx, my] = muzzle(s, 20); flashAt(mx, my, 8); }
 }
 const FIRE = ['fire0', 'fire2', 'fire3', 'fire4'], SMOKE = ['smoke0', 'smoke1', 'smoke2', 'smoke3'], BOOM = ['boom0', 'boom1', 'boom2'];

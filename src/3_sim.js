@@ -343,7 +343,7 @@ function destroyVehicle(v, src) {
   explosion(v.x, v.y, v.type === 'tank' ? 110 : 80, 120, 150, src, -2, true);
   if (src && occupied && isEnemy(src.team, vt)) { src.vk++; addPts(src, v.type === 'tank' ? 300 : 200, (v.type === 'nest' ? 'NEST' : v.type.toUpperCase()) + ' DESTROYED'); }
   for (const s of crew) if (s.alive) { s.protect = 0; kill(s, src, 'explosion', rnd(-1, 1), rnd(-1, 1)); }
-  if (v.type !== 'nest') M.wrecks.push({ type: v.type, x: v.x, y: v.y, a: v.a, ta: v.ta, t: 180, T: 180, burn: 14, hl: v.T.hl * 0.92, hw: v.T.hw * 0.9, vx: 0, vy: 0, bw: v.type === 'jeep' && Math.random() < JEEP_BW ? rint(0, 3) : -1 }) && (navDirty = 1);
+  if (v.type !== 'nest') M.wrecks.push({ type: v.type, x: v.x, y: v.y, a: v.a, ta: v.ta, t: 180, T: 180, burn: 14, hl: v.T.hl * 0.92, hw: v.T.hw * 0.9, vx: 0, vy: 0, bw: v.type === 'jeep' && Math.random() < JEEP_BW ? rint(0, 3) : -1, bf: Math.random() < 0.5 }) && (navDirty = 1, wreckWheel(M.wrecks[M.wrecks.length - 1]));
   else for (let i = 0; i < 10; i++) part({ k: 'dirt', x: v.x, y: v.y, vx: rnd(-90, 90), vy: rnd(-90, 90), life: 0.8, max: 0.8, sz: 3, drag: 3 });
   if (src && src.player && !occupied) src.msg = { t: 1.4, txt: 'EMPTY ' + v.type.toUpperCase() + ' DESTROYED' };
   feed(src, 'DESTROYED', { name: v.type === 'nest' ? 'MG NEST' : v.type.toUpperCase(), color: 'white' });
@@ -477,15 +477,15 @@ function shove(o, cx, cy, px, py, local) {
   o.mv = (o.mv || 0) + Math.hypot(px, py); if (o.mv > 30) { o.mv = 0; navDirty = 1; }
 }
 function vehicleCollide(v, local, auth) {
-  let hit = 0, hitV = 0;
+  let hit = 0, hitV = 0; const solid = (dx, dy) => { v.x += dx; v.y += dy; hit = 1; };     // pushed back by something solid
   if (MAP.tiled && !local) devRams(v);
   for (let pass = 0; pass < 2; pass++) {
     vehCircles(v, _vc);
     for (const [cx, cy, r] of _vc) {
       const o = { x: cx, y: cy };
-      for (const b of rectsIn(MAP.buildings, cx - r, cy - r, cx + r, cy + r, _rb)) { const px = o.x, py = o.y; if (pushCircleRect(o, r, b)) { v.x += o.x - px; v.y += o.y - py; hit = 1; } }
+      for (const b of rectsIn(MAP.buildings, cx - r, cy - r, cx + r, cy + r, _rb)) { const px = o.x, py = o.y; if (pushCircleRect(o, r, b)) solid(o.x - px, o.y - py); }
       for (const w of M.wrecks) { const o3 = { x: cx, y: cy }; if (pushOutWreck(o3, r, w)) { const wa = auth ? 0 : wreckMass(w) / (v.T.mass + wreckMass(w)); v.x += (o3.x - cx) * wa; v.y += (o3.y - cy) * wa; shove(w, cx, cy, -(o3.x - cx) * (1 - wa), -(o3.y - cy) * (1 - wa), local); hitV = Math.max(hitV, wa); } }
-      for (const w of MAP.water) { const o2 = { x: cx, y: cy }; if (pushCircleRect(o2, r - 6, w)) { v.x += o2.x - cx; v.y += o2.y - cy; hit = 1; } }
+      for (const w of MAP.water) { const o2 = { x: cx, y: cy }; if (pushCircleRect(o2, r - 6, w)) solid(o2.x - cx, o2.y - cy); }
     }
   }
   vehCircles(v, _vc);
@@ -497,7 +497,7 @@ function vehicleCollide(v, local, auth) {
       const sp = Math.abs(v.spd);
       const crush = v.type === 'tank' || (s.type === 'fence' && sp > 30) || ((s.type === 'bag' || s.type === 'hay') && sp > 110);
       if (crush) { if (local) { if (!s.lcr) { s.lcr = 1; v.spd *= v.type === 'jeep' ? 0.82 : 0.96; } } else { destroyStatic(s); v.spd *= v.type === 'jeep' ? 0.82 : 0.96; } }
-      else { v.x += dx / d * (m - d); v.y += dy / d * (m - d); hit = 1; }
+      else solid(dx / d * (m - d), dy / d * (m - d));
     }
   }
   for (const o of M.vehicles) {
@@ -509,7 +509,7 @@ function vehicleCollide(v, local, auth) {
       if (d < m && d > 0.01) {
         const push = m - d, wa = auth ? 0 : o.T.mass / (v.T.mass + o.T.mass), wb = 1 - wa;
         v.x -= dx / d * push * wa; v.y -= dy / d * push * wa;
-        if (o.T.drive) { shove(o, bx, by, dx / d * push * wb, dy / d * push * wb, local); hitV = Math.max(hitV, wa); } else { v.x -= dx / d * push * wb; v.y -= dy / d * push * wb; hit = 1; }
+        if (o.T.drive) { shove(o, bx, by, dx / d * push * wb, dy / d * push * wb, local); hitV = Math.max(hitV, wa); } else solid(-dx / d * push * wb, -dy / d * push * wb);
         if (local) continue;
         const tch = v.tch || (v.tch = new Map()), last = tch.get(o); tch.set(o, M.time);
         if (last !== undefined && M.time - last < 0.4) continue;     // still leaning on it: pushing isn't a crash
@@ -519,8 +519,12 @@ function vehicleCollide(v, local, auth) {
     }
   }
   if (hitV && !auth) v.spd *= 1 - 0.05 * hitV;
-  const m = 30 - SKIRT; if (v.x < m) { v.x = m; hit = 1; } if (v.x > WW - m) { v.x = WW - m; hit = 1; } if (v.y < m) { v.y = m; hit = 1; } if (v.y > WH - m) { v.y = WH - m; hit = 1; }
-  if (hit) { if (Math.abs(v.spd) > 120 && v.crashCd <= 0 && !local) { v.crashCd = 0.6; sfx('clang', v.x, v.y); if (v.type === 'jeep') hurtVehicle(v, (Math.abs(v.spd) - 110) * 0.2, null); } v.spd *= 0.6; }
+  const m = 30 - SKIRT; if (v.x < m) solid(m - v.x, 0); if (v.x > WW - m) solid(WW - m - v.x, 0); if (v.y < m) solid(0, m - v.y); if (v.y > WH - m) solid(0, WH - m - v.y);
+  if (hit) {
+    const sp = Math.abs(v.spd);
+    if (sp > 120 && v.crashCd <= 0 && !local) { v.crashCd = 0.6; sfx('clang', v.x, v.y); if (v.type === 'jeep' && sp > CRASH_V) hurtVehicle(v, JEEP_CRASH * (sp - CRASH_V) ** 2, null); }
+    v.spd *= 0.6;
+  }
 }
 function toLocal(v, x, y) { const dx = x - v.x, dy = y - v.y, c = Math.cos(-v.a), s = Math.sin(-v.a); return [dx * c - dy * s, dx * s + dy * c]; }
 /* nothing solid at all on the segment (walls and windows) */
@@ -1196,8 +1200,15 @@ function updateVehicle(v, dt) {
   vehDamageFx(v, dt);
   engineUpdate(v);
 }
-/* a jeep's top speed: down to JEEP_SLOW of it as it loses health. A wreck has a broken-off wheel JEEP_BW of the time */
-const JEEP_SLOW = 0.7, JEEP_BW = 0.6;
+/* a jeep's top speed: down to JEEP_SLOW of it as it loses health. A wreck has a broken-off wheel JEEP_BW of the time (bw:
+   0 / 1 front left / right, 2 / 3 rear; bf: the flattened one), and a crash into something solid costs it JEEP_CRASH x
+   (speed - CRASH_V)^2: 10 at top speed, next to nothing at low speeds */
+const JEEP_SLOW = 0.7, JEEP_BW = 0.6, JEEP_CRASH = 0.0024, CRASH_V = 140;
+/* where a wreck's broken-off wheel lies: 3 px out past its well, on the ground (it stays put when the wreck is pushed) */
+function wreckWheel(w) {
+  if (w.bw >= 0) { const [wx, wy] = EXTRA.jeepWells[w.bw < 2 ? 0 : 1]; [w.bx, w.by] = toWorld(w, wx, (wy + 3) * (w.bw % 2 ? 1 : -1)); w.ba = w.a + w.bw * 1.7; }
+  return w;
+}
 /* engine, steering and grip for one step. `local`: a joiner driving their own vehicle, where collisions only move
    this vehicle (the host does the crushing, the shoving and the damage) */
 function vehDrive(v, mx, my, dt, local) {
