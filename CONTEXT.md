@@ -361,3 +361,7 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 
 ## Build 147
 - No shadow pop-in at the screen edge: the height buffer HC reaches past each view toward the sun by the longest shadow (64 px / tan(el) ~ 76 world px x zoom); the view sits at P = (px, py) inside it (VOX / VOY shifted while heights draw, uniform P in the shader, V = GC height), R clamps to the padded rect, lights offset by P. Height culling widened by the same length (far = vis with r + L). HC only grows. Only the sun side is padded (shadows come in from there), so the extra fill / upload stays small.
+
+## Build 148
+- Height spans: HC G = 255 - bottom x 4 (R = top), so a pixel is a span bottom..top ('lighten' keeps the highest top and the lowest bottom). The sun and point-light marches block only where the ray is inside a span (blk), so something with an air gap under it throws a shadow that starts away from its base; walls / hulls run from the ground. (G was reflectivity in matSpr; nothing read it yet: phase 3 needs another home for it.)
+- Every part / shape: a start and an add. Start = the top of what it rests on (hUnder) + SUNP[name].lift (air gap); add = px taller than painted (SUNP[name].add, or o.add). SUNP keys: sprite name less its frame digits, or the SUNH shape name (wall, tree, hay, fence, crate, nest). Now: tur_gun lift 4 (gun at 16, floating past the hull). Soldiers: legs as add 7 (solid from the ground), a jump lifts them off it (SUNB.jump 4 x jumpK); the jeep gunner stands in the bed (add 7).
