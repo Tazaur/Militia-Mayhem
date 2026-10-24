@@ -171,10 +171,17 @@ function tinted(name, col) {
 }
 IMG.src = ATLAS_SRC;
 const SPR = {};
-function softDot(rgb, size, stops) {
-  const c = mk(size, size), g = c.getContext('2d'), gr = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+/* lit: the way to the sun (x, y): shaded as a ball in it, bright that side, darker the far side (in its own alpha) */
+function softDot(rgb, size, stops, lit) {
+  const c = mk(size, size), g = c.getContext('2d'), h = size / 2, gr = g.createRadialGradient(h, h, 0, h, h, h);
   for (const [t, a] of stops || [[0, 1], [0.45, 0.55], [1, 0]]) gr.addColorStop(t, `rgba(${rgb},${a})`);
-  g.fillStyle = gr; g.fillRect(0, 0, size, size); return c;
+  g.fillStyle = gr; g.fillRect(0, 0, size, size);
+  if (lit) {
+    const sx = h + lit[0] * h * 0.45, sy = h + lit[1] * h * 0.45, sg = g.createRadialGradient(sx, sy, 0, sx, sy, size * 0.95);
+    for (const [t, col] of [[0, 'rgba(255,255,255,0.55)'], [0.35, 'rgba(255,255,255,0.18)'], [0.7, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0.28)']]) sg.addColorStop(t, col);
+    g.globalCompositeOperation = 'source-atop'; g.fillStyle = sg; g.fillRect(0, 0, size, size); g.globalCompositeOperation = 'source-over';
+  }
+  return c;
 }
 /* a tracer streak, head at the right end (x = L): white-hot tip, orange core fading out toward the tail, a soft glow of
    3 rows either side. cr: core rows */
@@ -213,7 +220,8 @@ function buildAssets() {
   SPR.flashSoft = softDot('255,226,150', 64, [[0, 0.8], [0.15, 0.62], [0.4, 0.3], [0.7, 0.09], [1, 0]]);     // MG core: no hard white disc
   SPR.tracer = [tracer(26, 1), tracer(34, 2), tracer(42, 2)];     // rifle, MG, heavy rounds
   SPR.steam = softDot('200,200,200', 64); SPR.puffs = { grey: [[236, 238, 236], [214, 218, 218], [246, 244, 236], [196, 200, 200]], brown: [[150, 112, 76], [136, 104, 74], [162, 126, 90], [126, 96, 68]] };
-  for (const k in SPR.puffs) SPR.puffs[k] = SPR.puffs[k].map(c => [softDot(c.join(','), 64), softDot(c.map(v => Math.round(v * 0.72)).join(','), 64)]);   // smoke grey / dust brown: light + dark puff per shade
+  const lit = [Math.cos(SUN.az), Math.sin(SUN.az)];
+  for (const k in SPR.puffs) SPR.puffs[k] = SPR.puffs[k].map(c => [softDot(c.join(','), 64, undefined, lit), softDot(c.map(v => Math.round(v * 0.72)).join(','), 64, undefined, lit)]);   // smoke grey / dust brown: light + dark puff per shade, each a sunlit billow
   // grain tile
   { const c = mk(256, 256), g = c.getContext('2d'), d = g.createImageData(256, 256); for (let i = 0; i < d.data.length; i += 4) { const v = Math.random() * 255; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 255; } g.putImageData(d, 0, 0); SPR.grain = c; }
   // crate

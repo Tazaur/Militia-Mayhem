@@ -56,7 +56,6 @@ function drawWorld(vw) {
   for (const p of M.proj) if (vis(p.x, p.y, 20)) at(shotZ(p), () => drawProj(p));
   for (const f of M.flings) if (vis(f.x, f.y, 40)) { const k = f.t / f.T, h = Math.sin(Math.PI * k); at(ZH.body + h * 34, () => solDraw(f, solSpr(f.color, 'dead'), f.x, f.y - h * 34, f.rot, 1 + h * 0.6, 1 + h * 0.6)); }
   partsInto(at, vis);
-  at(ZH.smoke, () => drawSmokes(vw));     // the smoke field: lit (the sun has its heights), over what's lower
   const roofs = roofsIn(vis), FP = fogged ? new Path2D() : null; if (FP) polyPath(FP, fogPolys);     // the sight clip, built once
   at(SUNH.wall, () => {     // roofs: always known, so drawn over the out-of-sight memory too (out of the sight clip); the dev yard's in sight
     if (rv) { worldT(); ctx.imageSmoothingEnabled = false; ctx.drawImage(rv.c, 0, 0, rv.w, rv.h, rv.x, rv.y, rv.w, rv.h); }
@@ -76,6 +75,7 @@ function drawWorld(vw) {
   for (const d of Q) if (d.post) { d.f(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
   // the soft layers (smoke, windows) over everything in sight alike: units, vehicles, roofs, trees, fire
   if (fogged) drawSoftFog(vw);
+  drawSmokes(vw);
   drawLasers(vis);
   // tags, reticles
   worldT(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -163,11 +163,14 @@ function drawSmokes(vw) { if (M.gsf && M.gsf.act.length) { worldT(); drawSmokeFi
    its own when no neighbour has one), as thick as the tile (1 - e^(-SMK_VIS x amount), as light through haze) and
    SMK_PUFF tiles in radius, SMK_GROW more per tile of room round it (f.R), less when thin. So the grid says where the
    smoke is and the puffs make it round and smooth. They go into SMK_C, the walls are cut out of it (a puff never
-   reaches past the wall beyond it, so a room keeps its smoke), and it's drawn twice: dark and offset as its shade,
-   then the smoke. Each puff drifts and breathes slowly (phase from the tile); thinned near the eyes (SMOKE_KEEP).
+   reaches past the wall beyond it, so a room keeps its smoke), and it's drawn twice: dark and offset away from the sun as
+   its shadow on the ground, then the smoke, over the light (solid: it hides what's in it). Its volume: its own silhouette,
+   dark and stepped away from the sun (SMK_SELF), laid on it; each puff a sunlit billow (softDot lit), so where more smoke stands sunward it's in shade and the sunward
+   rim stays bright. Each puff drifts and breathes slowly (phase from the tile); thinned near the eyes (SMOKE_KEEP).
    A tile's look (f.V) eases to its thickness at SMK_IN a second, so new smoke swells in; a puff is fainter the smaller
    it is (down to SMK_SMALL), so a little one squeezed against a wall doesn't stand out as a hot spot */
 const SMK_VIS = 3, SMK_PUFF = 1.5, SMK_GROW = 0.9, SMK_PAD = 5, SMK_IN = 2.5, SMK_SMALL = 0.5;     // SMK_PAD: tiles past the view whose puffs can reach in
+const SMK_SELF = [[6, 0.08], [14, 0.07], [24, 0.06]], SMK_DROP = 8;     // self-shade steps (px, opacity); the ground shadow's offset
 const SMK_C = document.createElement('canvas'), SMK_SH = document.createElement('canvas');
 /* each puff of the field in the tile box (null: all of them): f(x, y, radius, opacity, hash, brown part). The look eases in here (once a frame) */
 function smokePuffs(bx, eyes, cb) {
@@ -200,7 +203,10 @@ function drawSmokeField(vw, eyes) {
   for (const b of MAP.buildings) if (b.x < X0 + pw && b.x + b.w > X0 && b.y < Y0 + ph && b.y + b.h > Y0 && !(b.glass && b.sec && b.sec.hp < b.sec.mhp)) g.rect(b.x, b.y, b.w, b.h);
   g.fill(); g.globalCompositeOperation = 'source-over';
   gs.globalCompositeOperation = 'copy'; gs.drawImage(SMK_C, 0, 0, pw, ph, 0, 0, pw, ph); gs.globalCompositeOperation = 'source-in'; gs.fillStyle = '#000'; gs.fillRect(0, 0, pw, ph); gs.globalCompositeOperation = 'source-over';
-  if (!SUNNOW) { ctx.globalAlpha = 0.28; ctx.drawImage(SMK_SH, 0, 0, pw, ph, X0 + 4, Y0 + 6, pw, ph); }     // with the sun: its own shadow
+  const ux = -Math.cos(SUN.az), uy = -Math.sin(SUN.az);     // away from the sun
+  g.globalCompositeOperation = 'source-atop'; for (const [d, o] of SMK_SELF) { g.globalAlpha = o; g.drawImage(SMK_SH, 0, 0, pw, ph, X0 + ux * d, Y0 + uy * d, pw, ph); }
+  g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 0.28; ctx.drawImage(SMK_SH, 0, 0, pw, ph, X0 + ux * SMK_DROP, Y0 + uy * SMK_DROP, pw, ph);
   ctx.globalAlpha = 1; ctx.drawImage(SMK_C, 0, 0, pw, ph, X0, Y0, pw, ph);
 }
 /* a wreck: solid cover, then gone over its last 2 s (also drawn into the remembered view) */
@@ -423,7 +429,7 @@ function drawSeated(s, mg) {
 const FIRE = ['fire0', 'fire2', 'fire3', 'fire4'], SMOKE = ['smoke0', 'smoke1', 'smoke2', 'smoke3'], BOOM = ['boom0', 'boom1', 'boom2'];
 /* each kind's height (px) in the draw order, and how it's drawn: 0 lit, 1 over the light, 2 over the light, added */
 const PZ = { ripple: [0, 0], blood: [0.5, 0], shell: [1, 0], dirt: [2, 0], straw: [2, 0], dust: [3, 0], debris: [3, 0], splinter: [3, 0], leaf: [4, 0],
-  ring: [1, 2], flash: [30, 2], spark: [30, 2], fire: [44, 1], boom: [44, 1], smoke: [48, 0], steam: [48, 0] };
+  ring: [1, 2], flash: [30, 2], spark: [30, 2], fire: [44, 1], boom: [44, 1], smoke: [48, 1], steam: [48, 1] };
 const _pb = {};
 function partsInto(at, vis) {     // one bucket per kind, each drawn at its height
   for (const k in _pb) _pb[k].length = 0;

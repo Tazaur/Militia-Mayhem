@@ -78,7 +78,7 @@ function drawLight(l) {
    glow (added: dodging alone turns grass lime). The point lights
    (PL: x, y in buffer px, reach and height in world px; PK: strength) add in both: falloff as drawLight's, the slope
    toward the light, and a march to the light against the heights for their shadows (a lower thing's ends). It replaces the old offset shadows (SUNNOW). Off in settings, or without WebGL: the old look */
-const SUN = { az: -2.36, el: 0.7, tint: [0.46, 0.5, 0.64], warm: [1, 0.93, 0.8] };     // az: toward the sun (up-left); el: its height
+const SUN = { az: -2.36, el: 0.7, tint: [0.46, 0.5, 0.64], warm: [1, 0.93, 0.8], sky: [0.56, 0.7, 0.9], skyRain: [0.5, 0.53, 0.58] };     // az: toward the sun (up-left); el: its height; sky: what reflective things mirror
 const HS = 0.5;                                                                       // height buffer resolution vs the screen
 const SUNH = { flag: 22, item: 4, wall: 40, fence: 9, hay: 14, crate: 10, nest: 10, tree: [56, 36] };     // px
 const SUNB = { mgNest: 4, stand: 18, jump: 4 };     // px: a tripod's gap under the nest MG; a soldier's legs (added to his painted height, solid); a jump's gap
@@ -86,7 +86,7 @@ const SUNB = { mgNest: 4, stand: 18, jump: 4 };     // px: a tripod's gap under 
    on, add = px taller than painted. A part's start is the top of what's under it (+ lift); its pixels stand on that */
 const SUNP = { tur_gun: { lift: 4 } };
 /* draw order: each thing's height (px, its top as the sun pass has it); drawWorld draws low to high */
-const ZH = { body: 1, item: 2, shot: 12, smoke: 60 };     // fallbacks; the rest comes from the art (topOf, artMax, shotZ)
+const ZH = { body: 1, item: 2, shot: 12 };     // fallbacks; the rest comes from the art (topOf, artMax, shotZ)
 const solZ = s => s.down ? ZH.body : solLift(s) + solAdd(s) + artMax('sol_' + bodyPose(s));
 const sunP = n => SUNP[n] || SUNP[n.replace(/\d+$/, '')] || {};
 let SUNNOW = false, SUNDBG = 0, _sun = null;
@@ -107,7 +107,12 @@ function artH(n, lx, ly) {
   for (let f = 1; f > 0; f -= st) { const x = Math.floor(m[4] + lx * f), y = Math.floor(m[5] + ly * f); if (x < 0 || y < 0 || x >= m[2] || y >= m[3]) continue; const i = ((m[1] + y) * D.w + m[0] + x) * 4; if (D.ap[i + 3] >= 128) return D.mp[i] / 4; }
   return 0;
 }
-const _amx = new Map();
+const _amx = new Map(), _amt = new Map();
+function artMat(n) {         // 1: some of it reflects, 2: some of it glows
+  let v = _amt.get(n); if (v !== undefined) return v; const D = matData(), m = ATLAS[n]; if (!D || !m) return 0; v = 0;
+  for (let y = 0; y < m[3]; y++) for (let x = 0; x < m[2]; x++) { const i = ((m[1] + y) * D.w + m[0] + x) * 4; if (D.ap[i + 3] >= 128) v |= (D.mp[i + 1] > 8 ? 1 : 0) | (D.mp[i + 2] > 8 ? 2 : 0); }
+  _amt.set(n, v); return v;
+}
 function artMax(n) {         // its tallest pixel
   let v = _amx.get(n); if (v !== undefined) return v; const D = matData(), m = ATLAS[n]; if (!D || !m) return 0; v = 0;
   for (let y = 0; y < m[3]; y++) for (let x = 0; x < m[2]; x++) { const i = ((m[1] + y) * D.w + m[0] + x) * 4; if (D.ap[i + 3] >= 128) v = Math.max(v, D.mp[i] / 4); }
@@ -145,13 +150,16 @@ function sunInit() {
     if (!IA || !MX) throw new Error('no instancing / max blending');
     const sh = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
     const prog = (vs, fs, at) => { const P = gl.createProgram(); gl.attachShader(P, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(P, sh(gl.FRAGMENT_SHADER, fs)); at.forEach((n, i) => gl.bindAttribLocation(P, i, n)); gl.linkProgram(P); if (!gl.getProgramParameter(P, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(P)); return P; };
-    const P = prog('attribute vec2 p; void main() { gl_Position = vec4(p, 0., 1.); }', `precision highp float;
-uniform sampler2D H; uniform vec2 S; uniform vec4 R; uniform float K, T, O, Q, V; uniform vec2 P; uniform vec3 L, C, W; uniform vec2 D; uniform vec4 PL[${LMAX}]; uniform float PK[${LMAX}];
+    const VS = 'attribute vec2 p; void main() { gl_Position = vec4(p, 0., 1.); }', TX = `uniform sampler2D H; uniform vec2 S; uniform vec4 R;
 vec4 tx(vec2 p) { return texture2D(H, clamp(p, R.xy, R.zw) / S); }
-float hh(vec2 p) { return tx(p).r * 63.75; }
+float hh(vec2 p) { return tx(p).r * 63.75; }`;
+    /* the light, once per pixel: the sun's slope (lam) and shadow (sh), the point lights (pl: falloff, slope toward each,
+       its own shadow march) and their glow scattered in haze (smoke, rain) into LT: sh, lam / 2, pl / 4, scatter / 4 */
+    const P = prog(VS, `precision highp float; ${TX}
+uniform float K, T, V, HZ; uniform vec2 P; uniform vec3 L; uniform vec2 D; uniform vec4 PL[${LMAX}]; uniform float PK[${LMAX}];
 float blk(vec2 p, float z, out float o) { vec4 c = tx(p); o = 1. - c.b * 0.65; return min(c.r * 63.75 - z, z - (1. - c.g) * 63.75); }     // > 0: height z is inside this pixel's span; o: how much it blocks (smoke: some)
 void main() {
-  vec2 p = vec2(gl_FragCoord.x - O, V - gl_FragCoord.y) + P;     // O: where this map (Q: 0 shade, 1 highlights, 2 glow) sits in GC; P: the view's place in H
+  vec2 p = vec2(gl_FragCoord.x, V - gl_FragCoord.y) + P;     // P: the view's place in H
   float h0 = hh(p);
   vec2 g = vec2(hh(p + vec2(1., 0.)) - hh(p - vec2(1., 0.)), hh(p + vec2(0., 1.)) - hh(p - vec2(0., 1.))) * K * 0.5;
   vec3 N = normalize(vec3(-g, 1.));
@@ -161,7 +169,7 @@ void main() {
     float o, x = (float(i) + j) / 24., t = mt * x * x, d = blk(p + D * t * K, h0 + t * T, o);     // steps fine near the foot (short shadows of small things), coarse far out (walls)
     if (d > 0.) sh = min(sh, 1. - (1. - clamp(1. - d / (1. + t * 0.12), 0., 1.)) * o);
   }
-  vec3 pl = vec3(0.);
+  float pl = 0., sc = 0.;
   for (int i = 0; i < ${LMAX}; i++) {
     if (PK[i] <= 0.) continue;
     vec2 v = PL[i].xy - p; float D = length(v) / K, lh = PL[i].w - h0;
@@ -170,54 +178,85 @@ void main() {
     for (int k = 1; k < 12; k++) { float o, t = (float(k) - j) / 12., d = blk(p + v * t, h0 + lh * t, o); if (d > 0.) s = min(s, 1. - (1. - clamp(1. - d / 3., 0., 1.)) * o); }
     vec3 ld = normalize(vec3(v / K, lh));
     pl += PK[i] * s * (0.5 * pow(1. - D / PL[i].z, 1.3) + 0.5 * pow(max(0., 1. - D / 40.), 2.)) * mix(1., clamp(dot(N, ld) / max(ld.z, 0.15), 0., 2.), 0.7);
+    sc += PK[i] * pow(1. - D / PL[i].z, 2.);
   }
-  pl *= vec3(1., 0.84, 0.59);
-  vec3 hi = W * max(lam - 1., 0.) * 1.6 * sh + pl * 0.6;
-  gl_FragColor = Q > 2.5 ? vec4(tx(p).rgb, 1.) : vec4(Q > 1.5 ? pl * 0.45 : Q > 0.5 ? hi / (1. + hi) : min(mix(C, vec3(1.), sh) * min(lam, 1.) + pl, 1.), 1.);     // dodge by h / (1 + h): x (1 + h); Q 3: the heights (dev)
+  gl_FragColor = vec4(sh, lam * 0.5, pl * 0.25, min(1., sc * (tx(p).b + HZ) * 0.25));
 }`, ['p']);
-    /* heights: one quad per thing (i0 centre + x half-axis, i1 y half-axis + kind + p0, i2 p1 p2 + atlas uv0, i3 uv1),
+    /* the maps (Q 0 shade: multiplied, 1 highlights: dodged, 2 glow: added) from LT, the heights' normals and the materials
+       (MT: R reflectivity, G glow, B water): reflective paint mirrors the sky (dims its own colour by as much) and glints
+       where its slope sends the sun to the eye; water ripples; glow brightens
+       its own art and blooms (BL). WX: buffer px to world px. Q 3 / 4: the heights / materials (dev) */
+    const CP = prog(VS, `precision highp float; ${TX}
+uniform sampler2D MT, LT; uniform vec2 G, P; uniform float K, O, Q, V, TM, BL; uniform vec3 L, C, W, SKY; uniform vec3 WX;
+vec4 mt(vec2 p) { return texture2D(MT, clamp(p, R.xy, R.zw) / S); }
+float hs(vec2 p) { vec3 q = fract(p.xyx * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }     // fract hash: no big sin (it splits between cells)
+float vn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); return mix(mix(hs(i), hs(i + vec2(1., 0.)), f.x), mix(hs(i + vec2(0., 1.)), hs(i + vec2(1., 1.)), f.x), f.y); }
+float wv(vec2 w) { return vn(w * 0.06 + vec2(TM * 0.35, TM * 0.25)) + 0.5 * vn(w * 0.14 - vec2(TM * 0.45, -TM * 0.2)); }
+void main() {
+  vec2 f = vec2(gl_FragCoord.x - O, gl_FragCoord.y), p = vec2(f.x, V - f.y) + P;     // O: where this map sits in GC
+  if (Q > 2.5) { gl_FragColor = vec4(Q > 3.5 ? mt(p).rgb : tx(p).rgb, 1.); return; }
+  vec4 a = texture2D(LT, f / G), m = mt(p);
+  float sh = a.r, lam = a.g * 2., r = m.r, gw = m.g; vec3 tint = vec3(1., 0.84, 0.59), pl = a.b * 4. * tint;
+  vec2 w = (p - WX.xy) / WX.z;
+  vec3 N = normalize(vec3(-vec2(hh(p + vec2(1., 0.)) - hh(p - vec2(1., 0.)), hh(p + vec2(0., 1.)) - hh(p - vec2(0., 1.))) * K * 0.5, 1.));
+  if (m.b > 0.5) { vec2 e = vec2(1.5, 0.); N = normalize(N + vec3(wv(w - e.xy) - wv(w + e.xy), wv(w - e.yx) - wv(w + e.yx), 0.) * 0.9); }
+  vec3 Rv = reflect(vec3(0., 0., -1.), N); float spec = pow(max(dot(Rv, L), 0.), mix(12., 160., r)) * sh;
+  if (Q < 0.5) { gl_FragColor = vec4(min(mix(C, vec3(1.), sh) * min(lam, 1.) + pl, 1.) * (1. - r * 0.55), 1.); return; }
+  if (Q < 1.5) { vec3 hi = W * max(lam - 1., 0.) * 1.6 * sh + pl * 0.6 + gw * 1.5; gl_FragColor = vec4(hi / (1. + hi), 1.); return; }     // dodge by h / (1 + h): x (1 + h)
+  float b = 0.;
+  if (BL > 0.) for (int i = 0; i < 12; i++) { float t = float(i), q = (1. + t) / 12. * 9. * K; b += mt(p + vec2(cos(t * 2.39996), sin(t * 2.39996)) * q).g; }
+  vec3 sky = mix(SKY * 1.2, SKY, Rv.z);
+  gl_FragColor = vec4(pl * 0.45 + a.a * 2. * tint + r * (sky * 0.5 * (0.55 + 0.45 * sh) + W * spec * 2.5) + vec3(1., 0.86, 0.62) * b / 12. * BL, 1.);
+}`, ['p']);
+    /* heights: one quad per thing (i0 centre + x half-axis, i1 y half-axis + kind + p0, i2 p1 p2 + atlas uv0, i3 uv1 + its top),
        to buffer px by X (scale, offset); kinds: 0 sprite (p0 base, p1 add: its painted heights from base up), 1 box (p0 top,
        p1 bottom, p2 haze), 2 disc (p0 centre top, p1 rim top, p2 bottom), 3 ring arc (p0 top, p1 inner radius / outer,
-       p2 half angle), 4 haze dome (p0 top, p1 base, p2 noise variant). Out: R top x 4, G 255 - bottom x 4, B haze */
-    const HP = prog(`attribute vec2 c; attribute vec4 i0, i1, i2, i3; uniform vec3 X; uniform vec2 F; varying vec2 q, uv; varying vec4 k;
-void main() { vec2 w = i0.xy + i0.zw * c.x + i1.xy * c.y; gl_Position = vec4((w * X.x + X.yz) / F * 2. - 1., 0., 1.); q = c; uv = mix(i2.zw, i3.xy, c * 0.5 + 0.5); k = vec4(i1.zw, i2.xy); }`,
-`precision highp float; uniform sampler2D A; varying vec2 q, uv; varying vec4 k;
-float hs(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float vn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); return mix(mix(hs(i), hs(i + vec2(1., 0.)), f.x), mix(hs(i + vec2(0., 1.)), hs(i + vec2(1., 1.)), f.x), f.y); }
+       p2 half angle), 5 material only (p0 reflectivity, p1 water, p2 2: a
+       disc). Out: R top x 4, G 255 - bottom x 4, B haze. With MM: the materials (R reflectivity, G glow, B water), the
+       highest top winning (depth) */
+    const HP = prog(`attribute vec2 c; attribute vec4 i0, i1, i2, i3; uniform vec3 X; uniform vec2 F; uniform float MM; varying vec2 q, uv; varying vec4 k;
+void main() { vec2 w = i0.xy + i0.zw * c.x + i1.xy * c.y; gl_Position = vec4((w * X.x + X.yz) / F * 2. - 1., MM > 0.5 ? 1. - i3.z / 32. : 0., 1.); q = c; uv = mix(i2.zw, i3.xy, c * 0.5 + 0.5); k = vec4(i1.zw, i2.xy); }`,
+`precision highp float; uniform sampler2D A; uniform float MM; varying vec2 q, uv; varying vec4 k;
 vec4 span(float t, float b, float z) { return vec4(clamp(t * 4. / 255., 0., 1.), 1. - clamp(b * 4. / 255., 0., 1.), z, 1.); }
 void main() {
   float r2 = dot(q, q);
-  if (k.x < 0.5) { vec4 m = texture2D(A, uv); if (m.a < 0.5) discard; gl_FragColor = vec4(min(1., m.r + (k.y + k.z) * 4. / 255.), 1. - min(63., k.y) * 4. / 255., 0., 1.); }
+  if (k.x > 4.5) { if (MM < 0.5 || (k.w > 1.5 && r2 > 1.)) discard; gl_FragColor = vec4(k.y, 0., k.z, 1.); return; }
+  if (k.x < 0.5) { vec4 m = texture2D(A, uv); if (m.a < 0.5) discard; gl_FragColor = MM > 0.5 ? vec4(m.g, m.b, 0., 1.) : vec4(min(1., m.r + (k.y + k.z) * 4. / 255.), 1. - min(63., k.y) * 4. / 255., 0., 1.); return; }
   else if (k.x < 1.5) gl_FragColor = span(k.y, k.z, k.w);
   else if (k.x < 2.5) { if (r2 > 1.) discard; gl_FragColor = span(mix(k.y, k.z, sqrt(r2)), k.w, 0.); }
-  else if (k.x < 3.5) { float r = sqrt(r2); if (r > 1. || r < k.z || abs(atan(q.y, q.x)) > k.w) discard; gl_FragColor = span(k.y, 0., 0.); }
-  else { if (r2 > 1.) discard; float n = 0.62 * vn(q * 2.7 + k.w * 7.) + 0.38 * vn(q * 5.3 + k.w * 3. + 9.); gl_FragColor = span(k.z + (k.y - k.z) * sqrt(1. - r2) * (0.6 + 0.4 * n), k.z, 1.); }
+  else { float r = sqrt(r2); if (r > 1. || r < k.z || abs(atan(q.y, q.x)) > k.w) discard; gl_FragColor = span(k.y, 0., 0.); }
+  if (MM > 0.5) gl_FragColor = vec4(0., 0., 0., 1.);
 }`, ['c', 'i0', 'i1', 'i2', 'i3']);
     const buf = d => { const o = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, o); gl.bufferData(gl.ARRAY_BUFFER, d, gl.STATIC_DRAW); return o; };
-    const tri = buf(new Float32Array([-1, -1, 3, -1, -1, 3])), quad = buf(new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1])), inst = gl.createBuffer();
+    const tri = buf(new Float32Array([-1, -1, 3, -1, -1, 3])), quad = buf(new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1])), ib = {};
+    for (const n in HL) ib[n] = gl.createBuffer();
     const texture = (f, data) => { const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t); for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, f], [gl.TEXTURE_MAG_FILTER, f], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v); if (data) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, data); return t; };
-    // the material atlas: R its heights, A the colour atlas's silhouette
-    const { mp, ap, w, h } = matData(), id = new ImageData(w, h); for (let i = 0; i < mp.length; i += 4) { id.data[i] = mp[i]; id.data[i + 3] = ap[i + 3] >= 128 ? 255 : 0; }
-    gl.activeTexture(gl.TEXTURE1); const AT = texture(gl.NEAREST, id); gl.activeTexture(gl.TEXTURE0); const HT = texture(gl.LINEAR), FB = gl.createFramebuffer();
+    // the material atlas: R its heights, G reflectivity, B glow, A the colour atlas's silhouette. Units: 0 heights, 1 atlas, 2 materials, 3 light
+    const { mp, ap, w, h } = matData(), id = new ImageData(w, h); for (let i = 0; i < mp.length; i += 4) { id.data[i] = mp[i]; id.data[i + 1] = mp[i + 1]; id.data[i + 2] = mp[i + 2]; id.data[i + 3] = ap[i + 3] >= 128 ? 255 : 0; }
+    gl.activeTexture(gl.TEXTURE1); const AT = texture(gl.NEAREST, id);
+    gl.activeTexture(gl.TEXTURE2); const MT = texture(gl.NEAREST); gl.activeTexture(gl.TEXTURE3); const LT = texture(gl.NEAREST); gl.activeTexture(gl.TEXTURE0); const HT = texture(gl.LINEAR);
+    const FB = gl.createFramebuffer(), FM = gl.createFramebuffer(), FL = gl.createFramebuffer(), DB = gl.createRenderbuffer();
     const uni = (P, ns) => { const U = {}; for (const n of ns) U[n] = gl.getUniformLocation(P, n); return U; };
-    const U = uni(P, ['S', 'R', 'K', 'L', 'D', 'T', 'C', 'W', 'O', 'Q', 'V', 'P', 'PL', 'PK', 'H']), HU = uni(HP, ['X', 'F', 'A']);
-    gl.useProgram(HP); gl.uniform1i(HU.A, 1); gl.useProgram(P); gl.uniform1i(U.H, 0);
-    _sun = { gl, GC, IA, MX, P, HP, U, HU, tri, quad, inst, AT, HT, FB, fw: 0, fh: 0, aw: w, ah: h, pl: new Float32Array(LMAX * 4), pk: new Float32Array(LMAX) };
+    const U = uni(P, ['S', 'R', 'K', 'L', 'D', 'T', 'V', 'P', 'PL', 'PK', 'H', 'HZ']), CU = uni(CP, ['S', 'R', 'K', 'L', 'C', 'W', 'O', 'Q', 'V', 'P', 'G', 'H', 'MT', 'LT', 'TM', 'BL', 'SKY', 'WX']), HU = uni(HP, ['X', 'F', 'A', 'MM']);
+    gl.useProgram(HP); gl.uniform1i(HU.A, 1); gl.useProgram(CP); gl.uniform1i(CU.H, 0); gl.uniform1i(CU.MT, 2); gl.uniform1i(CU.LT, 3); gl.useProgram(P); gl.uniform1i(U.H, 0);
+    _sun = { gl, GC, IA, MX, P, CP, HP, U, CU, HU, tri, quad, ib, AT, HT, MT, LT, FB, FM, FL, DB, fw: 0, fh: 0, lw: 0, lh: 0, aw: w, ah: h, pl: new Float32Array(LMAX * 4), pk: new Float32Array(LMAX) };
   } catch (e) { console.warn('sun off:', e.message); _sun = false; }
   return _sun;
 }
 /* this frame's height quads: a (MAX blended), w (walls, written over: what's there is inside them) then t (trees, MAX) */
-const hbuf = () => ({ f: new Float32Array(16 * 256), n: 0 }), HL = { a: hbuf(), w: hbuf(), t: hbuf() };
-function hq(L, cx, cy, ux, uy, vx, vy, k, p0, p1, p2, u0, v0, u1, v1) {
+const hbuf = () => ({ f: new Float32Array(16 * 256), n: 0 }), HL = { a: hbuf(), w: hbuf(), t: hbuf(), m: hbuf() };     // m: materials only (water...)
+let HMAT = 0;     // this frame: 1 something reflective in view, 2 something glowing
+function hq(L, cx, cy, ux, uy, vx, vy, k, p0, p1, p2, u0, v0, u1, v1, z) {
   if ((L.n + 1) * 16 > L.f.length) { const g = new Float32Array(L.f.length * 2); g.set(L.f); L.f = g; }
-  const f = L.f, o = L.n++ * 16; f[o] = cx; f[o + 1] = cy; f[o + 2] = ux; f[o + 3] = uy; f[o + 4] = vx; f[o + 5] = vy; f[o + 6] = k; f[o + 7] = p0; f[o + 8] = p1; f[o + 9] = p2; f[o + 10] = u0 || 0; f[o + 11] = v0 || 0; f[o + 12] = u1 || 0; f[o + 13] = v1 || 0;
+  const f = L.f, o = L.n++ * 16; f[o] = cx; f[o + 1] = cy; f[o + 2] = ux; f[o + 3] = uy; f[o + 4] = vx; f[o + 5] = vy; f[o + 6] = k; f[o + 7] = p0; f[o + 8] = p1; f[o + 9] = p2; f[o + 10] = u0 || 0; f[o + 11] = v0 || 0; f[o + 12] = u1 || 0; f[o + 13] = v1 || 0; f[o + 14] = z || 0;
 }
 /* a quad of half size hw x hh round (cx, cy), turned a */
-function hbox(L, cx, cy, hw, hh, a, k, p0, p1, p2) { const c = Math.cos(a), s = Math.sin(a); hq(L, cx, cy, c * hw, s * hw, -s * hh, c * hh, k, p0, p1, p2); }
+function hbox(L, cx, cy, hw, hh, a, k, p0, p1, p2, z) { const c = Math.cos(a), s = Math.sin(a); hq(L, cx, cy, c * hw, s * hw, -s * hh, c * hh, k, p0, p1, p2, 0, 0, 0, 0, z ?? (k === 2 ? Math.max(p0, p1) : p0)); }
 /* a sprite's painted heights from base up (each add px taller), where the art is opaque; pivot at (x, y), turned a */
 function hspr(n, x, y, a, base, add) {
   const m = ATLAS[n]; if (!m) return; const c = Math.cos(a), s = Math.sin(a), ox = m[2] / 2 - m[4], oy = m[3] / 2 - m[5], S = _sun;
-  hq(HL.a, x + c * ox - s * oy, y + s * ox + c * oy, c * m[2] / 2, s * m[2] / 2, -s * m[3] / 2, c * m[3] / 2, 0, base || 0, add || 0, 0, m[0] / S.aw, m[1] / S.ah, (m[0] + m[2]) / S.aw, (m[1] + m[3]) / S.ah);
+  hq(HL.a, x + c * ox - s * oy, y + s * ox + c * oy, c * m[2] / 2, s * m[2] / 2, -s * m[3] / 2, c * m[3] / 2, 0, base || 0, add || 0, 0, m[0] / S.aw, m[1] / S.ah, (m[0] + m[2]) / S.aw, (m[1] + m[3]) / S.ah, (base || 0) + (add || 0) + artMax(n));
+  HMAT |= artMat(n);
 }
 /* a part starts on top of what's already under it: the painted height of the parts stacked so far (the hull, the
    turret...) at its rest point (its pivot unless given: an MG's mount, a seat), the highest within 1 px; at least min */
@@ -301,69 +340,67 @@ function sunHeights(vis, hidden, vw) {
     if (v.type === 'nest') hbox(HL.a, v.x, v.y, 22, 22, v.a, 3, nt, 14 / 22, 1.35);     // the bags: an arc 8 wide round 18
     hParts(v);
   }
-  hazeHeights(vis, vw);
+  const mat = (L, refl, wave, z) => { for (const w of L) if (vis(w.x + w.w / 2, w.y + w.h / 2, Math.max(w.w, w.h))) { hbox(HL.m, w.x + w.w / 2, w.y + w.h / 2, w.w / 2, w.h / 2, 0, 5, refl, wave, 0, z); if (refl) HMAT |= 1; } };
+  mat(MAP.water, 0.75, 1, 0.2); mat(MAP.ice || [], 0.45, 0, 0.2); mat(MAP.bridges, 0, 0, 0.4);     // water mirrors the sky and ripples; ice, stiller
+  for (const s of M.sol) if (s.alive && s.swim && vis(s.x, s.y, 12)) hbox(HL.m, s.x, s.y, 9, 9, 0, 5, 0, 0, 2, 0.6);     // a swimmer isn't water
 }
-/* smoke and dust as heights, so the sun lights them: each puff a dome as tall as it is thick (its look's opacity x
-   SMK_HT; a particle's, x its size), bumped with noise, on its base (the field's: the ground; a particle's: where it
-   came out, rising); B = 255 marks it haze (a lighter shadow). The walls go in over them (the field's smoke is cut out of them too) */
-const SMK_HT = 40, PUFF_RISE = { smoke: 8, steam: 12, dust: 0 }, PUFF_THICK = { smoke: 1.4, steam: 1, dust: 1.8 };
-function hazeHeights(vis, vw) {
-  if (M.gsf && M.gsf.act.length) smokePuffs(null, vw ? viewSols(vw).map(posOf) : [], (x, y, r, al, h) => { if (al > 0.03 && vis(x, y, r)) hbox(HL.a, x, y, r, r, 0, 4, SMK_HT * al, 0, h * 4 & 3); });
-  for (const q of M.parts) {
-    const R = PUFF_RISE[q.k]; if (R === undefined || !vis(q.x, q.y, q.sz + 10)) continue;
-    const a = clamp(q.life / q.max, 0, 1), r = q.sz * (q.k === 'steam' ? 1 : 1.15), b = (q.z || 0) + R * (q.max - q.life), al = q.k === 'smoke' ? a * 0.6 : q.k === 'dust' ? a * 0.45 : a * 0.5;
-    if (al >= 0.05) hbox(HL.a, q.x, q.y, r, r, 0, 4, b + r * al * PUFF_THICK[q.k], b, (q.v || 0) & 3);
-  }
-}
-/* the height quads into the height texture (HT, through FB): cleared in the box, then a, w, t */
+/* the quads (uploaded once, one buffer per list) into the height texture HT (box cleared, then a MAX, w over, t MAX)
+   and the materials MT (depth: the highest top wins) */
 function sunDrawHeights(S, X, box) {
-  const { gl, IA, MX } = S;
-  gl.bindFramebuffer(gl.FRAMEBUFFER, S.FB); gl.viewport(0, 0, S.fw, S.fh); gl.scissor(...box); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+  const { gl, IA, MX } = S, lists = ['a', 'w', 't', 'm'];
   gl.useProgram(S.HP); gl.uniform3f(S.HU.X, ...X); gl.uniform2f(S.HU.F, S.fw, S.fh);
   gl.bindBuffer(gl.ARRAY_BUFFER, S.quad); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.enableVertexAttribArray(0);
-  gl.bindBuffer(gl.ARRAY_BUFFER, S.inst); for (let i = 1; i <= 4; i++) { gl.enableVertexAttribArray(i); IA.vertexAttribDivisorANGLE(i, 1); }
-  gl.blendEquation(MX.MAX_EXT);
-  for (const [L, max] of [[HL.a, 1], [HL.w, 0], [HL.t, 1]]) {
-    if (!L.n) continue; if (max) gl.enable(gl.BLEND); else gl.disable(gl.BLEND);
-    gl.bufferData(gl.ARRAY_BUFFER, L.f.subarray(0, L.n * 16), gl.STREAM_DRAW);
-    for (let i = 1; i <= 4; i++) gl.vertexAttribPointer(i, i < 4 ? 4 : 2, gl.FLOAT, false, 64, (i - 1) * 16);
-    IA.drawArraysInstancedANGLE(gl.TRIANGLES, 0, 6, L.n);
-  }
-  gl.disable(gl.BLEND); for (let i = 1; i <= 4; i++) { IA.vertexAttribDivisorANGLE(i, 0); gl.disableVertexAttribArray(i); }
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-  HL.a.n = HL.w.n = HL.t.n = 0;
+  for (let i = 1; i <= 4; i++) { gl.enableVertexAttribArray(i); IA.vertexAttribDivisorANGLE(i, 1); }
+  for (const n of lists) if (HL[n].n) { gl.bindBuffer(gl.ARRAY_BUFFER, S.ib[n]); gl.bufferData(gl.ARRAY_BUFFER, HL[n].f.subarray(0, HL[n].n * 16), gl.STREAM_DRAW); }
+  const draw = n => { const L = HL[n]; if (!L.n) return; gl.bindBuffer(gl.ARRAY_BUFFER, S.ib[n]); for (let i = 1; i <= 4; i++) gl.vertexAttribPointer(i, 4, gl.FLOAT, false, 64, (i - 1) * 16); IA.drawArraysInstancedANGLE(gl.TRIANGLES, 0, 6, L.n); };
+  gl.viewport(0, 0, S.fw, S.fh); gl.scissor(...box); gl.clearColor(0, 0, 0, 1);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, S.FB); gl.clear(gl.COLOR_BUFFER_BIT); gl.uniform1f(S.HU.MM, 0);
+  gl.blendEquation(MX.MAX_EXT); gl.enable(gl.BLEND); draw('a'); gl.disable(gl.BLEND); draw('w'); gl.enable(gl.BLEND); draw('t'); gl.disable(gl.BLEND);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, S.FM); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); gl.uniform1f(S.HU.MM, 1);
+  gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS); for (const n of lists) draw(n); gl.disable(gl.DEPTH_TEST);
+  for (let i = 1; i <= 4; i++) { IA.vertexAttribDivisorANGLE(i, 0); gl.disableVertexAttribArray(i); }
+  for (const n of lists) HL[n].n = 0;
 }
 function drawSun(vw, vis, hidden) {
-  const S = _sun, { gl, GC, U } = S, w = Math.ceil(cv.width * HS), h = Math.ceil(cv.height * HS), dpr = DPR, K = VZ * dpr * HS, k = dpr * HS;
+  const S = _sun, { gl, GC, U, CU } = S, w = Math.ceil(cv.width * HS), h = Math.ceil(cv.height * HS), dpr = DPR, K = VZ * dpr * HS, k = dpr * HS;
   if (GC.width !== w * 3 || GC.height !== h) { GC.width = w * 3; GC.height = h; }
   const rx = Math.floor(vw.x * dpr * HS), ry = Math.floor(vw.y * dpr * HS), rw = Math.min(w - rx, Math.ceil(vw.w * dpr * HS)), rh = Math.min(h - ry, Math.ceil(vw.h * dpr * HS));
   // the height buffer reaches past the view toward the sun by the longest shadow (64 px tall), so what's off screen
   // that side still throws its shadow in (no pop-in); the view sits at (px, py) in it
   const L = 64 / Math.tan(SUN.el), dx = Math.cos(SUN.az) * L * K, dy = Math.sin(SUN.az) * L * K;
   const px = Math.ceil(Math.max(0, -dx)) + 2, py = Math.ceil(Math.max(0, -dy)) + 2, bw = rw + px + Math.ceil(Math.max(0, dx)) + 2, bh = rh + py + Math.ceil(Math.max(0, dy)) + 2;
-  if (S.fw < rx + bw || S.fh < ry + bh) {     // grows only
+  const size = (t, w, h) => { gl.bindTexture(gl.TEXTURE_2D, t); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null); };
+  const attach = (f, t) => { gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0); };
+  if (S.fw < rx + bw || S.fh < ry + bh) {     // the height and material targets grow only
     S.fw = Math.max(S.fw, rx + bw + 32); S.fh = Math.max(S.fh, ry + bh + 32);
-    gl.bindTexture(gl.TEXTURE_2D, S.HT); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, S.fw, S.fh, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, S.FB); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, S.HT, 0); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.activeTexture(gl.TEXTURE2); size(S.MT, S.fw, S.fh); gl.activeTexture(gl.TEXTURE0); size(S.HT, S.fw, S.fh);
+    gl.bindRenderbuffer(gl.RENDERBUFFER, S.DB); gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, S.fw, S.fh);
+    attach(S.FB, S.HT); attach(S.FM, S.MT); gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, S.DB);
   }
-  // heights (buffer px = (world x VZ + VOX) x k + pad)
-  gl.enable(gl.SCISSOR_TEST);
+  if (S.lw !== w || S.lh !== h) { S.lw = w; S.lh = h; gl.activeTexture(gl.TEXTURE3); size(S.LT, w, h); gl.activeTexture(gl.TEXTURE0); attach(S.FL, S.LT); }
+  // heights and materials (buffer px = (world x VZ + VOX) x k + pad)
+  gl.enable(gl.SCISSOR_TEST); HMAT = 0;
   sunHeights((x, y, r) => vis(x, y, r + L), hidden, vw);
   sunDrawHeights(S, [VZ * k, VOX * k + px, VOY * k + py], [rx, ry, bw, bh]);
-  // light
-  gl.useProgram(S.P); gl.bindBuffer(gl.ARRAY_BUFFER, S.tri); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.enableVertexAttribArray(0);
-  gl.bindTexture(gl.TEXTURE_2D, S.HT);
-  const ce = Math.cos(SUN.el);
-  gl.uniform2f(U.S, S.fw, S.fh); gl.uniform2f(U.P, px, py); gl.uniform1f(U.V, h); gl.uniform4f(U.R, rx + 0.5, ry + 0.5, rx + bw - 0.5, ry + bh - 0.5); gl.uniform1f(U.K, K);
-  gl.uniform3f(U.L, Math.cos(SUN.az) * ce, Math.sin(SUN.az) * ce, Math.sin(SUN.el)); gl.uniform2f(U.D, Math.cos(SUN.az), Math.sin(SUN.az)); gl.uniform1f(U.T, Math.tan(SUN.el));
-  gl.uniform3f(U.C, ...SUN.tint); gl.uniform3f(U.W, ...SUN.warm);
+  // the light, once (into LT)
+  gl.bindFramebuffer(gl.FRAMEBUFFER, S.FL); gl.viewport(0, 0, w, h); gl.scissor(rx, h - ry - rh, rw, rh);
+  gl.useProgram(S.P); gl.bindBuffer(gl.ARRAY_BUFFER, S.tri); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+  const ce = Math.cos(SUN.el), Ld = [Math.cos(SUN.az) * ce, Math.sin(SUN.az) * ce, Math.sin(SUN.el)], reg = [rx + 0.5, ry + 0.5, rx + bw - 0.5, ry + bh - 0.5];
+  gl.uniform2f(U.S, S.fw, S.fh); gl.uniform2f(U.P, px, py); gl.uniform1f(U.V, h); gl.uniform4f(U.R, ...reg); gl.uniform1f(U.K, K);
+  gl.uniform3f(U.L, ...Ld); gl.uniform2f(U.D, Math.cos(SUN.az), Math.sin(SUN.az)); gl.uniform1f(U.T, Math.tan(SUN.el)); gl.uniform1f(U.HZ, M.rain ? 0.15 : 0);
   S.pk.fill(0); lightsNow(vis).forEach((l, i) => { S.pl.set([(VZ * l.x + VOX) * k + px, (VZ * l.y + VOY) * k + py, l.r, l.h], i * 4); S.pk[i] = l.k; });
   gl.uniform4fv(U.PL, S.pl); gl.uniform1fv(U.PK, S.pk);
-  const lit = S.pk[0] > 0, maps = SUNDBG ? [SUNDBG === 1 ? 3 : SUNDBG - 2] : lit ? [0, 1, 2] : [0, 1];
-  maps.forEach((q, n) => { const o = n * w; gl.viewport(o, 0, w, h); gl.scissor(o + rx, h - ry - rh, rw, rh); gl.uniform1f(U.O, o); gl.uniform1f(U.Q, q); gl.drawArrays(gl.TRIANGLES, 0, 3); });
+  gl.drawArrays(gl.TRIANGLES, 0, 3); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  // the maps
+  gl.useProgram(S.CP);
+  gl.uniform2f(CU.S, S.fw, S.fh); gl.uniform2f(CU.P, px, py); gl.uniform1f(CU.V, h); gl.uniform4f(CU.R, ...reg); gl.uniform1f(CU.K, K); gl.uniform2f(CU.G, w, h);
+  gl.uniform3f(CU.L, ...Ld); gl.uniform3f(CU.C, ...SUN.tint); gl.uniform3f(CU.W, ...SUN.warm); gl.uniform3f(CU.SKY, ...(M.rain ? SUN.skyRain : SUN.sky));
+  gl.uniform1f(CU.TM, M.time); gl.uniform1f(CU.BL, HMAT & 2 ? 0.9 : 0); gl.uniform3f(CU.WX, VOX * k + px, VOY * k + py, VZ * k);
+  const add = S.pk[0] > 0 || HMAT || M.rain, maps = SUNDBG ? [[3, 0, 1, 2, 4][SUNDBG - 1]] : add ? [0, 1, 2] : [0, 1];
+  maps.forEach((q, n) => { const o = n * w; gl.viewport(o, 0, w, h); gl.scissor(o + rx, h - ry - rh, rw, rh); gl.uniform1f(CU.O, o); gl.uniform1f(CU.Q, q); gl.drawArrays(gl.TRIANGLES, 0, 3); });
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = true;
   const to = [vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR];
-  if (SUNDBG) ctx.drawImage(GC, rx, ry, rw, rh, ...to);       // dev: 1 heights, 2 shade, 3 highlights
-  else { ctx.globalCompositeOperation = 'multiply'; ctx.drawImage(GC, rx, ry, rw, rh, ...to); ctx.globalCompositeOperation = 'color-dodge'; ctx.drawImage(GC, w + rx, ry, rw, rh, ...to); if (lit) { ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(GC, 2 * w + rx, ry, rw, rh, ...to); } }
+  if (SUNDBG) ctx.drawImage(GC, rx, ry, rw, rh, ...to);       // dev: 1 heights, 2 shade, 3 highlights, 4 glow, 5 materials
+  else { ctx.globalCompositeOperation = 'multiply'; ctx.drawImage(GC, rx, ry, rw, rh, ...to); ctx.globalCompositeOperation = 'color-dodge'; ctx.drawImage(GC, w + rx, ry, rw, rh, ...to); if (add) { ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(GC, 2 * w + rx, ry, rw, rh, ...to); } }
   ctx.globalCompositeOperation = 'source-over'; ctx.imageSmoothingEnabled = false; worldT();
 }
