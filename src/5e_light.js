@@ -3,19 +3,21 @@
    wrecks, sandbags, hay: their own), rasterised into a patch of LC px cells. Rays from the light keep the lowest
    (h - height) / distance of what they've passed: a cell at distance D, itself hc high, is lit while that stays >= (h - hc) / D.
    So something lower than the light throws a shadow that ends (a jeep beside an MG flash), a wall's runs to the edge.
-   The patch is drawn smoothed (soft shadow edges) and brightens what's under it: dodged, then a little added */
+   The patch is drawn smoothed (soft shadow edges) and brightens what's under it: dodged, then a little added.
+   With the sun on, the sun's shader does them instead, from its height buffer (per pixel, slopes facing a light lit more) */
 const LC = 4, LMAX = 10, LIGHTS = [], LFX = [];
 const LH = { tank: 30, jeep: 20, nest: 12, bag: 12, hay: 16, tree: 255 };                 // how tall things are
 const MGH = { tank: 44, jeep: 32, nest: 22 };                                             // mounted MG muzzle height
 /* a light this frame (skip: the thing it comes from, which mustn't shade it); lightFx: one that fades over T s */
 function light(x, y, r, h, k, skip) { LIGHTS.push({ x, y, r, h, k, skip }); }
 function lightFx(x, y, r, h, T) { LFX.push({ x, y, r, h, t0: M.time, T }); }
-function drawLights(vis) {
+function lightsNow(vis) {          // this frame's strongest lights in view (and the queue emptied)
   for (let i = LFX.length - 1; i >= 0; i--) { const f = LFX[i], u = (M.time - f.t0) / f.T; if (u >= 1 || u < 0) LFX.splice(i, 1); else light(f.x, f.y, f.r, f.h, (1 - u) ** 2); }
   for (const w of M.wrecks) if (w.burn > 0) light(w.x, w.y, 110, 34, 0.4 + 0.15 * Math.sin(M.time * 23 + w.x) * Math.sin(M.time * 9.7), w);   // still burning
   const L = LIGHTS.filter(l => l.k > 0.02 && vis(l.x, l.y, l.r)).sort((a, b) => b.k * b.r - a.k * a.r).slice(0, LMAX); LIGHTS.length = 0;
-  for (const l of L) drawLight(l);
+  return L;
 }
+function drawLights(vis) { for (const l of lightsNow(vis)) drawLight(l); }
 let _lhp = new Uint8Array(0), _lq = new Float32Array(0), _lc = null, _lg = null;
 const _lid = new Map();
 function drawLight(l) {
@@ -70,8 +72,11 @@ function drawLight(l) {
    (atlas_m.png, R = 4 per px) drawn with the same transforms, each part lifted onto what it sits on (SUNB), 'lighten' so
    the highest surface wins; walls, trees, hay, fences and crates as shapes. A WebGL pass reads it back: the slope of each
    pixel against the sun (lit faces brighter and warmer, faces turned away darker) and a march toward the sun for
-   shadows that are as long as the thing is tall. Two maps come out side by side: the shade (multiplied in) and the
-   highlights (colour-dodged, so they brighten the art in proportion instead of greying dark paint). It replaces the old offset shadows (SUNNOW). Off in settings, or without WebGL: the old look */
+   shadows that are as long as the thing is tall. Three maps come out side by side: the shade (multiplied in), the
+   highlights (colour-dodged, so they brighten the art in proportion instead of greying dark paint) and the point lights' warm
+   glow (added: dodging alone turns grass lime). The point lights
+   (PL: x, y in buffer px, reach and height in world px; PK: strength) add in both: falloff as drawLight's, the slope
+   toward the light, and a march to the light against the heights for their shadows (a lower thing's ends). It replaces the old offset shadows (SUNNOW). Off in settings, or without WebGL: the old look */
 const SUN = { az: -2.36, el: 0.7, tint: [0.46, 0.5, 0.64], warm: [1, 0.93, 0.8] };     // az: toward the sun (up-left); el: its height
 const HS = 0.5;                                                                       // height buffer resolution vs the screen
 const SUNH = { wall: 40, fence: 9, hay: 14, crate: 10, nest: 10, tree: [56, 36] };     // px
@@ -91,10 +96,10 @@ function sunInit() {
     const P = gl.createProgram();
     gl.attachShader(P, sh(gl.VERTEX_SHADER, 'attribute vec2 p; void main() { gl_Position = vec4(p, 0., 1.); }'));
     gl.attachShader(P, sh(gl.FRAGMENT_SHADER, `precision highp float;
-uniform sampler2D H; uniform vec2 S; uniform vec4 R; uniform float K, T, O; uniform vec3 L, C, W; uniform vec2 D;
+uniform sampler2D H; uniform vec2 S; uniform vec4 R; uniform float K, T, O, Q; uniform vec3 L, C, W; uniform vec2 D; uniform vec4 PL[${LMAX}]; uniform float PK[${LMAX}];
 float hh(vec2 p) { return texture2D(H, clamp(p, R.xy, R.zw) / S).r * 63.75; }
 void main() {
-  vec2 p = vec2(gl_FragCoord.x - O, S.y - gl_FragCoord.y);     // O: the highlight map is drawn to the right of the shade
+  vec2 p = vec2(gl_FragCoord.x - O, S.y - gl_FragCoord.y);     // O: where this map (Q: 0 shade, 1 highlights, 2 glow) sits in GC
   float h0 = hh(p);
   vec2 g = vec2(hh(p + vec2(1., 0.)) - hh(p - vec2(1., 0.)), hh(p + vec2(0., 1.)) - hh(p - vec2(0., 1.))) * K * 0.5;
   vec3 N = normalize(vec3(-g, 1.));
@@ -104,8 +109,19 @@ void main() {
     float t = mt * (float(i) + j) / 24., d = hh(p + D * t * K) - h0 - t * T;
     if (d > 0.) sh = min(sh, clamp(1. - d / (1. + t * 0.12), 0., 1.));
   }
-  vec3 hi = W * max(lam - 1., 0.) * 1.6 * sh;
-  gl_FragColor = vec4(O > 0. ? hi / (1. + hi) : mix(C, vec3(1.), sh) * min(lam, 1.), 1.);     // dodge by h / (1 + h): x (1 + h)
+  vec3 pl = vec3(0.);
+  for (int i = 0; i < ${LMAX}; i++) {
+    if (PK[i] <= 0.) continue;
+    vec2 v = PL[i].xy - p; float D = length(v) / K, lh = PL[i].w - h0;
+    if (D >= PL[i].z) continue;
+    float s = 1.;
+    for (int k = 1; k < 12; k++) { float t = (float(k) - j) / 12., d = hh(p + v * t) - h0 - lh * t; if (d > 0.) s = min(s, clamp(1. - d / 3., 0., 1.)); }
+    vec3 ld = normalize(vec3(v / K, lh));
+    pl += PK[i] * s * (0.5 * pow(1. - D / PL[i].z, 1.3) + 0.5 * pow(max(0., 1. - D / 40.), 2.)) * mix(1., clamp(dot(N, ld) / max(ld.z, 0.15), 0., 2.), 0.7);
+  }
+  pl *= vec3(1., 0.84, 0.59);
+  vec3 hi = W * max(lam - 1., 0.) * 1.6 * sh + pl * 0.6;
+  gl_FragColor = vec4(Q > 1.5 ? pl * 0.45 : Q > 0.5 ? hi / (1. + hi) : min(mix(C, vec3(1.), sh) * min(lam, 1.) + pl, 1.), 1.);     // dodge by h / (1 + h): x (1 + h)
 }`));
     gl.linkProgram(P); if (!gl.getProgramParameter(P, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(P));
     gl.useProgram(P);
@@ -113,11 +129,11 @@ void main() {
     const a = gl.getAttribLocation(P, 'p'); gl.enableVertexAttribArray(a); gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0);
     const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
     for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
-    const U = {}; for (const n of ['S', 'R', 'K', 'L', 'D', 'T', 'C', 'W', 'O']) U[n] = gl.getUniformLocation(P, n);
+    const U = {}; for (const n of ['S', 'R', 'K', 'L', 'D', 'T', 'C', 'W', 'O', 'Q', 'PL', 'PK']) U[n] = gl.getUniformLocation(P, n);
     // the material atlas with the colour atlas's silhouette, for matSpr
     const w = MIMG.width, h = MIMG.height, g2 = mk(w, h).getContext('2d', { willReadFrequently: true });
     g2.drawImage(MIMG, 0, 0); const mp = g2.getImageData(0, 0, w, h).data; g2.clearRect(0, 0, w, h); g2.drawImage(IMG, 0, 0); const ap = g2.getImageData(0, 0, w, h).data;
-    _sun = { gl, GC, U, HC: mk(4, 4), HX: null, mp, ap, w, spr: new Map() };
+    _sun = { gl, GC, U, HC: mk(4, 4), HX: null, mp, ap, w, spr: new Map(), pl: new Float32Array(LMAX * 4), pk: new Float32Array(LMAX) };
   } catch (e) { console.warn('sun off:', e.message); _sun = false; }
   return _sun;
 }
@@ -178,7 +194,7 @@ function sunHeights(vis, hidden) {
 }
 function drawSun(vw, vis, hidden) {
   const S = _sun, { gl, GC, HC, U } = S, w = Math.ceil(cv.width * HS), h = Math.ceil(cv.height * HS);
-  if (HC.width !== w || HC.height !== h) { HC.width = w; GC.width = w * 2; HC.height = GC.height = h; S.HX = HC.getContext('2d', { willReadFrequently: false }); }
+  if (HC.width !== w || HC.height !== h) { HC.width = w; GC.width = w * 3; HC.height = GC.height = h; S.HX = HC.getContext('2d', { willReadFrequently: false }); }
   const rx = Math.floor(vw.x * DPR * HS), ry = Math.floor(vw.y * DPR * HS), rw = Math.min(w - rx, Math.ceil(vw.w * DPR * HS)), rh = Math.min(h - ry, Math.ceil(vw.h * DPR * HS));
   // heights
   const main = ctx, dpr = DPR, fl = FLASH; ctx = S.HX; DPR = dpr * HS; FLASH = 0;
@@ -193,10 +209,13 @@ function drawSun(vw, vis, hidden) {
   gl.uniform2f(U.S, w, h); gl.uniform4f(U.R, rx + 0.5, ry + 0.5, rx + rw - 0.5, ry + rh - 0.5); gl.uniform1f(U.K, VZ * dpr * HS);
   gl.uniform3f(U.L, Math.cos(SUN.az) * ce, Math.sin(SUN.az) * ce, Math.sin(SUN.el)); gl.uniform2f(U.D, Math.cos(SUN.az), Math.sin(SUN.az)); gl.uniform1f(U.T, Math.tan(SUN.el));
   gl.uniform3f(U.C, ...SUN.tint); gl.uniform3f(U.W, ...SUN.warm);
-  for (const o of [0, w]) { gl.viewport(o, 0, w, h); gl.scissor(o + rx, h - ry - rh, rw, rh); gl.uniform1f(U.O, o); gl.drawArrays(gl.TRIANGLES, 0, 3); }
+  const k = dpr * HS; S.pk.fill(0); lightsNow(vis).forEach((l, i) => { S.pl.set([(VZ * l.x + VOX) * k, (VZ * l.y + VOY) * k, l.r, l.h], i * 4); S.pk[i] = l.k; });
+  gl.uniform4fv(U.PL, S.pl); gl.uniform1fv(U.PK, S.pk);
+  const lit = S.pk[0] > 0;
+  for (let q = 0; q < (lit ? 3 : 2); q++) { const o = q * w; gl.viewport(o, 0, w, h); gl.scissor(o + rx, h - ry - rh, rw, rh); gl.uniform1f(U.O, o); gl.uniform1f(U.Q, q); gl.drawArrays(gl.TRIANGLES, 0, 3); }
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = true;
   const to = [vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR];
   if (SUNDBG) ctx.drawImage(SUNDBG === 1 ? HC : GC, SUNDBG === 3 ? w + rx : rx, ry, rw, rh, ...to);       // dev: 1 heights, 2 shade, 3 highlights
-  else { ctx.globalCompositeOperation = 'multiply'; ctx.drawImage(GC, rx, ry, rw, rh, ...to); ctx.globalCompositeOperation = 'color-dodge'; ctx.drawImage(GC, w + rx, ry, rw, rh, ...to); }
+  else { ctx.globalCompositeOperation = 'multiply'; ctx.drawImage(GC, rx, ry, rw, rh, ...to); ctx.globalCompositeOperation = 'color-dodge'; ctx.drawImage(GC, w + rx, ry, rw, rh, ...to); if (lit) { ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(GC, 2 * w + rx, ry, rw, rh, ...to); } }
   ctx.globalCompositeOperation = 'source-over'; ctx.imageSmoothingEnabled = false; worldT();
 }

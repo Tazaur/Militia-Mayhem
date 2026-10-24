@@ -103,7 +103,7 @@ function drawWorld(vw) {
   if (SUNNOW) drawSun(vw, vis, hidden);
   drawKillerGlow(vw);
   drawParticles(vis, 'low');
-  drawLights(vis);
+  if (!SUNNOW) drawLights(vis);     // with the sun, they're in its pass
   // ---- layer 4: building shadows fall across units, then roofs on top
   if (rv) { worldT(); ctx.imageSmoothingEnabled = false; ctx.drawImage(rv.c, 0, 0, rv.w, rv.h, rv.x, rv.y, rv.w, rv.h); }     // dev yard roofs, in sight (out of sight they're in the memory)
   if (fogged) ctx.restore();
