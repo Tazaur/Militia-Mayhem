@@ -80,7 +80,7 @@ function drawLight(l) {
 const SUN = { az: -2.36, el: 0.7, tint: [0.46, 0.5, 0.64], warm: [1, 0.93, 0.8] };     // az: toward the sun (up-left); el: its height
 const HS = 0.5;                                                                       // height buffer resolution vs the screen
 const SUNH = { wall: 40, fence: 9, hay: 14, crate: 10, nest: 10, tree: [56, 36] };     // px
-const SUNB = { tur: 12, gun: 16, mgTank: 20, mgJeep: 8, mgNest: 4, crewTank: 12, crewJeep: 3, stand: 7 };   // px under a part
+const SUNB = { mgNest: 4, stand: 7 };     // px under a part with nothing under it but legs (a tripod, a soldier's)
 let SUNNOW = false, SUNDBG = 0, _sun = null;
 const MIMG = typeof Image !== 'undefined' && typeof MAT_SRC !== 'undefined' ? new Image() : null;
 if (MIMG) MIMG.src = MAT_SRC;
@@ -148,6 +148,25 @@ function matSpr(n, base) {
   g.putImageData(d, 0, 0); S.spr.set(key, c); return c;
 }
 function hspr(n, x, y, a, base) { const m = ATLAS[n]; if (m) sprC(matSpr(n, base || 0), m[4], m[5], x, y, a); }
+/* a part starts on top of what's already under it: the painted height of the parts stacked so far (the hull, the
+   turret...) at its rest point (its pivot unless given: an MG's mount, a seat), the highest within 1 px; at least min */
+let _stk = [];
+function hUnder(x, y) {
+  const S = _sun; let b = 0;
+  for (const q of _stk) {
+    const m = ATLAS[q.n], c = Math.cos(q.a), s = Math.sin(q.a);
+    for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+      const dx = x + i - q.x, dy = y + j - q.y, lx = Math.floor(m[4] + dx * c + dy * s), ly = Math.floor(m[5] - dx * s + dy * c);
+      if (lx < 0 || ly < 0 || lx >= m[2] || ly >= m[3]) continue; const k = ((m[1] + ly) * S.w + m[0] + lx) * 4;
+      if (S.ap[k + 3] >= 128) b = Math.max(b, q.b + S.mp[k] / 4);
+    }
+  }
+  return b;
+}
+function hpart(n, x, y, a, o = {}) {         // o: min, rx / ry (rest point), keep (others stand on it)
+  if (!ATLAS[n]) return; const b = Math.max(o.min || 0, Math.round(hUnder(o.rx ?? x, o.ry ?? y)));
+  hspr(n, x, y, a, b); if (o.keep) _stk.push({ n, x, y, a, b });
+}
 const H4 = h => `rgb(${clamp(Math.round(h * 4), 0, 255)},0,0)`;
 /* everything solid, as heights (the same things, and the same hidden ones left out, as the frame draws) */
 function sunHeights(vis, hidden) {
@@ -165,7 +184,8 @@ function sunHeights(vis, hidden) {
   for (const A of MAP.arcs) { if (!vis(A.x, A.y, 50)) continue; const f = A.lost / A.bags.length; hspr(f < 0.25 ? 'bagarc0' : f < 0.75 ? 'bagarc1' : 'bagarc2', A.x, A.y, A.a); }
   for (const w of M.wrecks) {
     if (!vis(w.x, w.y, 70) || w.t < 1) continue;
-    if (w.type === 'tank') { const tx = w.x - 4 * Math.cos(w.a), ty = w.y - 4 * Math.sin(w.a); hspr('hull5', w.x, w.y, w.a); hspr('tur_dead', tx, ty, w.ta, SUNB.tur * 0.8); }
+    _stk = [];
+    if (w.type === 'tank') { const tx = w.x - 4 * Math.cos(w.a), ty = w.y - 4 * Math.sin(w.a); hpart('hull5', w.x, w.y, w.a, { keep: 1 }); hpart('tur_dead', tx, ty, w.ta); }
     else { if (w.bx !== undefined) hspr(w.bf ? 'jeep_flat' : 'jeep_wheel', w.bx, w.by, w.ba); hspr('jeep4', w.x, w.y, w.a); }
   }
   for (const s of M.sol) {
@@ -177,18 +197,19 @@ function sunHeights(vis, hidden) {
   }
   for (const v of M.vehicles) {
     if (!v.active || !vis(v.x, v.y, 80)) continue;
-    const [mx, my] = mgPos(v), mg = v.mgFlash > 0 ? 'mg_f' : 'mg', crew = (i, b) => { const s = v.seats[i]; if (s) hspr('sol_sit', s.x, s.y, s.a, b); };
-    if (v.type === 'nest') { ctx.strokeStyle = H4(SUNH.nest); ctx.lineWidth = 8; worldT(); ctx.beginPath(); ctx.arc(v.x, v.y, 18, v.a - 1.35, v.a + 1.35); ctx.stroke(); hspr(mg, mx, my, v.mgA, SUNB.mgNest); crew(0, 0); continue; }
+    const [mx, my] = mgPos(v), mg = v.mgFlash > 0 ? 'mg_f' : 'mg', crew = (i, min) => { const s = v.seats[i]; if (s) hpart('sol_sit', s.x, s.y, s.a, { min }); };
+    const mount = { rx: mx - Math.cos(v.mgA) * 4, ry: my - Math.sin(v.mgA) * 4 }; _stk = [];     // mgPos is 4 px out from the mount
+    if (v.type === 'nest') { ctx.strokeStyle = H4(SUNH.nest); ctx.lineWidth = 8; worldT(); ctx.beginPath(); ctx.arc(v.x, v.y, 18, v.a - 1.35, v.a + 1.35); ctx.stroke(); hpart(mg, mx, my, v.mgA, { ...mount, min: SUNB.mgNest }); crew(0); continue; }
     if (v.type === 'tank') {
       const [px, py] = turretPivot(v), kick = clamp(v.recoil, 0, 1) * 33;
-      hspr('hull' + hullFrame(v), v.x, v.y, v.a); crew(2, SUNB.crewTank); crew(3, SUNB.crewTank);
-      hspr('tur_gun', px - Math.cos(v.ta) * kick, py - Math.sin(v.ta) * kick, v.ta, SUNB.gun); hspr('tur', px, py, v.ta, SUNB.tur);
-      hspr(mg, mx, my, v.mgA, SUNB.mgTank); crew(1, SUNB.mgTank - 4);
+      hpart('hull' + hullFrame(v), v.x, v.y, v.a, { keep: 1 }); crew(2); crew(3);
+      hpart('tur_gun', px - Math.cos(v.ta) * kick, py - Math.sin(v.ta) * kick, v.ta, { rx: px, ry: py }); hpart('tur', px, py, v.ta, { keep: 1 });     // the gun rests on the hull under the turret
+      hpart(mg, mx, my, v.mgA, mount); crew(1);
     } else {
       const c = Math.cos(v.a), s = Math.sin(v.a), [wx, wy] = EXTRA.jeepWells[0], st = jeepSteer(v), f = v.hp / v.T.hp;
-      for (const sd of [-1, 1]) hspr('jeep_tire', v.x + c * wx - s * wy * sd, v.y + s * wx + c * wy * sd, v.a + st);
-      hspr('jeep' + (f > 0.75 ? 0 : f > 0.5 ? 1 : f > 0.25 ? 2 : 3), v.x, v.y, v.a); crew(0, SUNB.crewJeep); crew(1, SUNB.crewJeep);
-      hspr(mg, mx, my, v.mgA, SUNB.mgJeep); crew(2, SUNB.mgJeep - 3);
+      for (const sd of [-1, 1]) hpart('jeep_tire', v.x + c * wx - s * wy * sd, v.y + s * wx + c * wy * sd, v.a + st);
+      hpart('jeep' + (f > 0.75 ? 0 : f > 0.5 ? 1 : f > 0.25 ? 2 : 3), v.x, v.y, v.a, { keep: 1 }); crew(0); crew(1);
+      hpart(mg, mx, my, v.mgA, mount); crew(2, SUNB.stand);     // the MG on its post; the gunner stands in the bed
     }
   }
 }
