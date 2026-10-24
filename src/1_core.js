@@ -209,7 +209,7 @@ function buildAssets() {
   buildTeamSprites();
   buildGrit();
   SPR.smoke = softDot('70,70,70', 64); SPR.dust = softDot('150,135,95', 64); SPR.fire = softDot('255,150,40', 64);
-  SPR.hot = softDot('255,240,180', 64); SPR.flash = softDot('255,220,120', 64); SPR.light = softDot('255,214,150', 64);
+  SPR.hot = softDot('255,240,180', 64); SPR.flash = softDot('255,220,120', 64);
   SPR.flashSoft = softDot('255,226,150', 64, [[0, 0.8], [0.15, 0.62], [0.4, 0.3], [0.7, 0.09], [1, 0]]);     // MG core: no hard white disc
   SPR.tracer = [tracer(26, 1), tracer(34, 2), tracer(42, 2)];     // rifle, MG, heavy rounds
   SPR.steam = softDot('200,200,200', 64); SPR.puffs = { grey: [[236, 238, 236], [214, 218, 218], [246, 244, 236], [196, 200, 200]], brown: [[150, 112, 76], [136, 104, 74], [162, 126, 90], [126, 96, 68]] };

@@ -381,7 +381,7 @@ function explosion(x, y, r, dmgS, dmgV, src, team, big, kind) {
 /* everything you see and hear of a blast (online clients replay this from the host's events) */
 function explosionFx(x, y, r, big) {
   sfx(big ? 'bigboom' : 'boom', x, y); earRing(x, y, r);
-  scorch(x, y, r * 0.7);
+  scorch(x, y, r * 0.7); lightFx(x, y, r * 2.2, 50, 0.35);
   const n = Math.round(r / 5);
   for (let i = 0; i < n; i++) { const a = rnd(0, TAU), sp = rnd(30, r * 1.6); part({ k: 'fire', x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rnd(0.3, 0.7), max: 0.7, sz: rnd(r * 0.25, r * 0.5), drag: 4 }); }
   for (let i = 0; i < n * 0.8; i++) { const a = rnd(0, TAU), sp = rnd(10, r * 0.8); part({ k: 'smoke', x: x + rnd(-r, r) * 0.3, y: y + rnd(-r, r) * 0.3, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rnd(1, 2.4), max: 2.4, sz: rnd(r * 0.3, r * 0.6), drag: 1.6 }); }

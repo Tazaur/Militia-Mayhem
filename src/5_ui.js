@@ -101,6 +101,7 @@ function drawWorld(vw) {
   }
   drawKillerGlow(vw);
   drawParticles(vis, 'low');
+  drawLights(vis);
   // ---- layer 4: building shadows fall across units, then roofs on top
   if (rv) { worldT(); ctx.imageSmoothingEnabled = false; ctx.drawImage(rv.c, 0, 0, rv.w, rv.h, rv.x, rv.y, rv.w, rv.h); }     // dev yard roofs, in sight (out of sight they're in the memory)
   if (fogged) ctx.restore();
@@ -360,12 +361,10 @@ function solDraw(s, n, x, y, a, sx, sy, al) {
   ctx.setTransform(cs * k * sx, sn * k * sx, -sn * k * sy, cs * k * sy, (x * VZ + VOX) * DPR, (y * VZ + VOY) * DPR);
   if (al !== undefined) ctx.globalAlpha = al; ctx.drawImage(c, -m[4], -m[5]); if (al !== undefined) ctx.globalAlpha = 1;
 }
-/* a muzzle flash: a hot glow of radius r; lr: also a pool of light (radius lr, flickering) that brightens the art under it,
-   dodged so lit colours flare and dark ones stay deep */
-function flashAt(x, y, r, lr) {
+/* a muzzle flash: a hot glow of radius r (soft: the gentler core the MG's light uses) */
+function flashAt(x, y, r, soft) {
   worldT();
-  if (lr) { const R = lr * rnd(0.85, 1.12), k = rnd(0.75, 1); ctx.globalCompositeOperation = 'color-dodge'; ctx.globalAlpha = 0.6 * k; ctx.drawImage(SPR.light, x - R, y - R, R * 2, R * 2); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.2 * k; ctx.drawImage(SPR.light, x - R, y - R, R * 2, R * 2); }
-  ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = lr ? 0.75 : 0.9; ctx.drawImage(lr ? SPR.flashSoft : SPR.flash, x - r, y - r, r * 2, r * 2); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
+  ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = soft ? 0.75 : 0.9; ctx.drawImage(soft ? SPR.flashSoft : SPR.flash, x - r, y - r, r * 2, r * 2); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
 function hullFrame(v) { const f = v.hp / v.T.hp; return f > 0.82 ? 0 : f > 0.66 ? 1 : f > 0.5 ? 2 : f > 0.34 ? 3 : f > 0.18 ? 4 : 5; }
 function drawVehicle(v) {
   worldT(); FLASH = v.hitFlash > 0 ? 0.45 : 0;
@@ -390,7 +389,7 @@ function drawVehicle(v) {
     const [mx, my] = mgPos(v);
     drawMG(v, mx, my);
     const g = v.seats[1]; if (g) drawSeated(g, true);
-    if (v.recoil > 0.85) flashAt(px + Math.cos(v.ta) * 100, py + Math.sin(v.ta) * 100, 26);
+    if (v.recoil > 0.85) { const fx = px + Math.cos(v.ta) * 100, fy = py + Math.sin(v.ta) * 100; flashAt(fx, fy, 26); light(fx, fy, 220, 44, (v.recoil - 0.85) / 0.15, v); }
   } else {
     const f = v.hp / v.T.hp, jn = 'jeep' + (f > 0.75 ? 0 : f > 0.5 ? 1 : f > 0.25 ? 2 : 3), jm = ATLAS[jn];
     drawJeepWheels(v.x, v.y, v.a, jeepSteer(v), 1, -1);
@@ -405,7 +404,7 @@ function drawVehicle(v) {
 /* the mounted MG (art/art4/jeep.png): firing frame + a soft glow while it shoots; drawn under its gunner, who holds the grips */
 function drawMG(v, mx, my) {
   const f = v.mgFlash > 0; spr(f ? 'mg_f' : 'mg', mx, my, v.mgA);
-  if (f) flashAt(mx + Math.cos(v.mgA) * 31, my + Math.sin(v.mgA) * 31, 8, 32);
+  if (f) { const fx = mx + Math.cos(v.mgA) * 31, fy = my + Math.sin(v.mgA) * 31; flashAt(fx, fy, 8, true); light(fx, fy, 120 * rnd(0.88, 1.1), MGH[v.type], rnd(0.75, 1), v); }
 }
 function drawSeated(s, mg) {
   const role = s.veh.T.seats[s.seat].role, jeep = s.veh.type === 'jeep';
