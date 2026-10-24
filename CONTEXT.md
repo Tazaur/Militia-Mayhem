@@ -315,7 +315,7 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - Return fire through smoke: botHeard (hit by, or hearing unseen fire within 520 px not behind a wall) stores a guess off by 15 % of the distance; for HEARD_T 2.5 s with no target the bot turns to it and fires bursts.
 - rectsIn / rectsOnSeg: 128 px bucket grid per rect list (buildings, sight, glass), rebuilt when the list's length changes; used by collision, bullets, nades, sight, glass, rams. OUTSKIRTS 7.3 -> 1.6 ms/frame in the 14-bot test.
 
-## Build 139
+## Build 138
 - Jeep v2 art (art/art4/jeep.png, imported once by atlas_pack.py while extra.jeepV != 2): jeep0-3 = 100/75/50/25 % hp (by hp fraction, not hullFrame), jeep4 wreck (no decal). Hood decal white when empty, team colour when occupied, 70 % alpha on jeep3. EXTRA.jeepStar = hood centre, EXTRA.jeepWells = [[24,21],[-22,20]] front / rear well centres (mirrored in y).
 - drawJeepWheels: front tyres (jeep_tire) drawn under the body, turned by jeepSteer (tan d = turn rate x wheelbase JEEP_WB / forward speed from draw-to-draw motion, clamp JEEP_LOCK, eased; works for joiners). Wrecks: w.bw (-1 none, 0/1 front, 2/3 rear) = broken-off jeep_wheel, JEEP_BW 60 %; sent in the wreck type byte (1 + 2*(bw+1)).
 - Jeep top speed scales to JEEP_SLOW (70 %) with health. Gunner seat / MG mount moved -27 -> -22.
