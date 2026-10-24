@@ -171,10 +171,23 @@ function tinted(name, col) {
 }
 IMG.src = ATLAS_SRC;
 const SPR = {};
-function softDot(rgb, size) {
+function softDot(rgb, size, stops) {
   const c = mk(size, size), g = c.getContext('2d'), gr = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-  gr.addColorStop(0, `rgba(${rgb},1)`); gr.addColorStop(0.45, `rgba(${rgb},0.55)`); gr.addColorStop(1, `rgba(${rgb},0)`);
+  for (const [t, a] of stops || [[0, 1], [0.45, 0.55], [1, 0]]) gr.addColorStop(t, `rgba(${rgb},${a})`);
   g.fillStyle = gr; g.fillRect(0, 0, size, size); return c;
+}
+/* a tracer streak, head at the right end (x = L): white-hot tip, orange core fading out toward the tail, a soft glow of
+   3 rows either side. cr: core rows */
+function tracer(L, cr) {
+  const W = L + 2, H = cr + 6, c = mk(W, H), g = c.getContext('2d'), d = g.createImageData(W, H), GL = [0, 0.32, 0.15, 0.05];
+  for (let x = 0; x < W; x++) {     // the glow follows the core's fade, so it never outlasts it (no twin tails)
+    const t = Math.min(1, x / L), hot = clamp((x - L + 5) / 4, 0, 1), tip = x > L ? 0.35 : 1;
+    for (let y = 0; y < H; y++) {
+      const r = y < 3 ? 3 - y : y >= 3 + cr ? y - 2 - cr : 0, core = t ** 1.3, a = (r ? GL[r] * Math.min(1, core * 1.5) : core) * tip, i = (y * W + x) * 4, h = r ? hot * 0.4 : hot;
+      d.data[i] = 255; d.data[i + 1] = Math.round(167 + 66 * h); d.data[i + 2] = Math.round(193 * h); d.data[i + 3] = Math.round(a * 255);
+    }
+  }
+  g.putImageData(d, 0, 0); c.L = L; return c;
 }
 /* muted "grit" version of the whole atlas: desaturate, olive tint, slight crush */
 function gritPx(p, i) {
@@ -196,7 +209,10 @@ function buildAssets() {
   buildTeamSprites();
   buildGrit();
   SPR.smoke = softDot('70,70,70', 64); SPR.dust = softDot('150,135,95', 64); SPR.fire = softDot('255,150,40', 64);
-  SPR.hot = softDot('255,240,180', 64); SPR.flash = softDot('255,220,120', 64); SPR.steam = softDot('200,200,200', 64); SPR.puffs = { grey: [[236, 238, 236], [214, 218, 218], [246, 244, 236], [196, 200, 200]], brown: [[150, 112, 76], [136, 104, 74], [162, 126, 90], [126, 96, 68]] };
+  SPR.hot = softDot('255,240,180', 64); SPR.flash = softDot('255,220,120', 64); SPR.light = softDot('255,214,150', 64);
+  SPR.flashSoft = softDot('255,226,150', 64, [[0, 0.8], [0.15, 0.62], [0.4, 0.3], [0.7, 0.09], [1, 0]]);     // MG core: no hard white disc
+  SPR.tracer = [tracer(26, 1), tracer(34, 2), tracer(42, 2)];     // rifle, MG, heavy rounds
+  SPR.steam = softDot('200,200,200', 64); SPR.puffs = { grey: [[236, 238, 236], [214, 218, 218], [246, 244, 236], [196, 200, 200]], brown: [[150, 112, 76], [136, 104, 74], [162, 126, 90], [126, 96, 68]] };
   for (const k in SPR.puffs) SPR.puffs[k] = SPR.puffs[k].map(c => [softDot(c.join(','), 64), softDot(c.map(v => Math.round(v * 0.72)).join(','), 64)]);   // smoke grey / dust brown: light + dark puff per shade
   // grain tile
   { const c = mk(256, 256), g = c.getContext('2d'), d = g.createImageData(256, 256); for (let i = 0; i < d.data.length; i += 4) { const v = Math.random() * 255; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 255; } g.putImageData(d, 0, 0); SPR.grain = c; }
@@ -292,9 +308,9 @@ function spr(n, x, y, a, sx, sy, al) {
 }
 /* the same draw again, added on top: the art itself brightens, nothing outside its pixels */
 function lit(draw, al) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = FLASH * (al === undefined ? 1 : al); draw(); ctx.globalAlpha = al === undefined ? 1 : al; ctx.globalCompositeOperation = 'source-over'; }
-function sprC(c, px, py, x, y, a, al) {
-  const cs = Math.cos(a), sn = Math.sin(a), k = VZ * DPR;
-  ctx.setTransform(cs * k, sn * k, -sn * k, cs * k, (x * VZ + VOX) * DPR, (y * VZ + VOY) * DPR);
+function sprC(c, px, py, x, y, a, al, sx) {
+  const cs = Math.cos(a), sn = Math.sin(a), k = VZ * DPR, kx = k * (sx || 1);
+  ctx.setTransform(cs * kx, sn * kx, -sn * k, cs * k, (x * VZ + VOX) * DPR, (y * VZ + VOY) * DPR);
   if (al !== undefined) ctx.globalAlpha = al;
   ctx.drawImage(c, -px, -py);
   if (FLASH) lit(() => ctx.drawImage(c, -px, -py), al);

@@ -329,3 +329,7 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - Wreck shadow: the live vehicle's rounded rect (VT hl / hw, radius 8, offset 4 / 6).
 - Wall crashes (vehicleCollide, solid() helper for every solid push): jeep damage JEEP_CRASH (0.0024) x (|spd| - CRASH_V 140)^2: about 0-1 below 160, 11 head-on at top speed (was 8-10 / 28).
 - Tyres: wells at y 16. Broken-off wheel: wreckWheel(w) puts it on the ground 3 px out past its well (w.bx / by / ba), so it stays when the wreck is pushed; bf = flattened (50 %). Net type byte 1 + 2 * (bw + 1 + 5 * bf); joiners place it when they first see the wreck.
+
+## Build 141
+- Tracers: SPR.tracer (tracer(L, coreRows) in 1_core: white-hot head at x = L, orange core fading to the tail, 3 rows of glow) for rifle 26 / MG 34 / heavy 42 px, drawn normally (additive went lime on grass) through sprC (new sx arg), stretched by min(1, distance from p.ox / oy / L) so the streak grows out of the muzzle.
+- MG flash: flashAt(x, y, r, lr) - lr swaps the core for SPR.flashSoft (softDot stops arg: gentle falloff, no hard white disc) and adds a flickering pool of light (SPR.light, radius lr x 0.85-1.12): 'color-dodge' at 0.6 then 'lighter' at 0.2, so the art under it brightens. drawMG uses r 8, lr 32 (64 px).

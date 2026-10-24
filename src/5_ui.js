@@ -80,8 +80,8 @@ function drawWorld(vw) {
   for (const p of M.proj) {
     if (!vis(p.x, p.y, 20)) continue;
     if (p.k === 'bullet') {
-      const l = Math.hypot(p.vx, p.vy), len = p.heavy ? 16 : 9; ctx.strokeStyle = p.mg ? 'rgba(255,230,120,0.95)' : p.heavy ? 'rgba(255,255,230,1)' : 'rgba(255,245,190,0.9)'; ctx.lineWidth = p.heavy ? 2 : p.mg ? 1.8 : 1.4;
-      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - p.vx / l * len, p.y - p.vy / l * len); ctx.stroke();
+      const T = SPR.tracer[p.heavy ? 2 : p.mg ? 1 : 0], run = p.ox === undefined ? T.L : Math.hypot(p.x - p.ox, p.y - p.oy);     // the streak grows out of the muzzle
+      sprC(T, T.L, T.height / 2, p.x, p.y, Math.atan2(p.vy, p.vx), undefined, Math.min(1, run / T.L)); worldT();     // drawn as is (not added: orange on grass would go lime)
     } else if (p.k === 'nade') {
       ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.arc(p.x + 1, p.y + 2, 3, 0, TAU); ctx.fill();
       const sc = 1 + p.h / 60; ctx.fillStyle = '#2e4a22'; ctx.beginPath(); ctx.arc(p.x, p.y - p.h * 0.3, 3.2 * sc, 0, TAU); ctx.fill();
@@ -360,7 +360,12 @@ function solDraw(s, n, x, y, a, sx, sy, al) {
   ctx.setTransform(cs * k * sx, sn * k * sx, -sn * k * sy, cs * k * sy, (x * VZ + VOX) * DPR, (y * VZ + VOY) * DPR);
   if (al !== undefined) ctx.globalAlpha = al; ctx.drawImage(c, -m[4], -m[5]); if (al !== undefined) ctx.globalAlpha = 1;
 }
-function flashAt(x, y, r) { worldT(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.9; ctx.drawImage(SPR.flash, x - r, y - r, r * 2, r * 2); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
+/* a muzzle flash: a hot glow of radius r; lr: also a pool of light (radius lr, flickering) that brightens the art under it,
+   dodged so lit colours flare and dark ones stay deep */
+function flashAt(x, y, r, lr) {
+  worldT();
+  if (lr) { const R = lr * rnd(0.85, 1.12), k = rnd(0.75, 1); ctx.globalCompositeOperation = 'color-dodge'; ctx.globalAlpha = 0.6 * k; ctx.drawImage(SPR.light, x - R, y - R, R * 2, R * 2); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.2 * k; ctx.drawImage(SPR.light, x - R, y - R, R * 2, R * 2); }
+  ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = lr ? 0.75 : 0.9; ctx.drawImage(lr ? SPR.flashSoft : SPR.flash, x - r, y - r, r * 2, r * 2); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
 function hullFrame(v) { const f = v.hp / v.T.hp; return f > 0.82 ? 0 : f > 0.66 ? 1 : f > 0.5 ? 2 : f > 0.34 ? 3 : f > 0.18 ? 4 : 5; }
 function drawVehicle(v) {
   worldT(); FLASH = v.hitFlash > 0 ? 0.45 : 0;
@@ -400,7 +405,7 @@ function drawVehicle(v) {
 /* the mounted MG (art/art4/jeep.png): firing frame + a soft glow while it shoots; drawn under its gunner, who holds the grips */
 function drawMG(v, mx, my) {
   const f = v.mgFlash > 0; spr(f ? 'mg_f' : 'mg', mx, my, v.mgA);
-  if (f) flashAt(mx + Math.cos(v.mgA) * 31, my + Math.sin(v.mgA) * 31, 6);
+  if (f) flashAt(mx + Math.cos(v.mgA) * 31, my + Math.sin(v.mgA) * 31, 8, 32);
 }
 function drawSeated(s, mg) {
   const role = s.veh.T.seats[s.seat].role, jeep = s.veh.type === 'jeep';
