@@ -381,3 +381,6 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - Set / Nudge toggle for Pen, Fill and selection Apply: Set writes `st.val`, Nudge adds signed `st.nud` (to the value before the stroke, once per pixel). Nudge range in Settings (±8/16/32/63 for height). The +1 / −1 tools are gone (old prefs map to Pen + Nudge).
 - Hold still on the canvas (Settings: off / 0.3 / 0.5 / 0.8 s) takes back the stroke and picks the value (optionally all channels, vibrates), switching to Set. Pick tool uses the same pickAt.
 - Pen / mouse hover: outlines the button under it and shows a tooltip (TIPS, or the button's title moved to data-tip) after 0.45 s. View menu: art overlay, mask, pixel grid, readout, layout, fit.
+
+## Build 152
+- Height painter: Settings → Pen check… shows the live pointer / mouse events (type, pointerType, buttons, pressure), whether hover arrives, any-hover / any-pointer media and the UA. For the S Pen hover not reaching the page. Known causes (research): Chrome on Android stops sending stylus hover to a tab after its file chooser opens (Import PNG) or a PWA switch, until a new tab (reload doesn't help); installed-app pages never get it; autofill services (1Password) kill hovers; Samsung Air View features can swallow hover.

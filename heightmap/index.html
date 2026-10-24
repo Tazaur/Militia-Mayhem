@@ -55,6 +55,9 @@ button:disabled { opacity: .35; pointer-events: none; }
 #info { position: fixed; pointer-events: none; font-size: 12px; color: var(--dim); background: #000a; padding: 2px 6px; border-radius: 5px; }
 [hidden] { display: none !important; }
 button.hov { outline: 2px solid #ff4fd8; outline-offset: -2px; }
+#pchk { position: fixed; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); z-index: 8; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px; box-shadow: 0 10px 32px #000c; font-size: 12px; }
+#pchk pre { margin: 6px 0 0; font: 11px ui-monospace, monospace; color: var(--dim); white-space: pre-wrap; max-height: 30vh; overflow: auto; }
+#pchkHov { font-size: 15px; font-weight: 600; }
 #tip { position: fixed; z-index: 9; pointer-events: none; max-width: 240px; padding: 5px 9px; border-radius: 7px; background: #000e; color: var(--tx); font-size: 12px; line-height: 1.3; opacity: 0; transition: opacity .12s; }
 #tip.on { opacity: 1; }
 </style>
@@ -121,10 +124,11 @@ button.hov { outline: 2px solid #ff4fd8; outline-offset: -2px; }
   <button id="pAll" data-i="layers">Pick takes all channels</button><button id="buzz" data-i="buzz">Vibrate on pick</button><hr>
   <div class="h">Nudge range</div>
   <button id="nr0">± 8</button><button id="nr1">± 16</button><button id="nr2">± 32</button><button id="nr3">± 63</button><hr>
-  <button id="sReset" data-i="revert">Reset settings</button>
+  <button id="mPchk" data-i="pen">Pen check…</button><button id="sReset" data-i="revert">Reset settings</button>
 </div>
 <input id="file" type="file" accept="image/png" hidden>
 <div id="toast"></div><div id="info"></div><div id="tip"></div>
+<div id="pchk" hidden><div style="display:flex;align-items:center;gap:8px"><span id="pchkHov">Hover the pen over this panel…</span><span class="sp"></span><button id="pchkX" data-i="x"></button></div><pre id="pchkLog"></pre></div>
 <script>
 'use strict';
 /* Material atlas painter for Militia Mayhem. The material atlas (atlas_m.png) has atlas.png's layout: R = height, 4 per voxel
@@ -599,6 +603,19 @@ $('pAll').onclick = () => { st.pickAll = !st.pickAll; ui(); }; $('buzz').onclick
 for (let k = 0; k < 3; k++) $('lay' + k).onclick = () => { st.lay = k; ui(); requestAnimationFrame(fit); };
 for (let k = 0; k < 4; k++) { $('hold' + k).onclick = () => { st.hold = k; ui(); }; $('nr' + k).onclick = () => { st.nr = k; for (let c = 0; c < 3; c++) st.nud[c] = clamp(st.nud[c], -NRANGE[k][c], NRANGE[k][c]); ui(); }; }
 $('vFit').onclick = () => fit();
+/* pen check: shows what the browser actually sends, to tell a pen that hovers from one that only touches */
+const PCK = { on: false, n: {}, log: [] };
+function pchkEv(e) {
+  if (!PCK.on) return; const pt = e.pointerType || (e.type.startsWith('mouse') ? '(mouse ev)' : '?'), k = e.type + ' ' + pt; PCK.n[k] = (PCK.n[k] || 0) + 1;
+  const hov = (e.type === 'pointermove' || e.type === 'mousemove') && !e.buttons && pt !== 'touch';
+  if (hov) $('pchkHov').textContent = '✓ Hover received (' + pt + ')';
+  PCK.log.unshift(`${e.type} ${pt} btn ${e.buttons} p ${(e.pressure ?? 0).toFixed(2)} id ${e.pointerId ?? '-'}`); PCK.log.length = Math.min(PCK.log.length, 10);
+  $('pchkLog').textContent = Object.entries(PCK.n).map(([k, v]) => k + ': ' + v).join('\n') + '\n\n' + PCK.log.join('\n') +
+    `\n\nany-hover: ${matchMedia('(any-hover: hover)').matches}  any-pointer fine: ${matchMedia('(any-pointer: fine)').matches}  maxTouch: ${navigator.maxTouchPoints}\n${navigator.userAgent}`;
+}
+for (const t of ['pointerover', 'pointermove', 'pointerdown', 'pointerup', 'pointerout', 'pointercancel', 'mousemove', 'mouseover']) addEventListener(t, pchkEv, true);
+$('mPchk').onclick = () => { PCK.on = true; PCK.n = {}; PCK.log = []; $('pchkHov').textContent = '✗ No hover yet: hold the pen just above the screen'; $('pchkLog').textContent = ''; $('pchk').hidden = false; };
+$('pchkX').onclick = () => { PCK.on = false; $('pchk').hidden = true; };
 $('sReset').onclick = () => { Object.assign(st, DEF); ui(); toast('Settings reset'); };
 $('eUndo').onclick = () => $('undo').onclick(); $('eRedo').onclick = () => $('redo').onclick();
 $('eCpy').onclick = () => $('cpy').onclick(); $('ePst').onclick = () => $('pst').onclick(); $('eLift').onclick = () => $('lift').onclick();
