@@ -375,3 +375,9 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - Fake shadows left under SUNNOW gone: flag pole, med/ammo items and grenades are in the height pass (grenade a span at its arc height).
 - Grain: sun march uses interleaved gradient noise (not white noise) and quadratic steps (fine near the foot, coarse far out), so small things' shadows are solid. Same cost.
 - polyPath accepts a Path2D. drawRoofs takes the list from roofsIn(vis).
+
+## Build 151
+- Height painter (heightmap/) redesign: rows = menus (File / Edit / View / Settings dropdowns) + undo/redo; sprite + channel; views; context row (only the tool's options + quick selection / paste actions); value row; tool bar (Pen, Erase, Fill, Select, Array, Pick) at the bottom. Inline SVG icons (ICONS, `data-i`).
+- Set / Nudge toggle for Pen, Fill and selection Apply: Set writes `st.val`, Nudge adds signed `st.nud` (to the value before the stroke, once per pixel). Nudge range in Settings (±8/16/32/63 for height). The +1 / −1 tools are gone (old prefs map to Pen + Nudge).
+- Hold still on the canvas (Settings: off / 0.3 / 0.5 / 0.8 s) takes back the stroke and picks the value (optionally all channels, vibrates), switching to Set. Pick tool uses the same pickAt.
+- Pen / mouse hover: outlines the button under it and shows a tooltip (TIPS, or the button's title moved to data-tip) after 0.45 s. View menu: art overlay, mask, pixel grid, readout, layout, fit.

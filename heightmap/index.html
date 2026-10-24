@@ -5,78 +5,186 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Height Painter</title>
 <style>
-:root { --bg: #111317; --panel: #1b1e24; --btn: #262a32; --on: #3d6df2; --tx: #e6e8ec; --dim: #8a909c; }
+:root { --bg: #101216; --panel: #181b21; --btn: #23272f; --btn2: #2c313b; --on: #3d6df2; --tx: #e6e8ec; --dim: #8a909c; --line: #2a2f38; }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--tx); font: 14px system-ui, sans-serif; overflow: hidden; overscroll-behavior: none; touch-action: none; user-select: none; -webkit-user-select: none; }
 #app { display: flex; flex-direction: column; height: 100%; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
-.bar { display: flex; gap: 4px; padding: 3px 4px; background: var(--panel); align-items: center; flex-wrap: wrap; }
-button, select { flex: none; height: 36px; min-width: 36px; padding: 0 8px; border: 0; border-radius: 7px; background: var(--btn); color: var(--tx); font: inherit; }
+.bar { display: flex; gap: 6px; padding: 5px 6px; background: var(--panel); align-items: center; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+.bar::-webkit-scrollbar { display: none; }
+.bar + .bar { border-top: 1px solid var(--line); }
+button, select { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 38px; min-width: 38px; padding: 0 9px; border: 0; border-radius: 9px; background: var(--btn); color: var(--tx); font: inherit; font-size: 13px; }
 button.on { background: var(--on); }
-button:active { filter: brightness(1.3); }
-select { flex: 1; min-width: 120px; }
+button:active { filter: brightness(1.35); }
+button svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+select { flex: 1; min-width: 110px; padding: 0 10px; }
+.seg { display: flex; flex: none; background: var(--btn); border-radius: 9px; padding: 2px; gap: 2px; }
+.seg button { height: 34px; background: transparent; border-radius: 7px; }
+.seg button.on { background: var(--on); }
+.sp { flex: 1; min-width: 4px; }
+.div { flex: none; width: 1px; align-self: stretch; margin: 4px 2px; background: var(--line); }
+.lab { color: var(--dim); font-size: 12px; padding: 0 2px; flex: none; white-space: nowrap; }
 #views { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 #views canvas { display: block; width: 100%; min-height: 0; touch-action: none; }
-#v3 { flex: 0 0 40%; background: #0b0c0f; border-bottom: 1px solid #2c3038; }
+#v3 { flex: 0 0 40%; background: #0b0c0f; border-bottom: 1px solid var(--line); }
 #v2 { flex: 1; }
 #views.only2 #v3, #views.only3 #v2 { display: none; }
 #views.only3 #v3 { flex: 1; }
-@media (orientation: landscape) { #views { flex-direction: row; } #v3 { flex: 0 0 45%; border-bottom: 0; border-right: 1px solid #2c3038; } #views canvas { height: 100%; } }
-#val { flex: 1; min-width: 90px; }
-.num { min-width: 34px; text-align: center; color: var(--tx); }
-.lab { color: var(--dim); font-size: 12px; padding: 0 2px; flex: none; }
-#status { color: var(--dim); font-size: 12px; padding: 0 4px; flex: none; min-width: 62px; text-align: right; }
-#menu { position: fixed; right: 6px; top: calc(48px + env(safe-area-inset-top)); display: none; flex-direction: column; gap: 4px; padding: 6px; background: var(--panel); border-radius: 9px; box-shadow: 0 6px 24px #000a; z-index: 5; }
-#menu.open { display: flex; }
-#menu button { text-align: left; }
-#toast { position: fixed; left: 50%; bottom: 140px; transform: translateX(-50%); background: #000c; padding: 8px 14px; border-radius: 8px; pointer-events: none; opacity: 0; transition: opacity .3s; }
-#fbar { display: none; }
-#info { position: fixed; pointer-events: none; font-size: 12px; color: var(--dim); background: #000a; padding: 2px 6px; border-radius: 4px; }
+@media (orientation: landscape) { #views { flex-direction: row; } #v3 { flex: 0 0 45%; border-bottom: 0; border-right: 1px solid var(--line); } #views canvas { height: 100%; } }
+#val { flex: 1; min-width: 80px; accent-color: var(--on); }
+.num { min-width: 40px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
+#status { color: var(--dim); font-size: 12px; flex: none; white-space: nowrap; }
+#tools { justify-content: space-around; padding: 6px; }
+#tools button { flex: 1; max-width: 76px; height: 48px; flex-direction: column; gap: 2px; font-size: 10px; color: var(--dim); background: transparent; }
+#tools button svg { width: 22px; height: 22px; }
+#tools button.on { background: var(--btn2); color: var(--tx); box-shadow: inset 0 -2px 0 var(--on); }
+button.dd { background: transparent; padding: 0 10px; font-size: 14px; }
+button.dd.open { background: var(--btn2); }
+.menu { position: fixed; display: none; flex-direction: column; min-width: 220px; max-width: calc(100vw - 12px); max-height: 70vh; overflow-y: auto; padding: 5px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 32px #000c; z-index: 5; }
+.menu.open { display: flex; }
+.menu button { justify-content: flex-start; height: 40px; background: transparent; gap: 10px; font-size: 14px; }
+.menu button:hover { background: var(--btn); }
+.menu button.on { color: var(--tx); background: transparent; }
+button:disabled { opacity: .35; pointer-events: none; }
+.menu button.on::after { content: ''; margin-left: auto; width: 8px; height: 14px; border: solid var(--on); border-width: 0 2.5px 2.5px 0; transform: rotate(45deg) translate(-3px, -2px); }
+.menu button.on .k { margin-right: 12px; }
+.menu .k { margin-left: auto; color: var(--dim); font-size: 12px; }
+.menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 6px; }
+.menu .h { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; padding: 8px 10px 3px; }
+.seg.sm button { min-width: 34px; padding: 0 7px; }
+#toast { position: fixed; left: 50%; top: calc(110px + env(safe-area-inset-top)); transform: translateX(-50%); background: #000d; padding: 8px 14px; border-radius: 9px; pointer-events: none; opacity: 0; transition: opacity .3s; }
+#info { position: fixed; pointer-events: none; font-size: 12px; color: var(--dim); background: #000a; padding: 2px 6px; border-radius: 5px; }
+[hidden] { display: none !important; }
+button.hov { outline: 2px solid #ff4fd8; outline-offset: -2px; }
+#tip { position: fixed; z-index: 9; pointer-events: none; max-width: 240px; padding: 5px 9px; border-radius: 7px; background: #000e; color: var(--tx); font-size: 12px; line-height: 1.3; opacity: 0; transition: opacity .12s; }
+#tip.on { opacity: 1; }
 </style>
 </head>
 <body>
 <div id="app">
   <div class="bar">
-    <button id="prev">‹</button><select id="spr"></select><button id="next">›</button><span id="status"></span><button id="mnu">☰</button>
+    <button class="dd" data-menu="mFile">File</button><button class="dd" data-menu="mEdit">Edit</button><button class="dd" data-menu="mView">View</button><button class="dd" data-menu="mSet" data-i="gear" title="Settings"></button>
+    <span class="sp"></span><span id="status"></span>
+    <button id="undo" data-i="undo" title="Undo"></button><button id="redo" data-i="redo" title="Redo"></button>
   </div>
   <div class="bar">
-    <button id="chH" class="on">Height</button><button id="chR">Refl</button><button id="chE">Glow</button>
-    <button id="ovl" class="on">Color</button><button id="msk" class="on">Mask</button><button id="lay">◧</button>
+    <button id="prev" data-i="left" title="Previous sprite"></button><select id="spr"></select><button id="next" data-i="right" title="Next sprite"></button>
+    <div class="seg"><button id="chH" class="on">Height</button><button id="chR">Refl</button><button id="chE">Glow</button></div>
   </div>
   <div id="views"><canvas id="v3"></canvas><canvas id="v2"></canvas></div>
-  <div class="bar">
-    <span class="lab" id="selLab">Sprite</span><button id="cpy">Copy</button><button id="pst">Paste</button><button id="lift">Lift</button>
-    <button id="sUp">▲</button><button id="sDn">▼</button><button id="sFill">Fill</button><button id="sClr">Clear</button><button id="sNone">✕ Sel</button>
-    <button id="undo">↶</button><button id="redo">↷</button>
+  <div class="bar" id="cbar">
+    <span id="opts" style="display:contents">
+      <button id="size" data-i="square" title="Brush size"></button>
+      <button id="tol" title="Fill tolerance"></button>
+      <div class="seg sm" id="smode"><button data-m="0" title="New selection">New</button><button data-m="1" title="Add to selection">+</button><button data-m="2" title="Take from selection">−</button></div>
+      <button id="gap" title="Gap between copies"></button><button id="pch" title="Channels the paste / array writes"></button>
+    </span>
+    <span class="div" id="optDiv"></span>
+    <span id="selb" style="display:contents">
+      <span class="lab" id="selLab"></span>
+      <button id="cpy" data-i="copy" title="Copy"></button><button id="pst" data-i="paste" title="Paste"></button><button id="lift" data-i="move" title="Lift (move)"></button>
+      <button id="sFill" data-i="bucket" title="Apply to selection (set / nudge)"></button><button id="sNone" data-i="x" title="Deselect"></button>
+    </span>
+    <span id="fbar" style="display:contents">
+      <span class="lab" id="fLab"></span><button id="fx" data-i="flipx" title="Flip left-right"></button><button id="fy" data-i="flipy" title="Flip top-bottom"></button><button id="r45" data-i="rot">45°</button><button id="r90" data-i="rot">90°</button>
+      <button id="fOk" data-i="check" class="on">Place</button><button id="fNo" data-i="x" title="Cancel"></button>
+    </span>
   </div>
-  <div class="bar" id="fbar">
-    <span class="lab" id="fLab">Paste</span><button id="fx">⇋</button><button id="fy">⇵</button><button id="r45">⟳ 45°</button><button id="r90">⟳ 90°</button><button id="fOk" class="on">✓ Place</button><button id="fNo">✕</button>
+  <div class="bar" id="vbar">
+    <div class="seg" id="mode"><button data-m="set" data-i="equal">Set</button><button data-m="nudge" data-i="plusminus">Nudge</button></div>
+    <button id="vDn" data-i="minus"></button><input id="val" type="range" min="0" max="63" value="8"><button id="vUp" data-i="plus"></button><span class="num" id="vNum">8</span>
   </div>
   <div class="bar" id="tools">
-    <button data-t="pen" class="on">✎ Pen</button><button data-t="erase">⌫</button><button data-t="up">+1</button><button data-t="down">−1</button>
-    <button data-t="fill">◍ Fill</button><button data-t="sel">⬚ Sel</button><button data-t="arr">⇶ Array</button><button data-t="pick">⌖ Pick</button>
-  </div>
-  <div class="bar">
-    <button id="vDn">−</button><input id="val" type="range" min="0" max="63" value="8"><button id="vUp">+</button><span class="num" id="vNum">8</span>
-    <button id="size">□ 1</button><button id="tol">Tol 0</button><button id="smode">New</button><button id="gap">Gap 0</button><button id="pch">All</button>
+    <button data-t="pen" data-i="pen" class="on">Pen</button><button data-t="erase" data-i="eraser">Erase</button><button data-t="fill" data-i="bucket">Fill</button>
+    <button data-t="sel" data-i="select">Select</button><button data-t="arr" data-i="array">Array</button><button data-t="pick" data-i="pipette">Pick</button>
   </div>
 </div>
-<div id="menu">
-  <button id="mDl">Download atlas_m.png</button><button id="mShare">Share atlas_m.png</button><button id="mImp">Import PNG…</button>
-  <button id="mRevS">Revert sprite to file</button><button id="mRevA">Revert everything to file</button>
+<div class="menu" id="mFile">
+  <button id="mDl" data-i="download">Download atlas_m.png</button><button id="mShare" data-i="share">Share atlas_m.png</button><button id="mImp" data-i="upload">Import PNG…</button>
+  <hr><button id="mRevS" data-i="revert">Revert sprite to file</button><button id="mRevA" data-i="revert">Revert everything to file</button>
+</div>
+<div class="menu" id="mEdit">
+  <button id="eUndo" data-i="undo">Undo<span class="k">Ctrl Z</span></button><button id="eRedo" data-i="redo">Redo<span class="k">Ctrl ⇧ Z</span></button><hr>
+  <button id="eCpy" data-i="copy">Copy</button><button id="ePst" data-i="paste">Paste</button><button id="eLift" data-i="move">Lift (move)</button><hr>
+  <button id="eAll" data-i="select">Select all</button><button id="eNone" data-i="x">Deselect</button><hr>
+  <div class="h">Selection (or sprite)</div>
+  <button id="sFill2" data-i="bucket">Apply set / nudge</button><button id="sUp" data-i="up">Nudge up</button><button id="sDn" data-i="down">Nudge down</button><button id="sClr" data-i="trash">Clear to 0</button>
+</div>
+<div class="menu" id="mView">
+  <button id="ovl" data-i="color">Show the art</button><button id="msk" data-i="mask">Paint only on the art</button><button id="grid" data-i="gridI">Pixel grid</button><button id="rdo" data-i="info">Pixel readout</button><hr>
+  <div class="h">Layout</div>
+  <button id="lay0" data-i="layout">2D + 3D</button><button id="lay1" data-i="square">2D only</button><button id="lay2" data-i="cube">3D only</button><hr>
+  <button id="vFit" data-i="fit">Fit to screen</button>
+</div>
+<div class="menu" id="mSet">
+  <div class="h">Hold on the canvas to pick</div>
+  <button id="hold0">Off</button><button id="hold1">Short<span class="k">0.3 s</span></button><button id="hold2">Normal<span class="k">0.5 s</span></button><button id="hold3">Long<span class="k">0.8 s</span></button><hr>
+  <button id="pAll" data-i="layers">Pick takes all channels</button><button id="buzz" data-i="buzz">Vibrate on pick</button><hr>
+  <div class="h">Nudge range</div>
+  <button id="nr0">± 8</button><button id="nr1">± 16</button><button id="nr2">± 32</button><button id="nr3">± 63</button><hr>
+  <button id="sReset" data-i="revert">Reset settings</button>
 </div>
 <input id="file" type="file" accept="image/png" hidden>
-<div id="toast"></div><div id="info"></div>
+<div id="toast"></div><div id="info"></div><div id="tip"></div>
 <script>
 'use strict';
 /* Material atlas painter for Militia Mayhem. The material atlas (atlas_m.png) has atlas.png's layout: R = height, 4 per voxel
    (0..63), G = reflectivity, B = glow. Paint on the 2D view, the 3D view shows each pixel as a column of voxels. Everything is
    kept in IndexedDB as you go; a new atlas layout (a repack) carries painted sprites over by name. */
 const $ = id => document.getElementById(id);
-const MAXV = [63, 255, 255], STEP = [1, 8, 8], SIZES = [1, 2, 3, 5, 8], TOLS = [[0, 1, 2, 4, 8], [0, 8, 16, 32, 64], [0, 8, 16, 32, 64]];
+const ICONS = {
+  left: '<path d="m15 18-6-6 6-6"/>', right: '<path d="m9 18 6-6-6-6"/>', menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>', redo: '<path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
+  color: '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18Z" fill="currentColor"/>', mask: '<path d="M12 2 4 6v6c0 5 3.5 8.5 8 10 4.5-1.5 8-5 8-10V6Z"/>',
+  layout: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 12h18"/>', square: '<rect x="5" y="5" width="14" height="14" rx="1"/>',
+  copy: '<rect x="8" y="8" width="13" height="13" rx="2"/><path d="M4 16a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2"/>',
+  paste: '<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>',
+  move: '<path d="m5 9-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/>',
+  bucket: '<path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2a2 2 0 0 0 2.8 0Z"/><path d="m5 2 5 5M2 13h15"/><path d="M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4Z"/>',
+  up: '<path d="m18 15-6-6-6 6"/>', down: '<path d="m6 9 6 6 6-6"/>', x: '<path d="M18 6 6 18M6 6l12 12"/>', check: '<path d="M20 6 9 17l-5-5"/>',
+  trash: '<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+  flipx: '<path d="M12 3v18"/><path d="M8 7 3 12l5 5Z"/><path d="m16 7 5 5-5 5Z"/>', flipy: '<path d="M3 12h18"/><path d="M7 8l5-5 5 5Z"/><path d="m7 16 5 5 5-5Z"/>',
+  rot: '<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>', equal: '<path d="M5 9h14M5 15h14"/>', plusminus: '<path d="M12 3v10M7 8h10M7 19h10"/>',
+  minus: '<path d="M5 12h14"/>', plus: '<path d="M12 5v14M5 12h14"/>',
+  pen: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+  eraser: '<path d="m7 21-4.3-4.3a1 1 0 0 1 0-1.4l10-10a1 1 0 0 1 1.4 0l5.6 5.6a1 1 0 0 1 0 1.4L13 21"/><path d="M22 21H7M5 11l9 9"/>',
+  select: '<path d="M5 3a2 2 0 0 0-2 2M19 3a2 2 0 0 1 2 2M21 19a2 2 0 0 1-2 2M5 21a2 2 0 0 1-2-2M9 3h1M9 21h1M14 3h1M14 21h1M3 9v1M21 9v1M3 14v1M21 14v1"/>',
+  array: '<rect x="2" y="8" width="6" height="8" rx="1"/><rect x="9" y="8" width="6" height="8" rx="1" opacity=".6"/><rect x="16" y="8" width="6" height="8" rx="1" opacity=".3"/>',
+  pipette: '<path d="m2 22 1-1h3l9-9M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z"/>',
+  download: '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>', upload: '<path d="M12 21V9M7 14l5-5 5 5M5 3h14"/>', share: '<path d="M12 3v13M7 8l5-5 5 5M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/>',
+  gridI: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>', info: '<circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/>',
+  cube: '<path d="m21 16-9 5-9-5V8l9-5 9 5Z"/><path d="m3 8 9 5 9-5M12 13v8"/>', fit: '<path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/>',
+  layers: '<path d="m12 2 10 5-10 5L2 7Z"/><path d="m2 12 10 5 10-5M2 17l10 5 10-5"/>', buzz: '<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M3 8v8M21 8v8"/>',
+  revert: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
+};
+/* tooltips: a hovering pen (or mouse) outlines the button under it and, held there a moment, says what it does */
+const TIPS = { pen: 'Pen: paint (Set writes the value, Nudge adds to it)', erase: 'Erase to 0', fill: 'Fill: flood the area (Set / Nudge, Tol = how alike)', sel: 'Select: drag a box (New / + add / − take away); tap to deselect',
+  arr: 'Array: drag from the selection to repeat it', pick: 'Pick the value under a pixel (or hold anywhere on the canvas)', chH: 'Height channel (0–63)', chR: 'Reflectivity channel', chE: 'Glow channel',
+  set: 'Set: pen and fill write this value', nudge: 'Nudge: pen and fill add this (− lowers), once per pixel per stroke', vDn: 'One less', vUp: 'One more', val: 'Value / nudge step', tol: 'Fill tolerance: how close a pixel must be to join',
+  gap: 'Gap between the array copies', pch: 'Which channels the paste / array writes', sel0: 'New selection', sel1: 'Add to the selection', sel2: 'Take from the selection' };
+const tipOf = e => TIPS[e.dataset.t] || TIPS[e.id] || TIPS[e.dataset.m] || (e.closest('#smode') && TIPS['sel' + e.dataset.m]) || e.dataset.tip || '';
+for (const e of document.querySelectorAll('[title]')) { e.dataset.tip = e.title; e.removeAttribute('title'); }     // ours, not the browser's
+let tipT = 0, tipE = null;
+function tipHide() { clearTimeout(tipT); $('tip').classList.remove('on'); if (tipE) tipE.classList.remove('hov'); tipE = null; }
+addEventListener('pointerover', e => {
+  if (e.pointerType === 'touch') return; const b = e.target.closest('button, select, input'); if (b === tipE) return; tipHide(); if (!b) return;
+  tipE = b; b.classList.add('hov'); const t = tipOf(b); if (!t) return;
+  tipT = setTimeout(() => {
+    const el = $('tip'), r = b.getBoundingClientRect(); el.textContent = t; el.classList.add('on');
+    const w = el.offsetWidth, h = el.offsetHeight, below = r.top < h + 12;
+    el.style.left = clamp(r.left + r.width / 2 - w / 2, 6, innerWidth - w - 6) + 'px'; el.style.top = (below ? r.bottom + 6 : r.top - h - 6) + 'px';
+  }, 450);
+});
+addEventListener('pointerout', e => { if (e.pointerType !== 'touch' && tipE && !tipE.contains(e.relatedTarget)) tipHide(); });
+addEventListener('pointerdown', tipHide, true);
+for (const b of document.querySelectorAll('[data-i]')) b.insertAdjacentHTML('afterbegin', `<svg viewBox="0 0 24 24">${ICONS[b.dataset.i]}</svg>`);
+const MAXV = [63, 255, 255], NRANGE = [[8, 32, 32], [16, 64, 64], [32, 128, 128], [63, 255, 255]], HOLDMS = [0, 300, 500, 800], SIZES = [1, 2, 3, 5, 8], TOLS = [[0, 1, 2, 4, 8], [0, 8, 16, 32, 64], [0, 8, 16, 32, 64]];
 let W = 0, H = 0, META = {}, NAMES = [], COL = null, CH = null, FILE = null;
-const st = { spr: '', ch: 0, tool: 'pen', prev: 'pen', val: [8, 100, 0], size: 0, tol: [1, 1, 1], ovl: true, mask: true, lay: 0, smode: 0, gap: 0, pch: 0 };
+const DEF = { hold: 2, pickAll: false, buzz: true, nr: 1, grid: true, rdo: true };
+const st = { ...DEF, spr: '', ch: 0, tool: 'pen', prev: 'pen', mode: 'set', val: [8, 100, 0], nud: [1, 8, 8], size: 0, tol: [1, 1, 1], ovl: true, mask: true, lay: 0, smode: 0, gap: 0, pch: 0 };
 const GAPS = [0, 1, 2, 3, 4, 6, 8, 12];
 try { Object.assign(st, JSON.parse(localStorage.getItem('hp-prefs') || '{}')); } catch (e) {}
+if (st.tool === 'up' || st.tool === 'down') { st.tool = 'pen'; st.mode = 'nudge'; }     // the old +1 / -1 tools
 const savePrefs = () => { try { localStorage.setItem('hp-prefs', JSON.stringify(st)); } catch (e) {} };
 const toast = (t) => { const e = $('toast'); e.textContent = t; e.style.opacity = 1; clearTimeout(toast.t); toast.t = setTimeout(() => e.style.opacity = 0, 1600); };
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -142,16 +250,17 @@ function cancel() { if (!stroke) return; unput(); stroke = null; }
 function history(from, to, key) { if (flt || stroke) return; const e = from.pop(); if (!e) return; e.idx.forEach((k, j) => { CH[k / NN() | 0][k % NN()] = e[key][j]; touch(k % NN()); }); to.push(e); changed(); }
 function touch(i) { if (!full2) paint2(i); dirty3 = true; }
 function brush(x, y, f) { const s = SIZES[st.size], o = Math.floor((s - 1) / 2); for (let j = y - o; j < y - o + s; j++) for (let i = x - o; i < x - o + s; i++) if (can(i, j)) f(j * W + i); }
+/* what the pen / fill / selection does to a pixel: Set writes the value, Nudge adds the (signed) nudge to what it was before
+   this stroke, so going over a pixel twice in one stroke doesn't stack */
+const amt = i => st.mode === 'nudge' ? was(i) + st.nud[st.ch] : st.val[st.ch];
 function apply(x, y) {
-  const v = st.val[st.ch], a = CH[st.ch];
-  if (st.tool === 'pen') brush(x, y, i => put(i, v));
+  if (st.tool === 'pen') brush(x, y, i => put(i, amt(i)));
   else if (st.tool === 'erase') brush(x, y, i => put(i, 0));
-  else if (st.tool === 'up' || st.tool === 'down') brush(x, y, i => { if (!stroke.has(st.ch * NN() + i)) put(i, a[i] + (st.tool === 'up' ? STEP[st.ch] : -STEP[st.ch])); });   // once per pixel per stroke
 }
 function flood(x, y) {
   if (!can(x, y)) return; const v0 = CH[st.ch][y * W + x], tol = TOLS[st.ch][st.tol[st.ch]], seen = new Uint8Array(W * H), q = [y * W + x]; seen[q[0]] = 1;
   while (q.length) {
-    const i = q.pop(), px = i % W, py = (i - px) / W; put(i, st.val[st.ch]);
+    const i = q.pop(), px = i % W, py = (i - px) / W; put(i, amt(i));
     for (const [nx, ny] of [[px + 1, py], [px - 1, py], [px, py + 1], [px, py - 1]]) { const j = ny * W + nx; if (can(nx, ny) && !seen[j] && Math.abs(was(j) - v0) <= tol) { seen[j] = 1; q.push(j); } }
   }
 }
@@ -237,7 +346,7 @@ function draw2() {
   g2.setTransform(1, 0, 0, 1, 0, 0); g2.fillStyle = '#0d0e11'; g2.fillRect(0, 0, v2.width, v2.height); g2.setTransform(dpr, 0, 0, dpr, 0, 0);
   const [rx, ry, rw, rh] = rect(); g2.imageSmoothingEnabled = false;
   g2.drawImage(buf, rx, ry, rw, rh, ox2 + rx * z2, oy2 + ry * z2, rw * z2, rh * z2);
-  if (z2 >= 10) {          // pixel grid on what's on screen
+  if (z2 >= 10 && st.grid) {          // pixel grid on what's on screen
     const x0 = Math.max(rx, Math.floor(-ox2 / z2)), x1 = Math.min(rx + rw, Math.ceil((cw - ox2) / z2)), y0 = Math.max(ry, Math.floor(-oy2 / z2)), y1 = Math.min(ry + rh, Math.ceil((chh - oy2) / z2));
     g2.beginPath(); for (let x = x0; x <= x1; x++) { g2.moveTo(ox2 + x * z2 + 0.5, oy2 + y0 * z2); g2.lineTo(ox2 + x * z2 + 0.5, oy2 + y1 * z2); } for (let y = y0; y <= y1; y++) { g2.moveTo(ox2 + x0 * z2, oy2 + y * z2 + 0.5); g2.lineTo(ox2 + x1 * z2, oy2 + y * z2 + 0.5); }
     g2.strokeStyle = 'rgba(255,255,255,0.07)'; g2.lineWidth = 1; g2.stroke();
@@ -268,6 +377,19 @@ function info() {
 /* fingers: one paints, two pan / zoom (and take back what the first one started); mouse: wheel zooms, right / middle drag
    pans. A hovering pen or mouse moves the outline, so you see the pixel before you touch */
 const P2 = new Map(); let pinch = null, painting = false, lastPx = null, hold = false, fdrag = null, selWas = null, selFrom = null, selMoved = false;
+let holdT = 0, holdAt = null;
+const holdOff = () => { clearTimeout(holdT); holdT = 0; };
+function pickAt(q) {
+  if (q[0] < 0 || q[1] < 0 || q[0] >= W || q[1] >= H) return false; const i = q[1] * W + q[0];
+  for (let c = 0; c < 3; c++) if (c === st.ch || st.pickAll) st.val[c] = CH[c][i];
+  st.mode = 'set'; ui(); return true;
+}
+function held(q) {
+  holdT = 0; if (!painting || P2.size !== 1) return;
+  abort(); if (!pickAt(q)) return; hold = true;     // the rest of this touch does nothing
+  const i = q[1] * W + q[0]; toast(st.pickAll ? `Picked H ${CH[0][i]} · Refl ${CH[1][i]} · Glow ${CH[2][i]}` : `Picked ${['Height', 'Refl', 'Glow'][st.ch]} ${CH[st.ch][i]}`);
+  if (st.buzz && navigator.vibrate) navigator.vibrate(18);
+}
 const atPx = (x, y) => [Math.floor((x - ox2) / z2), Math.floor((y - oy2) / z2)];
 const local = (e, c) => { const b = c.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; };
 function startPinch(P) { const [a, b] = [...P.values()]; pinch = { z: z2, ox: ox2, oy: oy2, mx: (a[0] + b[0]) / 2, my: (a[1] + b[1]) / 2, d: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1 }; }
@@ -282,9 +404,10 @@ v2.addEventListener('contextmenu', e => e.preventDefault());
 v2.addEventListener('pointerdown', e => {
   v2.setPointerCapture(e.pointerId); const p = local(e, v2); P2.set(e.pointerId, p);
   if (e.pointerType === 'mouse' && e.button) { pinch = { pan: true, ox: ox2, oy: oy2, mx: p[0], my: p[1] }; return; }
-  if (P2.size === 2) { if (painting) abort(); startPinch(P2); hold = true; return; }
+  if (P2.size === 2) { holdOff(); if (painting) abort(); startPinch(P2); hold = true; return; }
   if (P2.size > 2 || hold) return;
   toolDown(atPx(...p));
+  if (painting && HOLDMS[st.hold] && !flt) { const q = atPx(...p); holdAt = p; holdT = setTimeout(() => held(q), HOLDMS[st.hold]); }
 });
 v2.addEventListener('pointermove', e => {
   const p = local(e, v2); if (P2.has(e.pointerId)) P2.set(e.pointerId, p);
@@ -293,11 +416,12 @@ v2.addEventListener('pointermove', e => {
     const [a, b] = [...P2.values()], mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, z = clamp(pinch.z * Math.hypot(a[0] - b[0], a[1] - b[1]) / pinch.d, 0.3, 80);
     ox2 = mx - (pinch.mx - pinch.ox) * z / pinch.z; oy2 = my - (pinch.my - pinch.oy) * z / pinch.z; z2 = z; need2 = true; return;
   }
+  if (holdT && Math.hypot(p[0] - holdAt[0], p[1] - holdAt[1]) > 8) holdOff();     // it moved: a stroke, not a hold
   const q = atPx(...p); if (e.pointerType !== 'touch' || painting) { cur = q; need2 = true; }     // pen / mouse: hover too
   if (painting) toolMove(q);
 });
 function up(e) {
-  P2.delete(e.pointerId);
+  P2.delete(e.pointerId); holdOff();
   if (painting && !P2.size) { toolUp(); painting = false; }
   if (P2.size < 2 && pinch) pinch = null;
   if (!P2.size) hold = false;
@@ -309,7 +433,7 @@ function toolDown(q) {
   if (flt) { fdrag = { q, x: flt.x, y: flt.y }; return; }
   if (st.tool === 'sel') { selWas = selM; selFrom = q; selMoved = false; selRect(q); return; }
   if (st.tool === 'arr') { if (!sel) { toast('Select a piece first'); painting = false; return; } arr = { c: grab(), q0: q, n: 0 }; begin(); return; }
-  if (st.tool === 'pick') { painting = false; if (q[0] >= 0 && q[1] >= 0 && q[0] < W && q[1] < H) { st.val[st.ch] = CH[st.ch][q[1] * W + q[0]]; st.tool = st.prev; ui(); } return; }
+  if (st.tool === 'pick') { painting = false; if (pickAt(q)) { st.tool = st.prev; ui(); } return; }
   begin(); if (st.tool === 'fill') flood(...q); else apply(...q);
 }
 function selRect(q) {        // the marquee from selFrom to q, as a new selection or added to / taken from the one before
@@ -428,39 +552,75 @@ v3.addEventListener('wheel', e => { e.preventDefault(); cam.dist = clamp(cam.dis
 
 /* ---------------- UI */
 function ui() {
-  const ch = st.ch; $('chH').classList.toggle('on', ch === 0); $('chR').classList.toggle('on', ch === 1); $('chE').classList.toggle('on', ch === 2);
-  $('ovl').classList.toggle('on', st.ovl); $('msk').classList.toggle('on', st.mask);
-  for (const b of document.querySelectorAll('#tools button')) b.classList.toggle('on', b.dataset.t === st.tool);
-  const val = $('val'); val.max = MAXV[ch]; val.value = st.val[ch]; $('vNum').textContent = st.val[ch];
-  $('size').textContent = '□ ' + SIZES[st.size]; $('tol').textContent = 'Tol ' + TOLS[ch][st.tol[ch]]; $('tol').style.display = st.tool === 'fill' ? '' : 'none';
-  $('selLab').textContent = sel ? 'Sel ' + (sel[2] - sel[0] + 1) + '×' + (sel[3] - sel[1] + 1) : st.spr ? 'Sprite' : 'Atlas'; $('sNone').style.display = sel ? '' : 'none';
-  $('smode').textContent = ['New', 'Add +', 'Sub −'][st.smode]; $('smode').style.display = st.tool === 'sel' ? '' : 'none';
-  $('gap').textContent = 'Gap ' + GAPS[st.gap]; $('gap').style.display = st.tool === 'arr' ? '' : 'none'; $('pch').style.display = flt || st.tool === 'arr' ? '' : 'none';
-  $('fbar').style.display = flt ? 'flex' : 'none'; if (flt) { $('fLab').textContent = (flt.ang % 360) + '°'; $('fx').classList.toggle('on', flt.fx); $('fy').classList.toggle('on', flt.fy); } $('pch').textContent = ['All', 'Height', 'Refl', 'Glow'][st.pch]; $('pst').classList.toggle('on', !!clip);
-  $('views').className = ['', 'only2', 'only3'][st.lay]; $('mShare').style.display = navigator.canShare ? '' : 'none';
-  need2 = need3 = true; savePrefs();
+  const ch = st.ch, t = st.tool, nud = st.mode === 'nudge', lab = (id, html) => { const e = $(id), v = e.querySelector('svg'); e.innerHTML = (v ? v.outerHTML : '') + html; };
+  $('chH').classList.toggle('on', ch === 0); $('chR').classList.toggle('on', ch === 1); $('chE').classList.toggle('on', ch === 2);
+  const on = (id, v) => $(id).classList.toggle('on', !!v);
+  on('ovl', st.ovl); on('msk', st.mask); on('grid', st.grid); on('rdo', st.rdo); on('pAll', st.pickAll); on('buzz', st.buzz);
+  for (let k = 0; k < 3; k++) on('lay' + k, st.lay === k); for (let k = 0; k < 4; k++) { on('hold' + k, st.hold === k); on('nr' + k, st.nr === k); }
+  for (const id of ['eCpy', 'eLift', 'eNone']) $(id).disabled = !sel || !!flt; $('ePst').disabled = !clip || !!flt;
+  for (const b of document.querySelectorAll('#tools button')) b.classList.toggle('on', b.dataset.t === t);
+  // the value row: what Set writes, or the step Nudge adds (signed); only for the tools that use it
+  for (const b of document.querySelectorAll('#mode button')) b.classList.toggle('on', b.dataset.m === st.mode);
+  const val = $('val'), v = nud ? st.nud[ch] : st.val[ch]; val.min = nud ? -NRANGE[st.nr][ch] : 0; val.max = nud ? NRANGE[st.nr][ch] : MAXV[ch]; val.value = v;
+  $('vNum').textContent = nud && v > 0 ? '+' + v : v;
+  $('vbar').hidden = !(t === 'pen' || t === 'fill' || sel) || !!flt;
+  // the context row: this tool's options, then the selection / clipboard, or the floating paste
+  $('size').hidden = !(t === 'pen' || t === 'erase'); lab('size', SIZES[st.size]);
+  $('tol').hidden = t !== 'fill'; $('tol').textContent = 'Tol ' + TOLS[ch][st.tol[ch]];
+  $('smode').hidden = t !== 'sel' || !!flt; for (const b of document.querySelectorAll('#smode button')) b.classList.toggle('on', +b.dataset.m === st.smode);
+  $('gap').hidden = t !== 'arr'; $('gap').textContent = 'Gap ' + GAPS[st.gap];
+  $('pch').hidden = !(flt || t === 'arr'); $('pch').textContent = ['All ch', 'Height', 'Refl', 'Glow'][st.pch];
+  const showSel = !flt && (sel || clip || t === 'sel'); $('selb').hidden = !showSel;
+  for (const id of ['cpy', 'lift', 'sFill', 'sNone']) $(id).hidden = !sel; $('pst').hidden = !clip;
+  $('selLab').textContent = sel ? (sel[2] - sel[0] + 1) + '×' + (sel[3] - sel[1] + 1) : clip ? 'Clip' : 'Drag to select';
+  const nn = Math.abs(st.nud[ch]) || 1, setL = (id, t) => { const e = $(id); e.lastChild.textContent = t; };
+  setL('sUp', 'Nudge up ' + nn); setL('sDn', 'Nudge down ' + nn); setL('sFill2', st.mode === 'nudge' ? 'Apply nudge ' + (st.nud[ch] > 0 ? '+' : '') + st.nud[ch] : 'Apply set ' + st.val[ch]);
+  $('fbar').hidden = !flt; if (flt) { $('fLab').textContent = (flt.ang % 360) + '°'; $('fx').classList.toggle('on', flt.fx); $('fy').classList.toggle('on', flt.fy); }
+  const anyOpt = [...$('opts').children].some(e => !e.hidden); $('optDiv').hidden = !(anyOpt && (showSel || flt));
+  $('cbar').hidden = !anyOpt && !showSel && !flt;
+  $('views').className = ['', 'only2', 'only3'][st.lay]; $('mShare').hidden = !navigator.canShare; $('info').hidden = !st.rdo;
+  need2 = need3 = true; savePrefs(); requestAnimationFrame(() => { need2 = need3 = true; });
 }
 const setCh = c => { st.ch = c; full2 = true; dirty3 = true; ui(); };
 $('chH').onclick = () => setCh(0); $('chR').onclick = () => setCh(1); $('chE').onclick = () => setCh(2);
+/* dropdowns: a bar button opens its menu under it; a tap anywhere else (or on an action) closes it. Toggles stay open */
+const closeMenus = () => { for (const m of document.querySelectorAll('.menu.open')) m.classList.remove('open'); for (const b of document.querySelectorAll('.dd.open')) b.classList.remove('open'); };
+for (const b of document.querySelectorAll('.dd')) b.onclick = e => {
+  e.stopPropagation(); const m = $(b.dataset.menu), was = m.classList.contains('open'); closeMenus(); if (was) return;
+  ui(); m.classList.add('open'); b.classList.add('open'); const r = b.getBoundingClientRect();
+  m.style.top = (r.bottom + 4) + 'px'; m.style.left = clamp(r.left, 6, innerWidth - m.offsetWidth - 6) + 'px';
+};
+addEventListener('pointerdown', e => { if (!e.target.closest('.menu, .dd')) closeMenus(); });
+for (const m of document.querySelectorAll('.menu')) m.addEventListener('click', e => { const b = e.target.closest('button'); if (b && !/^(ovl|msk|grid|rdo|pAll|buzz|hold\d|nr\d|lay\d)$/.test(b.id)) closeMenus(); });
 $('ovl').onclick = () => { st.ovl = !st.ovl; full2 = true; dirty3 = true; ui(); };
 $('msk').onclick = () => { st.mask = !st.mask; ui(); };
-$('lay').onclick = () => { st.lay = (st.lay + 1) % 3; ui(); requestAnimationFrame(fit); };
+$('grid').onclick = () => { st.grid = !st.grid; ui(); }; $('rdo').onclick = () => { st.rdo = !st.rdo; ui(); };
+$('pAll').onclick = () => { st.pickAll = !st.pickAll; ui(); }; $('buzz').onclick = () => { st.buzz = !st.buzz; ui(); };
+for (let k = 0; k < 3; k++) $('lay' + k).onclick = () => { st.lay = k; ui(); requestAnimationFrame(fit); };
+for (let k = 0; k < 4; k++) { $('hold' + k).onclick = () => { st.hold = k; ui(); }; $('nr' + k).onclick = () => { st.nr = k; for (let c = 0; c < 3; c++) st.nud[c] = clamp(st.nud[c], -NRANGE[k][c], NRANGE[k][c]); ui(); }; }
+$('vFit').onclick = () => fit();
+$('sReset').onclick = () => { Object.assign(st, DEF); ui(); toast('Settings reset'); };
+$('eUndo').onclick = () => $('undo').onclick(); $('eRedo').onclick = () => $('redo').onclick();
+$('eCpy').onclick = () => $('cpy').onclick(); $('ePst').onclick = () => $('pst').onclick(); $('eLift').onclick = () => $('lift').onclick();
+$('eNone').onclick = () => $('sNone').onclick(); $('sFill2').onclick = () => $('sFill').onclick();
+$('eAll').onclick = () => { if (flt) return; const [rx, ry, rw, rh] = rect(); selM = new Uint8Array(W * H); for (let y = ry; y < ry + rh; y++) for (let x = rx; x < rx + rw; x++) if (canP(x, y)) selM[y * W + x] = 1; selBounds(); ui(); };
 const pickSpr = n => { pasteEnd(false); st.spr = n; $('spr').value = n; sel = selM = null; dirty3 = true; ui(); fit(); };
 $('spr').onchange = () => pickSpr($('spr').value);
 const step = d => { const L = ['', ...NAMES]; pickSpr(L[(L.indexOf(st.spr) + d + L.length) % L.length]); };
 $('prev').onclick = () => step(-1); $('next').onclick = () => step(1);
 for (const b of document.querySelectorAll('#tools button')) b.onclick = () => { if (b.dataset.t === 'pick' && st.tool !== 'pick') st.prev = st.tool; st.tool = b.dataset.t; ui(); };
-$('val').oninput = () => { st.val[st.ch] = +$('val').value; ui(); };
-$('vDn').onclick = () => { st.val[st.ch] = clamp(st.val[st.ch] - 1, 0, MAXV[st.ch]); ui(); };
-$('vUp').onclick = () => { st.val[st.ch] = clamp(st.val[st.ch] + 1, 0, MAXV[st.ch]); ui(); };
+const setV = f => { const ch = st.ch; if (st.mode === 'nudge') st.nud[ch] = clamp(f(st.nud[ch]), -NRANGE[st.nr][ch], NRANGE[st.nr][ch]); else st.val[ch] = clamp(f(st.val[ch]), 0, MAXV[ch]); ui(); };
+$('val').oninput = () => setV(() => +$('val').value);
+$('vDn').onclick = () => setV(v => v - 1); $('vUp').onclick = () => setV(v => v + 1);
+for (const b of document.querySelectorAll('#mode button')) b.onclick = () => { st.mode = b.dataset.m; ui(); };
 $('size').onclick = () => { st.size = (st.size + 1) % SIZES.length; ui(); };
 $('tol').onclick = () => { st.tol[st.ch] = (st.tol[st.ch] + 1) % TOLS[st.ch].length; ui(); };
-$('sUp').onclick = () => bulk(i => put(i, CH[st.ch][i] + STEP[st.ch]));
-$('sDn').onclick = () => bulk(i => put(i, CH[st.ch][i] - STEP[st.ch]));
-$('sFill').onclick = () => bulk(i => put(i, st.val[st.ch]));
+$('sUp').onclick = () => bulk(i => put(i, CH[st.ch][i] + Math.abs(st.nud[st.ch])));
+$('sDn').onclick = () => bulk(i => put(i, CH[st.ch][i] - Math.abs(st.nud[st.ch])));
+$('sFill').onclick = () => bulk(i => put(i, amt(i)));
 $('sClr').onclick = () => bulk(i => put(i, 0));
 $('sNone').onclick = () => { sel = selM = null; ui(); };
-$('smode').onclick = () => { st.smode = (st.smode + 1) % 3; ui(); };
+for (const b of document.querySelectorAll('#smode button')) b.onclick = () => { st.smode = +b.dataset.m; ui(); };
 $('gap').onclick = () => { st.gap = (st.gap + 1) % GAPS.length; ui(); };
 $('cpy').onclick = () => { if (flt) return; clip = grab(); let n = 0; for (const v of clip.on) n += v; toast('Copied ' + n + ' px (all channels)'); ui(); };
 $('pst').onclick = pasteStart;
@@ -471,16 +631,14 @@ $('r45').onclick = () => { flt.ang += 45; floatShow(); ui(); }; $('r90').onclick
 $('fOk').onclick = () => pasteEnd(true); $('fNo').onclick = () => pasteEnd(false);
 $('undo').onclick = () => history(UNDO, REDO, 'old'); $('redo').onclick = () => history(REDO, UNDO, 'nw');
 addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? $('redo').onclick() : $('undo').onclick(); } });
-$('mnu').onclick = e => { e.stopPropagation(); $('menu').classList.toggle('open'); };
-addEventListener('pointerdown', e => { if (!$('menu').contains(e.target) && e.target !== $('mnu')) $('menu').classList.remove('open'); });
 function png() {
   const c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d'), d = g.createImageData(W, H);
   for (let i = 0; i < W * H; i++) { d.data[i * 4] = CH[0][i] * 4; d.data[i * 4 + 1] = CH[1][i]; d.data[i * 4 + 2] = CH[2][i]; d.data[i * 4 + 3] = 255; }   // opaque: no premultiplying
   g.putImageData(d, 0, 0); return new Promise(r => c.toBlob(r, 'image/png'));
 }
-$('mDl').onclick = async () => { const b = await png(), a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'atlas_m.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); $('menu').classList.remove('open'); };
-$('mShare').onclick = async () => { const f = new File([await png()], 'atlas_m.png', { type: 'image/png' }); try { await navigator.share({ files: [f] }); } catch (e) { if (e.name !== 'AbortError') toast('Share failed: ' + e.message); } $('menu').classList.remove('open'); };
-$('mImp').onclick = () => { $('file').click(); $('menu').classList.remove('open'); };
+$('mDl').onclick = async () => { const b = await png(), a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'atlas_m.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); };
+$('mShare').onclick = async () => { const f = new File([await png()], 'atlas_m.png', { type: 'image/png' }); try { await navigator.share({ files: [f] }); } catch (e) { if (e.name !== 'AbortError') toast('Share failed: ' + e.message); } };
+$('mImp').onclick = () => { $('file').click(); };
 $('file').onchange = async () => {
   const f = $('file').files[0]; $('file').value = ''; if (!f) return;
   const bm = await createImageBitmap(f); if (bm.width !== W || bm.height !== H) { toast(`Wrong size: ${bm.width}×${bm.height}, the atlas is ${W}×${H}`); return; }
@@ -489,7 +647,7 @@ $('file').onchange = async () => {
 function revert(all) {
   pasteEnd(false); const [rx, ry, rw, rh] = all ? [0, 0, W, H] : rect();
   begin(); for (let c = 0; c < 3; c++) for (let y = ry; y < ry + rh; y++) for (let x = rx; x < rx + rw; x++) { const i = y * W + x; put(i, FILE[c][i], c); } end();
-  full2 = true; dirty3 = true; ui(); toast(all ? 'Reverted everything' : 'Reverted ' + (st.spr || 'atlas')); $('menu').classList.remove('open');
+  full2 = true; dirty3 = true; ui(); toast(all ? 'Reverted everything' : 'Reverted ' + (st.spr || 'atlas'));
 }
 $('mRevS').onclick = () => revert(false);
 $('mRevA').onclick = () => { if (confirm('Throw away all painting and go back to the published atlas_m.png?')) revert(true); };
