@@ -40,7 +40,7 @@ if extra.get('jeepV') != 2:
     a[:, :, 0] = a[:, :, 1] = a[:, :, 2] = np.where(L >= 185, 245, np.where(L >= 120, 200, L))   # greys onto the tint's bands: paint, shade, dark
     S['decal'] = d; S['jeep_tire'] = piece(108, 114, 136, 126); S['jeep_wheel'] = piece(138, 104, 166, 132)
     extra['jeepStar'] = [24, 0]                        # hood centre, from the pivot
-    extra['jeepWells'] = [[24, 21], [-22, 20]]         # front / rear wheel well centres (and mirrored to -y)
+    extra['jeepWells'] = [[24, 15], [-22, 15]]         # front / rear wheel well centres (and mirrored to -y)
     extra['jeepV'] = 2
 if 'tur11' in meta:                               # first run: split the full-length turret frame into body + cannon
     t, px, py = old('tur11'); CUT = 51            # columns 0..50 = turret + mantlet (identical in every recoil frame)

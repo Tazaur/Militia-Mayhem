@@ -7,7 +7,7 @@ js='\n'.join(open(f,encoding='utf-8').read() for f in sorted(glob.glob('src/*.js
 extra=open('atlas_extra.json',encoding='utf-8').read()
 # automatic version stamp: the build number goes up by one whenever the game's source or art actually changes
 import hashlib,os,datetime
-h=hashlib.sha1((js+meta+atlas+walls).encode()).hexdigest()
+h=hashlib.sha1((js+meta+extra+atlas+walls).encode()).hexdigest()
 st=json.load(open('version.json')) if os.path.exists('version.json') else {'build':14,'hash':''}
 if st['hash']!=h: st['build']+=1; st['hash']=h; st['date']=datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).strftime('%Y-%m-%d %H:%M')
 json.dump(st,open('version.json','w'))
