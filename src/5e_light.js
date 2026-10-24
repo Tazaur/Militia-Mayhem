@@ -7,13 +7,12 @@
    With the sun on, the sun's shader does them instead, from its height buffer (per pixel, slopes facing a light lit more) */
 const LC = 4, LMAX = 10, LIGHTS = [], LFX = [];
 const LH = { tank: 30, jeep: 20, nest: 12, bag: 12, hay: 16, tree: 255 };                 // how tall things are
-const MGH = { tank: 44, jeep: 32, nest: 22 };                                             // mounted MG muzzle height
 /* a light this frame (skip: the thing it comes from, which mustn't shade it); lightFx: one that fades over T s */
 function light(x, y, r, h, k, skip) { LIGHTS.push({ x, y, r, h, k, skip }); }
 function lightFx(x, y, r, h, T) { LFX.push({ x, y, r, h, t0: M.time, T }); }
 function lightsNow(vis) {          // this frame's strongest lights in view (and the queue emptied)
   for (let i = LFX.length - 1; i >= 0; i--) { const f = LFX[i], u = (M.time - f.t0) / f.T; if (u >= 1 || u < 0) LFX.splice(i, 1); else light(f.x, f.y, f.r, f.h, (1 - u) ** 2); }
-  for (const w of M.wrecks) if (w.burn > 0) light(w.x, w.y, 110, 34, 0.4 + 0.15 * Math.sin(M.time * 23 + w.x) * Math.sin(M.time * 9.7), w);   // still burning
+  for (const w of M.wrecks) if (w.burn > 0) light(w.x, w.y, 110, topOf(w) + 6, 0.4 + 0.15 * Math.sin(M.time * 23 + w.x) * Math.sin(M.time * 9.7), w);   // still burning
   const L = LIGHTS.filter(l => l.k > 0.02 && vis(l.x, l.y, l.r)).sort((a, b) => b.k * b.r - a.k * a.r).slice(0, LMAX); LIGHTS.length = 0;
   return L;
 }
@@ -36,9 +35,9 @@ function drawLight(l) {
   for (const v of M.vehicles) {
     if (!v.active || v.dead || v === l.skip || !near(v)) continue;
     if (v.type === 'nest') put(v.x - 21, v.y - 21, v.x + 21, v.y + 21, LH.nest, (x, y) => { const d = (x - v.x) ** 2 + (y - v.y) ** 2; return d > 169 && d < 441; });   // the ring of bags
-    else hull(v, v.T.hl, v.T.hw, LH[v.type]);
+    else hull(v, v.T.hl, v.T.hw, topOf(v) || LH[v.type]);
   }
-  for (const w of M.wrecks) if (w !== l.skip && near(w)) hull(w, VT[w.type].hl, VT[w.type].hw, LH[w.type] * 0.8);
+  for (const w of M.wrecks) if (w !== l.skip && near(w)) hull(w, VT[w.type].hl, VT[w.type].hw, topOf(w) || LH[w.type] * 0.8);
   // rays: q[ray, step] = the lowest (h - height) / distance of everything before that step
   const N = Math.ceil(TAU * n);
   if (_lq.length < N * n) _lq = new Float32Array(N * n);
@@ -82,17 +81,58 @@ function drawLight(l) {
 const SUN = { az: -2.36, el: 0.7, tint: [0.46, 0.5, 0.64], warm: [1, 0.93, 0.8] };     // az: toward the sun (up-left); el: its height
 const HS = 0.5;                                                                       // height buffer resolution vs the screen
 const SUNH = { flag: 22, item: 4, wall: 40, fence: 9, hay: 14, crate: 10, nest: 10, tree: [56, 36] };     // px
-const SUNB = { mgNest: 4, stand: 7, jump: 4 };     // px: a tripod's gap under the nest MG; a soldier's legs (added, solid); a jump's gap
+const SUNB = { mgNest: 4, stand: 18, jump: 4 };     // px: a tripod's gap under the nest MG; a soldier's legs (added to his painted height, solid); a jump's gap
 /* per part (sprite name less its frame number) or shape (SUNH name): lift = an air gap (px) between it and what it rests
    on, add = px taller than painted. A part's start is the top of what's under it (+ lift); its pixels stand on that */
 const SUNP = { tur_gun: { lift: 4 } };
 /* draw order: each thing's height (px, its top as the sun pass has it); drawWorld draws low to high */
-const ZH = { body: 1, item: 2, low: 4, prone: 4, sol: 13, arc: 9, nest: SUNH.nest, wreck: 12, shot: 12, mg: 22, jeep: 24, tank: 26 };
-const solZ = s => s.down ? ZH.body : (s.stance === 0 ? SUNB.stand + ZH.sol : ZH.prone) + SUNB.jump * jumpK(s);
+const ZH = { body: 1, item: 2, shot: 12, smoke: 60 };     // fallbacks; the rest comes from the art (topOf, artMax, shotZ)
+const solZ = s => s.down ? ZH.body : solLift(s) + solAdd(s) + artMax('sol_' + bodyPose(s));
 const sunP = n => SUNP[n] || SUNP[n.replace(/\d+$/, '')] || {};
 let SUNNOW = false, SUNDBG = 0, _sun = null;
 const MIMG = typeof Image !== 'undefined' && typeof MAT_SRC !== 'undefined' ? new Image() : null;
 if (MIMG) MIMG.src = MAT_SRC;
+/* the material atlas's heights (mp) beside the colour atlas's alpha (ap), readable without WebGL: draw order, spawn heights */
+let MAT = null;
+function matData() {
+  if (MAT || !MIMG || !MIMG.complete || !MIMG.width || !imgReady) return MAT;
+  const w = MIMG.width, h = MIMG.height, g2 = mk(w, h).getContext('2d', { willReadFrequently: true });
+  g2.drawImage(MIMG, 0, 0); const mp = g2.getImageData(0, 0, w, h).data; g2.clearRect(0, 0, w, h); g2.drawImage(IMG, 0, 0); const ap = g2.getImageData(0, 0, w, h).data;
+  return MAT = { mp, ap, w };
+}
+/* a sprite's painted height (px) at a point (from its pivot, unrotated); past its edge, the nearest pixel back toward the pivot */
+function artH(n, lx, ly) {
+  const D = matData(), m = ATLAS[n]; if (!D || !m) return 0;
+  const L = Math.hypot(lx, ly), st = L > 1 ? 1 / L : 1;
+  for (let f = 1; f > 0; f -= st) { const x = Math.floor(m[4] + lx * f), y = Math.floor(m[5] + ly * f); if (x < 0 || y < 0 || x >= m[2] || y >= m[3]) continue; const i = ((m[1] + y) * D.w + m[0] + x) * 4; if (D.ap[i + 3] >= 128) return D.mp[i] / 4; }
+  return 0;
+}
+const _amx = new Map();
+function artMax(n) {         // its tallest pixel
+  let v = _amx.get(n); if (v !== undefined) return v; const D = matData(), m = ATLAS[n]; if (!D || !m) return 0; v = 0;
+  for (let y = 0; y < m[3]; y++) for (let x = 0; x < m[2]; x++) { const i = ((m[1] + y) * D.w + m[0] + x) * 4; if (D.ap[i + 3] >= 128) v = Math.max(v, D.mp[i] / 4); }
+  _amx.set(n, v); return v;
+}
+/* where things start: a soldier's gap under him (a jump) and his legs; the gun's muzzle, the throwing hand */
+const solLift = s => Math.round(SUNB.jump * jumpK(s)), solAdd = s => s.stance === 2 ? 0 : SUNB.stand;
+function handH(s) { return solLift(s) + solAdd(s) + artH('sol_nogun', 10, 0); }
+function gunH(s) {
+  if (s.veh) { const q = partsOf(s.veh).find(q => q.who === s); if (!q) return ZH.shot; const [x, y] = muzzle(s, 20); return partH(q, x, y); }
+  const [x, y] = gunTip(s), c = Math.cos(s.a), sn = Math.sin(s.a), dx = x - s.x, dy = y - s.y;
+  return solLift(s) + solAdd(s) + artH('sol_' + bodyPose(s), dx * c + dy * sn, -dx * sn + dy * c);
+}
+/* a vehicle's mounted MG and cannon at their muzzles */
+function mgH(v) { const q = partsOf(v).find(q => /^mg/.test(q.n)), [mx, my] = mgPos(v); return q ? partH(q, mx + Math.cos(v.mgA) * 31, my + Math.sin(v.mgA) * 31) : ZH.shot; }
+function canH(v) { const q = partsOf(v).find(q => q.n === 'tur_gun'), [px, py] = turretPivot(v); return q ? partH(q, px + Math.cos(v.ta) * BARREL, py + Math.sin(v.ta) * BARREL) : ZH.shot; }
+/* a projectile's height: where it left the gun (worked out once) */
+function shotZ(p) {
+  if (p.k === 'nade') return p.h + 3; if (p.z !== undefined) return p.z;
+  const v = p.srcV || (p.src && p.src.veh);
+  return p.z = v && v.active ? (p.k === 'shell' ? canH(v) : p.mg ? mgH(v) : gunH(p.src)) : p.src && p.src.alive ? gunH(p.src) : ZH.shot;
+}
+/* a grenade in the air: its height above the line it was thrown along (from the hand down to where it lands) lifts it on screen */
+const NADE_T = 2 * 260 / 700;
+const nadeY = p => p.y - 0.3 * Math.max(0, p.h - (p.h0 || 0) * clamp(1 - ((p.T0 || p.life) - p.life) / NADE_T, 0, 1));
 function sunOn() { return CFG.sun !== false && !!sunInit(); }
 function sunInit() {
   if (_sun !== null) return _sun;
@@ -108,7 +148,7 @@ function sunInit() {
 uniform sampler2D H; uniform vec2 S; uniform vec4 R; uniform float K, T, O, Q, V; uniform vec2 P; uniform vec3 L, C, W; uniform vec2 D; uniform vec4 PL[${LMAX}]; uniform float PK[${LMAX}];
 vec4 tx(vec2 p) { return texture2D(H, clamp(p, R.xy, R.zw) / S); }
 float hh(vec2 p) { return tx(p).r * 63.75; }
-float blk(vec2 p, float z) { vec4 c = tx(p); return min(c.r * 63.75 - z, z - (1. - c.g) * 63.75); }     // > 0: height z is inside this pixel's span
+float blk(vec2 p, float z, out float o) { vec4 c = tx(p); o = 1. - c.b * 0.65; return min(c.r * 63.75 - z, z - (1. - c.g) * 63.75); }     // > 0: height z is inside this pixel's span; o: how much it blocks (smoke: some)
 void main() {
   vec2 p = vec2(gl_FragCoord.x - O, V - gl_FragCoord.y) + P;     // O: where this map (Q: 0 shade, 1 highlights, 2 glow) sits in GC; P: the view's place in H
   float h0 = hh(p);
@@ -117,8 +157,8 @@ void main() {
   float lam = (0.45 + 0.55 * max(dot(N, L), 0.)) / (0.45 + 0.55 * L.z);
   float sh = 1., mt = (64. - h0) / T, j = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));     // interleaved gradient noise: an even spread, not speckle
   for (int i = 0; i < 24; i++) {
-    float x = (float(i) + j) / 24., t = mt * x * x, d = blk(p + D * t * K, h0 + t * T);     // steps fine near the foot (short shadows of small things), coarse far out (walls)
-    if (d > 0.) sh = min(sh, clamp(1. - d / (1. + t * 0.12), 0., 1.));
+    float o, x = (float(i) + j) / 24., t = mt * x * x, d = blk(p + D * t * K, h0 + t * T, o);     // steps fine near the foot (short shadows of small things), coarse far out (walls)
+    if (d > 0.) sh = min(sh, 1. - (1. - clamp(1. - d / (1. + t * 0.12), 0., 1.)) * o);
   }
   vec3 pl = vec3(0.);
   for (int i = 0; i < ${LMAX}; i++) {
@@ -126,7 +166,7 @@ void main() {
     vec2 v = PL[i].xy - p; float D = length(v) / K, lh = PL[i].w - h0;
     if (D >= PL[i].z) continue;
     float s = 1.;
-    for (int k = 1; k < 12; k++) { float t = (float(k) - j) / 12., d = blk(p + v * t, h0 + lh * t); if (d > 0.) s = min(s, clamp(1. - d / 3., 0., 1.)); }
+    for (int k = 1; k < 12; k++) { float o, t = (float(k) - j) / 12., d = blk(p + v * t, h0 + lh * t, o); if (d > 0.) s = min(s, 1. - (1. - clamp(1. - d / 3., 0., 1.)) * o); }
     vec3 ld = normalize(vec3(v / K, lh));
     pl += PK[i] * s * (0.5 * pow(1. - D / PL[i].z, 1.3) + 0.5 * pow(max(0., 1. - D / 40.), 2.)) * mix(1., clamp(dot(N, ld) / max(ld.z, 0.15), 0., 2.), 0.7);
   }
@@ -142,8 +182,7 @@ void main() {
     for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
     const U = {}; for (const n of ['S', 'R', 'K', 'L', 'D', 'T', 'C', 'W', 'O', 'Q', 'V', 'P', 'PL', 'PK']) U[n] = gl.getUniformLocation(P, n);
     // the material atlas with the colour atlas's silhouette, for matSpr
-    const w = MIMG.width, h = MIMG.height, g2 = mk(w, h).getContext('2d', { willReadFrequently: true });
-    g2.drawImage(MIMG, 0, 0); const mp = g2.getImageData(0, 0, w, h).data; g2.clearRect(0, 0, w, h); g2.drawImage(IMG, 0, 0); const ap = g2.getImageData(0, 0, w, h).data;
+    const { mp, ap, w } = matData();
     _sun = { gl, GC, U, HC: mk(4, 4), HX: null, mp, ap, w, spr: new Map(), pl: new Float32Array(LMAX * 4), pk: new Float32Array(LMAX) };
   } catch (e) { console.warn('sun off:', e.message); _sun = false; }
   return _sun;
@@ -154,16 +193,16 @@ function matSpr(n, base, add) {         // its pixels from base up, each add px 
   const m = ATLAS[n]; c = mk(m[2], m[3]); const g = c.getContext('2d'), d = g.createImageData(m[2], m[3]), p = d.data;
   for (let y = 0; y < m[3]; y++) for (let x = 0; x < m[2]; x++) {
     const i = ((m[1] + y) * S.w + m[0] + x) * 4, o = (y * m[2] + x) * 4; if (S.ap[i + 3] < 128) continue;
-    p[o] = Math.min(255, S.mp[i] + (base + add) * 4); p[o + 1] = 255 - Math.min(63, base) * 4; p[o + 2] = S.mp[i + 2]; p[o + 3] = 255;
+    p[o] = Math.min(255, S.mp[i] + (base + add) * 4); p[o + 1] = 255 - Math.min(63, base) * 4; p[o + 3] = 255;     // B 0: solid (B is haze: smoke)
   }
   g.putImageData(d, 0, 0); S.spr.set(key, c); return c;
 }
 function hspr(n, x, y, a, base, add) { const m = ATLAS[n]; if (m) sprC(matSpr(n, base || 0, add || 0), m[4], m[5], x, y, a); }
 /* a part starts on top of what's already under it: the painted height of the parts stacked so far (the hull, the
    turret...) at its rest point (its pivot unless given: an MG's mount, a seat), the highest within 1 px; at least min */
-let _stk = [];
+let _stk = [], _pp = null;
 function hUnder(x, y) {
-  const S = _sun; let b = 0;
+  const S = matData(); let b = 0; if (!S) return 0;
   for (const q of _stk) {
     const m = ATLAS[q.n], c = Math.cos(q.a), s = Math.sin(q.a);
     for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
@@ -174,14 +213,51 @@ function hUnder(x, y) {
   }
   return b;
 }
-function hpart(n, x, y, a, o = {}) {         // o: min (start at least), add, rx / ry (rest point), keep (others stand on it)
-  if (!ATLAS[n]) return; const P = sunP(n), b = Math.max(o.min || 0, Math.round(hUnder(o.rx ?? x, o.ry ?? y))) + (P.lift || 0), add = (o.add || 0) + (P.add || 0);
-  hspr(n, x, y, a, b, add); if (o.keep) _stk.push({ n, x, y, a, b, add });
+function hpart(n, x, y, a, o = {}) {         // o: min (start at least), add, rx / ry (rest point), keep (others stand on it), who (the crewman)
+  if (!ATLAS[n]) return; const P = sunP(n), b = Math.max(o.min || 0, Math.round(hUnder(o.rx ?? x, o.ry ?? y))) + (P.lift || 0), add = (o.add || 0) + (P.add || 0), q = { n, x, y, a, b, add, who: o.who };
+  if (o.keep) _stk.push(q); if (_pp) _pp.push(q); else hspr(n, x, y, a, b, add);
 }
+/* a thing's parts, bottom up, each standing on what's under it (worked out once a frame): what the height pass draws,
+   and where its guns, crew and top are */
+let FRAMEN = 0; const _pc = new WeakMap();
+function partsOf(o) {
+  let c = _pc.get(o); if (c && c.f === FRAMEN) return c.p;
+  const st = _stk, pp = _pp; _stk = []; _pp = []; (o.seats ? vehParts : M.wrecks.includes(o) ? wreckParts : solParts)(o); c = { f: FRAMEN, p: _pp }; _stk = st; _pp = pp; _pc.set(o, c); return c.p;
+}
+function partH(q, x, y) { const c = Math.cos(q.a), s = Math.sin(q.a), dx = x - q.x, dy = y - q.y; return q.b + q.add + artH(q.n, dx * c + dy * s, -dx * s + dy * c); }
+/* its top (px): the tallest part (crew left out: they don't make the hull taller in the draw order) */
+function topOf(o) { let t = 0; for (const q of partsOf(o)) if (!q.who) t = Math.max(t, q.b + q.add + artMax(q.n)); return t; }
+function solParts(s) {
+  if (s.down) { hpart('sol_dead', s.x, s.y, s.a + Math.PI); return; }
+  const body = 'sol_' + bodyPose(s), up = solLift(s);     // a jump lifts him off the ground
+  if (s.stance === 2) { hpart('sol_' + legFrame(s), s.x, s.y, s.a, { min: up }); hpart(body, s.x, s.y, s.a, { min: up }); }
+  else hpart(body, s.x, s.y, s.a, { min: up, add: solAdd(s) });     // standing: his legs under him, solid
+}
+function wreckParts(w) {
+  if (w.type === 'tank') { const tx = w.x - 4 * Math.cos(w.a), ty = w.y - 4 * Math.sin(w.a); hpart('hull5', w.x, w.y, w.a, { keep: 1 }); hpart('tur_dead', tx, ty, w.ta); }
+  else { if (w.bx !== undefined) hpart(w.bf ? 'jeep_flat' : 'jeep_wheel', w.bx, w.by, w.ba); hpart('jeep4', w.x, w.y, w.a); }
+}
+function vehParts(v) {
+  const [mx, my] = mgPos(v), mg = v.mgFlash > 0 ? 'mg_f' : 'mg', crew = (i, min, add) => { const s = v.seats[i]; if (s) hpart('sol_sit', s.x, s.y, s.a, { min, add, who: s }); };
+  const mount = { rx: mx - Math.cos(v.mgA) * 4, ry: my - Math.sin(v.mgA) * 4 };     // mgPos is 4 px out from the mount
+  if (v.type === 'nest') { hpart(mg, mx, my, v.mgA, { ...mount, min: SUNB.mgNest }); crew(0); return; }
+  if (v.type === 'tank') {
+    const [px, py] = turretPivot(v), kick = clamp(v.recoil, 0, 1) * 33;
+    hpart('hull' + hullFrame(v), v.x, v.y, v.a, { keep: 1 }); crew(2); crew(3);
+    hpart('tur_gun', px - Math.cos(v.ta) * kick, py - Math.sin(v.ta) * kick, v.ta, { rx: px, ry: py }); hpart('tur', px, py, v.ta, { keep: 1 });     // the gun rests on the hull under the turret
+    hpart(mg, mx, my, v.mgA, mount); crew(1);
+  } else {
+    const c = Math.cos(v.a), s = Math.sin(v.a), [wx, wy] = EXTRA.jeepWells[0], st = jeepSteer(v), f = v.hp / v.T.hp;
+    for (const sd of [-1, 1]) hpart('jeep_tire', v.x + c * wx - s * wy * sd, v.y + s * wx + c * wy * sd, v.a + st);
+    hpart('jeep' + (f > 0.75 ? 0 : f > 0.5 ? 1 : f > 0.25 ? 2 : 3), v.x, v.y, v.a, { keep: 1 }); crew(0); crew(1);
+    hpart(mg, mx, my, v.mgA, mount); crew(2, 0, SUNB.stand);     // the MG on its post; the gunner stands in the bed
+  }
+}
+const hParts = o => { for (const q of partsOf(o)) hspr(q.n, q.x, q.y, q.a, q.b, q.add); };
 /* a shape's fill: SUNH height h (+ add) standing on its lift */
 const H4 = (h, n) => { const P = n ? sunP(n) : {}, b = P.lift || 0; return `rgb(${clamp(Math.round((h + b + (P.add || 0)) * 4), 0, 255)},${255 - clamp(b * 4, 0, 255)},0)`; };
 /* everything solid, as heights (the same things, and the same hidden ones left out, as the frame draws) */
-function sunHeights(vis, hidden) {
+function sunHeights(vis, hidden, vw) {
   worldT(); ctx.fillStyle = H4(SUNH.wall, 'wall');
   for (const b of MAP.buildings) if (!b.glass && vis(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h))) ctx.fillRect(b.x, b.y, b.w, b.h);
   for (const s of MAP.statics) {
@@ -195,40 +271,47 @@ function sunHeights(vis, hidden) {
   const span = (t, b) => `rgb(${clamp(Math.round(t * 4), 0, 255)},${255 - clamp(Math.round(b * 4), 0, 255)},0)`;
   ctx.fillStyle = span(SUNH.flag, 0); for (const f of M.flags) if (vis(f.x, f.y, 30)) ctx.fillRect(f.x - 1, f.y - 1, 2, 2);
   ctx.fillStyle = span(SUNH.item, 0); for (const it of M.items) if ((it.k === 'med' || it.k === 'ammo') && vis(it.x, it.y, 8)) ctx.fillRect(it.x - 6, it.y - 5, 12, 10);
-  for (const p of M.proj) if (p.k === 'nade' && vis(p.x, p.y, 8)) { ctx.fillStyle = span(p.h + 3, p.h); ctx.beginPath(); ctx.arc(p.x, p.y - p.h * 0.3, 3, 0, TAU); ctx.fill(); }
+  for (const p of M.proj) if (p.k === 'nade' && vis(p.x, p.y, 8)) { ctx.fillStyle = span(p.h + 3, p.h); ctx.beginPath(); ctx.arc(p.x, nadeY(p), 3, 0, TAU); ctx.fill(); }
   ctx.fillStyle = H4(SUNH.crate, 'crate'); for (const c of M.crates) if (c.live && vis(c.x, c.y, 14)) { ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(c.a); ctx.fillRect(-8, -8, 16, 16); ctx.restore(); }
   for (const A of MAP.arcs) { if (!vis(A.x, A.y, 50)) continue; const f = A.lost / A.bags.length; hpart(f < 0.25 ? 'bagarc0' : f < 0.75 ? 'bagarc1' : 'bagarc2', A.x, A.y, A.a); }
-  for (const w of M.wrecks) {
-    if (!vis(w.x, w.y, 70) || w.t < 1) continue;
-    _stk = [];
-    if (w.type === 'tank') { const tx = w.x - 4 * Math.cos(w.a), ty = w.y - 4 * Math.sin(w.a); hpart('hull5', w.x, w.y, w.a, { keep: 1 }); hpart('tur_dead', tx, ty, w.ta); }
-    else { if (w.bx !== undefined) hpart(w.bf ? 'jeep_flat' : 'jeep_wheel', w.bx, w.by, w.ba); hpart('jeep4', w.x, w.y, w.a); }
-  }
-  for (const s of M.sol) {
-    if (!s.alive || s.veh || s.swim || !vis(s.x, s.y, 30) || hidden(s)) continue;
-    _stk = [];
-    if (s.down) { hpart('sol_dead', s.x, s.y, s.a + Math.PI); continue; }
-    const body = 'sol_' + bodyPose(s), up = Math.round(SUNB.jump * jumpK(s));     // a jump lifts him off the ground
-    if (s.stance === 2) { hpart('sol_' + legFrame(s), s.x, s.y, s.a, { min: up }); hpart(body, s.x, s.y, s.a, { min: up }); }
-    else hpart(body, s.x, s.y, s.a, { min: up, add: SUNB.stand });     // standing: his legs under him, solid
-  }
+  for (const w of M.wrecks) if (vis(w.x, w.y, 70) && w.t >= 1) hParts(w);
+  for (const s of M.sol) if (s.alive && !s.veh && !s.swim && vis(s.x, s.y, 30) && !hidden(s)) hParts(s);
   for (const v of M.vehicles) {
     if (!v.active || !vis(v.x, v.y, 80)) continue;
-    const [mx, my] = mgPos(v), mg = v.mgFlash > 0 ? 'mg_f' : 'mg', crew = (i, min, add) => { const s = v.seats[i]; if (s) hpart('sol_sit', s.x, s.y, s.a, { min, add }); };
-    const mount = { rx: mx - Math.cos(v.mgA) * 4, ry: my - Math.sin(v.mgA) * 4 }; _stk = [];     // mgPos is 4 px out from the mount
-    if (v.type === 'nest') { ctx.strokeStyle = H4(SUNH.nest, 'nest'); ctx.lineWidth = 8; worldT(); ctx.beginPath(); ctx.arc(v.x, v.y, 18, v.a - 1.35, v.a + 1.35); ctx.stroke(); hpart(mg, mx, my, v.mgA, { ...mount, min: SUNB.mgNest }); crew(0); continue; }
-    if (v.type === 'tank') {
-      const [px, py] = turretPivot(v), kick = clamp(v.recoil, 0, 1) * 33;
-      hpart('hull' + hullFrame(v), v.x, v.y, v.a, { keep: 1 }); crew(2); crew(3);
-      hpart('tur_gun', px - Math.cos(v.ta) * kick, py - Math.sin(v.ta) * kick, v.ta, { rx: px, ry: py }); hpart('tur', px, py, v.ta, { keep: 1 });     // the gun rests on the hull under the turret
-      hpart(mg, mx, my, v.mgA, mount); crew(1);
-    } else {
-      const c = Math.cos(v.a), s = Math.sin(v.a), [wx, wy] = EXTRA.jeepWells[0], st = jeepSteer(v), f = v.hp / v.T.hp;
-      for (const sd of [-1, 1]) hpart('jeep_tire', v.x + c * wx - s * wy * sd, v.y + s * wx + c * wy * sd, v.a + st);
-      hpart('jeep' + (f > 0.75 ? 0 : f > 0.5 ? 1 : f > 0.25 ? 2 : 3), v.x, v.y, v.a, { keep: 1 }); crew(0); crew(1);
-      hpart(mg, mx, my, v.mgA, mount); crew(2, 0, SUNB.stand);     // the MG on its post; the gunner stands in the bed
-    }
+    if (v.type === 'nest') { ctx.strokeStyle = H4(SUNH.nest, 'nest'); ctx.lineWidth = 8; worldT(); ctx.beginPath(); ctx.arc(v.x, v.y, 18, v.a - 1.35, v.a + 1.35); ctx.stroke(); }
+    hParts(v);
   }
+  hazeHeights(vis, vw);
+}
+/* smoke and dust as heights, so the sun lights them: each puff a dome as tall as it is thick (its look's opacity x
+   SMK_HT; a particle's, x its size), bumpy with baked noise, on its base (the field's: the ground; a particle's: where it
+   came out, rising); B = 255 marks it haze (a lighter shadow). Kept off the walls (the field's smoke is cut out of them too) */
+const SMK_HT = 40, PUFF_RISE = { smoke: 8, steam: 12, dust: 0 }, PUFF_THICK = { smoke: 1.4, steam: 1, dust: 1.8 };
+const _dome = new Map();
+function dome(t, b, v) {
+  b = Math.min(60, Math.round(b / 4) * 4); t = Math.min(63, Math.max(b + 1, Math.round(t / 2) * 2)); const key = t * 4096 + b * 4 + v; let c = _dome.get(key); if (c) return c;
+  const N = 32, d = mk(N, N).getContext('2d').createImageData(N, N), p = d.data, rn = mulberry(17 + v * 31), G = [];
+  for (let i = 0; i < 64; i++) G.push(rn());
+  const h = (i, j) => G[(i & 7) + (j & 7) * 8], vn = (x, y) => { const xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi, sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+    return lerp(lerp(h(xi, yi), h(xi + 1, yi), sx), lerp(h(xi, yi + 1), h(xi + 1, yi + 1), sx), sy); };
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const u = (x + 0.5) / N * 2 - 1, w = (y + 0.5) / N * 2 - 1, r2 = u * u + w * w, o = (y * N + x) * 4; if (r2 >= 1) continue;
+    const n = 0.62 * vn(x / 6, y / 6) + 0.38 * vn(x / 3 + 9, y / 3 + 5), k = Math.sqrt(1 - r2) * (0.6 + 0.4 * n);
+    p[o] = Math.round((b + (t - b) * k) * 4); p[o + 1] = 255 - b * 4; p[o + 2] = 255; p[o + 3] = 255;
+  }
+  c = mk(N, N); c.getContext('2d').putImageData(d, 0, 0); _dome.set(key, c); return c;
+}
+function hazeHeights(vis, vw) {
+  ctx.save(); worldT(); ctx.beginPath(); ctx.rect(-1e5, -1e5, 2e5, 2e5);
+  for (const b of MAP.buildings) if (!b.glass && vis(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h))) ctx.rect(b.x, b.y, b.w, b.h);
+  ctx.clip('evenodd'); ctx.imageSmoothingEnabled = true;
+  if (M.gsf && M.gsf.act.length) smokePuffs(null, vw ? viewSols(vw).map(posOf) : [], (x, y, r, al, h) => vis(x, y, r) && img(dome(SMK_HT * al, 0, h * 4 & 3), x, y, h * TAU, r / 16));
+  for (const q of M.parts) {
+    const R = PUFF_RISE[q.k]; if (R === undefined || !vis(q.x, q.y, q.sz + 10)) continue;
+    const a = clamp(q.life / q.max, 0, 1), r = q.sz * (q.k === 'steam' ? 1 : 1.15), b = (q.z || 0) + R * (q.max - q.life), al = q.k === 'smoke' ? a * 0.6 : q.k === 'dust' ? a * 0.45 : a * 0.5;
+    if (al < 0.05) continue; img(dome(b + r * al * PUFF_THICK[q.k], b, (q.v || 0) & 3), q.x, q.y, (q.v || 0) * 1.7, r / 16);
+  }
+  ctx.restore();
 }
 function drawSun(vw, vis, hidden) {
   const S = _sun, { gl, GC, HC, U } = S, w = Math.ceil(cv.width * HS), h = Math.ceil(cv.height * HS), dpr = DPR, K = VZ * dpr * HS;
@@ -243,7 +326,7 @@ function drawSun(vw, vis, hidden) {
   const main = ctx, fl = FLASH, ox = VOX, oy = VOY, far = (x, y, r) => vis(x, y, r + L); ctx = S.HX; DPR = dpr * HS; FLASH = 0; VOX += px / DPR; VOY += py / DPR;
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = '#000'; ctx.fillRect(rx, ry, bw, bh);
   ctx.save(); ctx.beginPath(); ctx.rect(rx, ry, bw, bh); ctx.clip(); ctx.imageSmoothingEnabled = false; ctx.globalCompositeOperation = 'lighten';
-  sunHeights(far, hidden);
+  sunHeights(far, hidden, vw);
   ctx.restore(); ctx = main; DPR = dpr; FLASH = fl; VOX = ox; VOY = oy;
   // light
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, HC);

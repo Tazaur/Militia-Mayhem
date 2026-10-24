@@ -396,7 +396,7 @@ function fxTick(sdt, dt) {
   prune(M.flings, f => !f.done);
   updateSmokeField(dt); if (MAP.tiled) tiledTick(sdt);
   updateCorpses(dt);
-  for (const w of M.wrecks) { if (w.burn > 0 && Math.random() < sdt * 18) { part({ k: 'smoke', x: w.x + rnd(-20, 20), y: w.y + rnd(-15, 15), vx: rnd(-8, 8) + 6, vy: rnd(-8, 8) - 4, life: 2.2, max: 2.2, sz: rnd(12, 22), drag: 0.8 }); if (Math.random() < 0.5) part({ k: 'fire', x: w.x + rnd(-20, 20), y: w.y + rnd(-12, 12), vx: rnd(-6, 6), vy: rnd(-6, 6), life: 0.5, max: 0.5, sz: rnd(10, 20), drag: 1 }); } }
+  for (const w of M.wrecks) { if (w.burn > 0 && Math.random() < sdt * 18) { part({ k: 'smoke', z: topOf(w), x: w.x + rnd(-20, 20), y: w.y + rnd(-15, 15), vx: rnd(-8, 8) + 6, vy: rnd(-8, 8) - 4, life: 2.2, max: 2.2, sz: rnd(12, 22), drag: 0.8 }); if (Math.random() < 0.5) part({ k: 'fire', x: w.x + rnd(-20, 20), y: w.y + rnd(-12, 12), vx: rnd(-6, 6), vy: rnd(-6, 6), life: 0.5, max: 0.5, sz: rnd(10, 20), drag: 1 }); } }
   for (const q of M.parts) {
     q.life -= sdt; const dr = Math.exp(-(q.drag || 0) * sdt); q.vx *= dr; q.vy *= dr; q.x += q.vx * sdt; q.y += q.vy * sdt;
     if (q.rot !== undefined) q.rot += (q.vr || 0) * sdt;

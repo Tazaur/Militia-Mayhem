@@ -996,7 +996,7 @@ function netApplySnaps(now, dt) {
     let p = NET.pmap.get(r.id);
     if (!p) { p = { k: ['rocket', 'shell', 'nade', 'nade'][r.k], smoke: r.k === 3, nid: r.id, life: 1, h: 0, rot: 0, x: r.x, y: r.y, vx: r.vx, vy: r.vy }; NET.pmap.set(r.id, p); }
     const e = clamp((To - pa.t) / 1000, 0, 0.2); p.x = r.x + r.vx * e; p.y = r.y + r.vy * e; p.vx = r.vx; p.vy = r.vy;
-    if (r.k >= 2) { p.h = r.h; p.life = r.life; p.rot += dt * 12; } else { p.life = 1; if (Math.random() < 0.8) part({ k: 'smoke', x: p.x, y: p.y, vx: rnd(-10, 10), vy: rnd(-10, 10), life: 0.6, max: 0.6, sz: p.k === 'rocket' ? 7 : 5, drag: 2 }); }
+    if (r.k >= 2) { p.h = r.h; p.life = r.life; p.rot += dt * 12; } else { p.life = 1; if (Math.random() < 0.8) part({ k: 'smoke', z: shotZ(p), x: p.x, y: p.y, vx: rnd(-10, 10), vy: rnd(-10, 10), life: 0.6, max: 0.6, sz: p.k === 'rocket' ? 7 : 5, drag: 2 }); }
     seen.add(r.id);
   }
   for (const [id, p] of NET.pmap) if (!seen.has(id)) { p.life = 0; NET.pmap.delete(id); }

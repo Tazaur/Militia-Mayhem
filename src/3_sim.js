@@ -646,7 +646,7 @@ function fireRocket(s, st) {
 }
 function rocketFx(s, x, y) {
   sfx('rocket', x, y);
-  for (let i = 0; i < 6; i++) part({ k: 'smoke', x: s.x - Math.cos(s.a) * 14, y: s.y - Math.sin(s.a) * 14, vx: -Math.cos(s.a) * rnd(40, 120) + rnd(-30, 30), vy: -Math.sin(s.a) * rnd(40, 120) + rnd(-30, 30), life: 0.8, max: 0.8, sz: 10, drag: 3 });
+  const z = gunH(s); for (let i = 0; i < 6; i++) part({ k: 'smoke', z, x: s.x - Math.cos(s.a) * 14, y: s.y - Math.sin(s.a) * 14, vx: -Math.cos(s.a) * rnd(40, 120) + rnd(-30, 30), vy: -Math.sin(s.a) * rnd(40, 120) + rnd(-30, 30), life: 0.8, max: 0.8, sz: 10, drag: 3 });
 }
 function startReload(s) {
   const st = cw(s), W_ = WPN[st.id];
@@ -659,8 +659,8 @@ function canThrow(s) { return s.nades > 0 || s.smokes > 0; }
 function throwNade(s, dist, force) {
   let smoke = force === 'smoke' ? s.smokes > 0 : !force && s.throwSel === 1 && s.smokes > 0; if (!smoke && (s.nades <= 0 || force === 'smoke')) { if (s.smokes > 0 && !force) smoke = true; else return; }
   const [x, y] = muzzle(s, 10); dist = clamp(dist, 60, 300);
-  const sp = dist / 0.75;
-  M.proj.push({ k: 'nade', smoke, x, y, vx: Math.cos(s.a) * sp, vy: Math.sin(s.a) * sp, life: smoke ? 1.4 : 1.7, src: s, team: s.team, h: 0, vh: 260, rot: 0 });
+  const sp = dist / 0.75, h0 = handH(s), T = 2 * 260 / 700, life = smoke ? 1.4 : 1.7;     // from the hand, landing when one thrown from the ground would
+  M.proj.push({ k: 'nade', smoke, x, y, vx: Math.cos(s.a) * sp, vy: Math.sin(s.a) * sp, life, T0: life, src: s, team: s.team, h: h0, h0, vh: (350 * T * T - h0) / T, rot: 0 });
   if (smoke) s.smokes--; else s.nades--;
   s.nadeCd = 0.8; s.throwT = 0.35; s.thrownSmoke = smoke; sfx('throw', x, y);
 }
@@ -814,7 +814,7 @@ function fireCannon(v, s) {
 function cannonFx(v, x, y, s) {
   sfx('cannon', x, y);
   part({ k: 'flash', x, y, vx: 0, vy: 0, life: 0.1, max: 0.1, sz: 90, drag: 0 });
-  for (let i = 0; i < 10; i++) { const a = v.ta + rnd(-0.5, 0.5); part({ k: 'smoke', x, y, vx: Math.cos(a) * rnd(40, 160), vy: Math.sin(a) * rnd(40, 160), life: rnd(0.6, 1.2), max: 1.2, sz: rnd(10, 20), drag: 3 }); }
+  const z = canH(v); for (let i = 0; i < 10; i++) { const a = v.ta + rnd(-0.5, 0.5); part({ k: 'smoke', z, x, y, vx: Math.cos(a) * rnd(40, 160), vy: Math.sin(a) * rnd(40, 160), life: rnd(0.6, 1.2), max: 1.2, sz: rnd(10, 20), drag: 3 }); }
   for (let i = 0; i < 8; i++) { const a = v.ta + rnd(-2.6, 2.6) + Math.PI; part({ k: 'dust', x: v.x, y: v.y, vx: Math.cos(a) * rnd(60, 140), vy: Math.sin(a) * rnd(60, 140), life: 0.7, max: 0.7, sz: rnd(14, 22), drag: 3 }); }
   shakeAt(x, y, 5, 500);
   if (s && s.player) rumble(s.player, 0.6, 0.2);
@@ -967,7 +967,7 @@ function updateProjectiles(dt) {
       if (t >= 0 && t < bt) { bt = t; hit = { k: 'veh', v }; }
     }
     if (gl && gt <= bt) devGlass(gl.sec, x0 + (x1 - x0) * gt, y0 + (y1 - y0) * gt);
-    if ((p.k === 'rocket' || p.k === 'shell') && Math.random() < 0.8) part({ k: 'smoke', x: p.x, y: p.y, vx: rnd(-10, 10), vy: rnd(-10, 10), life: 0.6, max: 0.6, sz: p.k === 'rocket' ? 7 : 5, drag: 2 });
+    if ((p.k === 'rocket' || p.k === 'shell') && Math.random() < 0.8) part({ k: 'smoke', z: shotZ(p), x: p.x, y: p.y, vx: rnd(-10, 10), vy: rnd(-10, 10), life: 0.6, max: 0.6, sz: p.k === 'rocket' ? 7 : 5, drag: 2 });
     if (hit) {
       const hx = lerp(x0, x1, bt), hy = lerp(y0, y1, bt);
       p.life = 0;
@@ -1244,7 +1244,7 @@ function vehTrackFx(v, d) {
 function vehDamageFx(v, dt) {
   const T = v.T;
   if (v.hp < T.hp * 0.25 && Math.random() < dt * 25) { const [fx, fy] = toWorld(v, rnd(-T.hl * 0.6, T.hl * 0.3), rnd(-T.hw * 0.6, T.hw * 0.6)); part({ k: 'fire', x: fx, y: fy, vx: rnd(-10, 10), vy: rnd(-10, 10), life: 0.5, max: 0.5, sz: rnd(10, 18), drag: 1 }); }
-  if (v.hp < T.hp * 0.55 && Math.random() < dt * (v.hp < T.hp * 0.3 ? 14 : 5)) { const [fx, fy] = toWorld(v, rnd(-T.hl * 0.5, 0), rnd(-T.hw * 0.5, T.hw * 0.5)); part({ k: 'smoke', x: fx, y: fy, vx: rnd(-8, 8), vy: rnd(-8, 8), life: 1.6, max: 1.6, sz: rnd(8, 14), drag: 1 }); }
+  if (v.hp < T.hp * 0.55 && Math.random() < dt * (v.hp < T.hp * 0.3 ? 14 : 5)) { const [fx, fy] = toWorld(v, rnd(-T.hl * 0.5, 0), rnd(-T.hw * 0.5, T.hw * 0.5)); part({ k: 'smoke', z: topOf(v), x: fx, y: fy, vx: rnd(-8, 8), vy: rnd(-8, 8), life: 1.6, max: 1.6, sz: rnd(8, 14), drag: 1 }); }
 }
 
 /* ---------------- objectives ---------------- */

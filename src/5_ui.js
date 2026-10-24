@@ -2,6 +2,7 @@
    RENDERING, HUD, DEPLOY SCREEN, MENUS, MAIN LOOP
    ===================================================================== */
 function drawWorld(vw) {
+  FRAMEN++;
   const sh = vw.shake;
   VZ = vw.cam.z; VOX = vw.x + vw.w / 2 - (vw.cam.x + rnd(-sh, sh) / VZ) * VZ; VOY = vw.y + vw.h / 2 - (vw.cam.y + rnd(-sh, sh) / VZ) * VZ;
   VOX = Math.round(VOX * DPR) / DPR; VOY = Math.round(VOY * DPR) / DPR;     // whole screen pixels: pixel art (and the fog) shifts cleanly instead of crawling
@@ -43,18 +44,19 @@ function drawWorld(vw) {
   for (const c of M.corpses) if (vis(c.x, c.y, 30)) at(ZH.body, () => { worldT(); if (!c.baked) drawPool(ctx, c, c.t / POOL_T); solDraw(c, c.n, c.x, c.y, c.rot, 1, 1, c.t > BODY_T ? corpseAlpha(c) : undefined); });
   if (!SUNNOW) at(ZH.body, () => drawShadowLayer(vw, vis));     // without the sun: one shared offset shadow for soldiers, vehicles and bodies in the air
   for (const s of M.sol) if (s.alive && !s.veh && vis(s.x, s.y, 30) && !hidden(s)) at(solZ(s), () => drawSoldier(s, vw));
-  for (const A of MAP.arcs) if (vis(A.x, A.y, 50)) at(ZH.arc, () => { const f = A.lost / A.bags.length; spr(f < 0.25 ? 'bagarc0' : f < 0.75 ? 'bagarc1' : 'bagarc2', A.x, A.y, A.a); });
+  for (const A of MAP.arcs) if (vis(A.x, A.y, 50)) at(artMax('bagarc0'), () => { const f = A.lost / A.bags.length; spr(f < 0.25 ? 'bagarc0' : f < 0.75 ? 'bagarc1' : 'bagarc2', A.x, A.y, A.a); });
   for (const s of MAP.statics) {
     if (!s.alive || !vis(s.x, s.y, s.type === 'tree' ? 40 : 16)) continue;
     if (s.type === 'fence') at(SUNH.fence, () => { worldT(); ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.a); ctx.fillStyle = 'rgba(0,0,0,0.3)'; if (!SUNNOW) ctx.fillRect(-7, 2, 15, 3); ctx.fillStyle = CFG.style === 'grit' ? '#5a4632' : '#8a6a42'; ctx.fillRect(-7, -1, 14, 2.5); ctx.fillStyle = CFG.style === 'grit' ? '#3e3022' : '#5e4428'; ctx.fillRect(-2, -3, 4, 6); ctx.restore(); });
     else if (s.type === 'hay') at(SUNH.hay, () => { worldT(); ctx.fillStyle = 'rgba(0,0,0,0.3)'; if (!SUNNOW) { ctx.beginPath(); ctx.arc(s.x + 3, s.y + 4, 13, 0, TAU); ctx.fill(); } ctx.fillStyle = CFG.style === 'grit' ? '#857344' : '#c8a64e'; ctx.beginPath(); ctx.arc(s.x, s.y, 13, 0, TAU); ctx.fill(); ctx.strokeStyle = CFG.style === 'grit' ? '#665834' : '#a0823a'; ctx.lineWidth = 1.5; for (const r of [9, 5]) { ctx.beginPath(); ctx.arc(s.x, s.y, r, s.a, s.a + 5); ctx.stroke(); } });
     else if (s.type === 'tree') at(SUNH.tree[0], () => { const tc = s.pine ? SPR.pines[s.v] : SPR.trees[s.v]; worldT(); ctx.fillStyle = 'rgba(0,0,0,0.28)'; if (!SUNNOW) { ctx.beginPath(); ctx.arc(s.x + 6, s.y + 7, 24 * s.sc, 0, TAU); ctx.fill(); } img(tc, s.x, s.y, s.a, s.sc, 0.94); });
   }
-  for (const w of M.wrecks) if (vis(w.x, w.y, 70)) at(ZH.wreck, () => drawWreck(w));
-  for (const v of M.vehicles) if (v.active && vis(v.x, v.y, 80)) at(ZH[v.type], () => drawVehicle(v));     // one piece: hull, crew, turret, MG in their own order
-  for (const p of M.proj) if (vis(p.x, p.y, 20)) at(p.k === 'nade' ? p.h + 3 : p.mg ? ZH.mg : p.low ? ZH.low : ZH.shot, () => drawProj(p));
+  for (const w of M.wrecks) if (vis(w.x, w.y, 70)) at(topOf(w), () => drawWreck(w));
+  for (const v of M.vehicles) if (v.active && vis(v.x, v.y, 80)) at(topOf(v), () => drawVehicle(v));     // one piece: hull, crew, turret, MG in their own order
+  for (const p of M.proj) if (vis(p.x, p.y, 20)) at(shotZ(p), () => drawProj(p));
   for (const f of M.flings) if (vis(f.x, f.y, 40)) { const k = f.t / f.T, h = Math.sin(Math.PI * k); at(ZH.body + h * 34, () => solDraw(f, solSpr(f.color, 'dead'), f.x, f.y - h * 34, f.rot, 1 + h * 0.6, 1 + h * 0.6)); }
   partsInto(at, vis);
+  at(ZH.smoke, () => drawSmokes(vw));     // the smoke field: lit (the sun has its heights), over what's lower
   const roofs = roofsIn(vis), FP = fogged ? new Path2D() : null; if (FP) polyPath(FP, fogPolys);     // the sight clip, built once
   at(SUNH.wall, () => {     // roofs: always known, so drawn over the out-of-sight memory too (out of the sight clip); the dev yard's in sight
     if (rv) { worldT(); ctx.imageSmoothingEnabled = false; ctx.drawImage(rv.c, 0, 0, rv.w, rv.h, rv.x, rv.y, rv.w, rv.h); }
@@ -74,7 +76,6 @@ function drawWorld(vw) {
   for (const d of Q) if (d.post) { d.f(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
   // the soft layers (smoke, windows) over everything in sight alike: units, vehicles, roofs, trees, fire
   if (fogged) drawSoftFog(vw);
-  drawSmokes(vw);
   drawLasers(vis);
   // tags, reticles
   worldT(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -137,13 +138,13 @@ function drawProj(p) {
     sprC(T, T.L, T.height / 2, p.x, p.y, Math.atan2(p.vy, p.vx), undefined, Math.min(1, run / T.L));     // drawn as is (not added: orange on grass would go lime)
   } else if (p.k === 'nade') {
     if (!SUNNOW) { ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.arc(p.x + 1, p.y + 2, 3, 0, TAU); ctx.fill(); }
-    const sc = 1 + p.h / 60; ctx.fillStyle = '#2e4a22'; ctx.beginPath(); ctx.arc(p.x, p.y - p.h * 0.3, 3.2 * sc, 0, TAU); ctx.fill();
-    if (p.life < 0.5 && Math.floor(p.life * 16) % 2) { ctx.fillStyle = '#ff3b2a'; ctx.beginPath(); ctx.arc(p.x, p.y - p.h * 0.3, 1.5, 0, TAU); ctx.fill(); }
+    const sc = 1 + p.h / 60, ny = nadeY(p); ctx.fillStyle = '#2e4a22'; ctx.beginPath(); ctx.arc(p.x, ny, 3.2 * sc, 0, TAU); ctx.fill();
+    if (p.life < 0.5 && Math.floor(p.life * 16) % 2) { ctx.fillStyle = '#ff3b2a'; ctx.beginPath(); ctx.arc(p.x, ny, 1.5, 0, TAU); ctx.fill(); }
   } else {
     ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(Math.atan2(p.vy, p.vx));
     ctx.fillStyle = p.k === 'shell' ? '#2b2b2b' : '#5a6a50'; ctx.fillRect(-7, -2, 12, 4); ctx.fillStyle = '#d0c070'; ctx.fillRect(4, -1.5, 3, 3);
     ctx.restore();
-    if (p.k === 'rocket') { spr('fire5', p.x - p.vx * 0.02, p.y - p.vy * 0.02, M.time * 20, 0.45, 0.45, 0.9); light(p.x - p.vx * 0.02, p.y - p.vy * 0.02, 80, 14, rnd(0.5, 0.65)); }     // its exhaust
+    if (p.k === 'rocket') { spr('fire5', p.x - p.vx * 0.02, p.y - p.vy * 0.02, M.time * 20, 0.45, 0.45, 0.9); light(p.x - p.vx * 0.02, p.y - p.vy * 0.02, 80, shotZ(p), rnd(0.5, 0.65)); }     // its exhaust
   }
   worldT();
 }
@@ -168,30 +169,38 @@ function drawSmokes(vw) { if (M.gsf && M.gsf.act.length) { worldT(); drawSmokeFi
    it is (down to SMK_SMALL), so a little one squeezed against a wall doesn't stand out as a hot spot */
 const SMK_VIS = 3, SMK_PUFF = 1.5, SMK_GROW = 0.9, SMK_PAD = 5, SMK_IN = 2.5, SMK_SMALL = 0.5;     // SMK_PAD: tiles past the view whose puffs can reach in
 const SMK_C = document.createElement('canvas'), SMK_SH = document.createElement('canvas');
+/* each puff of the field in the tile box (null: all of them): f(x, y, radius, opacity, hash, brown part). The look eases in here (once a frame) */
+function smokePuffs(bx, eyes, cb) {
+  const f = M.gsf, [n0, n1] = SIGHT_NEAR, { W, A, B, R, V: Vs } = f, T = M.time, ease = Math.min(1, clamp(T - f.vt, 0, 0.1) * SMK_IN); f.vt = T;
+  const [i0, j0, i1, j1] = bx || [-1, -1, 1e9, 1e9];
+  for (const k of f.act) {
+    const i = k % W, j = (k - i) / W; if (i < i0 || j < j0 || i >= i1 || j >= j1) continue;
+    if ((i + j) & 1 && (A[k + 1] > 0 || A[k - 1] > 0 || A[k + W] > 0 || A[k - W] > 0)) continue;
+    const a = A[k], den = Vs[k] += (1 - Math.exp(-SMK_VIS * a) - Vs[k]) * ease, h = ((k * 2654435761) >>> 0) / 4294967296, p = h * TAU;
+    const x = (i - SMK_OUT + 0.5) * GS + Math.sin(T * 0.35 + p) * 3, y = (j - SMK_OUT + 0.5) * GS + Math.cos(T * 0.27 + p) * 3, r = GS * (SMK_PUFF + SMK_GROW * R[k]) * (0.6 + 0.4 * den);
+    let al = den * (0.85 + 0.15 * Math.sin(T * 0.45 + p)) * (SMK_SMALL + (1 - SMK_SMALL) * Math.min(1, r / (GS * 3))); for (const o of eyes) al *= SMOKE_KEEP + (1 - SMOKE_KEEP) * clamp((Math.hypot(x - o.x, y - o.y) - n0) / (n1 - n0), 0, 1);
+    cb(x, y, r, al, h, B[k] / a);
+  }
+}
 function drawSmokeField(vw, eyes) {
-  const f = M.gsf, [n0, n1] = SIGHT_NEAR, V = vw ? [(vw.x - VOX) / VZ, (vw.y - VOY) / VZ, (vw.x + vw.w - VOX) / VZ, (vw.y + vw.h - VOY) / VZ].map(v => v / GS + SMK_OUT) : [-1e9, -1e9, 1e9, 1e9];
+  const f = M.gsf, V = vw ? [(vw.x - VOX) / VZ, (vw.y - VOY) / VZ, (vw.x + vw.w - VOX) / VZ, (vw.y + vw.h - VOY) / VZ].map(v => v / GS + SMK_OUT) : [-1e9, -1e9, 1e9, 1e9];
   if (f.dirty) smokeSolid(f);
   const i0 = Math.max(f.box[0] - SMK_PAD, Math.floor(V[0]) - SMK_PAD), j0 = Math.max(f.box[1] - SMK_PAD, Math.floor(V[1]) - SMK_PAD), i1 = Math.min(f.box[2] + SMK_PAD, Math.ceil(V[2]) + SMK_PAD), j1 = Math.min(f.box[3] + SMK_PAD, Math.ceil(V[3]) + SMK_PAD);
   const X0 = (i0 - SMK_OUT) * GS, Y0 = (j0 - SMK_OUT) * GS, pw = (i1 - i0) * GS, ph = (j1 - j0) * GS;
   if (pw <= 0 || ph <= 0) return;
   if (SMK_C.width < pw || SMK_C.height < ph) { SMK_C.width = SMK_SH.width = Math.max(pw, SMK_C.width); SMK_C.height = SMK_SH.height = Math.max(ph, SMK_C.height); }
-  const g = SMK_C.getContext('2d'), gs = SMK_SH.getContext('2d'), { W, A, B, R, V: Vs } = f, T = M.time, ease = Math.min(1, clamp(T - f.vt, 0, 0.1) * SMK_IN); f.vt = T;
+  const g = SMK_C.getContext('2d'), gs = SMK_SH.getContext('2d');
   g.setTransform(1, 0, 0, 1, -X0, -Y0); g.globalCompositeOperation = 'source-over'; g.clearRect(X0, Y0, pw, ph);
-  for (const k of f.act) {
-    const i = k % W, j = (k - i) / W; if (i < i0 || j < j0 || i >= i1 || j >= j1) continue;
-    if ((i + j) & 1 && (A[k + 1] > 0 || A[k - 1] > 0 || A[k + W] > 0 || A[k - W] > 0)) continue;
-    const a = A[k], den = Vs[k] += (1 - Math.exp(-SMK_VIS * a) - Vs[k]) * ease, fb = B[k] / a, h = ((k * 2654435761) >>> 0) / 4294967296, p = h * TAU;
-    const x = (i - SMK_OUT + 0.5) * GS + Math.sin(T * 0.35 + p) * 3, y = (j - SMK_OUT + 0.5) * GS + Math.cos(T * 0.27 + p) * 3, r = GS * (SMK_PUFF + SMK_GROW * R[k]) * (0.6 + 0.4 * den);
-    let al = den * (0.85 + 0.15 * Math.sin(T * 0.45 + p)) * (SMK_SMALL + (1 - SMK_SMALL) * Math.min(1, r / (GS * 3))); for (const o of eyes) al *= SMOKE_KEEP + (1 - SMOKE_KEEP) * clamp((Math.hypot(x - o.x, y - o.y) - n0) / (n1 - n0), 0, 1);
+  smokePuffs([i0, j0, i1, j1], eyes, (x, y, r, al, h, fb) => {
     const s = (h * 16 | 0) % 4, v = (h * 64 | 0) & 1, k2 = v ? 0.7 : 1;
     if (fb < 0.98) { g.globalAlpha = al * k2 * (1 - fb); g.drawImage(SPR.puffs.grey[s][v], x - r, y - r, r * 2, r * 2); }
     if (fb > 0.02) { g.globalAlpha = al * k2 * fb; g.drawImage(SPR.puffs.brown[s][v], x - r, y - r, r * 2, r * 2); }
-  }
+  });
   g.globalAlpha = 1; g.globalCompositeOperation = 'destination-out'; g.beginPath();     // the walls and intact windows: smoke stays out of them, and what's beyond
   for (const b of MAP.buildings) if (b.x < X0 + pw && b.x + b.w > X0 && b.y < Y0 + ph && b.y + b.h > Y0 && !(b.glass && b.sec && b.sec.hp < b.sec.mhp)) g.rect(b.x, b.y, b.w, b.h);
   g.fill(); g.globalCompositeOperation = 'source-over';
   gs.globalCompositeOperation = 'copy'; gs.drawImage(SMK_C, 0, 0, pw, ph, 0, 0, pw, ph); gs.globalCompositeOperation = 'source-in'; gs.fillStyle = '#000'; gs.fillRect(0, 0, pw, ph); gs.globalCompositeOperation = 'source-over';
-  ctx.globalAlpha = 0.28; ctx.drawImage(SMK_SH, 0, 0, pw, ph, X0 + 4, Y0 + 6, pw, ph);
+  if (!SUNNOW) { ctx.globalAlpha = 0.28; ctx.drawImage(SMK_SH, 0, 0, pw, ph, X0 + 4, Y0 + 6, pw, ph); }     // with the sun: its own shadow
   ctx.globalAlpha = 1; ctx.drawImage(SMK_C, 0, 0, pw, ph, X0, Y0, pw, ph);
 }
 /* a wreck: solid cover, then gone over its last 2 s (also drawn into the remembered view) */
@@ -313,7 +322,7 @@ function drawSoldier(s, vw) {
     ctx.fillStyle = '#2a2a26'; ctx.fillRect(10.5, -5.4, 9, 10.8); ctx.fillStyle = '#b4b6b0'; ctx.fillRect(11.5, -4.4, 7, 2.8); ctx.fillRect(11.5, 1.6, 7, 2.8); ctx.fillRect(11.5, -4.4, 2.6, 8.8);
     ctx.restore();
   } else if (s.handT > 0 && s.handK) { worldT(); const [hx, hy] = muzzle(s, 11); icon(gadgetIconKind(s.handK), hx, hy, 9); }
-  if (s.flash > 0 && !gunless) { const [gx, gy] = gunTip(s), r = W_ && W_.dmg >= 40 ? 14 : 10, c = Math.cos(s.a), sn = Math.sin(s.a); flashAt(gx + c * r * 0.55, gy + sn * r * 0.55, r); light(gx + c * r, gy + sn * r, r * 9, 14, rnd(0.6, 0.8)); }     // shoulder height
+  if (s.flash > 0 && !gunless) { const [gx, gy] = gunTip(s), r = W_ && W_.dmg >= 40 ? 14 : 10, c = Math.cos(s.a), sn = Math.sin(s.a); flashAt(gx + c * r * 0.55, gy + sn * r * 0.55, r); light(gx + c * r, gy + sn * r, r * 9, gunH(s), rnd(0.6, 0.8)); }     // at the muzzle
 }
 /* co-op: a downed player lies on the ground with a pulsing marker; the red ring is the time left to bleed out, the green one the revive */
 function drawDowned(s) {
@@ -365,7 +374,7 @@ function flashAt(x, y, r, soft) {
 function hullFrame(v) { const f = v.hp / v.T.hp; return f > 0.82 ? 0 : f > 0.66 ? 1 : f > 0.5 ? 2 : f > 0.34 ? 3 : f > 0.18 ? 4 : 5; }
 function drawVehicle(v) {
   worldT(); FLASH = v.hitFlash > 0 ? 0.45 : 0;
-  if (v.type !== 'nest' && v.hp < v.T.hp * 0.25) light(v.x, v.y, 100, 30, 0.3 + 0.12 * Math.sin(M.time * 23 + v.x) * Math.sin(M.time * 9.7), v);     // on fire (as a burning wreck flickers)
+  if (v.type !== 'nest' && v.hp < v.T.hp * 0.25) light(v.x, v.y, 100, topOf(v) + 6, 0.3 + 0.12 * Math.sin(M.time * 23 + v.x) * Math.sin(M.time * 9.7), v);     // on fire (as a burning wreck flickers)
   const col = vehColor(v);
   if (v.type === 'nest') {
     ctx.fillStyle = CFG.style === 'grit' ? '#3e3a2c' : '#5a5236'; ctx.beginPath(); ctx.arc(v.x, v.y, 18, 0, TAU); ctx.fill();
@@ -387,7 +396,7 @@ function drawVehicle(v) {
     const [mx, my] = mgPos(v);
     drawMG(v, mx, my);
     const g = v.seats[1]; if (g) drawSeated(g, true);
-    if (v.recoil > 0.85) { const fx = px + Math.cos(v.ta) * 100, fy = py + Math.sin(v.ta) * 100; flashAt(fx, fy, 26); light(fx, fy, 220, 44, (v.recoil - 0.85) / 0.15, v); }
+    if (v.recoil > 0.85) { const fx = px + Math.cos(v.ta) * 100, fy = py + Math.sin(v.ta) * 100; flashAt(fx, fy, 26); light(fx, fy, 220, canH(v), (v.recoil - 0.85) / 0.15, v); }
   } else {
     const f = v.hp / v.T.hp, jn = 'jeep' + (f > 0.75 ? 0 : f > 0.5 ? 1 : f > 0.25 ? 2 : 3), jm = ATLAS[jn];
     drawJeepWheels(v.x, v.y, v.a, jeepSteer(v), 1, -1);
@@ -402,19 +411,19 @@ function drawVehicle(v) {
 /* the mounted MG (art/art4/jeep.png): firing frame + a soft glow while it shoots; drawn under its gunner, who holds the grips */
 function drawMG(v, mx, my) {
   const f = v.mgFlash > 0; spr(f ? 'mg_f' : 'mg', mx, my, v.mgA);
-  if (f) { const fx = mx + Math.cos(v.mgA) * 31, fy = my + Math.sin(v.mgA) * 31; flashAt(fx, fy, 8, true); light(fx, fy, 120 * rnd(0.88, 1.1), MGH[v.type], rnd(0.75, 1), v); }
+  if (f) { const fx = mx + Math.cos(v.mgA) * 31, fy = my + Math.sin(v.mgA) * 31; flashAt(fx, fy, 8, true); light(fx, fy, 120 * rnd(0.88, 1.1), mgH(v), rnd(0.75, 1), v); }
 }
 function drawSeated(s, mg) {
   const role = s.veh.T.seats[s.seat].role, jeep = s.veh.type === 'jeep';
   // drivers and jeep passengers sit; MG gunners stand at the gun; tank riders keep their rifle up
   const pose = role === 'drive' || mg || (jeep && role === 'rifle' && !s.flash) ? 'sit' : 'stand';
   const fl = FLASH; FLASH = 0; solDraw(s, solSpr(s.color, pose), s.x, s.y, s.a, 0.9, 0.9); FLASH = fl;     // the crew doesn't flash with the vehicle
-  if (s.flash > 0 && !mg && role !== 'drive') { const [mx, my] = muzzle(s, 20); flashAt(mx, my, 8); light(mx, my, 90, 18, rnd(0.6, 0.8)); }
+  if (s.flash > 0 && !mg && role !== 'drive') { const [mx, my] = muzzle(s, 20); flashAt(mx, my, 8); light(mx, my, 90, gunH(s), rnd(0.6, 0.8)); }
 }
 const FIRE = ['fire0', 'fire2', 'fire3', 'fire4'], SMOKE = ['smoke0', 'smoke1', 'smoke2', 'smoke3'], BOOM = ['boom0', 'boom1', 'boom2'];
 /* each kind's height (px) in the draw order, and how it's drawn: 0 lit, 1 over the light, 2 over the light, added */
 const PZ = { ripple: [0, 0], blood: [0.5, 0], shell: [1, 0], dirt: [2, 0], straw: [2, 0], dust: [3, 0], debris: [3, 0], splinter: [3, 0], leaf: [4, 0],
-  ring: [1, 2], flash: [30, 2], spark: [30, 2], fire: [44, 1], boom: [44, 1], smoke: [48, 1], steam: [48, 1] };
+  ring: [1, 2], flash: [30, 2], spark: [30, 2], fire: [44, 1], boom: [44, 1], smoke: [48, 0], steam: [48, 0] };
 const _pb = {};
 function partsInto(at, vis) {     // one bucket per kind, each drawn at its height
   for (const k in _pb) _pb[k].length = 0;
