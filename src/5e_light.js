@@ -96,10 +96,10 @@ function sunInit() {
     const P = gl.createProgram();
     gl.attachShader(P, sh(gl.VERTEX_SHADER, 'attribute vec2 p; void main() { gl_Position = vec4(p, 0., 1.); }'));
     gl.attachShader(P, sh(gl.FRAGMENT_SHADER, `precision highp float;
-uniform sampler2D H; uniform vec2 S; uniform vec4 R; uniform float K, T, O, Q; uniform vec3 L, C, W; uniform vec2 D; uniform vec4 PL[${LMAX}]; uniform float PK[${LMAX}];
+uniform sampler2D H; uniform vec2 S; uniform vec4 R; uniform float K, T, O, Q, V; uniform vec2 P; uniform vec3 L, C, W; uniform vec2 D; uniform vec4 PL[${LMAX}]; uniform float PK[${LMAX}];
 float hh(vec2 p) { return texture2D(H, clamp(p, R.xy, R.zw) / S).r * 63.75; }
 void main() {
-  vec2 p = vec2(gl_FragCoord.x - O, S.y - gl_FragCoord.y);     // O: where this map (Q: 0 shade, 1 highlights, 2 glow) sits in GC
+  vec2 p = vec2(gl_FragCoord.x - O, V - gl_FragCoord.y) + P;     // O: where this map (Q: 0 shade, 1 highlights, 2 glow) sits in GC; P: the view's place in H
   float h0 = hh(p);
   vec2 g = vec2(hh(p + vec2(1., 0.)) - hh(p - vec2(1., 0.)), hh(p + vec2(0., 1.)) - hh(p - vec2(0., 1.))) * K * 0.5;
   vec3 N = normalize(vec3(-g, 1.));
@@ -129,7 +129,7 @@ void main() {
     const a = gl.getAttribLocation(P, 'p'); gl.enableVertexAttribArray(a); gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0);
     const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
     for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
-    const U = {}; for (const n of ['S', 'R', 'K', 'L', 'D', 'T', 'C', 'W', 'O', 'Q', 'PL', 'PK']) U[n] = gl.getUniformLocation(P, n);
+    const U = {}; for (const n of ['S', 'R', 'K', 'L', 'D', 'T', 'C', 'W', 'O', 'Q', 'V', 'P', 'PL', 'PK']) U[n] = gl.getUniformLocation(P, n);
     // the material atlas with the colour atlas's silhouette, for matSpr
     const w = MIMG.width, h = MIMG.height, g2 = mk(w, h).getContext('2d', { willReadFrequently: true });
     g2.drawImage(MIMG, 0, 0); const mp = g2.getImageData(0, 0, w, h).data; g2.clearRect(0, 0, w, h); g2.drawImage(IMG, 0, 0); const ap = g2.getImageData(0, 0, w, h).data;
@@ -214,29 +214,34 @@ function sunHeights(vis, hidden) {
   }
 }
 function drawSun(vw, vis, hidden) {
-  const S = _sun, { gl, GC, HC, U } = S, w = Math.ceil(cv.width * HS), h = Math.ceil(cv.height * HS);
-  if (HC.width !== w || HC.height !== h) { HC.width = w; GC.width = w * 3; HC.height = GC.height = h; S.HX = HC.getContext('2d', { willReadFrequently: false }); }
-  const rx = Math.floor(vw.x * DPR * HS), ry = Math.floor(vw.y * DPR * HS), rw = Math.min(w - rx, Math.ceil(vw.w * DPR * HS)), rh = Math.min(h - ry, Math.ceil(vw.h * DPR * HS));
+  const S = _sun, { gl, GC, HC, U } = S, w = Math.ceil(cv.width * HS), h = Math.ceil(cv.height * HS), dpr = DPR, K = VZ * dpr * HS;
+  if (GC.width !== w * 3 || GC.height !== h) { GC.width = w * 3; GC.height = h; }
+  const rx = Math.floor(vw.x * dpr * HS), ry = Math.floor(vw.y * dpr * HS), rw = Math.min(w - rx, Math.ceil(vw.w * dpr * HS)), rh = Math.min(h - ry, Math.ceil(vw.h * dpr * HS));
+  // the height buffer reaches past the view toward the sun by the longest shadow (64 px tall), so what's off screen
+  // that side still throws its shadow in (no pop-in); the view sits at (px, py) in it
+  const L = 64 / Math.tan(SUN.el), dx = Math.cos(SUN.az) * L * K, dy = Math.sin(SUN.az) * L * K;
+  const px = Math.ceil(Math.max(0, -dx)) + 2, py = Math.ceil(Math.max(0, -dy)) + 2, bw = rw + px + Math.ceil(Math.max(0, dx)) + 2, bh = rh + py + Math.ceil(Math.max(0, dy)) + 2;
+  if (HC.width < rx + bw || HC.height < ry + bh) { HC.width = Math.max(HC.width, rx + bw + 32); HC.height = Math.max(HC.height, ry + bh + 32); S.HX = HC.getContext('2d', { willReadFrequently: false }); }     // grows only
   // heights
-  const main = ctx, dpr = DPR, fl = FLASH; ctx = S.HX; DPR = dpr * HS; FLASH = 0;
-  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = '#000'; ctx.fillRect(rx, ry, rw, rh);
-  ctx.save(); ctx.beginPath(); ctx.rect(rx, ry, rw, rh); ctx.clip(); ctx.imageSmoothingEnabled = false; ctx.globalCompositeOperation = 'lighten';
-  sunHeights(vis, hidden);
-  ctx.restore(); ctx = main; DPR = dpr; FLASH = fl;
+  const main = ctx, fl = FLASH, ox = VOX, oy = VOY, far = (x, y, r) => vis(x, y, r + L); ctx = S.HX; DPR = dpr * HS; FLASH = 0; VOX += px / DPR; VOY += py / DPR;
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = '#000'; ctx.fillRect(rx, ry, bw, bh);
+  ctx.save(); ctx.beginPath(); ctx.rect(rx, ry, bw, bh); ctx.clip(); ctx.imageSmoothingEnabled = false; ctx.globalCompositeOperation = 'lighten';
+  sunHeights(far, hidden);
+  ctx.restore(); ctx = main; DPR = dpr; FLASH = fl; VOX = ox; VOY = oy;
   // light
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, HC);
   gl.enable(gl.SCISSOR_TEST);
   const ce = Math.cos(SUN.el);
-  gl.uniform2f(U.S, w, h); gl.uniform4f(U.R, rx + 0.5, ry + 0.5, rx + rw - 0.5, ry + rh - 0.5); gl.uniform1f(U.K, VZ * dpr * HS);
+  gl.uniform2f(U.S, HC.width, HC.height); gl.uniform2f(U.P, px, py); gl.uniform1f(U.V, h); gl.uniform4f(U.R, rx + 0.5, ry + 0.5, rx + bw - 0.5, ry + bh - 0.5); gl.uniform1f(U.K, K);
   gl.uniform3f(U.L, Math.cos(SUN.az) * ce, Math.sin(SUN.az) * ce, Math.sin(SUN.el)); gl.uniform2f(U.D, Math.cos(SUN.az), Math.sin(SUN.az)); gl.uniform1f(U.T, Math.tan(SUN.el));
   gl.uniform3f(U.C, ...SUN.tint); gl.uniform3f(U.W, ...SUN.warm);
-  const k = dpr * HS; S.pk.fill(0); lightsNow(vis).forEach((l, i) => { S.pl.set([(VZ * l.x + VOX) * k, (VZ * l.y + VOY) * k, l.r, l.h], i * 4); S.pk[i] = l.k; });
+  const k = dpr * HS; S.pk.fill(0); lightsNow(vis).forEach((l, i) => { S.pl.set([(VZ * l.x + VOX) * k + px, (VZ * l.y + VOY) * k + py, l.r, l.h], i * 4); S.pk[i] = l.k; });
   gl.uniform4fv(U.PL, S.pl); gl.uniform1fv(U.PK, S.pk);
   const lit = S.pk[0] > 0;
   for (let q = 0; q < (lit ? 3 : 2); q++) { const o = q * w; gl.viewport(o, 0, w, h); gl.scissor(o + rx, h - ry - rh, rw, rh); gl.uniform1f(U.O, o); gl.uniform1f(U.Q, q); gl.drawArrays(gl.TRIANGLES, 0, 3); }
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = true;
   const to = [vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR];
-  if (SUNDBG) ctx.drawImage(SUNDBG === 1 ? HC : GC, SUNDBG === 3 ? w + rx : rx, ry, rw, rh, ...to);       // dev: 1 heights, 2 shade, 3 highlights
+  if (SUNDBG) ctx.drawImage(SUNDBG === 1 ? HC : GC, SUNDBG === 3 ? w + rx : SUNDBG === 1 ? rx + px : rx, SUNDBG === 1 ? ry + py : ry, rw, rh, ...to);       // dev: 1 heights, 2 shade, 3 highlights
   else { ctx.globalCompositeOperation = 'multiply'; ctx.drawImage(GC, rx, ry, rw, rh, ...to); ctx.globalCompositeOperation = 'color-dodge'; ctx.drawImage(GC, w + rx, ry, rw, rh, ...to); if (lit) { ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(GC, 2 * w + rx, ry, rw, rh, ...to); } }
   ctx.globalCompositeOperation = 'source-over'; ctx.imageSmoothingEnabled = false; worldT();
 }

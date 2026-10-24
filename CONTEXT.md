@@ -358,3 +358,6 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 
 ## Build 146
 - More point lights (light(), so both the sun shader and the CPU path): infantry gunfire (r = flash x 9, 14 px up, k 0.6-0.8, at the flash), soldiers firing from a seat (r 90, 18 px), rocket exhaust in flight (r 80, 14 px), vehicles burning below 25% hp (r 100, 30 px, the wreck flicker). Already lit: cannon, mounted MGs, explosions (lightFx), burning wrecks. LMAX 10 keeps the strongest (k x r).
+
+## Build 147
+- No shadow pop-in at the screen edge: the height buffer HC reaches past each view toward the sun by the longest shadow (64 px / tan(el) ~ 76 world px x zoom); the view sits at P = (px, py) inside it (VOX / VOY shifted while heights draw, uniform P in the shader, V = GC height), R clamps to the padded rect, lights offset by P. Height culling widened by the same length (far = vis with r + L). HC only grows. Only the sun side is padded (shadows come in from there), so the extra fill / upload stays small.
