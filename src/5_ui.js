@@ -24,7 +24,7 @@ function drawWorld(vw) {
     img(SPR.ring[f.owner + 1], f.x, f.y, 0, f.r * 2 / 128 * 1.04, 0.75); worldT();
     if (f.prog !== 0 && Math.abs(f.prog) < 1) { ctx.strokeStyle = TEAMHEX[f.prog < 0 ? 0 : 1]; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(f.x, f.y, f.r * 0.82, -Math.PI / 2, -Math.PI / 2 + TAU * Math.abs(f.prog)); ctx.stroke(); }
     if (f.contested) { ctx.strokeStyle = `rgba(255,255,255,${0.4 + 0.4 * Math.sin(M.time * 10)})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(f.x, f.y, f.r * 0.9, 0, TAU); ctx.stroke(); }
-    ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(f.x + 2, f.y - 2, 22, 4);
+    if (!SUNNOW) { ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(f.x + 2, f.y - 2, 22, 4); }
     ctx.fillStyle = '#d8d8d0'; ctx.beginPath(); ctx.arc(f.x, f.y, 3.5, 0, TAU); ctx.fill();
     ctx.fillStyle = f.owner < 0 ? '#e8e8e0' : TEAMHEX[f.owner]; ctx.beginPath(); ctx.moveTo(f.x, f.y - 1);
     for (let i = 0; i <= 6; i++) ctx.lineTo(f.x + i * 5, f.y - 16 + Math.sin(f.wave + i * 0.9) * 2.5);
@@ -32,86 +32,46 @@ function drawWorld(vw) {
     ctx.fill();
     ctx.fillStyle = '#111'; ctx.font = `bold 9px ${FB}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(f.name.length > 1 ? 'H' : f.name, f.x + 14, f.y - 10 + Math.sin(f.wave + 2.5) * 2.5);
   }
-  // crates and items
-  for (const c of M.crates) if (c.live && vis(c.x, c.y, 14)) { worldT(); ctx.fillStyle = 'rgba(0,0,0,0.35)'; if (!SUNNOW) ctx.fillRect(c.x - 7, c.y - 6, 18, 18); img(SPR.crate, c.x, c.y, c.a, 1, CFG.style === 'grit' ? 0.85 : 1); }
-  worldT();
-  for (const it of M.items) {
-    if (!vis(it.x, it.y, 30)) continue;
-    if (it.k === 'med' || it.k === 'ammo') {
-      const pulse = 0.25 + 0.15 * Math.sin(M.time * 4);
-      ctx.strokeStyle = it.k === 'med' ? `rgba(120,255,140,${pulse})` : `rgba(255,220,120,${pulse})`; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(it.x, it.y, 58, 0, TAU); ctx.stroke();
-      ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(it.x - 5, it.y - 4, 12, 10);
-      ctx.fillStyle = it.k === 'med' ? '#e8e8e0' : '#5b6236'; ctx.fillRect(it.x - 6, it.y - 5, 12, 10);
-      if (it.k === 'med') { ctx.fillStyle = '#d02a22'; ctx.fillRect(it.x - 1, it.y - 4, 2, 8); ctx.fillRect(it.x - 4, it.y - 1, 8, 2); }
-      else { ctx.fillStyle = '#d6b04a'; ctx.fillRect(it.x - 4, it.y - 3, 2, 6); ctx.fillRect(it.x - 1, it.y - 3, 2, 6); ctx.fillRect(it.x + 2, it.y - 3, 2, 6); }
-    } else if (it.k === 'mine') {
-      const mine = humanTeams().has(it.team) || (vw.p && vw.p.sol && Math.hypot(vw.p.sol.x - it.x, vw.p.sol.y - it.y) < 70);
-      if (!mine) continue;
-      ctx.fillStyle = '#2a2c24'; ctx.beginPath(); ctx.arc(it.x, it.y, 6, 0, TAU); ctx.fill(); ctx.fillStyle = '#4a4c40'; ctx.beginPath(); ctx.arc(it.x, it.y, 3.5, 0, TAU); ctx.fill();
-      if (Math.floor(M.time * 2) % 2) { ctx.fillStyle = it.team < 2 ? TEAMHEX[it.team] : '#f33'; ctx.fillRect(it.x - 1, it.y - 1, 2, 2); }
-    } else if (it.k === 'pouch') { ctx.fillStyle = '#4c4a2c'; ctx.fillRect(it.x - 4, it.y - 3, 8, 6); ctx.fillStyle = '#6c6a40'; ctx.fillRect(it.x - 4, it.y - 3, 8, 2); }
-  }
-  // ---- bodies with their blood pools seeping out
-  worldT(); ctx.fillStyle = '#c9a443';
-  for (const b of M.brass) if (vis(b.x, b.y, 4)) { ctx.globalAlpha = 0.8 * (1 - b.t / BRASS_T); ctx.fillRect(b.x, b.y, 2, 1); }
-  ctx.globalAlpha = 1;
-  for (const c of M.corpses) if (vis(c.x, c.y, 30)) { if (!c.baked) drawPool(ctx, c, c.t / POOL_T); solDraw(c, c.n, c.x, c.y, c.rot, 1, 1, c.t > BODY_T ? corpseAlpha(c) : undefined); worldT(); }
-  // ---- one shared shadow layer for soldiers, vehicles and bodies in the air
-  if (!SUNNOW) drawShadowLayer(vw, vis);
-  // ---- layer 1: prone soldiers sit below cover
-  const eyes = viewEyes(vw), hidden = s => smokeHides(eyes, s, vw);
-  for (const s of M.sol) if (s.alive && !s.veh && s.stance !== 0 && vis(s.x, s.y, 30) && !hidden(s)) drawSoldier(s, vw);
-  // ---- layer 2: low cover (sandbags, fences, hay)
-  for (const A of MAP.arcs) { if (!vis(A.x, A.y, 50)) continue; const f = A.lost / A.bags.length; spr(f < 0.25 ? 'bagarc0' : f < 0.75 ? 'bagarc1' : 'bagarc2', A.x, A.y, A.a); }
-  // fences, hay
-  worldT();
+  // ---- everything standing on the ground, low to high by its height (px, as the sun pass has them: ZH): the taller
+  // covers the lower, so jump dust stays behind the jumper, a prone man under the sandbags. Then the light over all of it
+  // (roofs and canopies too), then what glows or floats in the air over the light (fire, flashes, smoke)
+  const eyes = viewEyes(vw), hidden = s => smokeHides(eyes, s, vw), Q = DRAWQ; Q.length = 0;
+  const at = (z, f, post) => Q.push({ z, f, post, i: Q.length });
+  for (const c of M.crates) if (c.live && vis(c.x, c.y, 14)) at(SUNH.crate, () => { worldT(); ctx.fillStyle = 'rgba(0,0,0,0.35)'; if (!SUNNOW) ctx.fillRect(c.x - 7, c.y - 6, 18, 18); img(SPR.crate, c.x, c.y, c.a, 1, CFG.style === 'grit' ? 0.85 : 1); });
+  for (const it of M.items) if (vis(it.x, it.y, 30)) at(ZH.item, () => drawItem(it, vw));
+  at(0, () => { worldT(); ctx.fillStyle = '#c9a443'; for (const b of M.brass) if (vis(b.x, b.y, 4)) { ctx.globalAlpha = 0.8 * (1 - b.t / BRASS_T); ctx.fillRect(b.x, b.y, 2, 1); } ctx.globalAlpha = 1; });
+  for (const c of M.corpses) if (vis(c.x, c.y, 30)) at(ZH.body, () => { worldT(); if (!c.baked) drawPool(ctx, c, c.t / POOL_T); solDraw(c, c.n, c.x, c.y, c.rot, 1, 1, c.t > BODY_T ? corpseAlpha(c) : undefined); });
+  if (!SUNNOW) at(ZH.body, () => drawShadowLayer(vw, vis));     // without the sun: one shared offset shadow for soldiers, vehicles and bodies in the air
+  for (const s of M.sol) if (s.alive && !s.veh && vis(s.x, s.y, 30) && !hidden(s)) at(solZ(s), () => drawSoldier(s, vw));
+  for (const A of MAP.arcs) if (vis(A.x, A.y, 50)) at(ZH.arc, () => { const f = A.lost / A.bags.length; spr(f < 0.25 ? 'bagarc0' : f < 0.75 ? 'bagarc1' : 'bagarc2', A.x, A.y, A.a); });
   for (const s of MAP.statics) {
-    if (!s.alive || (s.type !== 'fence' && s.type !== 'hay') || !vis(s.x, s.y, 16)) continue;
-    if (s.type === 'fence') { ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.a); ctx.fillStyle = 'rgba(0,0,0,0.3)'; if (!SUNNOW) ctx.fillRect(-7, 2, 15, 3); ctx.fillStyle = CFG.style === 'grit' ? '#5a4632' : '#8a6a42'; ctx.fillRect(-7, -1, 14, 2.5); ctx.fillStyle = CFG.style === 'grit' ? '#3e3022' : '#5e4428'; ctx.fillRect(-2, -3, 4, 6); ctx.restore(); }
-    else { ctx.fillStyle = 'rgba(0,0,0,0.3)'; if (!SUNNOW) { ctx.beginPath(); ctx.arc(s.x + 3, s.y + 4, 13, 0, TAU); ctx.fill(); } ctx.fillStyle = CFG.style === 'grit' ? '#857344' : '#c8a64e'; ctx.beginPath(); ctx.arc(s.x, s.y, 13, 0, TAU); ctx.fill(); ctx.strokeStyle = CFG.style === 'grit' ? '#665834' : '#a0823a'; ctx.lineWidth = 1.5; for (const r of [9, 5]) { ctx.beginPath(); ctx.arc(s.x, s.y, r, s.a, s.a + 5); ctx.stroke(); } }
+    if (!s.alive || !vis(s.x, s.y, s.type === 'tree' ? 40 : 16)) continue;
+    if (s.type === 'fence') at(SUNH.fence, () => { worldT(); ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.a); ctx.fillStyle = 'rgba(0,0,0,0.3)'; if (!SUNNOW) ctx.fillRect(-7, 2, 15, 3); ctx.fillStyle = CFG.style === 'grit' ? '#5a4632' : '#8a6a42'; ctx.fillRect(-7, -1, 14, 2.5); ctx.fillStyle = CFG.style === 'grit' ? '#3e3022' : '#5e4428'; ctx.fillRect(-2, -3, 4, 6); ctx.restore(); });
+    else if (s.type === 'hay') at(SUNH.hay, () => { worldT(); ctx.fillStyle = 'rgba(0,0,0,0.3)'; if (!SUNNOW) { ctx.beginPath(); ctx.arc(s.x + 3, s.y + 4, 13, 0, TAU); ctx.fill(); } ctx.fillStyle = CFG.style === 'grit' ? '#857344' : '#c8a64e'; ctx.beginPath(); ctx.arc(s.x, s.y, 13, 0, TAU); ctx.fill(); ctx.strokeStyle = CFG.style === 'grit' ? '#665834' : '#a0823a'; ctx.lineWidth = 1.5; for (const r of [9, 5]) { ctx.beginPath(); ctx.arc(s.x, s.y, r, s.a, s.a + 5); ctx.stroke(); } });
+    else if (s.type === 'tree') at(SUNH.tree[0], () => { const tc = s.pine ? SPR.pines[s.v] : SPR.trees[s.v]; worldT(); ctx.fillStyle = 'rgba(0,0,0,0.28)'; if (!SUNNOW) { ctx.beginPath(); ctx.arc(s.x + 6, s.y + 7, 24 * s.sc, 0, TAU); ctx.fill(); } img(tc, s.x, s.y, s.a, s.sc, 0.94); });
   }
-  // wrecks
-  for (const w of M.wrecks) if (vis(w.x, w.y, 70)) drawWreck(w);
-  // ---- layer 3: standing soldiers, then vehicles (taller than a person)
-  for (const s of M.sol) if (s.alive && !s.veh && s.stance === 0 && vis(s.x, s.y, 30) && !hidden(s)) drawSoldier(s, vw);
-  for (const v of M.vehicles) if (v.active && v.type === 'nest' && vis(v.x, v.y, 80)) drawVehicle(v);
-  for (const v of M.vehicles) if (v.active && v.type !== 'nest' && vis(v.x, v.y, 80)) drawVehicle(v);
-  // projectiles
-  worldT();
-  for (const p of M.proj) {
-    if (!vis(p.x, p.y, 20)) continue;
-    if (p.k === 'bullet') {
-      const T = SPR.tracer[p.heavy ? 2 : p.mg ? 1 : 0], run = p.ox === undefined ? T.L : Math.hypot(p.x - p.ox, p.y - p.oy);     // the streak grows out of the muzzle
-      sprC(T, T.L, T.height / 2, p.x, p.y, Math.atan2(p.vy, p.vx), undefined, Math.min(1, run / T.L)); worldT();     // drawn as is (not added: orange on grass would go lime)
-    } else if (p.k === 'nade') {
-      ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.arc(p.x + 1, p.y + 2, 3, 0, TAU); ctx.fill();
-      const sc = 1 + p.h / 60; ctx.fillStyle = '#2e4a22'; ctx.beginPath(); ctx.arc(p.x, p.y - p.h * 0.3, 3.2 * sc, 0, TAU); ctx.fill();
-      if (p.life < 0.5 && Math.floor(p.life * 16) % 2) { ctx.fillStyle = '#ff3b2a'; ctx.beginPath(); ctx.arc(p.x, p.y - p.h * 0.3, 1.5, 0, TAU); ctx.fill(); }
-    } else {
-      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(Math.atan2(p.vy, p.vx));
-      ctx.fillStyle = p.k === 'shell' ? '#2b2b2b' : '#5a6a50'; ctx.fillRect(-7, -2, 12, 4); ctx.fillStyle = '#d0c070'; ctx.fillRect(4, -1.5, 3, 3);
-      ctx.restore();
-      if (p.k === 'rocket') { spr('fire5', p.x - p.vx * 0.02, p.y - p.vy * 0.02, M.time * 20, 0.45, 0.45, 0.9); light(p.x - p.vx * 0.02, p.y - p.vy * 0.02, 80, 14, rnd(0.5, 0.65)); }     // its exhaust
-      worldT();
-    }
-  }
-  for (const f of M.flings) {
-    if (!vis(f.x, f.y, 40)) continue;
-    const k = f.t / f.T, h = Math.sin(Math.PI * k);
-    solDraw(f, solSpr(f.color, 'dead'), f.x, f.y - h * 34, f.rot, 1 + h * 0.6, 1 + h * 0.6);
-  }
-  if (SUNNOW) drawSun(vw, vis, hidden);
-  drawKillerGlow(vw);
-  drawParticles(vis, 'low');
-  if (!SUNNOW) drawLights(vis);     // with the sun, they're in its pass
-  // ---- layer 4: building shadows fall across units, then roofs on top
-  if (rv) { worldT(); ctx.imageSmoothingEnabled = false; ctx.drawImage(rv.c, 0, 0, rv.w, rv.h, rv.x, rv.y, rv.w, rv.h); }     // dev yard roofs, in sight (out of sight they're in the memory)
-  if (fogged) ctx.restore();
-  worldT(); drawRoofs(vis);
-  if (fogged) { ctx.save(); worldT(); polyPath(ctx, fogPolys); ctx.clip(); }
-  // ---- layer 5: smoke and fire rise above roofs, tree canopies above everything
-  drawParticles(vis, 'high');
-  for (const s of MAP.statics) if (s.alive && s.type === 'tree' && vis(s.x, s.y, 40)) { const tc = s.pine ? SPR.pines[s.v] : SPR.trees[s.v]; worldT(); ctx.fillStyle = 'rgba(0,0,0,0.28)'; if (!SUNNOW) { ctx.beginPath(); ctx.arc(s.x + 6, s.y + 7, 24 * s.sc, 0, TAU); ctx.fill(); } img(tc, s.x, s.y, s.a, s.sc, 0.94); }
+  for (const w of M.wrecks) if (vis(w.x, w.y, 70)) at(ZH.wreck, () => drawWreck(w));
+  for (const v of M.vehicles) if (v.active && vis(v.x, v.y, 80)) at(ZH[v.type], () => drawVehicle(v));     // one piece: hull, crew, turret, MG in their own order
+  for (const p of M.proj) if (vis(p.x, p.y, 20)) at(p.k === 'nade' ? p.h + 3 : p.mg ? ZH.mg : p.low ? ZH.low : ZH.shot, () => drawProj(p));
+  for (const f of M.flings) if (vis(f.x, f.y, 40)) { const k = f.t / f.T, h = Math.sin(Math.PI * k); at(ZH.body + h * 34, () => solDraw(f, solSpr(f.color, 'dead'), f.x, f.y - h * 34, f.rot, 1 + h * 0.6, 1 + h * 0.6)); }
+  partsInto(at, vis);
+  const roofs = roofsIn(vis), FP = fogged ? new Path2D() : null; if (FP) polyPath(FP, fogPolys);     // the sight clip, built once
+  at(SUNH.wall, () => {     // roofs: always known, so drawn over the out-of-sight memory too (out of the sight clip); the dev yard's in sight
+    if (rv) { worldT(); ctx.imageSmoothingEnabled = false; ctx.drawImage(rv.c, 0, 0, rv.w, rv.h, rv.x, rv.y, rv.w, rv.h); }
+    if (fogged) ctx.restore();
+    worldT(); drawRoofs(roofs);
+    if (fogged) { ctx.save(); worldT(); ctx.clip(FP); }
+  });
+  at(99, () => drawKillerGlow(vw), true);
+  Q.sort((a, b) => a.z - b.z || a.i - b.i);
+  for (const d of Q) if (!d.post) { d.f(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
+  // the light: in sight and on the roofs (one clip: what's in sight + the roofs)
+  if (SUNNOW) {
+    if (fogged) { ctx.restore(); ctx.save(); worldT(); const P = new Path2D(FP); for (const b of roofs) P.rect(b.x, b.y, b.w, b.h); ctx.clip(P); }
+    drawSun(vw, vis, hidden);
+    if (fogged) { ctx.restore(); ctx.save(); worldT(); ctx.clip(FP); }
+  } else drawLights(vis);
+  for (const d of Q) if (d.post) { d.f(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
   // the soft layers (smoke, windows) over everything in sight alike: units, vehicles, roofs, trees, fire
   if (fogged) drawSoftFog(vw);
   drawSmokes(vw);
@@ -153,11 +113,46 @@ function drawWorld(vw) {
   } else if (M.rain) { ctx.fillStyle = 'rgba(20,30,50,0.18)'; ctx.fillRect(vw.x, vw.y, vw.w, vw.h); }
   ctx.restore();
 }
+const DRAWQ = [];
+function drawItem(it, vw) {
+  worldT();
+  if (it.k === 'med' || it.k === 'ammo') {
+    const pulse = 0.25 + 0.15 * Math.sin(M.time * 4);
+    ctx.strokeStyle = it.k === 'med' ? `rgba(120,255,140,${pulse})` : `rgba(255,220,120,${pulse})`; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(it.x, it.y, 58, 0, TAU); ctx.stroke();
+    if (!SUNNOW) { ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(it.x - 5, it.y - 4, 12, 10); }
+    ctx.fillStyle = it.k === 'med' ? '#e8e8e0' : '#5b6236'; ctx.fillRect(it.x - 6, it.y - 5, 12, 10);
+    if (it.k === 'med') { ctx.fillStyle = '#d02a22'; ctx.fillRect(it.x - 1, it.y - 4, 2, 8); ctx.fillRect(it.x - 4, it.y - 1, 8, 2); }
+    else { ctx.fillStyle = '#d6b04a'; ctx.fillRect(it.x - 4, it.y - 3, 2, 6); ctx.fillRect(it.x - 1, it.y - 3, 2, 6); ctx.fillRect(it.x + 2, it.y - 3, 2, 6); }
+  } else if (it.k === 'mine') {
+    const mine = humanTeams().has(it.team) || (vw.p && vw.p.sol && Math.hypot(vw.p.sol.x - it.x, vw.p.sol.y - it.y) < 70);
+    if (!mine) return;
+    ctx.fillStyle = '#2a2c24'; ctx.beginPath(); ctx.arc(it.x, it.y, 6, 0, TAU); ctx.fill(); ctx.fillStyle = '#4a4c40'; ctx.beginPath(); ctx.arc(it.x, it.y, 3.5, 0, TAU); ctx.fill();
+    if (Math.floor(M.time * 2) % 2) { ctx.fillStyle = it.team < 2 ? TEAMHEX[it.team] : '#f33'; ctx.fillRect(it.x - 1, it.y - 1, 2, 2); }
+  } else if (it.k === 'pouch') { ctx.fillStyle = '#4c4a2c'; ctx.fillRect(it.x - 4, it.y - 3, 8, 6); ctx.fillStyle = '#6c6a40'; ctx.fillRect(it.x - 4, it.y - 3, 8, 2); }
+}
+function drawProj(p) {
+  worldT();
+  if (p.k === 'bullet') {
+    const T = SPR.tracer[p.heavy ? 2 : p.mg ? 1 : 0], run = p.ox === undefined ? T.L : Math.hypot(p.x - p.ox, p.y - p.oy);     // the streak grows out of the muzzle
+    sprC(T, T.L, T.height / 2, p.x, p.y, Math.atan2(p.vy, p.vx), undefined, Math.min(1, run / T.L));     // drawn as is (not added: orange on grass would go lime)
+  } else if (p.k === 'nade') {
+    if (!SUNNOW) { ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.arc(p.x + 1, p.y + 2, 3, 0, TAU); ctx.fill(); }
+    const sc = 1 + p.h / 60; ctx.fillStyle = '#2e4a22'; ctx.beginPath(); ctx.arc(p.x, p.y - p.h * 0.3, 3.2 * sc, 0, TAU); ctx.fill();
+    if (p.life < 0.5 && Math.floor(p.life * 16) % 2) { ctx.fillStyle = '#ff3b2a'; ctx.beginPath(); ctx.arc(p.x, p.y - p.h * 0.3, 1.5, 0, TAU); ctx.fill(); }
+  } else {
+    ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(Math.atan2(p.vy, p.vx));
+    ctx.fillStyle = p.k === 'shell' ? '#2b2b2b' : '#5a6a50'; ctx.fillRect(-7, -2, 12, 4); ctx.fillStyle = '#d0c070'; ctx.fillRect(4, -1.5, 3, 3);
+    ctx.restore();
+    if (p.k === 'rocket') { spr('fire5', p.x - p.vx * 0.02, p.y - p.vy * 0.02, M.time * 20, 0.45, 0.45, 0.9); light(p.x - p.vx * 0.02, p.y - p.vy * 0.02, 80, 14, rnd(0.5, 0.65)); }     // its exhaust
+  }
+  worldT();
+}
 /* the map's roofs (they're always known: drawn over the out-of-sight memory too) and the buildings' shadows */
-function drawRoofs(vis) {
-  for (const b of MAP.buildings) if (b.roofC && vis(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h))) ctx.drawImage(b.roofC, b.x, b.y);
+const roofsIn = vis => MAP.buildings.filter(b => b.roofC && vis(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h)));
+function drawRoofs(bs) {     // bs: the buildings in view (roofsIn)
+  for (const b of bs) ctx.drawImage(b.roofC, b.x, b.y);
   ctx.fillStyle = CFG.style === 'grit' ? 'rgba(0,0,0,0.38)' : 'rgba(0,0,0,0.32)';
-  if (!MAP.tiled && !SUNNOW) for (const b of MAP.buildings) { if (!vis(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h))) continue; ctx.beginPath(); ctx.moveTo(b.x + b.w, b.y); ctx.lineTo(b.x + b.w + 14, b.y + 14); ctx.lineTo(b.x + b.w + 14, b.y + b.h + 14); ctx.lineTo(b.x + 14, b.y + b.h + 14); ctx.lineTo(b.x, b.y + b.h); ctx.lineTo(b.x + b.w, b.y + b.h); ctx.closePath(); ctx.fill(); }
+  if (!MAP.tiled && !SUNNOW) for (const b of bs) { ctx.beginPath(); ctx.moveTo(b.x + b.w, b.y); ctx.lineTo(b.x + b.w + 14, b.y + 14); ctx.lineTo(b.x + b.w + 14, b.y + b.h + 14); ctx.lineTo(b.x + 14, b.y + b.h + 14); ctx.lineTo(b.x, b.y + b.h); ctx.lineTo(b.x + b.w, b.y + b.h); ctx.closePath(); ctx.fill(); }
 }
 /* the smoke field; around this view's eyes it thins out (SIGHT_NEAR, as the sight rules do) down to SMOKE_KEEP, so you
    can see your feet in smoke */
@@ -417,14 +412,20 @@ function drawSeated(s, mg) {
   if (s.flash > 0 && !mg && role !== 'drive') { const [mx, my] = muzzle(s, 20); flashAt(mx, my, 8); light(mx, my, 90, 18, rnd(0.6, 0.8)); }
 }
 const FIRE = ['fire0', 'fire2', 'fire3', 'fire4'], SMOKE = ['smoke0', 'smoke1', 'smoke2', 'smoke3'], BOOM = ['boom0', 'boom1', 'boom2'];
-const HIGHP = { smoke: 1, fire: 1, boom: 1, steam: 1, flash: 1, spark: 1, ring: 1 };
-function drawParticles(vis, layer) {
-  const hi = layer === 'high';
-  worldT();
-  for (const q of M.parts) {
-    if (!HIGHP[q.k] !== !hi || !vis(q.x, q.y, q.sz + 30)) continue;
+/* each kind's height (px) in the draw order, and how it's drawn: 0 lit, 1 over the light, 2 over the light, added */
+const PZ = { ripple: [0, 0], blood: [0.5, 0], shell: [1, 0], dirt: [2, 0], straw: [2, 0], dust: [3, 0], debris: [3, 0], splinter: [3, 0], leaf: [4, 0],
+  ring: [1, 2], flash: [30, 2], spark: [30, 2], fire: [44, 1], boom: [44, 1], smoke: [48, 1], steam: [48, 1] };
+const _pb = {};
+function partsInto(at, vis) {     // one bucket per kind, each drawn at its height
+  for (const k in _pb) _pb[k].length = 0;
+  for (const q of M.parts) if (PZ[q.k] && vis(q.x, q.y, q.sz + 30)) (_pb[q.k] || (_pb[q.k] = [])).push(q);
+  for (const k in _pb) if (_pb[k].length) at(PZ[k][0], () => drawParts(k, _pb[k]), PZ[k][1] > 0);
+}
+function drawParts(k, qs) {
+  worldT(); if (PZ[k][1] === 2) ctx.globalCompositeOperation = 'lighter';
+  for (const q of qs) {
     const a = clamp(q.life / q.max, 0, 1);
-    switch (q.k) {
+    switch (k) {
       case 'smoke': { if (q.v === undefined) q.v = rint(0, 3); const sc = q.sz / 22; spr(SMOKE[q.v], q.x, q.y, q.v * 1.7 + q.life * 0.2, sc, sc, a * 0.6); break; }
       case 'dust': { if (q.v === undefined) q.v = rint(0, 1); const sc = q.sz / 26; spr('dust' + q.v, q.x, q.y, q.v * 2, sc, sc, a * 0.45); break; }
       case 'steam': ctx.globalAlpha = a * 0.5; ctx.drawImage(SPR.steam, q.x - q.sz, q.y - q.sz, q.sz * 2, q.sz * 2); break;
@@ -438,16 +439,10 @@ function drawParticles(vis, layer) {
       case 'blood': worldT(); bloodDrop(ctx, q.x, q.y, q.sz * 0.8, q.rot, 1); break;
       case 'fire': { if (q.v === undefined) q.v = rint(0, 3); const sc = q.sz / 20 * (0.6 + 0.6 * (1 - a)); spr(FIRE[q.v], q.x, q.y, q.v + q.life, sc, sc, a * 0.95); break; }
       case 'boom': { const k = 1 - a, sc = q.sz * (0.6 + k * 0.9); spr(BOOM[q.v], q.x, q.y, q.rot + k * 0.6, sc, sc, Math.min(1, a * 1.6)); break; }
+      case 'flash': ctx.globalAlpha = a * 0.5; ctx.drawImage(SPR.flash, q.x - q.sz / 2, q.y - q.sz / 2, q.sz, q.sz); break;
+      case 'spark': ctx.globalAlpha = a; ctx.strokeStyle = '#ffd27a'; ctx.lineWidth = q.sz; ctx.beginPath(); ctx.moveTo(q.x, q.y); ctx.lineTo(q.x - q.vx * 0.02, q.y - q.vy * 0.02); ctx.stroke(); break;
+      case 'ring': ctx.globalAlpha = a * 0.5; ctx.strokeStyle = '#ffe2a0'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(q.x, q.y, q.sz * (1 - a * 0.7), 0, TAU); ctx.stroke(); break;
     }
-  }
-  if (!hi) { ctx.globalAlpha = 1; return; }
-  worldT(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'lighter';
-  for (const q of M.parts) {
-    if (!vis(q.x, q.y, q.sz + 10)) continue;
-    const a = clamp(q.life / q.max, 0, 1);
-    if (q.k === 'flash') { ctx.globalAlpha = a * 0.5; ctx.drawImage(SPR.flash, q.x - q.sz / 2, q.y - q.sz / 2, q.sz, q.sz); }
-    else if (q.k === 'spark') { ctx.globalAlpha = a; ctx.strokeStyle = '#ffd27a'; ctx.lineWidth = q.sz; ctx.beginPath(); ctx.moveTo(q.x, q.y); ctx.lineTo(q.x - q.vx * 0.02, q.y - q.vy * 0.02); ctx.stroke(); }
-    else if (q.k === 'ring') { ctx.globalAlpha = a * 0.5; ctx.strokeStyle = '#ffe2a0'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(q.x, q.y, q.sz * (1 - a * 0.7), 0, TAU); ctx.stroke(); }
   }
   ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
 }

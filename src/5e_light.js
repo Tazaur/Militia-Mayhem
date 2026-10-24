@@ -81,11 +81,14 @@ function drawLight(l) {
    toward the light, and a march to the light against the heights for their shadows (a lower thing's ends). It replaces the old offset shadows (SUNNOW). Off in settings, or without WebGL: the old look */
 const SUN = { az: -2.36, el: 0.7, tint: [0.46, 0.5, 0.64], warm: [1, 0.93, 0.8] };     // az: toward the sun (up-left); el: its height
 const HS = 0.5;                                                                       // height buffer resolution vs the screen
-const SUNH = { wall: 40, fence: 9, hay: 14, crate: 10, nest: 10, tree: [56, 36] };     // px
+const SUNH = { flag: 22, item: 4, wall: 40, fence: 9, hay: 14, crate: 10, nest: 10, tree: [56, 36] };     // px
 const SUNB = { mgNest: 4, stand: 7, jump: 4 };     // px: a tripod's gap under the nest MG; a soldier's legs (added, solid); a jump's gap
 /* per part (sprite name less its frame number) or shape (SUNH name): lift = an air gap (px) between it and what it rests
    on, add = px taller than painted. A part's start is the top of what's under it (+ lift); its pixels stand on that */
 const SUNP = { tur_gun: { lift: 4 } };
+/* draw order: each thing's height (px, its top as the sun pass has it); drawWorld draws low to high */
+const ZH = { body: 1, item: 2, low: 4, prone: 4, sol: 13, arc: 9, nest: SUNH.nest, wreck: 12, shot: 12, mg: 22, jeep: 24, tank: 26 };
+const solZ = s => s.down ? ZH.body : (s.stance === 0 ? SUNB.stand + ZH.sol : ZH.prone) + SUNB.jump * jumpK(s);
 const sunP = n => SUNP[n] || SUNP[n.replace(/\d+$/, '')] || {};
 let SUNNOW = false, SUNDBG = 0, _sun = null;
 const MIMG = typeof Image !== 'undefined' && typeof MAT_SRC !== 'undefined' ? new Image() : null;
@@ -112,9 +115,9 @@ void main() {
   vec2 g = vec2(hh(p + vec2(1., 0.)) - hh(p - vec2(1., 0.)), hh(p + vec2(0., 1.)) - hh(p - vec2(0., 1.))) * K * 0.5;
   vec3 N = normalize(vec3(-g, 1.));
   float lam = (0.45 + 0.55 * max(dot(N, L), 0.)) / (0.45 + 0.55 * L.z);
-  float sh = 1., mt = (64. - h0) / T, j = fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+  float sh = 1., mt = (64. - h0) / T, j = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));     // interleaved gradient noise: an even spread, not speckle
   for (int i = 0; i < 24; i++) {
-    float t = mt * (float(i) + j) / 24., d = blk(p + D * t * K, h0 + t * T);
+    float x = (float(i) + j) / 24., t = mt * x * x, d = blk(p + D * t * K, h0 + t * T);     // steps fine near the foot (short shadows of small things), coarse far out (walls)
     if (d > 0.) sh = min(sh, clamp(1. - d / (1. + t * 0.12), 0., 1.));
   }
   vec3 pl = vec3(0.);
@@ -189,6 +192,10 @@ function sunHeights(vis, hidden) {
     } else if (s.type === 'hay') { const gr = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, 13); gr.addColorStop(0, H4(SUNH.hay, 'hay')); gr.addColorStop(1, H4(SUNH.hay * 0.6, 'hay')); ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(s.x, s.y, 13, 0, TAU); ctx.fill(); }
     else if (s.type === 'fence') { ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.a); ctx.fillStyle = H4(SUNH.fence, 'fence'); ctx.fillRect(-7, -1.5, 14, 3); ctx.restore(); }
   }
+  const span = (t, b) => `rgb(${clamp(Math.round(t * 4), 0, 255)},${255 - clamp(Math.round(b * 4), 0, 255)},0)`;
+  ctx.fillStyle = span(SUNH.flag, 0); for (const f of M.flags) if (vis(f.x, f.y, 30)) ctx.fillRect(f.x - 1, f.y - 1, 2, 2);
+  ctx.fillStyle = span(SUNH.item, 0); for (const it of M.items) if ((it.k === 'med' || it.k === 'ammo') && vis(it.x, it.y, 8)) ctx.fillRect(it.x - 6, it.y - 5, 12, 10);
+  for (const p of M.proj) if (p.k === 'nade' && vis(p.x, p.y, 8)) { ctx.fillStyle = span(p.h + 3, p.h); ctx.beginPath(); ctx.arc(p.x, p.y - p.h * 0.3, 3, 0, TAU); ctx.fill(); }
   ctx.fillStyle = H4(SUNH.crate, 'crate'); for (const c of M.crates) if (c.live && vis(c.x, c.y, 14)) { ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(c.a); ctx.fillRect(-8, -8, 16, 16); ctx.restore(); }
   for (const A of MAP.arcs) { if (!vis(A.x, A.y, 50)) continue; const f = A.lost / A.bags.length; hpart(f < 0.25 ? 'bagarc0' : f < 0.75 ? 'bagarc1' : 'bagarc2', A.x, A.y, A.a); }
   for (const w of M.wrecks) {

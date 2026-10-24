@@ -368,3 +368,10 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 
 ## Build 149
 - atlas_m.png repaint: soldiers (stand / nogun / rpg / sit) 13 px (standing: + 7 legs = 20), tank gun 6 px barrel / 8 muzzle brake (at 16: 16..22, under the turret top 23), turret 11, jeep tyres 6.
+
+## Build 150
+- Draw order from height: drawWorld collects everything standing on the ground into one list (`at(z, draw, post)`), z = its top in px as the sun pass has it (ZH / SUNH / solZ in 5e_light.js; particles by kind: PZ in 5_ui.js), sorted low to high (ties keep push order). No manual layers: jump dust (3) lands behind the jumper (20), prone men (4) under sandbags (9), roofs at 40, canopies at 56. Vehicles stay one entry (own internal order).
+- The light composite now runs after the whole lit list, so roofs and canopies are lit/shadowed (trees shade roofs, flashes light them). Clip for it = sight polys + visible roofs (one Path2D, `FP` built once per frame). `post` entries draw over the light: fire, boom, smoke, steam, flash/spark/ring (added), killer glow.
+- Fake shadows left under SUNNOW gone: flag pole, med/ammo items and grenades are in the height pass (grenade a span at its arc height).
+- Grain: sun march uses interleaved gradient noise (not white noise) and quadratic steps (fine near the foot, coarse far out), so small things' shadows are solid. Same cost.
+- polyPath accepts a Path2D. drawRoofs takes the list from roofsIn(vis).

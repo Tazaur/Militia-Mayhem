@@ -92,7 +92,7 @@ function visPoly(ex, ey, box, walls, pad) {
 }
 function inPoly(x, y, P) { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; }
 /* the sight polygons and their wall strips as one path, all wound the same way, so a nonzero fill / clip is their union */
-function polyPath(g, polys) { g.beginPath(); for (const P of polys) { pathPos(g, P); if (P.strips) for (const S of P.strips) pathPos(g, S); } }
+function polyPath(g, polys) { if (g.beginPath) g.beginPath(); for (const P of polys) { pathPos(g, P); if (P.strips) for (const S of P.strips) pathPos(g, S); } }
 function fogMemory(vw) {
   M.fogMem = M.fogMem || {};
   const key = vw.p ? 'p' + vw.p.id : 'shared';
@@ -155,7 +155,7 @@ function applyFog(vw, vis, x0, y0, x1, y1, rv) {
     if (s.type === 'fence') { ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.a); ctx.fillStyle = CFG.style === 'grit' ? '#5a4632' : '#8a6a42'; ctx.fillRect(-7, -1, 14, 2.5); ctx.fillStyle = CFG.style === 'grit' ? '#3e3022' : '#5e4428'; ctx.fillRect(-2, -3, 4, 6); ctx.restore(); }
     else { ctx.fillStyle = CFG.style === 'grit' ? '#857344' : '#c8a64e'; ctx.beginPath(); ctx.arc(s.x, s.y, 13, 0, TAU); ctx.fill(); }
   }
-  drawRoofs(vis);
+  drawRoofs(roofsIn(vis));
   for (const s of MAP.statics) if (s.type === 'tree' && vis(s.x, s.y, 40) && (m.st.has(s) ? m.st.get(s) : true)) { img(s.pine ? SPR.pines[s.v] : SPR.trees[s.v], s.x, s.y, s.a, s.sc, 0.94); worldT(); }
   ctx.setTransform(1, 0, 0, 1, 0, 0); fogLook(ctx, vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR);
   ctx = main;
