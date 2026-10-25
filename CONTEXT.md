@@ -569,3 +569,6 @@ Every projectile has a height now (shells and rockets were a flat 99, so they fl
 Mounted lamps are fixed (FIXED: tilt + half-angle; `lampD(a, fix)`): jeep headlights 0.42 / LAMP.cone, the tank spotlight narrow and near level (0.17 / 0.24) at turret top + LAMP.post (8), so its lower edge clears the hull (it used to run into it: a striped penumbra). Flashlights still dip at what they're aimed at.
 Point light shadow march: 5 px average steps, packed toward the light (t = mix(u, u(2-u), 0.6)).
 Dev: LIGHT POINTS draws a spotlight as its direction, cone sides and the ground ellipse with tilt / reach (no reach circle); AIM RAYS (new toggle) draws each player's gun aim ray (dim inside AIM.min; red where it aims down at something, with the heights).
+
+## Build 196
+Soft light shadows blend instead of dithering: LT is LINEAR and CP reads it as 4 taps at (±1, ±1) px (a 4 x 4 footprint), so the jittered march's half-shadows average out (dev view POINT LIGHTS still shows the raw single tap). Tank spotlight back to catching its hull a little: FIXED.tank tilt 0.3, half-angle 0.28.

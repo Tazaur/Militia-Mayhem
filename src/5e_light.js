@@ -25,8 +25,8 @@ const lampD = (a, fix) => [Math.cos(a), Math.sin(a), Math.cos(fix ? fix.cone : L
 /* every beam that's on, as f(x, y, h, a, o, fix): flashlights, and vehicles' lights (a jeep's two headlights, a tank's
    spotlight on top of its turret's side: the flashlight's beam, all of them); o keeps the beam's pool (lampPool); fix: a
    mounted lamp's fixed beam (FIXED: its tilt down and half-angle, rad; it doesn't dip at what's in front). The tank's is
-   narrow and near level, so its lower edge clears the hull in front of it */
-const FIXED = { jeep: { tilt: 0.42, cone: LAMP.cone }, tank: { tilt: 0.17, cone: 0.24 } };
+   narrower and flatter: its lower edge just catches the front of the hull */
+const FIXED = { jeep: { tilt: 0.42, cone: LAMP.cone }, tank: { tilt: 0.3, cone: 0.28 } };
 function lampsOn(f) {
   for (const s of M.sol) if (s.alive && s.lamp && !s.veh) { const [x, y] = gunTip(s); f(x, y, gunH(s), s.a, s); }
   for (const v of M.vehicles) {
@@ -306,7 +306,7 @@ void main() {
     vec4 c = tx(p); float t = max(hh(p), c.b > 0.5 ? ${ROOF_Z[1].toFixed(1)} : 0.), fb = (1. - c.a) * 63.75;
     vec3 col = hr(t / 64.); if (c.g > c.r && fb > c.r * 63.75 + 0.5 && mod(floor(p.x + p.y), 6.) < 2.) col = hr(fb / 64.);
     gl_FragColor = vec4(col, 1.); return; }
-  vec4 a = texture2D(LT, f / G), m = mt(p);
+  vec4 a = (texture2D(LT, (f + vec2(-1., -1.)) / G) + texture2D(LT, (f + vec2(1., -1.)) / G) + texture2D(LT, (f + vec2(-1., 1.)) / G) + texture2D(LT, (f + vec2(1., 1.)) / G)) * 0.25, m = mt(p);     // the lights blurred (4 linear taps: a 4 x 4 px footprint): their soft shadows' jittered steps blend, not dither
   float r = m.r, gw = m.g; vec3 pl = a.rgb * 4., tint = pl.r + pl.g + pl.b > 0.004 ? pl / max(max(pl.r, pl.g), pl.b) : PLT;     // the point lights (LT: their colours summed); tint: their colour here (a red light's haze is red)
   vec2 w = (p - WX.xy) / WX.z;
   if (m.b > 0.5) { vec2 e = vec2(1.5, 0.); N = normalize(N + vec3(wv(w - e.xy) - wv(w + e.xy), wv(w - e.yx) - wv(w + e.yx), 0.) * 0.9); }
@@ -380,7 +380,7 @@ void main() { vec2 t = floor((gl_FragCoord.xy - X.yz) / X.x * Z); gl_FragColor =
     // the material atlas: R its heights, G reflectivity, B glow, A the colour atlas's silhouette. Units: 0 heights, 1 atlas, 2 materials, 3 light
     const { mp, ap, w, h } = matData(), id = new ImageData(w, h); for (let i = 0; i < mp.length; i += 4) { id.data[i] = mp[i]; id.data[i + 1] = mp[i + 1]; id.data[i + 2] = mp[i + 2]; id.data[i + 3] = ap[i + 3] >= 128 ? 255 : 0; }
     gl.activeTexture(gl.TEXTURE1); const AT = texture(gl.NEAREST, id);
-    gl.activeTexture(gl.TEXTURE2); const MT = texture(gl.NEAREST); gl.activeTexture(gl.TEXTURE3); const LT = texture(gl.NEAREST); gl.activeTexture(gl.TEXTURE0); const HT = texture(gl.LINEAR);
+    gl.activeTexture(gl.TEXTURE2); const MT = texture(gl.NEAREST); gl.activeTexture(gl.TEXTURE3); const LT = texture(gl.LINEAR); gl.activeTexture(gl.TEXTURE0); const HT = texture(gl.LINEAR);
     gl.activeTexture(gl.TEXTURE4); const ST = [texture(gl.NEAREST), texture(gl.NEAREST)], FS = [gl.createFramebuffer(), gl.createFramebuffer()]; gl.activeTexture(gl.TEXTURE0);     // the sweep's two (ping-pong)
     gl.activeTexture(gl.TEXTURE6); const SS = [texture(gl.NEAREST), texture(gl.NEAREST)], FSS = [gl.createFramebuffer(), gl.createFramebuffer()];     // the remembered things' sweep
     gl.activeTexture(gl.TEXTURE7); const HTS = texture(gl.LINEAR), FBS = gl.createFramebuffer(); gl.activeTexture(gl.TEXTURE0);     // and their heights
