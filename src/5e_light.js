@@ -119,7 +119,7 @@ function sunTone() {
   const lit = mx([1, 1, 1], GOLD, g), sky = M && M.rain ? SUN.skyRain : SUN.sky;
   _toneK = key; return _tone = { day, li: mx(NIGHT, lit, day), sh: mx(NIGHT, mx(SUN.tint, DUSK, g), day), w: SUN.warm.map((v, i) => v * lit[i] * day), sky: sky.map(v => v * lerp(0.25, 1, day)) };
 }
-const HS = 0.5;                                                                       // height buffer resolution vs the screen
+let HS = 0.5; const LIGHT_Q = [0.35, 0.5, 0.75];                                     // height buffer resolution vs the screen (settings › LIGHTING QUALITY)
 const SUNH = { flag: 22, item: 4, wall: 40, fence: 9, hay: 14, crate: 10, nest: 10, tree: [56, 36] };     // px
 const SUNB = { mgNest: SUNH.nest, stand: 18, jump: 4 };     // px: the nest MG rests on its bags (drawn over them, so never lower); a soldier's legs (added to his painted height, solid); a jump's gap
 /* per part (sprite name less its frame number) or shape (SUNH name): lift = an air gap (px) between it and what it rests
@@ -466,6 +466,7 @@ function sunSweep(S, K, mxh, box, reg, T, FS, u, hu) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.bindTexture(gl.TEXTURE_2D, T[i]); gl.activeTexture(gl.TEXTURE0);
 }
 function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory's light too, map 3)
+  HS = LIGHT_Q[CFG.lightQ] || 0.5;
   const S = _sun, { gl, GC, U, CU } = S, w = Math.ceil(cv.width * HS), h = Math.ceil(cv.height * HS), dpr = DPR, K = VZ * dpr * HS, k = dpr * HS;
   if (GC.width !== w * 2 || GC.height !== h * 2) { GC.width = w * 2; GC.height = h * 2; }     // the maps 2 × 2 (4 in a row outgrew phone GPUs' 8192 px)
   const rx = Math.floor(vw.x * dpr * HS), ry = Math.floor(vw.y * dpr * HS), rw = Math.min(w - rx, Math.ceil(vw.w * dpr * HS)), rh = Math.min(h - ry, Math.ceil(vw.h * dpr * HS));

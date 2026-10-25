@@ -764,7 +764,7 @@ function drawTouch(s) {
   btn('pause', SAFE.l + 26 * k, SAFE.t + 26 * k, 19 * k, 'pause');
   btn('score', SAFE.l + 72 * k, SAFE.t + 26 * k, 19 * k, 'score', { fill: TOUCH.scoreOn ? 'rgba(255,224,138,0.5)' : undefined });
   if (!v) btn('lamp', SAFE.l + 118 * k, SAFE.t + 26 * k, 19 * k, 'lamp', { fill: s.lamp ? 'rgba(255,224,138,0.5)' : undefined });
-  { const mr = miniRect(); if (!mr.many) reg('map', { x: mr.mx, y: mr.my, w: mr.mw, h: mr.mh }); }
+  if (CFG.minimap !== false) { const mr = miniRect(); if (!mr.many) reg('map', { x: mr.mx, y: mr.my, w: mr.mw, h: mr.mh }); }
   // move stick: floats under the left thumb; a faint ring shows where to put it
   const mt = [...TOUCH.pts.values()].find(t => t.role === 'move');
   const bx = mt ? mt.ox : SAFE.l + 104 * k, by = mt ? mt.oy : H - SAFE.b - 100 * k;
@@ -831,7 +831,7 @@ function drawGlobalHUD() {
   }
   M.toasts.slice(0, 2).forEach((t, i) => { ctx.globalAlpha = Math.min(1, t.t * 2); stxt(t.txt, W / 2, top + 66 * u + i * 24 * u, 17 * u, t.c, 'center', 'alphabetic', FD); ctx.globalAlpha = 1; });
   // the deploy screens carry their own full map, so the minimap steps aside while anyone is choosing a spawn
-  if (!LOCALS().some(p => p.sol && !p.sol.alive && !M.over)) drawMinimap();
+  if (CFG.minimap !== false && !LOCALS().some(p => p.sol && !p.sol.alive && !M.over)) drawMinimap();
   if (M.shared && M.views.length === 1) {
     const vw = M.views[0];
     for (const p of LOCALS()) {

@@ -99,7 +99,7 @@ probe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;padd
 document.body.appendChild(probe);
 let ROT = false; const TOUCHDEV = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 function resize() {
-  DPR = Math.min(2, window.devicePixelRatio || 1);
+  DPR = Math.min(2, window.devicePixelRatio || 1) * Math.max(0.5, Math.min(1, (store.get('cfg3', {}).res || 100) / 100));     // RENDER RESOLUTION
   // a phone held upright: the canvas turns sideways so the game is always landscape
   ROT = TOUCHDEV && innerHeight > innerWidth * 1.05; W = ROT ? innerHeight : innerWidth; H = ROT ? innerWidth : innerHeight;
   cv.style.width = ROT ? W + 'px' : ''; cv.style.height = ROT ? H + 'px' : ''; cv.style.right = cv.style.bottom = ROT ? 'auto' : '';
@@ -372,13 +372,15 @@ function audioInit() {
     applyMute(); Music.start();
   } catch (e) { AU.ctx = null; }
 }
-function applyMute() { if (!AU.ctx) return; AU.sfx.gain.value = AU.sfxOn && !AU.pz ? 0.75 : 0; AU.ui.gain.value = AU.sfxOn ? 0.75 : 0; AU.mus.gain.value = AU.musOn ? 0.3 : 0; }
+/* the volume sliders (0..100): effects and music, each times master; at 0 nothing is played at all (sfxOn / musOn) */
+const sfxVol = () => 0.75 * CFG.volSfx / 100 * CFG.volMaster / 100;
+function applyMute() { AU.sfxOn = CFG.volSfx > 0 && CFG.volMaster > 0; AU.musOn = CFG.volMus > 0 && CFG.volMaster > 0; if (!AU.ctx) return; AU.sfx.gain.value = !AU.pz ? sfxVol() : 0; AU.ui.gain.value = sfxVol(); AU.mus.gain.value = 0.3 * CFG.volMus / 100 * CFG.volMaster / 100; }
 /* menus muffle the battle behind them (the demo battle on the title screen, the match under pause / lobby / settings) */
 function audioTick() {
   if (!AU.ctx || !AU.muf) return;
   const menu = SET.open || state !== 'play' || !M || M.demo, f = menu ? 520 : 20000;
   const pz = !!(M && !M.demo && (state === 'pause' || (SET.open && SET.from === 'pause')));   // paused match: battle sounds go quiet, come back on unpause
-  if (AU.pz !== pz) { AU.pz = pz; AU.sfx.gain.cancelScheduledValues(AU.ctx.currentTime); AU.sfx.gain.setTargetAtTime(AU.sfxOn && !pz ? 0.75 : 0, AU.ctx.currentTime, pz ? 0.04 : 0.1); }
+  if (AU.pz !== pz) { AU.pz = pz; AU.sfx.gain.cancelScheduledValues(AU.ctx.currentTime); AU.sfx.gain.setTargetAtTime(!pz ? sfxVol() : 0, AU.ctx.currentTime, pz ? 0.04 : 0.1); }
   if (AU.mufOn !== menu) { AU.mufOn = menu; AU.muf.frequency.cancelScheduledValues(AU.ctx.currentTime); AU.muf.frequency.setTargetAtTime(f, AU.ctx.currentTime, menu ? 0.06 : 0.12); }
 }
 const UISFX = { ui: 1, join: 1, leave: 1 };
@@ -702,7 +704,13 @@ function rumble(pl, s, d) {
 function touchPlayer() { return PLAYERS.find(p => p.dev.type === 'touch'); }
 
 /* ---------------- settings ---------------- */
-const CFG = Object.assign({ mode: 0, map: 0, bots: 5, limit: 1, skill: 1, ff: false, board: false, midjoin: true, camera: 'split', style: 'classic', fogLook: 'grey', weather: 'clear', teamColors: 'player', fog: 'los', sound: 'exp', sun: true, clearLos: true }, store.get('cfg3', {}));
+const CFG = Object.assign({ mode: 0, map: 0, bots: 5, limit: 1, skill: 1, ff: false, board: false, midjoin: true, camera: 'split', style: 'classic', fogLook: 'grey', weather: 'clear', teamColors: 'player', fog: 'los', sound: 'exp', sun: true, clearLos: true,
+  res: 100, lightQ: 1, fps: 0, minimap: true, volMaster: 100, volSfx: store.get('sfx', true) ? 100 : 0, volMus: store.get('mus', true) ? 100 : 0 }, store.get('cfg3', {}));
+/* settings › FOG OF WAR presets: [name, values] (drawn by fogLook / fogEdge) */
+const FOG_PRESETS = [['GREYSCALE', { fogD: 100, fogK: 22, fogE: 0, fogW: 24 }], ['MUTED', { fogD: 50, fogK: 22, fogE: 0, fogW: 24 }],
+  ['DARKENED', { fogD: 0, fogK: 42, fogE: 0, fogW: 24 }], ['EDGE ONLY', { fogD: 0, fogK: 0, fogE: 60, fogW: 24 }]];
+if (CFG.fogD === undefined) Object.assign(CFG, FOG_PRESETS[{ grey: 0, partial: 1, dark: 2 }[CFG.fogLook] || 0][1]);     // the old OUT OF SIGHT choice, as sliders
+delete CFG.fogLook; applyMute();     // sets sfxOn / musOn from the volumes
 /* soldiers: one design (dark green, armband in the team colour); poses stand / nogun / rpg / sit / dead / leg0-2 */
 function solSpr(color, pose) { return 'sol_' + pose + '_' + color; }
 function solShadow(pose) { return ATLAS['nsh_' + pose] ? 'nsh_' + pose : null; }

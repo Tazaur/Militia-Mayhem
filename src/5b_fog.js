@@ -161,7 +161,7 @@ function applyFog(vw, vis, x0, y0, x1, y1, rv) {
   }
   drawRoofs(roofsIn(vis));
   for (const s of MAP.statics) if (s.type === 'tree' && vis(s.x, s.y, 40) && (m.st.has(s) ? m.st.get(s) : true)) { img(s.pine ? SPR.pines[s.v] : SPR.trees[s.v], s.x, s.y, s.a, s.sc, 0.94); worldT(); }
-  ctx.setTransform(1, 0, 0, 1, 0, 0); fogLook(ctx, vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR);
+  ctx.setTransform(1, 0, 0, 1, 0, 0); fogLook(ctx, vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR); ctx.save(); ctx.beginPath(); ctx.rect(vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR); ctx.clip(); worldT(); fogEdge(ctx, polys); ctx.restore();
   ctx = main; worldT();
   vw._fog = { polys, eyes, box };
   return polys;
@@ -217,13 +217,21 @@ function sightNear(vw, o) {
   for (const [x, y, r, L] of sightParts(o)) for (let t = 0; ; t = Math.min(L, t + Math.max(r, 4))) { if (circleSeen(F, x + ux * t, y + uy * t, r)) return true; if (t >= L) break; }
   return false;
 }
-/* the out-of-sight look (setting OUT OF SIGHT): drained of colour fully / by half / not at all, and dimmed (more when
-   only darkened). The region of g must be opaque (a blend mode paints on transparent pixels). */
-const FOG_LOOKS = ['grey', 'partial', 'dark'];
+/* the out-of-sight look (settings › FOG OF WAR): drained of colour (fogD %) and dimmed (fogK %) all over, plus a shadow
+   along the edge of sight (fogE %) fading out over fogW screen px (fogEdge). The region of g must be opaque (a blend mode
+   paints on transparent pixels). Presets: FOG_PRESETS (1_core) */
 function fogLook(g, x, y, w, h) {
-  const L = CFG.fogLook || 'grey';
-  if (L !== 'dark') { g.globalCompositeOperation = 'saturation'; g.globalAlpha = L === 'partial' ? 0.5 : 1; g.fillStyle = '#808080'; g.fillRect(x, y, w, h); g.globalAlpha = 1; }
-  g.globalCompositeOperation = 'source-over'; g.fillStyle = L === 'dark' ? 'rgba(4,6,8,0.42)' : CFG.style === 'grit' ? 'rgba(6,6,4,0.3)' : 'rgba(4,8,6,0.22)'; g.fillRect(x, y, w, h);
+  if (CFG.fogD > 0) { g.globalCompositeOperation = 'saturation'; g.globalAlpha = CFG.fogD / 100; g.fillStyle = '#808080'; g.fillRect(x, y, w, h); g.globalAlpha = 1; }
+  g.globalCompositeOperation = 'source-over'; if (CFG.fogK > 0) { g.fillStyle = `rgba(4,7,6,${(CFG.fogK / 100).toFixed(3)})`; g.fillRect(x, y, w, h); }
+}
+/* the edge shadow: the sight polygons' outlines stroked in rings, widest first, each a little dark, so it's fogE at the
+   edge and gone fogW px out (inside, it's in sight, where this layer never shows). g has the world transform */
+function fogEdge(g, polys) {
+  if (!(CFG.fogE > 0) || !polys.length) return;
+  const n = 6, a = 1 - Math.pow(1 - CFG.fogE / 100, 1 / n);
+  g.beginPath(); for (const P of polys) P.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)), g.closePath();
+  g.lineJoin = 'round'; g.strokeStyle = `rgba(2,4,3,${a.toFixed(3)})`;
+  for (let i = n; i >= 1; i--) { g.lineWidth = 2 * CFG.fogW * i / n / VZ; g.stroke(); }
 }
 /* adds polygon P to g's path wound like arc() (positive), so overlapping parts of one nonzero fill cover once */
 function pathPos(g, P) {

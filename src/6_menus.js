@@ -436,41 +436,54 @@ function updateNetLobby(ins) {
 
 /* ================= settings (main menu corner, lobby and pause) ================= */
 const SET = { open: false, from: null, tab: 0, sel: 0 };
-const SET_TABS = [['GRAPHICS', ['style', 'sun', 'teams', 'fogLook', 'clearLos']], ['DISPLAY', ['camera', 'fullscreen']], ['AUDIO', ['sfx', 'mus', 'sound']], ['CONTROLS', null]];
+/* every setting: a choice (o: [value, label], cycles) or a slider (lo..hi by st, unit); get / set read and write it,
+   after runs once it changed. Names as other games call them */
+const choice = (n, key, o, after) => ({ n, o, get: () => CFG[key], set: v => { CFG[key] = v; if (after) after(); } });
+const slider = (n, key, lo, hi, st, unit, after) => ({ n, lo, hi, st, unit, get: () => CFG[key], set: v => { CFG[key] = v; if (after) after(); } });
+const fogPreset = () => FOG_PRESETS.findIndex(([, p]) => p.fogD === CFG.fogD && p.fogK === CFG.fogK && p.fogE === CFG.fogE && (!p.fogE || p.fogW === CFG.fogW));
+const SETS = {
+  style: choice('FILTER', 'style', [['classic', 'CLASSIC'], ['grit', 'GRITTY']], () => { applyStyleAssets(); if (M) { if (M.demo) demoMatch(); else paintGround(); } }),
+  sun: { n: 'DYNAMIC LIGHTING', o: [[true, 'ON'], [false, 'OFF']], get: () => CFG.sun !== false, set: v => CFG.sun = v, lab: v => v && !sunInit() ? 'NOT SUPPORTED' : null },
+  clearLos: { n: 'ROOF FADE', o: [[true, 'ALWAYS'], [false, 'INDOORS ONLY']], get: () => CFG.clearLos !== false, set: v => CFG.clearLos = v },
+  fullscreen: { n: 'FULLSCREEN', o: [[true, 'ON'], [false, 'OFF']], get: () => isFS(), set: () => { if (!SET.fsClick) toggleFullscreen(); }, lab: () => !fsOK() ? 'SHARE › ADD TO HOME SCREEN' : null },
+  camera: choice('SPLIT SCREEN', 'camera', [['split', 'ON'], ['shared', 'OFF (SHARED VIEW)']], () => { if (inMatch()) { M.cfg.camera = CFG.camera; layoutViews(); } }),
+  fogStyle: { n: 'STYLE', o: FOG_PRESETS.map(([n], i) => [i, n]), get: fogPreset, set: i => Object.assign(CFG, FOG_PRESETS[i][1]), lab: i => i < 0 ? 'CUSTOM' : null },
+  fogD: slider('DESATURATION', 'fogD', 0, 100, 10, '%'),
+  fogK: slider('DARKNESS', 'fogK', 0, 80, 2, '%'),
+  fogE: slider('EDGE SHADOW', 'fogE', 0, 100, 5, '%'),
+  fogW: slider('EDGE WIDTH', 'fogW', 8, 64, 4, ' PX'),
+  res: slider('RENDER RESOLUTION', 'res', 50, 100, 5, '%', () => resize()),
+  lightQ: choice('LIGHTING QUALITY', 'lightQ', [[0, 'LOW'], [1, 'MEDIUM'], [2, 'HIGH']]),
+  fps: choice('FPS COUNTER', 'fps', [[0, 'OFF'], [1, 'FPS'], [2, 'FPS + FRAME TIMES']]),
+  minimap: choice('MINIMAP', 'minimap', [[true, 'ON'], [false, 'OFF']]),
+  teams: { ...choice('TEAM COLORS', 'teamColors', [['player', 'PLAYER COLOR'], ['classic', 'BLUE VS RED']]), note: () => inMatch() ? '  (NEXT MATCH)' : '' },
+  volMaster: slider('MASTER VOLUME', 'volMaster', 0, 100, 10, '%', applyMute),
+  volSfx: slider('EFFECTS VOLUME', 'volSfx', 0, 100, 10, '%', applyMute),
+  volMus: slider('MUSIC VOLUME', 'volMus', 0, 100, 10, '%', applyMute),
+  sound: choice('SOUND MIX', 'sound', [['exp', 'MODERN'], ['classic', 'CLASSIC']], () => engineKillAll())
+};
+const SET_TABS = [['GRAPHICS', ['style', 'sun', 'clearLos', 'fullscreen', 'camera']], ['FOG OF WAR', ['fogStyle', 'fogD', 'fogK', 'fogE', 'fogW']],
+  ['PERFORMANCE', ['res', 'lightQ']], ['HUD', ['fps', 'minimap', 'teams']], ['AUDIO', ['volMaster', 'volSfx', 'volMus', 'sound']], ['CONTROLS', null]];
 const setRows = () => SET_TABS[SET.tab][1];
 const CONTROLS = [['MOVE', 'LEFT STICK', 'W A S D'], ['AIM', 'RIGHT STICK', 'MOUSE'], ['FIRE', 'RT', 'LEFT CLICK'], ['AIM DOWN SIGHTS', 'LT', 'RIGHT CLICK'],
   ['SPRINT', 'L3', 'SHIFT'], ['JUMP / VAULT', 'A', 'SPACE'], ['PRONE / STAND', 'B', 'C / Z'], ['RELOAD', 'X', 'R'],
   ['USE · EXIT · SWAP', 'Y', 'E · 1 / 2'], ['GRENADE', 'RB', 'G'], ['GADGET', 'LB', 'F'], ['MELEE', 'R3', 'V'],
-  ['SPOT ENEMY', 'D-PAD UP', 'Q'], ['VEHICLE SEAT', 'B / D-PAD', 'F / 1-4'], ['SCOREBOARD', 'VIEW', 'TAB'], ['PAUSE', 'START', 'ESC']];
+  ['SPOT ENEMY', 'D-PAD UP', 'Q'], ['FLASHLIGHT', 'HOLD D-PAD UP', 'L'], ['VEHICLE SEAT', 'B / D-PAD', 'F / 1-4'], ['SCOREBOARD', 'VIEW', 'TAB'], ['PAUSE', 'START', 'ESC']];
 function openSettings(from) { SET.open = true; SET.from = from; SET.tab = 0; SET.sel = 0; sfx('ui'); }
 function closeSettings() { SET.open = false; sfx('ui'); }
 const inMatch = () => M && !M.demo;
+/* [name, value shown, slider fill 0..1 or null] */
 function setLabel(k) {
-  switch (k) {
-    case 'style': return ['ART STYLE', CFG.style === 'classic' ? 'CLASSIC' : 'GRIT'];
-    case 'sun': return ['SUNLIGHT', CFG.sun === false ? 'OFF' : sunInit() ? 'ON (3D SHADOWS)' : 'NOT SUPPORTED'];
-    case 'fogLook': return ['OUT OF SIGHT', { grey: 'GREYSCALE', partial: 'PARTLY GREY', dark: 'DARKENED' }[CFG.fogLook] || 'GREYSCALE'];
-    case 'clearLos': return ['BUILDING CLEAR LOS', CFG.clearLos === false ? 'OFF' : 'ON'];
-    case 'teams': return ['TEAM COLORS', (CFG.teamColors === 'classic' ? 'BLUE VS RED' : 'PLAYER COLOR') + (inMatch() ? '  (NEXT MATCH)' : '')];
-    case 'camera': return ['MULTIPLAYER VIEW', CFG.camera === 'split' ? 'SPLIT SCREEN' : 'SHARED SCREEN'];
-    case 'sound': return ['SOUND STYLE', CFG.sound === 'classic' ? 'CLASSIC' : 'EXPERIMENTAL'];
-    case 'sfx': return ['SOUND EFFECTS', AU.sfxOn ? 'ON' : 'OFF'];
-    case 'mus': return ['MUSIC', AU.musOn ? 'ON' : 'OFF'];
-    case 'fullscreen': return ['FULLSCREEN', !fsOK() ? 'SHARE › ADD TO HOME SCREEN' : isFS() ? 'ON' : 'OFF'];
-  }
+  const S = SETS[k], v = S.get();
+  if (S.o) { const i = S.o.findIndex(([x]) => x === v), l = S.lab && S.lab(v); return [S.n, (l || (i >= 0 ? S.o[i][1] : '')) + (S.note ? S.note() : ''), null]; }
+  return [S.n, v + S.unit, (v - S.lo) / (S.hi - S.lo)];
 }
-function setChange(k, d) {
-  if (k === 'style') { CFG.style = CFG.style === 'classic' ? 'grit' : 'classic'; applyStyleAssets(); if (M) { if (M.demo) demoMatch(); else paintGround(); } }
-  if (k === 'fogLook') CFG.fogLook = FOG_LOOKS[(FOG_LOOKS.indexOf(CFG.fogLook) + (d || 1) + 3) % 3];
-  if (k === 'sun') CFG.sun = CFG.sun === false;
-  if (k === 'clearLos') CFG.clearLos = CFG.clearLos === false;
-  if (k === 'teams') CFG.teamColors = CFG.teamColors === 'classic' ? 'player' : 'classic';
-  if (k === 'camera') { CFG.camera = CFG.camera === 'split' ? 'shared' : 'split'; if (inMatch()) { M.cfg.camera = CFG.camera; layoutViews(); } }
-  if (k === 'sound') { CFG.sound = CFG.sound === 'classic' ? 'exp' : 'classic'; engineKillAll(); }
-  if (k === 'sfx') { AU.sfxOn = !AU.sfxOn; store.set('sfx', AU.sfxOn); applyMute(); }
-  if (k === 'mus') { AU.musOn = !AU.musOn; store.set('mus', AU.musOn); applyMute(); }
-  if (k === 'fullscreen' && !SET.fsClick) toggleFullscreen(); SET.fsClick = false;
-  saveCfg(); sfx('ui');
+/* d: -1 / +1 a step; f: a slider set where it was tapped (0..1) */
+function setChange(k, d, f) {
+  const S = SETS[k];
+  if (S.o) { const i = S.o.findIndex(([x]) => x === S.get()), n = S.o.length; S.set(S.o[i < 0 ? 0 : (i + (d || 1) + n) % n][0]); }
+  else S.set(clamp(f !== undefined ? S.lo + Math.round(f * (S.hi - S.lo) / S.st) * S.st : S.get() + (d || 1) * S.st, S.lo, S.hi));
+  SET.fsClick = false; saveCfg(); sfx('ui');
 }
 function updateSettings(ins) {
   for (const { st } of ins) {
@@ -504,16 +517,24 @@ function drawSettings() {
   if (rows) {
     const rh = clamp(bodyH / rows.length, 34, 56 * u);
     rows.forEach((k, i) => {
-      const y = bodyY + i * rh, sel = SET.sel === i, [lab, val] = setLabel(k), x = px + pad, w = pw - pad * 2;
+      const y = bodyY + i * rh, sel = SET.sel === i, [lab, val, fill] = setLabel(k), x = px + pad, w = pw - pad * 2;
       if (sel) { ctx.fillStyle = 'rgba(255,224,138,0.13)'; ctx.fillRect(x, y + 2, w, rh - 4); ctx.fillStyle = '#ffe08a'; ctx.fillRect(x, y + 2, 4, rh - 4); }
       txt(lab, x + 16 * u, y + rh / 2, fpx(15, u, 13), sel ? '#fff' : '#c8d0b8', 'left', 'middle', FD);
       const aw = Math.max(40, rh * 0.95);
+      let bar = null;
+      if (fill !== null) {     // a slider: the bar between the arrows (tap anywhere on it), the value right
+        const bx = x + w * 0.52 + 22 * u, bw = w - aw - 10 - 70 * u - (bx - x), by = y + rh / 2 - 4 * u;
+        ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(bx, by, bw, 8 * u); ctx.fillStyle = sel ? '#ffe08a' : '#c8b878'; ctx.fillRect(bx, by, bw * fill, 8 * u);
+        ctx.fillStyle = '#fff'; ctx.fillRect(bx + bw * fill - 2 * u, by - 4 * u, 4 * u, 16 * u);
+        bar = [bx, bw];
+      }
       txt(val, x + w - aw - 10, y + rh / 2, fpx(16, u, 13), sel ? '#ffe08a' : '#f0f0e0', 'right', 'middle', FD);
       txt('‹', x + w * 0.52, y + rh / 2, fpx(20, u, 16), 'rgba(242,230,196,0.5)', 'center', 'middle', FD);
       if (sel) keyTag('change', dv, { x: x + w * 0.52 - 12, y: y + rh * 0.2, w: 0, h: rh * 0.6 }, 'left');
       txt('›', x + w - aw / 2, y + rh / 2, fpx(20, u, 16), 'rgba(242,230,196,0.8)', 'center', 'middle', FD);
       UIB.push({ x, y, w: w * 0.55, h: rh, focus: i, fs: k === 'fullscreen', fn: () => { SET.sel = i; SET.fsClick = true; setChange(k, -1); } });
       UIB.push({ x: x + w * 0.55, y, w: w * 0.45, h: rh, focus: i, fs: k === 'fullscreen', fn: () => { SET.sel = i; SET.fsClick = true; setChange(k, 1); } });
+      if (bar) { const [bx, bw] = bar, B = { x: bx - 6 * u, y, w: bw + 12 * u, h: rh, focus: i, fn: (d, c) => { SET.sel = i; setChange(k, 0, clamp((c.x / (B.k || 1) - bx) / bw, 0, 1)); } }; UIB.push(B); }     // over the arrow halves
     });
   } else {
     const cols = pw > 620 ? 2 : 1, per = Math.ceil(CONTROLS.length / cols), rh = Math.min(bodyH / (per + 1), 34 * u), colW = (pw - pad * 2) / cols, fs = fpx(13, u, 11.5);
@@ -922,12 +943,18 @@ function render() {
     if (state === 'end') uiScaled(drawEnd);
     netOverlay();
   }
+  if (CFG.fps && state !== 'menu' && !(M.dev && DEV.stats)) drawFps();
   if (SET.open) uiScaled(drawSettings);
+}
+/* settings › FPS COUNTER: top right, under the safe area */
+function drawFps() {
+  screenT(); const u = uiU(), t = `${Math.round(DEV.fps)} FPS` + (CFG.fps > 1 ? ` · ${DEV.um.toFixed(1)} / ${DEV.rm.toFixed(1)} MS` : '');
+  txt(t, W - SAFE.r - 10 * u, SAFE.t + 10 * u, fpx(11, u, 10), DEV.fps < 45 ? '#ff9a6a' : '#9fe07a', 'right', 'top', FD);
 }
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, Math.max(0, (now - last) / 1000)); last = now;
-  try { const dv = M && M.dev, t0 = performance.now(); update(dv ? dt * DEV.ts : dt); const t1 = performance.now(); render(); if (dv) devTime(dt, t1 - t0, performance.now() - t1); audioTick(); } catch (err) { console.error(err); if (M && M.dev) devLog('ERROR ' + String(err && err.message || err).slice(0, 60), '#ff5a45'); }
+  try { const dv = M && M.dev, t0 = performance.now(); update(dv ? dt * DEV.ts : dt); const t1 = performance.now(); render(); devTime(dt, t1 - t0, performance.now() - t1); audioTick(); } catch (err) { console.error(err); if (M && M.dev) devLog('ERROR ' + String(err && err.message || err).slice(0, 60), '#ff5a45'); }
   endInputFrame();
   requestAnimationFrame(frame);
 }

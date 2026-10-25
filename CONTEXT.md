@@ -482,3 +482,9 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 
 ## Build 173
 - Point lights twice the reach again: `LSC` 4 (blasts and flashes light a whole room), `LAMP.r` 85. The shadow march takes 6 px steps (8 to 64 steps), so walls still stop them. The canvas fallback cell size grows with reach (`r/24`).
+
+## Build 174
+- Settings reworked: a table `SETS` of rows, either choices (`o`) or sliders (`lo`/`hi`/`st`). Tap a slider's bar to set it; ‹ › and the pad step it. Tabs: GRAPHICS (FILTER, DYNAMIC LIGHTING, ROOF FADE, FULLSCREEN, SPLIT SCREEN), FOG OF WAR (STYLE preset, DESATURATION, DARKNESS, EDGE SHADOW, EDGE WIDTH), PERFORMANCE (RENDER RESOLUTION scales `DPR`; LIGHTING QUALITY sets `HS` from `LIGHT_Q`), HUD (FPS COUNTER, MINIMAP, TEAM COLORS), AUDIO (MASTER / EFFECTS / MUSIC volume, SOUND MIX), CONTROLS (adds FLASHLIGHT).
+- Fog of war: `CFG.fogD/fogK/fogE/fogW`, with presets in `FOG_PRESETS` (1_core). The old `fogLook` choice is migrated once. `fogEdge` strokes the sight polygons in 6 rings on FOG_OUT, so the shadow sits only outside sight (EDGE ONLY: no tint far from the edge).
+- Volumes replace the sfx/mus toggles (`sfxVol`, `applyMute`). At 0 that sound is off entirely (sfxOn / musOn).
+- `devTime` always runs; `drawFps` draws the counter when `CFG.fps` is set.
