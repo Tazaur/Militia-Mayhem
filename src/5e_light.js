@@ -157,7 +157,7 @@ float hh(vec2 p) { return tx(p).r * 63.75; }`;
        its own shadow march) and their glow scattered in haze (smoke, rain) into LT: sh, lam / 2, pl / 4, scatter / 4 */
     const P = prog(VS, `precision highp float; ${TX}
 uniform float K, T, V, HZ; uniform vec2 P; uniform vec3 L; uniform vec2 D; uniform vec4 PL[${LMAX}]; uniform float PK[${LMAX}];
-float blk(vec2 p, float z, out float o) { vec4 c = tx(p); o = 1. - c.b * 0.65; return min(c.r * 63.75 - z, z - (1. - c.g) * 63.75); }     // > 0: height z is inside this pixel's span; o: how much it blocks (smoke: some)
+float blk(vec2 p, float z, out float o, out float th) { vec4 c = texture2D(H, (floor(clamp(p, R.xy, R.zw)) + 0.5) / S); o = 1. - c.b * 0.65; th = (c.r + c.g - 1.) * 63.75; return min(c.r * 63.75 - z, z - (1. - c.g) * 63.75); }     // > 0: height z is inside this pixel's span (th thick; read unblended: a blend of a floating thing's span with the ground's is a span neither has); o: how much it blocks (smoke: some)
 void main() {
   vec2 p = vec2(gl_FragCoord.x, V - gl_FragCoord.y) + P;     // P: the view's place in H
   float h0 = hh(p);
@@ -165,9 +165,9 @@ void main() {
   vec3 N = normalize(vec3(-g, 1.));
   float lam = (0.45 + 0.55 * max(dot(N, L), 0.)) / (0.45 + 0.55 * L.z);
   float sh = 1., mt = (64. - h0) / T, j = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));     // interleaved gradient noise: an even spread, not speckle
-  for (int i = 0; i < 24; i++) {
-    float o, x = (float(i) + j) / 24., t = mt * x * x, d = blk(p + D * t * K, h0 + t * T, o);     // steps fine near the foot (short shadows of small things), coarse far out (walls)
-    if (d > 0.) sh = min(sh, 1. - (1. - clamp(1. - d / (1. + t * 0.12), 0., 1.)) * o);
+  for (int i = 0; i < 32; i++) {
+    float o, th, x = (float(i) + j) / 32., t = mt * x * x, d = blk(p + D * t * K, h0 + t * T, o, th);     // steps fine near the foot (short shadows of small things), coarse far out (walls)
+    if (d > 0.) sh = min(sh, 1. - clamp(d / min(1. + t * 0.12, th * 0.35), 0., 1.) * o);     // soft edges, but a thin thing (a barrel) still shades fully
   }
   float pl = 0., sc = 0.;
   for (int i = 0; i < ${LMAX}; i++) {
@@ -175,7 +175,7 @@ void main() {
     vec2 v = PL[i].xy - p; float D = length(v) / K, lh = PL[i].w - h0;
     if (D >= PL[i].z) continue;
     float s = 1.;
-    for (int k = 1; k < 12; k++) { float o, t = (float(k) - j) / 12., d = blk(p + v * t, h0 + lh * t, o); if (d > 0.) s = min(s, 1. - (1. - clamp(1. - d / 3., 0., 1.)) * o); }
+    for (int k = 1; k < 12; k++) { float o, th, t = (float(k) - j) / 12., d = blk(p + v * t, h0 + lh * t, o, th); if (d > 0.) s = min(s, 1. - clamp(d / min(3., th * 0.35), 0., 1.) * o); }
     vec3 ld = normalize(vec3(v / K, lh));
     pl += PK[i] * s * (0.5 * pow(1. - D / PL[i].z, 1.3) + 0.5 * pow(max(0., 1. - D / 40.), 2.)) * mix(1., clamp(dot(N, ld) / max(ld.z, 0.15), 0., 2.), 0.7);
     sc += PK[i] * pow(1. - D / PL[i].z, 2.);
