@@ -55,12 +55,12 @@ function drawWorld(vw) {
   for (const v of M.vehicles) if (v.active && vis(v.x, v.y, 80)) at(topOf(v), () => drawVehicle(v));     // one piece: hull, crew, turret, MG in their own order
   for (const p of M.proj) if (vis(p.x, p.y, 20)) at(shotZ(p), () => drawProj(p));
   for (const f of M.flings) if (vis(f.x, f.y, 40)) { const k = f.t / f.T, h = Math.sin(Math.PI * k); at(ZH.body + h * 34, () => solDraw(f, solSpr(f.color, 'dead'), f.x, f.y - h * 34, f.rot, 1 + h * 0.6, 1 + h * 0.6)); }
-  partsInto(at, vis);
+  if (!devOff('parts')) partsInto(at, vis);
   const roofs = roofsIn(vis), FP = fogged ? new Path2D() : null; if (FP) polyPath(FP, fogPolys);     // the sight clip, built once
   at(SUNH.wall, () => {     // roofs: always known, so drawn over the out-of-sight memory too (out of the sight clip); the dev yard's in sight
     if (rv) { worldT(); ctx.imageSmoothingEnabled = false; ctx.drawImage(rv.c, 0, 0, rv.w, rv.h, rv.x, rv.y, rv.w, rv.h); }
     if (fogged) ctx.restore();
-    worldT(); drawRoofs(roofs);
+    worldT(); if (!devOff('roofs')) drawRoofs(roofs);
     if (fogged) { ctx.save(); worldT(); ctx.clip(FP); }
   });
   at(99, () => drawKillerGlow(vw), true);
@@ -71,11 +71,11 @@ function drawWorld(vw) {
     if (fogged) { ctx.restore(); ctx.save(); worldT(); const P = new Path2D(FP); for (const b of roofs) P.rect(b.x, b.y, b.w, b.h); ctx.clip(P); }
     drawSun(vw, vis, hidden);
     if (fogged) { ctx.restore(); ctx.save(); worldT(); ctx.clip(FP); }
-  } else drawLights(vis);
+  } else if (!devOff('add')) drawLights(vis); else lightsNow(vis);
   for (const d of Q) if (d.post) { d.f(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
   // the soft layers (smoke, windows) over everything in sight alike: units, vehicles, roofs, trees, fire
-  if (fogged) drawSoftFog(vw);
-  drawSmokes(vw);
+  if (fogged && !devOff('fog')) drawSoftFog(vw);
+  if (!devOff('smoke')) drawSmokes(vw);
   drawLasers(vis);
   // tags, reticles
   worldT(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';

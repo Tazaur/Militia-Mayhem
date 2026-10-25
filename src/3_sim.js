@@ -193,6 +193,7 @@ function afterSpawn(s) {
 function pickKit() { const r = Math.random(); return r < 0.35 ? 0 : r < 0.6 ? 1 : r < 0.8 ? 2 : 3; }
 
 /* ---------------- damage & death ---------------- */
+const SOL_HITR = [9, 6.5, 4.5], solHitR = s => s.veh ? 7 : s.swim ? 6 : SOL_HITR[s.stance];     // a soldier's hit circle: by stance; seated, swimming
 function hurtSoldier(s, dmg, src, kind, dx, dy, wname) {
   if (!s.alive || s.down || s.protect > 0 || M.over) return;
   if (M.dev && DEV.god && s.player) return;
@@ -953,7 +954,7 @@ function updateProjectiles(dt) {
     for (const s of M.sol) {
       if (!s.alive || s.down || s === p.src || !canHurt(p.src, s) || (p.src && s.team === p.src.team && !M.ff)) continue;
       if (s.veh && !s.veh.T.seats[s.seat].exposed) continue;
-      const rad = s.veh ? 7 : s.swim ? 6 : [9, 6.5, 4.5][s.stance], o = p.rew ? lagAt(s, T) : s;
+      const rad = solHitR(s), o = p.rew ? lagAt(s, T) : s;
       const t = segCirc(x0, y0, x1, y1, o.x, o.y, rad); if (t >= 0 && t < bt) { bt = t; hit = { k: 'sol', s }; }
       else if (s.player && !p.whiz && p.k === 'bullet' && segCirc(x0, y0, x1, y1, s.x, s.y, 30) >= 0) { p.whiz = true; psfx(s.player, 'whiz'); }
     }

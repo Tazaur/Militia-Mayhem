@@ -13,7 +13,7 @@ function lightFx(x, y, r, h, T) { LFX.push({ x, y, r, h, t0: M.time, T }); }
 function lightsNow(vis) {          // this frame's strongest lights in view (and the queue emptied)
   for (let i = LFX.length - 1; i >= 0; i--) { const f = LFX[i], u = (M.time - f.t0) / f.T; if (u >= 1 || u < 0) LFX.splice(i, 1); else light(f.x, f.y, f.r, f.h, (1 - u) ** 2); }
   for (const w of M.wrecks) if (w.burn > 0) light(w.x, w.y, 110, topOf(w) + 6, 0.4 + 0.15 * Math.sin(M.time * 23 + w.x) * Math.sin(M.time * 9.7), w);   // still burning
-  const L = LIGHTS.filter(l => l.k > 0.02 && vis(l.x, l.y, l.r)).sort((a, b) => b.k * b.r - a.k * a.r).slice(0, LMAX); LIGHTS.length = 0;
+  const L = LIGHTS.filter(l => l.k > 0.02 && vis(l.x, l.y, l.r)).sort((a, b) => b.k * b.r - a.k * a.r).slice(0, LMAX); LIGHTS.length = 0; if (M.dev) DEV.lp = L;
   return L;
 }
 function drawLights(vis) { for (const l of lightsNow(vis)) drawLight(l); }
@@ -202,6 +202,7 @@ float vn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); r
 float wv(vec2 w) { return vn(w * 0.06 + vec2(TM * 0.35, TM * 0.25)) + 0.5 * vn(w * 0.14 - vec2(TM * 0.45, -TM * 0.2)); }
 void main() {
   vec2 f = vec2(gl_FragCoord.x - O, gl_FragCoord.y), p = vec2(f.x, V - f.y) + P;     // O: where this map sits in GC
+  if (Q > 4.5) { vec4 a = texture2D(LT, f / G); gl_FragColor = vec4(Q > 5.5 ? min(a.b * 4. * vec3(1., 0.84, 0.59) + a.a * 2., 1.) : vec3(a.r), 1.); return; }     // dev: the sun's shadow alone, the point lights alone
   if (Q > 2.5) { gl_FragColor = vec4(Q > 3.5 ? mt(p).rgb : tx(p).rgb, 1.); return; }
   vec4 a = texture2D(LT, f / G), m = mt(p);
   float sh = a.r, lam = a.g * 2., r = m.r, gw = m.g; vec3 tint = vec3(1., 0.84, 0.59), pl = a.b * 4. * tint;
@@ -389,6 +390,7 @@ function sunDrawHeights(S, X, box) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, S.FM); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); gl.uniform1f(S.HU.MM, 1);
   gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS); for (const n of lists) draw(n); gl.disable(gl.DEPTH_TEST);
   for (let i = 1; i <= 4; i++) { IA.vertexAttribDivisorANGLE(i, 0); gl.disableVertexAttribArray(i); }
+  if (M.dev) DEV.nq = lists.reduce((a, n) => a + HL[n].n, 0);
   for (const n of lists) HL[n].n = 0;
 }
 /* the sweep's passes into ST (box: the height buffer's), the last left on unit 4 for the light: enough doublings to
@@ -439,11 +441,11 @@ function drawSun(vw, vis, hidden) {
   gl.uniform2f(CU.S, S.fw, S.fh); gl.uniform2f(CU.P, px, py); gl.uniform1f(CU.V, h); gl.uniform4f(CU.R, ...reg); gl.uniform1f(CU.K, K); gl.uniform2f(CU.G, w, h);
   gl.uniform3f(CU.L, ...Ld); gl.uniform3f(CU.C, ...SUN.tint); gl.uniform3f(CU.W, ...SUN.warm); gl.uniform3f(CU.SKY, ...(M.rain ? SUN.skyRain : SUN.sky));
   gl.uniform1f(CU.TM, M.time); gl.uniform1f(CU.BL, HMAT & 2 ? 0.9 : 0); gl.uniform3f(CU.WX, VOX * k + px, VOY * k + py, VZ * k);
-  const add = S.pk[0] > 0 || HMAT || M.rain, maps = SUNDBG ? [[3, 0, 1, 2, 4][SUNDBG - 1]] : add ? [0, 1, 2] : [0, 1];
+  const add = S.pk[0] > 0 || HMAT || M.rain, maps = SUNDBG ? [[3, 0, 1, 2, 4, 5, 6][SUNDBG - 1]] : add ? [0, 1, 2] : [0, 1];
   maps.forEach((q, n) => { const o = n * w; gl.viewport(o, 0, w, h); gl.scissor(o + rx, h - ry - rh, rw, rh); gl.uniform1f(CU.O, o); gl.uniform1f(CU.Q, q); gl.drawArrays(gl.TRIANGLES, 0, 3); });
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = true;
   const to = [vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR];
-  if (SUNDBG) ctx.drawImage(GC, rx, ry, rw, rh, ...to);       // dev: 1 heights, 2 shade, 3 highlights, 4 glow, 5 materials
-  else { ctx.globalCompositeOperation = 'multiply'; ctx.drawImage(GC, rx, ry, rw, rh, ...to); ctx.globalCompositeOperation = 'color-dodge'; ctx.drawImage(GC, w + rx, ry, rw, rh, ...to); if (add) { ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(GC, 2 * w + rx, ry, rw, rh, ...to); } }
+  if (SUNDBG) ctx.drawImage(GC, rx, ry, rw, rh, ...to);       // dev: 1 heights, 2 shade, 3 highlights, 4 glow, 5 materials, 6 sun shadow, 7 point lights
+  else { ctx.globalCompositeOperation = 'multiply'; if (!devOff('shade')) ctx.drawImage(GC, rx, ry, rw, rh, ...to); ctx.globalCompositeOperation = 'color-dodge'; if (!devOff('hi')) ctx.drawImage(GC, w + rx, ry, rw, rh, ...to); if (add && !devOff('add')) { ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(GC, 2 * w + rx, ry, rw, rh, ...to); } }
   ctx.globalCompositeOperation = 'source-over'; ctx.imageSmoothingEnabled = false; worldT();
 }
