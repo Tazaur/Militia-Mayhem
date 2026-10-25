@@ -140,8 +140,10 @@ let HS = 0.5; const LIGHT_Q = [0.35, 0.5, 0.75];                                
 const SUNH = { flag: 22, item: 4, wall: 40, fence: 9, hay: 14, crate: 10, nest: 10, tree: [56, 36] };     // px
 const SUNB = { mgNest: SUNH.nest, stand: 18, jump: 4 };     // px: the nest MG rests on its bags (drawn over them, so never lower); a soldier's legs (added to his painted height, solid); a jump's gap
 /* per part (sprite name less its frame number) or shape (SUNH name): lift = an air gap (px) between it and what it rests
-   on, add = px taller than painted. A part's start is the top of what's under it (+ lift); its pixels stand on that */
-const SUNP = { tur_gun: { lift: 4 }, hull: { lift: 5, under: 'under_tank' }, jeep: { lift: 5, under: 'under_jeep' }, jeep4: {} };     // under: what hangs below the lifted body (heights only: tracks, wheels), its top at the body's base
+   on, add = px taller than painted. A part's start is the top of what's under it (+ lift); its pixels stand on that.
+   A part with an underside in the atlas (under_<part>: heights only, painted as depth down) stands on it: as high as its
+   deepest pixel, so the tracks / wheels reach the ground and the clearance is whatever is painted */
+const SUNP = { tur_gun: { lift: 4 }, jeep4: { under: false } };     // under false: no underside (the wreck sits in the dirt)
 /* draw order: each thing's height (px, its top as the sun pass has it); drawWorld draws low to high */
 const ZH = { body: 1, item: 2, shot: 12 };     // fallbacks; the rest comes from the art (topOf, artMax, shotZ)
 const solZ = s => s.down ? ZH.body : solLift(s) + solAdd(s) + artMax('sol_' + bodyPose(s));
@@ -391,10 +393,12 @@ function hUnder(x, y) {
   }
   return b;
 }
+const underOf = n => { const P = sunP(n), u = 'under_' + n.replace(/\d+$/, ''); return P.under !== false && ATLAS[u] ? u : null; };
 function hpart(n, x, y, a, o = {}) {         // o: min (start at least), add, rx / ry (rest point), keep (others stand on it), who (the crewman)
-  if (!ATLAS[n]) return; const P = sunP(n), b = Math.max(o.min || 0, Math.round(hUnder(o.rx ?? x, o.ry ?? y))) + (P.lift || 0), add = (o.add || 0) + (P.add || 0), q = { n, x, y, a, b, add, who: o.who };
+  if (!ATLAS[n]) return; const P = sunP(n), un = underOf(n), f = Math.max(o.min || 0, Math.round(hUnder(o.rx ?? x, o.ry ?? y)));
+  const b = f + (un ? artMax(un) : 0) + (P.lift || 0), add = (o.add || 0) + (P.add || 0), q = { n, x, y, a, b, add, who: o.who };
   if (o.keep) _stk.push(q); if (_pp) _pp.push(q); else hspr(n, x, y, a, b, add);
-  if (P.under) { const u = { n: P.under, x, y, a, b, add: 0, u: 1 }; if (_pp) _pp.push(u); else hund(P.under, x, y, a, b); }     // what hangs under it
+  if (un) { const u = { n: un, x, y, a, b, add: 0, u: 1 }; if (_pp) _pp.push(u); else hund(un, x, y, a, b); }     // what it stands on, hanging from its base
 }
 /* a thing's parts, bottom up, each standing on what's under it (worked out once a frame): what the height pass draws,
    and where its guns, crew and top are */

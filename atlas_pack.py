@@ -51,8 +51,8 @@ if 'tur11' in meta:                               # first run: split the full-le
     S['tur'] = (t[:, :CUT].copy(), px, py); S['tur_gun'] = (t[:, CUT:].copy(), px - CUT, py)
 else: S['tur'] = old('tur'); S['tur_gun'] = old('tur_gun')
 # ---- undersides (heights only, never drawn): the hull / jeep silhouette, its art greyed as a guide for painting in heightmap/;
-# the game hangs them under the lifted body (SUNP under), so the shadow has tracks / wheels with light between
-for n, b in (('under_tank', 'hull0'), ('under_jeep', 'jeep0')):
+# under_<part>: the game hangs it under that part, which stands as high as its deepest pixel, so the shadow has tracks / wheels with light between
+for n, b in (('under_hull', 'hull0'), ('under_jeep', 'jeep0')):
     if n in meta: S[n] = old(n)
     else: a, px, py = old(b); g = a.copy(); L = (a[:, :, :3].astype(float) @ [0.3, 0.59, 0.11]) * 0.45; g[:, :, 0] = g[:, :, 1] = g[:, :, 2] = L.astype(np.uint8); S[n] = (g, px, py)
 S['bar'] = old('bar' if 'bar' in meta else 'bar_white')
@@ -134,11 +134,13 @@ MAT = {  # prefix: (height px, bevel px or 0 = a dome over the whole shape, refl
     'dust': (6, 0, 0, 0), 'boom': (16, 0, 0, 0), 'fire': (10, 0, 0, 0)}
 def undergen(a, n, px, py):                                        # first pass: how far down from the body's base, R x 4 (tracks, wheels)
     m = np.zeros(a.shape[:2] + (3,), np.uint8); h, w = a.shape[:2]; ys, xs = np.mgrid[0:h, 0:w]; lx, ly = xs + 0.5 - px, ys + 0.5 - py; inside = a[:, :, 3] > 0
-    if n == 'under_tank': hw = h / 2; d = np.where(np.abs(ly) > hw - 10, 5, 0)
-    else: d = np.zeros((h, w))
-    if n == 'under_jeep':
+    d = np.zeros((h, w))
+    if n == 'under_hull':                                          # tracks down both sides, angled up over the last 12 px at each end
+        x0, x1 = lx[inside].min(), lx[inside].max(); e = np.clip(np.minimum(lx - x0, x1 - lx) / 12, 0, 1)
+        d = np.where(np.abs(ly) > h / 2 - 10, np.maximum(1, np.round(1 + 4 * e)), 0)
+    if n == 'under_jeep':                                          # round wheels: deepest under the axle, rising to the front and back
         for wx, wy in extra['jeepWells']:
-            for sd in (-1, 1): d = np.where((lx - wx) ** 2 + (ly - wy * sd) ** 2 < 36, 5, d)
+            for sd in (-1, 1): r = np.abs(lx - wx); d = np.where((r < 6) & (np.abs(ly - wy * sd) < 3), np.maximum(1, np.round(5 * np.sqrt(np.clip(1 - (r / 6) ** 2, 0, 1)))), d)
     m[:, :, 0] = np.where(inside, d * 4, 0); return m
 def matgen(a, n):
     m = np.zeros(a.shape[:2] + (3,), np.uint8); al = a[:, :, 3]

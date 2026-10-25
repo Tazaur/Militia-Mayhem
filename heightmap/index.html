@@ -571,14 +571,15 @@ function targets(w, h) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, null); return FB;
 }
 let inst = new Float32Array(0);
-/* an underside and the body it hangs under, lifted: the game's SUNP (src/5e_light.js) lift / under. The underside's painted
-   heights hang DOWN from the body's base; the 3D view stacks the two (the other one greyed, pivots lined up) */
-const STACK = { under_tank: ['hull', 5], under_jeep: ['jeep', 5] };
+/* an underside (under_<part>: heights painted as depth down) and the part it carries, as the game stacks them: the part
+   stands as high as the underside's deepest pixel, the underside hangs from its base. The 3D view shows both (the other
+   one greyed, pivots lined up); the clearance follows the paint */
+function deepest(n) { const m = META[n]; let v = 0; for (let y = m[1]; y < m[1] + m[3]; y++) for (let x = m[0]; x < m[0] + m[2]; x++) { const i = y * W + x; if (COL[i * 4 + 3]) v = Math.max(v, CH[0][i]); } return v; }
 function stackOf(n) {        // { o the other sprite, lift, under: this is the underside }
-  if (!n || !st.stack) return null;
-  if (STACK[n]) { const b = STACK[n][0]; return { o: META[b + '0'] ? b + '0' : b, lift: STACK[n][1], under: true }; }
-  for (const u in STACK) if (STACK[u][0] === n.replace(/\d+$/, '') && META[u]) return { o: u, lift: STACK[u][1], under: false };
-  return null;
+  if (!n || !st.stack) return null; let u = n, o;
+  if (n.startsWith('under_')) { const b = n.slice(6); o = META[b + '0'] ? b + '0' : META[b] ? b : null; }
+  else { u = 'under_' + n.replace(/\d+$/, ''); o = META[u] ? u : null; }
+  return o ? { o, lift: deepest(u), under: u === n } : null;
 }
 function rebuild3() {
   const [rx, ry, rw, rh] = rect(), sk = stackOf(st.spr), om = sk && META[sk.o], need = (rw * rh + (om ? om[2] * om[3] : 0)) * 9;
