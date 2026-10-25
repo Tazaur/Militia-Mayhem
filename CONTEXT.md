@@ -407,3 +407,8 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 
 ## Build 157
 - Shadow fix (tank barrel): the shadow march (`blk`) reads the height texture unblended (texel centre). Linear blending of a floating thing's span (barrel 38–48) with the ground made phantom low spans at its edges, which cast a shadow bridging the hull's and barrel's. Shadow darkness is now relative to the blocker's own thickness too (`th`, `d / min(soft, th × 0.35)`), so thin things (barrel, flagpole) shade fully, and the sun march has 32 steps (was 24) so they aren't skipped far out. Frame 9.5 → 10.0 ms headless.
+
+## Build 158
+- Settings → Graphics → SUN SHADOWS: RAY MARCH (default) / SWEEP (`CFG.shadows`). Point lights march in both.
+- March: steps only as far as the tallest thing in view could reach (`HMAX`, tracked in `hq`, uniform MXH = min(64, HMAX + 1)) with 8–32 steps by that length, and stops once in full shadow. Headless frame 10.0 → 6.4 ms.
+- Sweep (`sunSweep`, program SP, ping-pong textures ST / FS on unit 4): each buffer pixel holds the span of heights blocked from the sun here (hi RG, lo BA, two bytes each). Pass N = 0 reads the span 1 px sunward lowered by DH (= tan el / K per px); then N = 1, 2, 4… joins each pixel's span with the one N px sunward lowered N·DH, until it reaches the tallest shadow (log2 passes, 2 reads each). Spans that meet merge; ones that don't keep the lower (ground receivers). The light pass shades a pixel if its height is inside (0.75 soft edge). Crisp, no dither; floating things keep their gap. Headless (software GL) 7.4–7.7 ms vs march 6.2–6.5; real GPUs may differ (bandwidth vs loops).
