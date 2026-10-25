@@ -599,7 +599,7 @@ function devDrawWorld(vw) {
 }
 /* HITBOXES: the bullet circles (solHitR) and vehicle / wreck boxes; LIGHT POINTS: each light this frame (a point light:
    its reach, height, strength; a spotlight: its direction, the cone's sides, the oval it lights on the ground, its tilt);
-   AIM RAYS: each player's gun's aim ray (aimRay: dim inside AIM.min, red to what it aims down at, the height reached there); HEIGHTS: the draw / spawn heights (solZ, gunH, topOf, shotZ); PIVOTS + SEATS: what things turn about (white,
+   AIM RAYS: each player's gun's aim ray, where its shots go (aimRay: dim inside AIM.min, where low cover is shot over; red to what it aims down at, the height reached there; orange: something taller, hit; white: nothing, the shot falls on); HEIGHTS: the draw / spawn heights (solZ, gunH, topOf, shotZ); PIVOTS + SEATS: what things turn about (white,
    with their heading), mounts (cyan: turret, MG, their barrels), seats (yellow; an arrow where the seat sets the facing,
    the nest's arc as a wedge) and the spots you get in from (hollow) */
 function devOverlays() {
@@ -655,11 +655,11 @@ function devOverlays() {
     else if (v.type === 'tank' && s.seat === 0) { const [px, py] = turretPivot(v); a = v.ta; x = px + Math.cos(a) * BARREL; y = py + Math.sin(a) * BARREL; z = canH(v); }
     else if (sd.role === 'mg') { const [px, py] = mgPos(v); a = v.mgA; x = px + Math.cos(a) * 22; y = py + Math.sin(a) * 22; z = mgH(v); }
     else continue;
-    const r = aimRay(x, y, a, AIM.max, v), d = r ? r.d : AIM.max, aimed = r && r.top < z, c = Math.cos(a), sn = Math.sin(a);
+    const r = aimRay(x, y, a, AIM.max, v, true), d = r ? r.d : AIM.max, aimed = r && r.top < z, c = Math.cos(a), sn = Math.sin(a);
     ctx.lineWidth = 1.2 * k; ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + c * AIM.min, y + sn * AIM.min); ctx.stroke();
     ctx.strokeStyle = aimed ? '#ff5050' : r ? '#ffb040' : 'rgba(255,255,255,0.6)'; ctx.beginPath(); ctx.moveTo(x + c * AIM.min, y + sn * AIM.min); ctx.lineTo(x + c * d, y + sn * d); ctx.stroke();
     ctx.fillStyle = ctx.strokeStyle; ctx.fillRect(x + c * d - 2 * k, y + sn * d - 2 * k, 4 * k, 4 * k);
-    lab(aimed ? `${Math.round(z)} › ${Math.round(r.top * 0.5)} AT ${d}` : r ? `WALL / TALL AT ${d}` : `${Math.round(z)} · FALLS`, x + c * d, y + sn * d - 8 * k, ctx.fillStyle);
+    lab(aimed ? `${Math.round(z)} › ${Math.round(r.top * 0.5)} AT ${d}` : r ? `TALLER THAN ${Math.round(z)}: HITS AT ${d}` : `${Math.round(z)} · FALLS ON`, x + c * d, y + sn * d - 8 * k, ctx.fillStyle);
   }
   if (DEV.hts) {
     for (const s of M.sol) if (s.alive && !s.veh) lab(`${Math.round(solZ(s))} · GUN ${Math.round(gunH(s))}`, s.x, s.y + 16, '#9fffb0');

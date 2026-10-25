@@ -575,3 +575,6 @@ Soft light shadows blend instead of dithering: LT is LINEAR and CP reads it as 4
 
 ## Build 197
 Light cost trimmed: the point light march back to 6 px average steps (the packing toward the light kept: free); CP's 4-tap LT blur skipped when no point lights (uniform LB = S.pk[0] > 0; LT isn't read at all then, i.e. all day).
+
+## Build 198
+Shots fly the aim ray (dev AIM RAYS = where they go). aimRay starts at the muzzle (10 px steps) for walls, vehicles, wrecks, trees; only low cover (`lowCover`: bags, hay) is skipped inside AIM.min, and shots skip it the same (bagBlocks' own-cover radius and hay's are AIM.min from p.ox; shotFall sets ox / oy for shells and rockets). Guns now pass all: a bag or hay bale past AIM.min lower than the muzzle is aimed down at and hit (standing rifle: bag 20 px 0/20 shot over, 60 px 20/20, 150 px 19/20, 300 px 11/20 with spread); something taller than the muzzle (nose against a jeep) stops the ray where the shots hit it. Overlay labels: red aimed down (heights), orange TALLER THAN z: HITS AT d, white FALLS ON.

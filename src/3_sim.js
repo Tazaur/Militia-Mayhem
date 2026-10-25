@@ -804,18 +804,18 @@ function barrelHits(v, a) {
   for (const b of rectsOnSeg(MAP.buildings, px, py, x, y, _rq)) if (!b.glass && segRect(px, py, x, y, b, 0) >= 0) return true;
   return false;
 }
-/* what a gun or a lamp is pointed at: the first thing along the aim from (x, y), past AIM.min (what's right in front is
-   shot over: your own cover), up to max px, stepped 10 px: walls (glass seen through; top Infinity), vehicles and wrecks
-   (their tops); all: trees, hay, bags too (a lamp's pool stops at them; a gun shoots over them). skip: your own vehicle.
-   null: nothing in reach */
+/* what a gun or a lamp is pointed at: the first thing along the aim from (x, y) up to max px, stepped 10 px: walls (glass
+   seen through; top Infinity), vehicles and wrecks (their tops); all: trees, hay and bags too, low cover (hay, bags) only
+   past AIM.min (what's right in front of you is shot over: your own cover; shots skip it the same, lowCover). skip: your
+   own vehicle. null: nothing in reach. A shot flies it (shotFall): the dev AIM RAYS view is where your shots go */
 const AIM = { min: 30, max: 320 };
 function aimRay(x, y, a, max, skip, all) {
   const c = Math.cos(a), sn = Math.sin(a), box = (o, hl, hw, qx, qy) => Math.abs(o.x - qx) < 70 && Math.abs(o.y - qy) < 70 && (([lx, ly]) => Math.abs(lx) < hl && Math.abs(ly) < hw)(toLocal(o, qx, qy));
-  for (let d = AIM.min, px = x, py = y; d <= max; d += 10) {
+  for (let d = 10, px = x, py = y; d <= max; d += 10) {
     const qx = x + c * d, qy = y + sn * d;
     for (const b of rectsOnSeg(MAP.buildings, px, py, qx, qy, _rq)) if (!b.glass && segRect(px, py, qx, qy, b, 0) >= 0) return { d, top: Infinity };
     px = qx; py = qy;
-    if (all) for (const o of staticsNear(qx, qy, 14, _near)) if (o.type !== 'fence' && Math.hypot(o.x - qx, o.y - qy) < (o.type === 'tree' ? 9 : o.type === 'hay' ? 12 : o.r || 8)) return { d, top: LH[o.type] || LH.bag };
+    if (all) for (const o of staticsNear(qx, qy, 14, _near)) if (o.type !== 'fence' && !(d < AIM.min && lowCover(o)) && Math.hypot(o.x - qx, o.y - qy) < (o.type === 'tree' ? 9 : o.type === 'hay' ? 12 : o.r || 8)) return { d, top: LH[o.type] || LH.bag };
     for (const v of M.vehicles) if (v !== skip && v.active && !v.dead && box(v, v.T.hl, v.T.hw, qx, qy)) return { d, top: topOf(v) };
     for (const w of M.wrecks) if (box(w, w.hl, w.hw, qx, qy)) return { d, top: topOf(w) };
   }
@@ -824,8 +824,10 @@ function aimRay(x, y, a, max, skip, all) {
 /* how fast a shot loses height (px a second): what the aim ray meets lower than the muzzle is aimed at (its middle height
    reached there: a jeep in front of a tank is hit), else its own: a bullet at a random rate (BULLET_FALL), a shell or a
    rocket meeting the ground at the end of its flight */
+const lowCover = o => o.type === 'bag' || o.type === 'hay';
 function shotFall(p) {
-  const z = shotZ(p), sp = Math.hypot(p.vx, p.vy) || 1, r = aimRay(p.x, p.y, Math.atan2(p.vy, p.vx), AIM.max, p.srcV || (p.src && p.src.veh));
+  if (p.ox === undefined) { p.ox = p.x; p.oy = p.y; }
+  const z = shotZ(p), sp = Math.hypot(p.vx, p.vy) || 1, r = aimRay(p.x, p.y, Math.atan2(p.vy, p.vx), AIM.max, p.srcV || (p.src && p.src.veh), true);
   if (r && r.top < z) return (z - r.top * 0.5) * sp / r.d;
   return p.k === 'bullet' ? z * rnd(...BULLET_FALL) : z / p.life;
 }
@@ -951,7 +953,7 @@ function los(x0, y0, x1, y1) {
 const BULLET_FALL = [0.8, 2];
 let PRONE = [];
 function bagBlocks(p, s, z) {
-  if (Math.hypot(s.x - p.ox, s.y - p.oy) < 30) return false;     // shooting over your own cover
+  if (Math.hypot(s.x - p.ox, s.y - p.oy) < AIM.min) return false;     // shooting over your own cover (as the aim ray)
   if (p.low || z < LH.bag) return true;
   for (const o of PRONE) if (Math.abs(o.x - s.x) < 30 && Math.abs(o.y - s.y) < 30) return true;
   return false;
@@ -979,7 +981,7 @@ function updateProjectiles(dt) {
     for (const s of _near) {
       if (s.type === 'fence') continue;
       const t = segCirc(x0, y0, x1, y1, s.x, s.y, s.type === 'tree' ? 9 : s.type === 'hay' ? 12 : s.r); if (t < 0 || t >= bt) continue;
-      if (s.type === 'bag' ? !bagBlocks(p, s, zt(t)) : s.type === 'hay' && zt(t) >= LH.hay) continue;     // over it
+      if (s.type === 'bag' ? !bagBlocks(p, s, zt(t)) : s.type === 'hay' && (zt(t) >= LH.hay || Math.hypot(s.x - p.ox, s.y - p.oy) < AIM.min)) continue;     // over it
       bt = t; hit = { k: 'static', s };
     }
     // a joiner's shot is judged against where things were on their screen when they pulled the trigger (lag compensation)
