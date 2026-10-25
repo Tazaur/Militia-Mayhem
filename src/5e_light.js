@@ -168,7 +168,7 @@ void main() {
   vec3 N = normalize(vec3(-g, 1.));
   float lam = (0.45 + 0.55 * max(dot(N, L), 0.)) / (0.45 + 0.55 * L.z);
   float sh = 1., j = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));     // interleaved gradient noise: an even spread, not speckle
-  if (SW > 0.5) { vec4 c = texture2D(SWT, (floor(p) + 0.5) / S); float lo = un(c.ba), hi = un(c.rg); sh = 1. - clamp((min(h0 - lo, hi - h0) + 0.75) / 1.5, 0., 1.); }     // inside what blocks it
+  if (SW > 0.5) { vec4 c = texture2D(SWT, (floor(p) + 0.5) / S); float g = un(c.rg), lo = c.b * 128. - 64., hi = c.a * 128. - 64.; sh = 1. - max(clamp((g - h0 + 0.75) / 1.5, 0., 1.), clamp((min(h0 - lo, hi - h0) + 0.75) / 1.5, 0., 1.)); }     // under the skyline, or inside a floating span
   else if (MXH > h0) {     // only as far as the tallest thing in view could reach; as many steps as that length needs (8 to 32)
     float mt = (MXH - h0) / T, ns = clamp(ceil(32. * (MXH - h0) / 64.), 8., 32.);
     for (int i = 0; i < 32; i++) {
@@ -180,13 +180,13 @@ void main() {
   float pl = 0., sc = 0.;
   for (int i = 0; i < ${LMAX}; i++) {
     if (PK[i] <= 0.) continue;
-    vec2 v = PL[i].xy - p; float D = length(v) / K, lh = PL[i].w - h0;
-    if (D >= PL[i].z) continue;
+    vec2 v = PL[i].xy - p; float dl = length(v) / K, lh = PL[i].w - h0;
+    if (dl >= PL[i].z) continue;
     float s = 1.;
     for (int k = 1; k < 12; k++) { float o, th, t = (float(k) - j) / 12., d = blk(p + v * t, h0 + lh * t, o, th); if (d > 0.) s = min(s, 1. - clamp(d / min(3., th * 0.35), 0., 1.) * o); }
     vec3 ld = normalize(vec3(v / K, lh));
-    pl += PK[i] * s * (0.5 * pow(1. - D / PL[i].z, 1.3) + 0.5 * pow(max(0., 1. - D / 40.), 2.)) * mix(1., clamp(dot(N, ld) / max(ld.z, 0.15), 0., 2.), 0.7);
-    sc += PK[i] * pow(1. - D / PL[i].z, 2.);
+    pl += PK[i] * s * (0.5 * pow(1. - dl / PL[i].z, 1.3) + 0.5 * pow(max(0., 1. - dl / 40.), 2.)) * mix(1., clamp(dot(N, ld) / max(ld.z, 0.15), 0., 2.), 0.7);
+    sc += PK[i] * pow(1. - dl / PL[i].z, 2.);
   }
   gl_FragColor = vec4(sh, lam * 0.5, pl * 0.25, min(1., sc * (tx(p).b + HZ) * 0.25));
 }`, ['p']);
@@ -202,15 +202,15 @@ float vn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); r
 float wv(vec2 w) { return vn(w * 0.06 + vec2(TM * 0.35, TM * 0.25)) + 0.5 * vn(w * 0.14 - vec2(TM * 0.45, -TM * 0.2)); }
 void main() {
   vec2 f = vec2(gl_FragCoord.x - O, gl_FragCoord.y), p = vec2(f.x, V - f.y) + P;     // O: where this map sits in GC
-  if (Q > 4.5) { vec4 a = texture2D(LT, f / G); gl_FragColor = vec4(Q > 5.5 ? min(a.b * 4. * vec3(1., 0.84, 0.59) + a.a * 2., 1.) : vec3(a.r), 1.); return; }     // dev: the sun's shadow alone, the point lights alone
-  if (Q > 2.5) { gl_FragColor = vec4(Q > 3.5 ? mt(p).rgb : tx(p).rgb, 1.); return; }
+  if (Q > 4.5 && Q < 6.5) { vec4 a = texture2D(LT, f / G); gl_FragColor = vec4(Q > 5.5 ? min(a.b * 4. * vec3(1., 0.84, 0.59) + a.a * 2., 1.) : vec3(a.r), 1.); return; }     // dev: the sun's shadow alone, the point lights alone
+  if (Q > 2.5 && Q < 6.5) { gl_FragColor = vec4(Q > 3.5 ? mt(p).rgb : tx(p).rgb, 1.); return; }
   vec4 a = texture2D(LT, f / G), m = mt(p);
   float sh = a.r, lam = a.g * 2., r = m.r, gw = m.g; vec3 tint = vec3(1., 0.84, 0.59), pl = a.b * 4. * tint;
   vec2 w = (p - WX.xy) / WX.z;
   vec3 N = normalize(vec3(-vec2(hh(p + vec2(1., 0.)) - hh(p - vec2(1., 0.)), hh(p + vec2(0., 1.)) - hh(p - vec2(0., 1.))) * K * 0.5, 1.));
   if (m.b > 0.5) { vec2 e = vec2(1.5, 0.); N = normalize(N + vec3(wv(w - e.xy) - wv(w + e.xy), wv(w - e.yx) - wv(w + e.yx), 0.) * 0.9); }
   vec3 Rv = reflect(vec3(0., 0., -1.), N); float spec = pow(max(dot(Rv, L), 0.), mix(12., 160., r)) * sh;
-  if (Q < 0.5) { gl_FragColor = vec4(min(mix(C, vec3(1.), sh) * min(lam, 1.) + pl, 1.) * (1. - r * 0.55), 1.); return; }
+  if (Q < 0.5 || Q > 6.5) { gl_FragColor = vec4(min(mix(C, vec3(1.), sh) * min(lam, 1.) + (Q > 6.5 ? vec3(0.) : pl), 1.) * (1. - r * 0.55), 1.); return; }     // 7: the shade without the point lights (out of sight)
   if (Q < 1.5) { vec3 hi = W * max(lam - 1., 0.) * 1.6 * sh + pl * 0.6 + gw * 1.5; gl_FragColor = vec4(hi / (1. + hi), 1.); return; }     // dodge by h / (1 + h): x (1 + h)
   float b = 0.;
   if (BL > 0.) for (int i = 0; i < 12; i++) { float t = float(i), q = (1. + t) / 12. * 9. * K; b += mt(p + vec2(cos(t * 2.39996), sin(t * 2.39996)) * q).g; }
@@ -236,25 +236,27 @@ void main() {
   else { float r = sqrt(r2); if (r > 1. || r < k.z || abs(atan(q.y, q.x)) > k.w) discard; gl_FragColor = span(k.y, 0., 0.); }
   if (MM > 0.5) gl_FragColor = vec4(0., 0., 0., 1.);
 }`, ['c', 'i0', 'i1', 'i2', 'i3']);
-    /* the sweep: a pixel's blocking span, in heights at this pixel (a blocker d px sunward shades heights b - d DH .. t - d DH),
-       hi in RG, lo in BA (two bytes each); none: lo > hi. N 0: from the heights 1 px sunward; then N = 1, 2, 4...: joined with
-       the span N px sunward, lowered N DH. Two that don't meet: the lower one kept (the ground's the usual receiver) */
+    /* the sweep: what blocks the sun at this pixel, in heights here (a blocker d px sunward shades heights b - d DH .. t - d DH),
+       kept as two records so one never hides the other: RG the skyline of things standing on the ground (the highest t - d DH:
+       exact, two bytes), B / A the span of floating things (a gun past the hull, an MG over the hood: lo / hi, a byte each;
+       none: lo > hi). N 0: from the heights 1 px sunward; then N = 1, 2, 4...: joined with what's N px sunward, lowered N DH.
+       Two floating spans that don't meet: the lower one kept */
     const SP = prog(VS, `precision highp float; ${TX}
 uniform sampler2D B; uniform vec2 D; uniform float N, DH;
 float un(vec2 c) { return (c.x * 255. + c.y) / 255. * 128. - 64.; }
 vec2 pk(float v) { float x = clamp((v + 64.) / 128., 0., 0.99998) * 255.; return vec2(floor(x) / 255., fract(x)); }
 bool out_(vec2 q) { return any(lessThan(q, R.xy)) || any(greaterThan(q, R.zw)); }
 void main() {
-  vec2 p = gl_FragCoord.xy, a = vec2(64., -64.);     // (lo, hi): none
-  if (N < 0.5) { vec2 q = p + D; if (!out_(q)) { vec4 c = texture2D(H, (floor(q) + 0.5) / S); float t = c.r * 63.75; if (t > 0.01) a = vec2((1. - c.g) * 63.75, t) - DH; } }
+  vec2 p = gl_FragCoord.xy, a = vec2(64., -64.); float g = -64.;     // a: floating (lo, hi), none; g: the skyline, none
+  if (N < 0.5) { vec2 q = p + D; if (!out_(q)) { vec4 c = texture2D(H, (floor(q) + 0.5) / S); float t = c.r * 63.75, b = (1. - c.g) * 63.75; if (t > 0.01) { if (b < 1.) g = t - DH; else a = vec2(b, t) - DH; } } }
   else {
-    vec4 c = texture2D(B, (floor(p) + 0.5) / S); a = vec2(un(c.ba), un(c.rg));
+    vec4 c = texture2D(B, (floor(p) + 0.5) / S); g = un(c.rg); a = vec2(c.b, c.a) * 128. - 64.;
     vec2 q = p + D * N;
-    if (!out_(q)) { c = texture2D(B, (floor(q) + 0.5) / S); vec2 b = vec2(un(c.ba), un(c.rg)) - N * DH;
+    if (!out_(q)) { c = texture2D(B, (floor(q) + 0.5) / S); g = max(g, un(c.rg) - N * DH); vec2 b = vec2(c.b, c.a) * 128. - 64. - N * DH;
       if (b.y > -1. && b.x <= b.y) { if (a.x > a.y) a = b; else if (b.x <= a.y + 0.5 && a.x <= b.y + 0.5) a = vec2(min(a.x, b.x), max(a.y, b.y)); else if (b.x < a.x) a = b; } }
   }
   if (a.y < -1.) a = vec2(64., -64.);
-  gl_FragColor = vec4(pk(a.y), pk(a.x));
+  gl_FragColor = vec4(pk(max(g, -64.)), clamp((a + 64.) / 128., 0., 1.));
 }`, ['p']);
     const buf = d => { const o = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, o); gl.bufferData(gl.ARRAY_BUFFER, d, gl.STATIC_DRAW); return o; };
     const tri = buf(new Float32Array([-1, -1, 3, -1, -1, 3])), quad = buf(new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1])), ib = {};
@@ -364,10 +366,11 @@ function sunHeights(vis, hidden, vw) {
   const [ct, cb] = shp(SUNH.crate, 'crate'); for (const c of M.crates) if (c.live && vis(c.x, c.y, 14)) hbox(HL.a, c.x, c.y, 8, 8, c.a, 1, ct, cb, 0);
   for (const A of MAP.arcs) { if (!vis(A.x, A.y, 50)) continue; const f = A.lost / A.bags.length; hpart(f < 0.25 ? 'bagarc0' : f < 0.75 ? 'bagarc1' : 'bagarc2', A.x, A.y, A.a); }
   for (const w of M.wrecks) if (vis(w.x, w.y, 70) && w.t >= 1) hParts(w);
-  for (const s of M.sol) if (s.alive && !s.veh && !s.swim && vis(s.x, s.y, 30) && !hidden(s)) hParts(s);
+  const F = vw && vw._fog, unseen = (o, r) => F && !F.polys.some((P, i) => { const [ex, ey] = F.eyes[i], d = Math.hypot(ex - o.x, ey - o.y) || 1, k = Math.min(r, d) / d; return inPoly(o.x + (ex - o.x) * k, o.y + (ey - o.y) * k, P); });     // out of sight (its near side, toward the eye: a hull blocks sight itself): no shadow to give it away
+  for (const s of M.sol) if (s.alive && !s.veh && !s.swim && vis(s.x, s.y, 30) && !hidden(s) && !unseen(s, 4)) hParts(s);
   const nt = shp(SUNH.nest, 'nest')[0];
   for (const v of M.vehicles) {
-    if (!v.active || !vis(v.x, v.y, 80)) continue;
+    if (!v.active || !vis(v.x, v.y, 80) || unseen(v, 24)) continue;
     if (v.type === 'nest') hbox(HL.a, v.x, v.y, 22, 22, v.a, 3, nt, 14 / 22, 1.35);     // the bags: an arc 8 wide round 18
     hParts(v);
   }
@@ -403,9 +406,9 @@ function sunSweep(S, K, mxh, box, reg) {
   for (let n = 1; n < len; n *= 2, i ^= 1) { gl.bindTexture(gl.TEXTURE_2D, S.ST[i]); gl.bindFramebuffer(gl.FRAMEBUFFER, S.FS[i ^ 1]); gl.uniform1f(SU.N, n); gl.drawArrays(gl.TRIANGLES, 0, 3); }
   gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.bindTexture(gl.TEXTURE_2D, S.ST[i]); gl.activeTexture(gl.TEXTURE0);
 }
-function drawSun(vw, vis, hidden) {
+function drawSun(vw, vis, hidden, fogP) {
   const S = _sun, { gl, GC, U, CU } = S, w = Math.ceil(cv.width * HS), h = Math.ceil(cv.height * HS), dpr = DPR, K = VZ * dpr * HS, k = dpr * HS;
-  if (GC.width !== w * 3 || GC.height !== h) { GC.width = w * 3; GC.height = h; }
+  if (GC.width !== w * 4 || GC.height !== h) { GC.width = w * 4; GC.height = h; }
   const rx = Math.floor(vw.x * dpr * HS), ry = Math.floor(vw.y * dpr * HS), rw = Math.min(w - rx, Math.ceil(vw.w * dpr * HS)), rh = Math.min(h - ry, Math.ceil(vw.h * dpr * HS));
   // the height buffer reaches past the view toward the sun by the longest shadow (64 px tall), so what's off screen
   // that side still throws its shadow in (no pop-in); the view sits at (px, py) in it
@@ -433,7 +436,7 @@ function drawSun(vw, vis, hidden) {
   const ce = Math.cos(SUN.el), Ld = [Math.cos(SUN.az) * ce, Math.sin(SUN.az) * ce, Math.sin(SUN.el)];
   gl.uniform2f(U.S, S.fw, S.fh); gl.uniform2f(U.P, px, py); gl.uniform1f(U.V, h); gl.uniform4f(U.R, ...reg); gl.uniform1f(U.K, K);
   gl.uniform3f(U.L, ...Ld); gl.uniform2f(U.D, Math.cos(SUN.az), Math.sin(SUN.az)); gl.uniform1f(U.T, Math.tan(SUN.el)); gl.uniform1f(U.HZ, M.rain ? 0.15 : 0); gl.uniform1f(U.SW, sweep ? 1 : 0); gl.uniform1f(U.MXH, mxh);
-  S.pk.fill(0); lightsNow(vis).forEach((l, i) => { S.pl.set([(VZ * l.x + VOX) * k + px, (VZ * l.y + VOY) * k + py, l.r, l.h], i * 4); S.pk[i] = l.k; });
+  S.pk.fill(0); const LN = lightsNow(vis); if (!devOff('add')) LN.forEach((l, i) => { S.pl.set([(VZ * l.x + VOX) * k + px, (VZ * l.y + VOY) * k + py, l.r, l.h], i * 4); S.pk[i] = l.k; });
   gl.uniform4fv(U.PL, S.pl); gl.uniform1fv(U.PK, S.pk);
   gl.drawArrays(gl.TRIANGLES, 0, 3); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   // the maps
@@ -442,10 +445,22 @@ function drawSun(vw, vis, hidden) {
   gl.uniform3f(CU.L, ...Ld); gl.uniform3f(CU.C, ...SUN.tint); gl.uniform3f(CU.W, ...SUN.warm); gl.uniform3f(CU.SKY, ...(M.rain ? SUN.skyRain : SUN.sky));
   gl.uniform1f(CU.TM, M.time); gl.uniform1f(CU.BL, HMAT & 2 ? 0.9 : 0); gl.uniform3f(CU.WX, VOX * k + px, VOY * k + py, VZ * k);
   const add = S.pk[0] > 0 || HMAT || M.rain, maps = SUNDBG ? [[3, 0, 1, 2, 4, 5, 6][SUNDBG - 1]] : add ? [0, 1, 2] : [0, 1];
-  maps.forEach((q, n) => { const o = n * w; gl.viewport(o, 0, w, h); gl.scissor(o + rx, h - ry - rh, rw, rh); gl.uniform1f(CU.O, o); gl.uniform1f(CU.Q, q); gl.drawArrays(gl.TRIANGLES, 0, 3); });
+  if (fogP && !SUNDBG) maps[3] = 7;     // the out-of-sight shade, fourth
+  maps.forEach((q, n) => { if (q === undefined) return; const o = n * w; gl.viewport(o, 0, w, h); gl.scissor(o + rx, h - ry - rh, rw, rh); gl.uniform1f(CU.O, o); gl.uniform1f(CU.Q, q); gl.drawArrays(gl.TRIANGLES, 0, 3); });
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = true;
   const to = [vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR];
   if (SUNDBG) ctx.drawImage(GC, rx, ry, rw, rh, ...to);       // dev: 1 heights, 2 shade, 3 highlights, 4 glow, 5 materials, 6 sun shadow, 7 point lights
   else { ctx.globalCompositeOperation = 'multiply'; if (!devOff('shade')) ctx.drawImage(GC, rx, ry, rw, rh, ...to); ctx.globalCompositeOperation = 'color-dodge'; if (!devOff('hi')) ctx.drawImage(GC, w + rx, ry, rw, rh, ...to); if (add && !devOff('add')) { ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(GC, 2 * w + rx, ry, rw, rh, ...to); } }
   ctx.globalCompositeOperation = 'source-over'; ctx.imageSmoothingEnabled = false; worldT();
+  S.fog = fogP && !SUNDBG ? [3 * w + rx, ry, rw, rh, ...to] : null;
+  if (M.dev && DEV.stats) { const e = gl.getError(); if (e) devLog('GL ERROR ' + e, '#ff5a45'); }
+}
+/* the remembered world (out of sight) shaded too: the shade without point lights (map 7), cut out where the light already
+   went (P: in sight + roofs), multiplied in. Only what's in sight casts (unseen in sunHeights), so it gives nothing away */
+function sunFog(P) {
+  const S = _sun; if (!S || !S.fog) return;
+  const [sx, sy, sw, sh, dx, dy, dw, dh] = S.fog, g = FOG_TMP.getContext('2d');
+  g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'copy'; g.imageSmoothingEnabled = true; g.drawImage(S.GC, sx, sy, sw, sh, dx, dy, dw, dh);
+  g.globalCompositeOperation = 'destination-out'; g.setTransform(ctx.getTransform()); g.fill(P); g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-over';
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'multiply'; ctx.drawImage(FOG_TMP, dx, dy, dw, dh, dx, dy, dw, dh); ctx.restore();
 }

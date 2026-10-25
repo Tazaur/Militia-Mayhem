@@ -68,9 +68,9 @@ function drawWorld(vw) {
   for (const d of Q) if (!d.post) { d.f(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
   // the light: in sight and on the roofs (one clip: what's in sight + the roofs)
   if (SUNNOW) {
-    if (fogged) { ctx.restore(); ctx.save(); worldT(); const P = new Path2D(FP); for (const b of roofs) P.rect(b.x, b.y, b.w, b.h); ctx.clip(P); }
-    drawSun(vw, vis, hidden);
-    if (fogged) { ctx.restore(); ctx.save(); worldT(); ctx.clip(FP); }
+    const P = fogged ? new Path2D(FP) : null; if (fogged) { ctx.restore(); ctx.save(); worldT(); for (const b of roofs) P.rect(b.x, b.y, b.w, b.h); ctx.clip(P); }
+    drawSun(vw, vis, hidden, P);
+    if (fogged) { ctx.restore(); ctx.save(); worldT(); sunFog(P); ctx.clip(FP); }
   } else if (!devOff('add')) drawLights(vis); else lightsNow(vis);
   for (const d of Q) if (d.post) { d.f(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
   // the soft layers (smoke, windows) over everything in sight alike: units, vehicles, roofs, trees, fire
