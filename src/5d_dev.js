@@ -17,14 +17,21 @@ const ROOM_MIN = 36, ROOM_SIDE = 5, SEC_MAX = 6;
 /* ramming, per unit of speed: damage to the wall, damage to the vehicle, speed kept; a tank always hits at least min */
 const RAM = { tank: { wall: 2.6, self: 0.15, keep: 0.8, min: 50, go: 12 }, jeep: { wall: 0.45, self: 1, keep: 0.15, min: 0, go: 25 } };
 const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];          // up, right, down, left
-const DEV = { tab: 0, ts: 1, L: { shade: true, hi: true, add: true, smoke: true, parts: true, roofs: true, fog: true }, hit: false, lpts: false, hts: false, stats: false, lp: [], nq: 0, fps: 60, um: 0, rm: 0,
+const DEV = { cyc: 0, ph: 0, tab: 0, ts: 1, L: { shade: true, hi: true, add: true, smoke: true, parts: true, roofs: true, fog: true }, hit: false, lpts: false, hts: false, stats: false, lp: [], nq: 0, fps: 60, um: 0, rm: 0,
   roofQ: [], open: true, god: false, ammo: true, respawn: true, grid: false, secs: false, sightDbg: false, smokeDbg: false, range: 6, sel: 1, padNav: false, log: [], nums: [], lastA: 0, over: false, B: [], R: null, seed: 1 };
 const DEV_RANGES = [2, 4, 6, 8, 10, 15, 20, 30];
 const DEV_TABS = ['SPAWN', 'PLAYER', 'GFX', 'WORLD'], DEV_TS = [0, 0.1, 0.25, 0.5, 1, 2], DEV_WX = ['clear', 'rain', 'snow'];
 const DEV_VIEWS = ['NORMAL', 'HEIGHTS', 'SHADE', 'HIGHLIGHTS', 'GLOW + LIGHTS', 'MATERIALS', 'SUN SHADOWS', 'POINT LIGHTS'];     // SUNDBG
 const devOff = k => M.dev && !DEV.L[k];     // a layer switched off in the GFX tab
 /* the frame's cost (smoothed): fps, update and draw ms (CPU; the GPU's share shows as fps) */
-function devTime(dt, um, rm) { const e = 0.08; DEV.fps += ((dt > 0 ? 1 / dt : 60) - DEV.fps) * e; DEV.um += (um - DEV.um) * e; DEV.rm += (rm - DEV.rm) * e; }
+/* dev WORLD › DAY CYCLE: the sun runs a day (one turn of DEV.ph) in DAY_CYC[i] s: up from the east (-30°..75°), down in the west */
+const DAY_CYC = [0, 600, 240, 60];
+function dayCycle(dt) {
+  if (!DEV.cyc) return;
+  DEV.ph = (DEV.ph + dt * TAU / DAY_CYC[DEV.cyc]) % TAU;
+  SUN.el = (22.5 + 52.5 * Math.sin(DEV.ph)) * Math.PI / 180; SUN.az = -Math.PI / 2 + Math.cos(DEV.ph) * 1.3;
+}
+function devTime(dt, um, rm) { if (M && M.dev && state === 'play') dayCycle(dt); const e = 0.08; DEV.fps += ((dt > 0 ? 1 / dt : 60) - DEV.fps) * e; DEV.um += (um - DEV.um) * e; DEV.rm += (rm - DEV.rm) * e; }
 /* structural damage per blast, keyed by blast radius: rocket 62, tank shell 78, frag 88; anything else x1 */
 const STRUCT_K = { 62: 1.6, 78: 2, 88: 0.35 };
 const tileC = t => (t + 0.5) * TILE;
@@ -697,6 +704,7 @@ function devDrawPanel() {
     row([`‹  WEATHER ${wx.toUpperCase()}  ›`, d => { const w = DEV_WX[(DEV_WX.indexOf(wx) + d + 3) % 3]; M.rain = w === 'rain'; M.snow = w === 'snow'; }, undefined, true]);
     row(tog('GRID', DEV, 'grid'), tog('SECTIONS', DEV, 'secs'));
     head('DAYLIGHT');
+    row([`‹  DAY CYCLE ${['OFF', '10 MIN', '4 MIN', '1 MIN'][DEV.cyc]}  ›`, d => { DEV.cyc = (DEV.cyc + d + DAY_CYC.length) % DAY_CYC.length; DEV.ph = Math.asin(clamp((SUN.el * 180 / Math.PI - 22.5) / 52.5, -1, 1)); }, undefined, true]);
     row([`‹  SUN DIR ${Math.round(SUN.az * 180 / Math.PI)}°  ›`, d => SUN.az = Math.atan2(Math.sin(SUN.az + d * Math.PI / 12), Math.cos(SUN.az + d * Math.PI / 12)), undefined, true]);
     { const e = Math.round(SUN.el * 180 / Math.PI); row([`‹  SUN HEIGHT ${e}°${e < -6 ? ' · NIGHT' : e < 14 ? ' · DUSK' : ''}  ›`, d => SUN.el = clamp(SUN.el + d * Math.PI / 36, -Math.PI / 6, Math.PI * 0.45), undefined, true]); }     // below the horizon: night
     row(['CLEAR LOG', () => DEV.log.length = 0]);

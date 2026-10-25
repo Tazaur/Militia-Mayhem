@@ -79,7 +79,7 @@ function drawLight(l) {
   for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
     const dx = (i + 0.5 - n) * lc, dy = (j + 0.5 - n) * lc, D = Math.hypot(dx, dy), o = (j * S + i) * 4, hc = hp[j * S + i]; let f = 0;
     if (D < l.r && hc < 255) { const r = (Math.round(Math.atan2(dy, dx) / TAU * N) + N) % N, k = Math.min(n - 1, Math.floor(D / lc)); if (q[r * n + k] >= (l.h - hc) / D) f = (0.5 * (1 - D / l.r) ** 1.3 + 0.5 * Math.max(0, 1 - D / 40) ** 2) * spotK(l.d, dx / D, dy / D); }     // a hot core and a wide spill (where the shadows show)
-    px[o] = 255; px[o + 1] = 214; px[o + 2] = 150; px[o + 3] = f * 255;
+    px[o] = 255; px[o + 1] = 245; px[o + 2] = 220; px[o + 3] = f * 255;
   }
   _lg.putImageData(id, 0, 0);
   worldT(); ctx.imageSmoothingEnabled = true;
@@ -106,7 +106,7 @@ function drawLight(l) {
    on, the light runs twice: the frame's (HT), and the memory's (FG: HTS, no point lights) into a fourth map, which the
    memory keeps where you see it, like the ground (fogOverlay) */
 const ROOF_Z = [36, 42];     // a tiled house's roof: a slab this high (px), over the walls' tops
-const SUN_MIN = Math.PI / 18, sunEl = () => Math.max(SUN.el, SUN_MIN);     // shadows: never longer than at 10°
+const SUN_MIN = Math.PI / 36, sunEl = () => Math.max(SUN.el, SUN_MIN);     // shadows: never longer than at 5° (from 6° down the sun fades out: sunTone)
 const SUN = { az: -2.36, el: 0.7, tint: [0.46, 0.5, 0.64], warm: [1, 0.93, 0.8], sky: [0.56, 0.7, 0.9], skyRain: [0.5, 0.53, 0.58] };     // az: toward the sun (up-left); el: its height; sky: what reflective things mirror
 /* the light's colours from the sun's height: day as set; low sun golden (and its shade bluer, purpler); below the horizon
    it all goes to the night's dim blue (sunlit = shade: no sun shadows), so only point lights light things. day: 0 night .. 1 */
@@ -115,7 +115,7 @@ let _tone = null, _toneK = '';
 function sunTone() {
   const key = SUN.el + (M && M.rain ? 'r' : ''); if (key === _toneK) return _tone;
   const a = SUN.el * 180 / Math.PI, sm = (e0, e1, x) => { const t = clamp((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
-  const day = sm(-8, 4, a), g = 1 - sm(4, 30, a), mx = (A, B, t) => A.map((v, i) => lerp(v, B[i], t));
+  const day = sm(-6, 6, a), g = 1 - sm(4, 30, a), mx = (A, B, t) => A.map((v, i) => lerp(v, B[i], t));
   const lit = mx([1, 1, 1], GOLD, g), sky = M && M.rain ? SUN.skyRain : SUN.sky;
   _toneK = key; return _tone = { day, li: mx(NIGHT, lit, day), sh: mx(NIGHT, mx(SUN.tint, DUSK, g), day), w: SUN.warm.map((v, i) => v * lit[i] * day), sky: sky.map(v => v * lerp(0.25, 1, day)) };
 }
@@ -231,6 +231,7 @@ void main() {
        where its slope sends the sun to the eye; water ripples; glow brightens
        its own art and blooms (BL). WX: buffer px to world px. Q 3 / 4: the heights / materials (dev) */
     const CP = prog(VS, `precision highp float; ${TX}
+#define PLT vec3(1., 0.96, 0.86)
 uniform sampler2D MT, LT; uniform vec2 G, P, O; uniform float K, Q, V, TM, BL, EN, RF; uniform vec3 L, C, W, SKY, LI; uniform vec3 WX; uniform vec4 E[2];
 float ro(float d) { return ${ROOF_CAP.toFixed(2)} * clamp((d - ${ROOF_NEAR.toFixed(1)}) / ${(ROOF_FAR - ROOF_NEAR).toFixed(1)}, 0., 1.); }     // roofOp
 float roofA(vec2 p, vec2 w, bool ou) {     // how much of the roof shows here (roofView's fade; out of sight, all of it)
@@ -245,10 +246,10 @@ float vn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); r
 float wv(vec2 w) { return vn(w * 0.06 + vec2(TM * 0.35, TM * 0.25)) + 0.5 * vn(w * 0.14 - vec2(TM * 0.45, -TM * 0.2)); }
 void main() {
   vec2 f = gl_FragCoord.xy - O, p = vec2(f.x, V - f.y) + P;     // O: where this map sits in GC (GL pixels)
-  if (Q > 4.5) { vec4 a = texture2D(LT, f / G); gl_FragColor = vec4(Q > 5.5 ? min(a.b * 4. * vec3(1., 0.84, 0.59) + a.a * 2., 1.) : vec3(a.r), 1.); return; }     // dev: the sun's shadow alone, the point lights alone
+  if (Q > 4.5) { vec4 a = texture2D(LT, f / G); gl_FragColor = vec4(Q > 5.5 ? min(a.b * 4. * PLT + a.a * 2., 1.) : vec3(a.r), 1.); return; }     // dev: the sun's shadow alone, the point lights alone
   if (Q > 2.5) { gl_FragColor = vec4(Q > 3.5 ? mt(p).rgb : tx(p).rgb, 1.); return; }
   vec4 a = texture2D(LT, f / G), m = mt(p);
-  float sh = a.r, lam = a.g * 2., r = m.r, gw = m.g; vec3 tint = vec3(1., 0.84, 0.59), pl = a.b * 4. * tint;
+  float sh = a.r, lam = a.g * 2., r = m.r, gw = m.g; vec3 tint = PLT, pl = a.b * 4. * tint;
   vec2 w = (p - WX.xy) / WX.z;
   vec3 N = normalize(vec3(-vec2(hh(p + vec2(1., 0.)) - hh(p - vec2(1., 0.)), hh(p + vec2(0., 1.)) - hh(p - vec2(0., 1.))) * K * 0.5, 1.));
   if (m.b > 0.5) { vec2 e = vec2(1.5, 0.); N = normalize(N + vec3(wv(w - e.xy) - wv(w + e.xy), wv(w - e.yx) - wv(w + e.yx), 0.) * 0.9); }
@@ -472,7 +473,7 @@ function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory
   const rx = Math.floor(vw.x * dpr * HS), ry = Math.floor(vw.y * dpr * HS), rw = Math.min(w - rx, Math.ceil(vw.w * dpr * HS)), rh = Math.min(h - ry, Math.ceil(vw.h * dpr * HS));
   // the height buffer reaches past the view toward the sun by the longest shadow (64 px tall), so what's off screen
   // that side still throws its shadow in (no pop-in); the view sits at (px, py) in it
-  const L = 64 / Math.tan(sunEl()), dx = Math.cos(SUN.az) * L * K, dy = Math.sin(SUN.az) * L * K;
+  const L = Math.min(64 / Math.tan(sunEl()), 720), dx = Math.cos(SUN.az) * L * K, dy = Math.sin(SUN.az) * L * K;
   const px = Math.ceil(Math.max(0, -dx)) + 2, py = Math.ceil(Math.max(0, -dy)) + 2, bw = rw + px + Math.ceil(Math.max(0, dx)) + 2, bh = rh + py + Math.ceil(Math.max(0, dy)) + 2;
   const size = (t, w, h) => { gl.bindTexture(gl.TEXTURE_2D, t); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null); };
   const attach = (f, t) => { gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0); };
