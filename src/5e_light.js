@@ -143,7 +143,7 @@ const SUNB = { mgNest: SUNH.nest, stand: 18, jump: 4 };     // px: the nest MG r
    on, add = px taller than painted. A part's start is the top of what's under it (+ lift); its pixels stand on that.
    A part with an underside (the atlas's settings: under_<part>, a rect in its pool; heights only, painted as depth down) stands on it: as high as its
    deepest pixel, so the tracks / wheels reach the ground and the clearance is whatever is painted */
-const SUNP = { tur_gun: { lift: 4 }, jeep4: { under: false } };     // under false: no underside (the wreck sits in the dirt)
+const SUNP = { tur_gun: { lift: 4 } };
 /* draw order: each thing's height (px, its top as the sun pass has it); drawWorld draws low to high */
 const ZH = { body: 1, item: 2, shot: 12 };     // fallbacks; the rest comes from the art (topOf, artMax, shotZ)
 const solZ = s => s.down ? ZH.body : solLift(s) + solAdd(s) + artMax('sol_' + bodyPose(s));
@@ -162,7 +162,8 @@ function matData() {
   return MAT;
 }
 /* the settings the atlas carries (the heightmap editor writes them): a JSON string in atlas_m's settings strip (ATLAS._cfg),
-   2 bytes of length then UTF-8, over its pixels' G / B bytes row by row. { under: { part: [x, y, w, h, px, py] in the pool } } */
+   2 bytes of length then UTF-8, over its pixels' G / B bytes row by row. { under: { part: [x, y, w, h, px, py] in the pool },
+   off: [states without their part's underside] } */
 let ATLAS_CFG = {};
 function atlasCfg(mp, w) {
   const C = ATLAS._cfg; if (!C) return {}; const b = [];
@@ -407,7 +408,7 @@ function hUnder(x, y) {
   }
   return b;
 }
-const underOf = n => { const P = sunP(n), u = 'under_' + n.replace(/\d+$/, ''); return P.under !== false && ATLAS[u] ? u : null; };
+const underOf = n => { const u = 'under_' + n.replace(/\d+$/, ''); return ATLAS[u] && !(ATLAS_CFG.off || []).includes(n) ? u : null; };     // the atlas's settings: off, the states without it (a wreck in the dirt)
 function hpart(n, x, y, a, o = {}) {         // o: min (start at least), add, rx / ry (rest point), keep (others stand on it), who (the crewman)
   if (!ATLAS[n]) return; const P = sunP(n), un = underOf(n), f = Math.max(o.min || 0, Math.round(hUnder(o.rx ?? x, o.ry ?? y)));
   const b = f + (un ? artMax(un) : 0) + (P.lift || 0), add = (o.add || 0) + (P.add || 0), q = { n, x, y, a, b, add, who: o.who };

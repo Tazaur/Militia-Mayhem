@@ -136,7 +136,7 @@ button.hov { outline: 2px solid #ff4fd8; outline-offset: -2px; }
   <button id="eAll" data-i="select">Select all</button><button id="eNone" data-i="x">Deselect</button><hr>
   <div class="h">Selection (or sprite)</div>
   <button id="sFill2" data-i="bucket">Apply set / nudge</button><button id="sUp" data-i="up">Nudge up</button><button id="sDn" data-i="down">Nudge down</button><button id="sClr" data-i="trash">Clear to 0</button>
-  <hr><button id="undB" data-i="layers" title="Tracks / wheels under this part (painted as depth down; the game hangs it under the part)">Add underside</button>
+  <hr><button id="undB" data-i="layers" title="Tracks / wheels under this part (painted as depth down; the game hangs it under the part)">Add underside</button><button id="undS" data-i="check" title="Whether this state stands on the underside (a wreck: off)">Underside on this state</button>
 </div>
 <div class="menu" id="mView">
   <button id="ovl" data-i="color">Show the art</button><button id="msk" data-i="mask">Paint only on the art</button><button id="grid" data-i="gridI">Pixel grid</button><button id="rdo" data-i="info">Pixel readout</button><button id="stk" data-i="layers">Stack the underside (3D)</button><hr>
@@ -229,7 +229,7 @@ let POOL0 = 0, POOL1 = 0;     // the underside pool's pixel range (art isn't pai
 let W = 0, H = 0, FMETA = {}, META = {}, NAMES = [], COL0 = null, COL = null, CH = null, FILE = null, CFG = {}, CFGS = null, GUIDE = null, GSRC = null;     /* GUIDE: a part's pixel -> its underside's guide pixel (or -1) */
      // FMETA atlas.json; META its sprites + the undersides; COL the art + their guides
 const DEF = { hold: 2, pickAll: false, buzz: true, nr: 1, grid: true, rdo: true, stack: true, alock: false, glock: false, gsz: 2, gdi: false, look: 0, sky: 0, sunAz: 135, sunEl: 40, reflK: 100, bloomK: 100 };
-const st = { ...DEF, spr: '', ch: 0, tool: 'pen', prev: 'pen', mode: 'set', val: [8, 100, 0], nud: [1, 8, 8], size: 0, tol: [1, 1, 1, 0], c1: [200, 70, 60], c2: [40, 44, 60], act: 0, pal: [], prow: -1, shd: 1, ovl: true, mask: true, lay: 0, smode: 0, gap: 0, pch: 0 };
+const st = { ...DEF, spr: '', from: '', ch: 0, tool: 'pen', prev: 'pen', mode: 'set', val: [8, 100, 0], nud: [1, 8, 8], size: 0, tol: [1, 1, 1, 0], c1: [200, 70, 60], c2: [40, 44, 60], act: 0, pal: [], prow: -1, shd: 1, ovl: true, mask: true, lay: 0, smode: 0, gap: 0, pch: 0 };
 const GAPS = [0, 1, 2, 3, 4, 6, 8, 12];
 try { Object.assign(st, JSON.parse(localStorage.getItem('hp-prefs') || '{}')); } catch (e) {}
 for (const k of ['look', 'sky', 'sunAz', 'sunEl', 'reflK', 'bloomK']) if (st[k] === undefined) st[k] = DEF[k];
@@ -281,7 +281,7 @@ async function load() {
     else { let n = 0; for (const k in FMETA) { const a = s.meta[k], b = FMETA[k]; if (a && a[2] === b[2] && a[3] === b[3]) { copyRect(CH, s.ch, s.w, a, b); n++; } } toast('Atlas changed: carried ' + n + ' sprites over'); saveNow(); }
   }
   for (let i = 0; i < W * H; i++) for (let k = 0; k < 4; k++) COL0[i * 4 + k] = CH[3 + k][i];     // the art as restored
-  syncCfg(); ui(); fit();
+  syncCfg(); fitUnders(); ui(); fit();
 }
 
 /* ---------------- the atlas's settings (the game reads them too): a JSON string in the settings strip (atlas.json _cfg),
@@ -303,13 +303,12 @@ const partOf = n => n.startsWith('under_') ? n.slice(6) : n.replace(/\d+$/, '');
 const ownerOf = b => FMETA[b + '0'] ? b + '0' : FMETA[b] ? b : null;
 /* the settings as read now: the undersides as sprites (their part's art as the guide, greyed), the sprite list */
 function syncCfg() {
-  CFG = cfgRead(); const k = JSON.stringify(CFG); if (k === CFGS) return; CFGS = k;
+  CFG = cfgRead(); const k = JSON.stringify(CFG) + st.from; if (k === CFGS) return; CFGS = k;     // the settings, or the state worked on, changed
   META = {}; for (const n in FMETA) if (n[0] !== '_') META[n] = FMETA[n];
   COL = COL0.slice(); GUIDE = new Int32Array(W * H).fill(-1); GSRC = new Map(); const P = FMETA._pool; if (P) { POOL0 = P[1] * W; POOL1 = (P[1] + P[3]) * W; }
   for (const [b, r] of Object.entries(CFG.under || {})) {
     const u = META['under_' + b] = [r[0], P[1] + r[1], r[2], r[3], r[4], r[5]];
-    for (const f of framesOf(b).map(n => META[n])) {     // every state's art, lined up as the game does (shift)
-      const D = shift(f, u);
+    { const f = META[activeOf(b)]; if (!f) continue; const D = shift(f, u);     // the state worked on, lined up as the game does (shift)
       for (let y = 0; y < u[3]; y++) for (let x = 0; x < u[2]; x++) {
         const fx = x + D[0], fy = y + D[1]; if (fx < 0 || fy < 0 || fx >= f[2] || fy >= f[3]) continue;
         const s = (f[1] + fy) * W + f[0] + fx, d = (u[1] + y) * W + u[0] + x; GUIDE[s] = d; (GSRC.get(d) || GSRC.set(d, []).get(d)).push(s);
@@ -317,12 +316,12 @@ function syncCfg() {
     }
     for (const d of GSRC.keys()) guide(d);
   }
-  NAMES = Object.keys(META); if (st.spr && !META[st.spr]) st.spr = st.spr.startsWith('under_') ? ownerOf(partOf(st.spr)) || '' : '';     // an underside taken out: back to its part
+  NAMES = Object.keys(META); if (st.spr && !META[st.spr]) st.spr = st.spr.startsWith('under_') ? activeOf(partOf(st.spr)) || '' : '';     // an underside taken out: back to its part
   $('spr').innerHTML = '<option value="">— whole atlas —</option>' + NAMES.map(n => `<option>${n}</option>`).join(''); $('spr').value = st.spr;
   full2 = true; dirty3 = true;
 }
-/* an underside's guide pixel (d): every state's art over it (greyed, the first state showing that has any), so it can be
-   painted for each; the game draws it only under the art of the state it carries. The art changing changes it */
+/* an underside's guide pixel (d): the art over it of the state worked on (greyed; the game draws it only under the art of
+   the state it carries). The art changing changes it */
 function guide(d) {
   const e = d * 4; COL[e + 3] = 0;
   for (const s of GSRC.get(d) || []) { const o = s * 4; if (!COL0[o + 3]) continue; COL[e] = COL[e + 1] = COL[e + 2] = (COL0[o] * 0.3 + COL0[o + 1] * 0.59 + COL0[o + 2] * 0.11) * 0.8; COL[e + 3] = 255; break; }
@@ -330,6 +329,44 @@ function guide(d) {
 /* a part's states (hull0..5, or just tur), and how an underside lines up on one: its px + D is the state's px (pivots, whole px) */
 const framesOf = b => Object.keys(FMETA).filter(n => n[0] !== '_' && (n === b || n.startsWith(b) && /^\d+$/.test(n.slice(b.length))));
 const shift = (f, u) => [Math.round(f[4] - u[4]), Math.round(f[5] - u[5])];
+/* the state an underside is worked on with (the one last open, else the first): its guide, its 3D stack, where Edit part goes */
+const activeOf = b => st.from && partOf(st.from) === b && FMETA[st.from] ? st.from : ownerOf(b);
+/* the states without the underside (the settings' off: a wreck sitting in the dirt); the ones with it */
+const offIn = (c, n) => (c.off || []).includes(n);
+const liveOf = (b, c = CFG) => framesOf(b).filter(n => !offIn(c, n));
+/* an underside's size and pivot: the bounds of every state with it, pivots lined up (whole px), so none reaches past it */
+function fitOf(b, c = CFG) {
+  let X0 = 0, Y0 = 0, X1 = 0, Y1 = 0;
+  for (const f of liveOf(b, c).map(n => FMETA[n])) { const px = Math.round(f[4]), py = Math.round(f[5]); X0 = Math.min(X0, -px); Y0 = Math.min(Y0, -py); X1 = Math.max(X1, f[2] - px); Y1 = Math.max(Y1, f[3] - py); }
+  return [X1 - X0, Y1 - Y0, -X0, -Y0];
+}
+/* inside a stroke: write the settings c, the undersides not fitting their states (made before, a state turned on or off,
+   the states changed) all repacked at their fit, the paint kept on the pivot. The ones repacked; null: no room */
+function refit(c) {
+  const U = c.under || {}, fit = b => liveOf(b, c).length ? fitOf(b, c) : U[b].slice(2), bad = Object.keys(U).filter(b => fit(b).join() !== U[b].slice(2).join());
+  if (bad.length) {
+    const P = FMETA._pool, old = {}, N = {};
+    for (const [b, r] of Object.entries(U)) { const px = []; for (let y = 0; y < r[3]; y++) for (let x = 0; x < r[2]; x++) { const i = (P[1] + r[1] + y) * W + r[0] + x; px.push([x - Math.round(r[4]), y - Math.round(r[5]), CH[0][i], CH[1][i], CH[2][i]]); } old[b] = px; }
+    for (const b in U) { const [w, h, px, py] = fit(b), at = poolSpot(w, h, N); if (!at) return null; N[b] = [at[0], at[1], w, h, px, py]; }
+    for (let y = P[1]; y < P[1] + P[3]; y++) for (let x = 0; x < P[2]; x++) for (let k = 0; k < 3; k++) put(y * W + x, 0, k);
+    for (const [b, r] of Object.entries(N)) for (const [lx, ly, ...v] of old[b]) { const x = lx + r[4], y = ly + r[5]; if (x < 0 || y < 0 || x >= r[2] || y >= r[3]) continue; const i = (P[1] + r[1] + y) * W + r[0] + x; v.forEach((a, k) => put(i, a, k)); }
+    c = { ...c, under: N };
+  }
+  return cfgWrite(c) ? bad : null;
+}
+/* on load / import: any that don't fit, refit (one undoable stroke) */
+function fitUnders() {
+  begin(); const r = refit(CFG); if (!r || !r.length) { cancel(); if (!r) toast('The underside pool is full'); return; }
+  end(); syncCfg(); toast('Undersides resized to fit their states: ' + r.join(', '));
+}
+/* one state with or without its part's underside (the state open, or the one an underside is worked with) */
+function toggleState() {
+  if (!st.spr) return; const b = partOf(st.spr), n = st.spr.startsWith('under_') ? activeOf(b) : st.spr; if (!CFG.under || !CFG.under[b] || !n) return;
+  const was = offIn(CFG, n), off = was ? CFG.off.filter(x => x !== n) : [...(CFG.off || []), n];
+  if (!was && !liveOf(b, { off }).length) { toast('That is its last state with the underside: Remove underside instead'); return; }
+  pasteEnd(false); begin(); if (!refit({ ...CFG, off })) { cancel(); toast('The underside pool is full'); return; }
+  end(); syncCfg(); ui(); toast(was ? `${n} has the underside again` : `${n} sits without the underside`);
+}
 /* the Underside toggle: a part gets a place in the pool (the first free spot, 1 px apart) and the settings say so; off
    takes it out (undo brings it back) */
 function poolSpot(w, h, U) {
@@ -339,18 +376,19 @@ function poolSpot(w, h, U) {
 }
 function toggleUnder() {
   if (!st.spr) return; const b = partOf(st.spr), U = { ...(CFG.under || {}) }, had = !!U[b];
-  if (had) { if (!confirm(`Take ${b}'s underside out? (Undo brings it back)`)) return; delete U[b]; }
+  const off = (CFG.off || []).filter(n => partOf(n) !== b);     // a new or removed underside: every state's own setting goes
+  if (had) { if (!confirm(`Take ${b}'s underside out of every state? (Undo brings it back. One state: Underside on this state)`)) return; delete U[b]; }
   else {
-    const o = FMETA[ownerOf(b)]; if (!o) return; const at = poolSpot(o[2], o[3], U); if (!at) { toast('The underside pool is full'); return; }
-    U[b] = [at[0], at[1], o[2], o[3], o[4], o[5]];
+    if (!framesOf(b).length) return; const [w, h, px, py] = fitOf(b, { off }), at = poolSpot(w, h, U); if (!at) { toast('The underside pool is full'); return; }
+    U[b] = [at[0], at[1], w, h, px, py];
   }
   pasteEnd(false); begin();
   if (!had) { const P = FMETA._pool, r = U[b]; for (let c = 0; c < 3; c++) for (let y = 0; y < r[3]; y++) for (let x = 0; x < r[2]; x++) put((P[1] + r[1] + y) * W + r[0] + x, 0, c); }     // a clean start
-  if (!cfgWrite({ ...CFG, under: U })) { cancel(); toast('The settings are full'); return; }
-  end(); syncCfg(); pickSpr(had ? ownerOf(b) : 'under_' + b); toast(had ? 'Underside taken out' : 'Underside added: paint how far down it reaches');
+  if (!cfgWrite({ ...CFG, under: U, off })) { cancel(); toast('The settings are full'); return; }
+  end(); syncCfg(); pickSpr(had ? activeOf(b) : 'under_' + b); toast(had ? 'Underside taken out' : 'Underside added: paint how far down it reaches');
 }
 /* between a part and its underside (the same stack), in both views */
-function swapUnder() { if (!st.spr) return; const b = partOf(st.spr), u = 'under_' + b; if (!META[u]) return; pickSpr(st.spr === u ? ownerOf(b) : u); }
+function swapUnder() { if (!st.spr) return; const b = partOf(st.spr), u = 'under_' + b; if (!META[u]) return; pickSpr(st.spr === u ? activeOf(b) : u); }     // back to the state it came from
 
 /* ---------------- editing */
 const rect = () => st.spr ? META[st.spr].slice(0, 4) : [0, 0, W, H];
@@ -800,9 +838,10 @@ const onArt = (f, x, y) => x >= 0 && y >= 0 && x < f[2] && y < f[3] && COL0[((f[
 /* as the game: the deepest paint, art or not (the lift stays the same in every state) */
 function deepest(n) { const m = META[n]; let v = 0; for (let y = m[1]; y < m[1] + m[3]; y++) for (let x = m[0]; x < m[0] + m[2]; x++) { const i = y * W + x; v = Math.max(v, CH[0][i]); } return v; }
 function stackOf(n) {        // { o the other sprite, lift, under: this is the underside }
-  if (!n) return null; const b = partOf(n), u = 'under_' + b, o = n === u ? ownerOf(b) : u;
-  if (!st.stack) return n === u && META[u] ? { o: null, lift: deepest(u), under: true } : null;     // unstacked: an underside still hangs (from its deepest pixel)
-  return META[u] && o && META[o] ? { o, lift: deepest(u), under: n === u } : null;
+  if (!n) return null; const b = partOf(n), u = 'under_' + b, o = n === u ? activeOf(b) : u;
+  if (!META[u] || n !== u && offIn(CFG, n)) return null;     // a state without it: on the ground
+  if (!st.stack || !o || offIn(CFG, o)) return n === u ? { o: null, lift: deepest(u), under: true } : null;     // unstacked: an underside still hangs (from its deepest pixel)
+  return META[o] ? { o, lift: deepest(u), under: n === u } : null;
 }
 function rebuild3() {
   const [rx, ry, rw, rh] = rect(), sk = stackOf(st.spr), om = sk && META[sk.o], D = om ? (sk.under ? shift(om, META[st.spr]) : shift(META[st.spr], om)) : 0, need = (rw * rh + (om ? om[2] * om[3] : 0)) * 9;
@@ -918,7 +957,7 @@ function ui() {
   const art = ch === ART; $('pbar').hidden = !art; $('vbar').hidden = art; for (const b of document.querySelectorAll('#tools .art')) b.hidden = !art; if (art) renderPal();
   const on = (id, v) => $(id).classList.toggle('on', !!v);
   on('ovl', st.ovl); on('ovlB', st.ovl); const ub = st.spr && META['under_' + partOf(st.spr)];
-  $('undB').hidden = !st.spr; lab('undB', ub ? 'Remove underside' : 'Add underside'); $('swpB').hidden = !ub; on('swpB', st.spr.startsWith('under_')); lab('swpB', st.spr.startsWith('under_') ? 'Edit part' : 'Edit under'); on('msk', st.mask); on('look', !st.look); $('look').textContent = st.look ? 'Channel' : 'Lit';
+  $('undB').hidden = !st.spr; lab('undB', ub ? 'Remove underside (all states)' : 'Add underside'); const sn = ub && (st.spr.startsWith('under_') ? activeOf(partOf(st.spr)) : st.spr); $('undS').hidden = !sn; if (sn) lab('undS', offIn(CFG, sn) ? `Give ${sn} the underside` : `Take ${sn}'s underside off`); $('swpB').hidden = !ub; on('swpB', st.spr.startsWith('under_')); lab('swpB', st.spr.startsWith('under_') ? 'Edit part' : 'Edit under'); on('msk', st.mask); on('look', !st.look); $('look').textContent = st.look ? 'Channel' : 'Lit';
   for (let k = 0; k < 2; k++) on('look' + k, st.look === k); for (let k = 0; k < 5; k++) on('sky' + k, st.sky === k);
   for (const k of ['sunAz', 'sunEl', 'reflK', 'bloomK']) $(k).value = st[k]; on('grid', st.grid); on('rdo', st.rdo); on('stk', st.stack); on('pAll', st.pickAll); on('buzz', st.buzz);
   for (let k = 0; k < 3; k++) on('lay' + k, st.lay === k); for (let k = 0; k < 4; k++) { on('hold' + k, st.hold === k); on('nr' + k, st.nr === k); }
@@ -977,7 +1016,7 @@ for (const b of document.querySelectorAll('.dd')) b.onclick = e => {
 };
 addEventListener('pointerdown', e => { if (!e.target.closest('.menu, .dd')) closeMenus(); });
 for (const m of document.querySelectorAll('.menu')) m.addEventListener('click', e => { const b = e.target.closest('button'); if (b && !/^(ovl|msk|grid|rdo|stk|pAll|buzz|hold\d|nr\d|lay\d|look\d|sky\d)$/.test(b.id)) closeMenus(); });
-$('undB').onclick = toggleUnder; $('swpB').onclick = swapUnder;
+$('undB').onclick = toggleUnder; $('undS').onclick = toggleState; $('swpB').onclick = swapUnder;
 $('ovl').onclick = $('ovlB').onclick = () => { st.ovl = !st.ovl; full2 = true; dirty3 = true; ui(); };
 $('look').onclick = () => { st.look = st.look ? 0 : 1; dirty3 = true; ui(); };
 for (let k = 0; k < 2; k++) $('look' + k).onclick = () => { st.look = k; dirty3 = true; ui(); };
@@ -1007,7 +1046,7 @@ $('eUndo').onclick = () => $('undo').onclick(); $('eRedo').onclick = () => $('re
 $('eCpy').onclick = () => $('cpy').onclick(); $('ePst').onclick = () => $('pst').onclick(); $('eLift').onclick = () => $('lift').onclick();
 $('eNone').onclick = () => $('sNone').onclick(); $('sFill2').onclick = () => $('sFill').onclick();
 $('eAll').onclick = () => { if (flt) return; const [rx, ry, rw, rh] = rect(); selM = new Uint8Array(W * H); for (let y = ry; y < ry + rh; y++) for (let x = rx; x < rx + rw; x++) if (canP(x, y)) selM[y * W + x] = 1; selBounds(); ui(); };
-const pickSpr = n => { pasteEnd(false); st.spr = n; $('spr').value = n; sel = selM = null; dirty3 = true; ui(); fit(); };
+const pickSpr = n => { pasteEnd(false); st.spr = n; if (n && !n.startsWith('under_')) st.from = n; syncCfg(); $('spr').value = n; sel = selM = null; dirty3 = true; ui(); fit(); };
 $('spr').onchange = () => pickSpr($('spr').value);
 const step = d => { const L = ['', ...NAMES]; pickSpr(L[(L.indexOf(st.spr) + d + L.length) % L.length]); };
 $('prev').onclick = () => step(-1); $('next').onclick = () => step(1);
@@ -1050,7 +1089,7 @@ $('file').onchange = async () => {
   const f = $('file').files[0]; $('file').value = ''; if (!f) return;
   const im = await exactPx(f); if (im.w !== W || im.h !== H) { toast(`Wrong size: ${im.w}×${im.h}, the atlas is ${W}×${H}`); return; }
   pasteEnd(false); const art = st.ch === ART, n = art ? artPlanes(im.d) : fromRGB(im.d), c0 = art ? 3 : 0;     // in Art: an atlas.png, else an atlas_m.png
-  begin(); for (let c = 0; c < n.length; c++) for (let i = 0; i < W * H; i++) put(i, n[c][i], c0 + c); end(); syncCfg(); full2 = true; ui(); toast(art ? 'Imported the art' : 'Imported');
+  begin(); for (let c = 0; c < n.length; c++) for (let i = 0; i < W * H; i++) put(i, n[c][i], c0 + c); end(); syncCfg(); fitUnders(); full2 = true; ui(); toast(art ? 'Imported the art' : 'Imported');
 };
 function revert(all) {
   pasteEnd(false); const [rx, ry, rw, rh] = all ? [0, 0, W, H] : rect();

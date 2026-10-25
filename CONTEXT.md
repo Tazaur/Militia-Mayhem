@@ -530,3 +530,7 @@ Add / Remove underside moved off the toolbar into the Edit menu (the Edit under 
 
 ## Build 185
 An underside only counts under the art of the state it carries: hund draws over the overlap of the frame and the underside (pivots lined up, whole px: shift), discards where the frame has no art, reads the underside p1/p2 (uv) away. A state with other edges never shadows from paint past them. Editor: the underside guide (and paint mask) is every state's art (GSRC: guide px -> its frames' px); the 3D stack shows it only under the stacked state's art, lined up the same way; deepest (the lift) counts all paint, as the game.
+
+## Build 186
+Undersides span every state: size / pivot = the union of the part's frames' bounds, pivots lined up (whole px; fitOf). atlas_m migrated (hull 111x62 @56,32; jeep 87x44 @43,21), paint kept on the pivot; the editor refits any that don't fit on load / import (fitUnders, one undoable stroke). Editor: the state worked on (st.from: the last part state open) drives the underside's guide, its 3D stack, and Edit part goes back to it.
+Per-state undersides: the settings' off list (states without it; jeep4, the wreck, was the hard-coded SUNP jeep4.under); the game's underOf reads it, the fit spans only the states with it (jeep 87x43). Editor Edit menu: Give / Take <state>'s underside (refits, one undoable stroke), Remove underside (all states).
