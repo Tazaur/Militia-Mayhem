@@ -314,7 +314,7 @@ function devRoofFall(sec) {
 }
 /* one roof tile lands: collapse dust (even row + even column only), debris, a shake nearby, and whoever is under it is hurt (once per fall) */
 function devRoofTile(k, ev) {
-  const TL = MAP.tiled; if (TL.roof[k] !== 1) return; TL.roof[k] = 2; fogKeep('roof', k);
+  const TL = MAP.tiled; if (TL.roof[k] !== 1) return; TL.roof[k] = 2;
   const i = k % TL.sc, j = (k / TL.sc) | 0, cx = (i + 0.5) * SUB, cy = (j + 0.5) * SUB;
   paintCell(i, j); repaintRoofAround([k]);
   if (i % 2 === 0 && j % 2 === 0) devDust(cx, cy);          // dust from roof tiles on an even row and even column
@@ -325,20 +325,24 @@ function devRoofTile(k, ev) {
   for (const s of M.sol) if (s.alive && !s.veh && !ev.hit.has(s) && under(s.x, s.y)) { ev.hit.add(s); hurtSoldier(s, s.mhp * rnd(0.5, 0.75), null, 'roof', 0, 0, 'ROOF'); }
   for (const v of M.vehicles) if (v.active && !v.dead && !ev.hit.has(v) && vehCircles(v, _vc).some(([x, y]) => under(x, y))) { ev.hit.add(v); hurtVehicle(v, v.type === 'tank' ? 40 : 120, null); }
 }
-/* the roof over the whole house, walls included, as the eyes of this view see it: gone within ROOF_NEAR, fading in to
-   ROOF_CAP at ROOF_FAR and beyond. A world-space region (rv.x, rv.y, rv.w, rv.h) drawn in sight above units and walls.
-   (Out of sight the memory holds the whole roof, unfaded: applyFog) */
+/* the roof over the whole house, walls included, as the eyes of this view see it: from inside a house (vw.rf, eased in
+   and out as you step under a roof and back out) gone within ROOF_NEAR, fading in to ROOF_CAP at ROOF_FAR and beyond;
+   from outside, whole, as the memory holds it (so the wall you look at stays under it). A world-space region
+   (rv.x, rv.y, rv.w, rv.h) drawn in sight above units and walls. (Out of sight the memory holds the whole roof: applyFog) */
 const ROOF_NEAR = 100, ROOF_FAR = 200, ROOF_CAP = 0.7, roofOp = d => d <= ROOF_NEAR ? 0 : ROOF_CAP * Math.min(1, (d - ROOF_NEAR) / (ROOF_FAR - ROOF_NEAR));
 function roofView(vw, x0, y0, x1, y1) {
   const TL = MAP.tiled; if (!TL || !TL.roof) return null;
   const x = Math.max(0, Math.floor(x0)), y = Math.max(0, Math.floor(y0)), w = Math.min(WW, Math.ceil(x1)) - x, h = Math.min(WH, Math.ceil(y1)) - y; if (w <= 0 || h <= 0) return null;
   if (ROOF_V.width < w || ROOF_V.height < h) { ROOF_V.width = Math.max(ROOF_V.width, w); ROOF_V.height = Math.max(ROOF_V.height, h); }
   const g = ROOF_V.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, w, h); g.drawImage(ROOF_C, x, y, w, h, 0, 0, w, h);
+  const eyes = viewSols(vw).map(posOf), inside = eyes.some(o => TL.roof[((o.y / SUB) | 0) * TL.sc + ((o.x / SUB) | 0)] === 1);
+  const dt = Math.min(0.1, Math.max(0, M.time - (vw.rfT ?? M.time))); vw.rfT = M.time; vw.rf = clamp((vw.rf || 0) + (inside ? dt : -dt) * 4, 0, 1);
+  const f = vw.rf; if (f <= 0) return { c: ROOF_V, x, y, w, h };
   g.globalCompositeOperation = 'destination-out'; g.setTransform(1, 0, 0, 1, -x, -y);
   // the first eye fades the whole roof to its keep; any other eye only takes its own circle down further (keep / ROOF_CAP)
-  viewSols(vw).map(posOf).forEach((o, n) => {
+  eyes.forEach((o, n) => {
     const gr = g.createRadialGradient(o.x, o.y, 0, o.x, o.y, ROOF_FAR);
-    for (let d = 0; d <= ROOF_FAR; d += 10) gr.addColorStop(d / ROOF_FAR, `rgba(0,0,0,${(1 - roofOp(d) / (n ? ROOF_CAP : 1)).toFixed(3)})`);
+    for (let d = 0; d <= ROOF_FAR; d += 10) gr.addColorStop(d / ROOF_FAR, `rgba(0,0,0,${(f * (1 - roofOp(d) / (n ? ROOF_CAP : 1))).toFixed(3)})`);
     g.fillStyle = gr; if (n) { g.beginPath(); g.arc(o.x, o.y, ROOF_FAR, 0, TAU); g.fill(); } else g.fillRect(x, y, w, h);
   });
   g.globalCompositeOperation = 'source-over';
@@ -432,7 +436,6 @@ function devDust(x, y) { popSmoke(x, y, { dust: true, T: rnd(6, 15), quiet: true
 function devCollapse(sec) {
   const TL = MAP.tiled; sec.alive = false; sec.hp = 0;
   for (const b of sec.bs) { const bi = MAP.buildings.indexOf(b); if (bi >= 0) MAP.buildings.splice(bi, 1); }
-  fogKeep('wall', sec);
   secCells(sec, (i, j) => {
     TL.cell[j * TL.sc + i] = C_RUB;
     const cx = (i + 0.5) * SUB, cy = (j + 0.5) * SUB;

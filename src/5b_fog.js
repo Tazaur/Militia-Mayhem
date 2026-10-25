@@ -102,16 +102,17 @@ function fogMemory(vw) {
     const c = mk(Math.ceil(WW * FOGK), Math.ceil(WH * FOGK)), g = c.getContext('2d');
     g.setTransform(FOGK, 0, 0, FOGK, 0, 0); g.drawImage(ground, 0, 0); g.drawImage(decals, 0, 0);
     if (MAP.tiled && MAP.tiled.roof) g.drawImage(ROOF_C, 0, 0);      // houses you've never looked into: roofed
-    m = M.fogMem[key] = { c, g, st: new Map(), arc: new Map(), wall: new Set(), roof: new Set() };
+    const s = mk(c.width, c.height);     // the shade as last seen (fogOverlay); clear where never seen
+    m = M.fogMem[key] = { c, g, s, sg: s.getContext('2d'), st: new Map(), arc: new Map() };
   }
   return m;
 }
 /* screen-sized scratch canvases: the remembered world (OUT), the low-res soft mask (smoke + windows; a second one for a
    second eye) and a temp */
-const FOG_OUT = document.createElement('canvas'), FOG_TMP = document.createElement('canvas'), FOG_MASK = document.createElement('canvas'), FOG_MASK2 = document.createElement('canvas'), FOG_MS = 10;
+const FOG_OUT = document.createElement('canvas'), FOG_TMP = document.createElement('canvas'), FOG_SH = document.createElement('canvas'), FOG_MASK = document.createElement('canvas'), FOG_MASK2 = document.createElement('canvas'), FOG_MS = 10;
 function fogCanvases() {
   if (FOG_OUT.width !== cv.width || FOG_OUT.height !== cv.height) {
-    FOG_OUT.width = FOG_TMP.width = cv.width; FOG_OUT.height = FOG_TMP.height = cv.height;
+    FOG_OUT.width = FOG_TMP.width = FOG_SH.width = cv.width; FOG_OUT.height = FOG_TMP.height = FOG_SH.height = cv.height;
     FOG_MASK.width = FOG_MASK2.width = Math.ceil(cv.width / FOG_MS) + 2; FOG_MASK.height = FOG_MASK2.height = Math.ceil(cv.height / FOG_MS) + 2;
   }
 }
@@ -132,7 +133,6 @@ function applyFog(vw, vis, x0, y0, x1, y1, rv) {
     if (MAP.tiled && MAP.tiled.roof) m.g.drawImage(ROOF_C, bx0, by0, bw, bh, bx0, by0, bw, bh);
     m.g.restore();
   }
-  { const F = { polys }; for (const k in FOG_KEEP) for (const o of m[k]) if (FOG_KEEP[k](F, o)) m[k].delete(o); }     // what fell out of sight, now looked at
   const seen = (x, y) => polys.some(P => inPoly(x, y, P)) && eyes.some(([ex, ey]) => 1 - softOcc(ex, ey, x, y) >= SIGHT_MIN);
   for (const s of MAP.statics) if (vis(s.x, s.y, 20) && (s.type === 'fence' || s.type === 'hay' || s.type === 'tree') && seen(s.x, s.y)) m.st.set(s, s.alive);
   for (const A of MAP.arcs) if (vis(A.x, A.y, 40) && seen(A.x, A.y)) m.arc.set(A, A.lost);
@@ -162,20 +162,21 @@ function applyFog(vw, vis, x0, y0, x1, y1, rv) {
   vw._fog = { polys, eyes, box };
   return polys;
 }
-/* a wall section or roof tile came down: a view that can't see it keeps it standing in its memory (in the picture, and
-   in the heights its shadows come from: sunHeights) until it looks there */
-const FOG_KEEP = {
-  wall: (F, sec) => sec.bs.some(b => { for (let y = b.y + SUB / 2; y < b.y + b.h; y += SUB) for (let x = b.x + SUB / 2; x < b.x + b.w; x += SUB) if (circleSeen(F, x, y, SUB / 2 + 1)) return true; return false; }),
-  roof: (F, k) => circleSeen(F, (k % MAP.tiled.sc + 0.5) * SUB, (((k / MAP.tiled.sc) | 0) + 0.5) * SUB, SUB / 2 + 1)
-};
-function fogKeep(kind, o) { for (const vw of M.views || []) if (vw._fog && !FOG_KEEP[kind](vw._fog, o)) fogMemory(vw)[kind].add(o); }
-/* the remembered world over everything out of sight, last: FOG_OUT, shaded by the sun's shade map (drawSun: out of sight
-   no point lights, and units only cast), with a hole cut where you see (H: the sight polygons + the roofs, always known).
-   The world under it was drawn whole, nothing clipped: one plain fill makes the edge */
+/* the remembered world over everything out of sight, last: FOG_OUT, shaded as remembered, with a hole cut where you see
+   (H: the sight polygons + the roofs, always known). The world under it was drawn whole, nothing clipped: one plain fill
+   makes the edge. The shade is kept like the ground: the memory's shade map (drawSun: only what the memory keeps, no
+   point lights) goes into the memory where you see (m.s), and out of sight that is what shows; where you've never
+   looked, the map itself (the world as the memory first knew it) */
 function fogOverlay(vw, H) {
   const g = FOG_TMP.getContext('2d'), X = vw.x * DPR, Y = vw.y * DPR, Wd = vw.w * DPR, Ht = vw.h * DPR, S = _sun;
   g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-over'; g.clearRect(X, Y, Wd, Ht); g.drawImage(FOG_OUT, X, Y, Wd, Ht, X, Y, Wd, Ht); pipe('ov-copy');
-  if (SUNNOW && S && S.fog) { g.globalCompositeOperation = 'multiply'; g.imageSmoothingEnabled = true; g.drawImage(S.GC, ...S.fog); pipe('ov-shade'); }
+  if (SUNNOW && S && S.fog) {
+    const m = fogMemory(vw), sg = m.sg, z = FOGK / (VZ * DPR), sx = (vw.x - VOX) / VZ * FOGK, sy = (vw.y - VOY) / VZ * FOGK, sw = vw.w / VZ * FOGK, sh = vw.h / VZ * FOGK;
+    sg.save(); sg.setTransform(FOGK, 0, 0, FOGK, 0, 0); polyPath(sg, vw._fog.polys); sg.clip();
+    sg.setTransform(z, 0, 0, z, -VOX / VZ * FOGK, -VOY / VZ * FOGK); sg.imageSmoothingEnabled = true; sg.clearRect(X, Y, Wd, Ht); sg.drawImage(S.GC, ...S.fog); sg.restore();     // what you see now, remembered
+    const t = FOG_SH.getContext('2d'); t.setTransform(1, 0, 0, 1, 0, 0); t.imageSmoothingEnabled = true; t.drawImage(S.GC, ...S.fog); t.drawImage(m.s, sx, sy, sw, sh, X, Y, Wd, Ht);
+    g.globalCompositeOperation = 'multiply'; g.drawImage(FOG_SH, X, Y, Wd, Ht, X, Y, Wd, Ht); pipe('ov-shade');
+  }
   g.globalCompositeOperation = 'destination-out'; g.setTransform(ctx.getTransform()); g.fillStyle = '#000'; g.fill(H);
   g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-over'; pipe('ov-hole');
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(FOG_TMP, X, Y, Wd, Ht, X, Y, Wd, Ht); worldT(); pipe('ov-draw');

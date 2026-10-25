@@ -67,7 +67,7 @@ function drawWorld(vw) {
   Q.sort((a, b) => a.z - b.z || a.i - b.i);
   for (const d of Q) if (!d.post) { d.f(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; pipe('q', d); }
   // the light, over the whole view (out of sight: the shade for the memory, no point lights, units only cast)
-  if (SUNNOW) drawSun(vw, vis, hidden, fogged ? roofs : null);
+  if (SUNNOW) drawSun(vw, vis, hidden, fogged);
   else if (!devOff('add')) drawLights(vis); else lightsNow(vis);
   if (!SUNNOW) pipe('lights2d');
   for (const d of Q) if (d.post) { d.f(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; pipe('q', d); }
