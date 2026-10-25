@@ -173,7 +173,7 @@ function drawSmokes(vw) { if (M.gsf && M.gsf.act.length) { worldT(); drawSmokeFi
    it is (down to SMK_SMALL), so a little one squeezed against a wall doesn't stand out as a hot spot */
 const SMK_VIS = 3, SMK_PUFF = 1.5, SMK_GROW = 0.9, SMK_PAD = 5, SMK_IN = 2.5, SMK_SMALL = 0.5;     // SMK_PAD: tiles past the view whose puffs can reach in
 const SMK_SELF = [[6, 0.08], [14, 0.07], [24, 0.06]], SMK_DROP = 8;     // self-shade steps (px, opacity); the ground shadow's offset
-const SMK_C = document.createElement('canvas'), SMK_SH = document.createElement('canvas');
+const SMK_C = document.createElement('canvas'), SMK_SH = document.createElement('canvas'), SMK_L = document.createElement('canvas');
 /* each puff of the field in the tile box (null: all of them): f(x, y, radius, opacity, hash, brown part). The look eases in here (once a frame) */
 function smokePuffs(bx, eyes, cb) {
   const f = M.gsf, [n0, n1] = SIGHT_NEAR, { W, A, B, R, V: Vs } = f, T = M.time, ease = Math.min(1, clamp(T - f.vt, 0, 0.1) * SMK_IN); f.vt = T;
@@ -193,7 +193,7 @@ function drawSmokeField(vw, eyes) {
   const i0 = Math.max(f.box[0] - SMK_PAD, Math.floor(V[0]) - SMK_PAD), j0 = Math.max(f.box[1] - SMK_PAD, Math.floor(V[1]) - SMK_PAD), i1 = Math.min(f.box[2] + SMK_PAD, Math.ceil(V[2]) + SMK_PAD), j1 = Math.min(f.box[3] + SMK_PAD, Math.ceil(V[3]) + SMK_PAD);
   const X0 = (i0 - SMK_OUT) * GS, Y0 = (j0 - SMK_OUT) * GS, pw = (i1 - i0) * GS, ph = (j1 - j0) * GS;
   if (pw <= 0 || ph <= 0) return;
-  if (SMK_C.width < pw || SMK_C.height < ph) { SMK_C.width = SMK_SH.width = Math.max(pw, SMK_C.width); SMK_C.height = SMK_SH.height = Math.max(ph, SMK_C.height); }
+  if (SMK_C.width < pw || SMK_C.height < ph) { SMK_C.width = SMK_SH.width = SMK_L.width = Math.max(pw, SMK_C.width); SMK_C.height = SMK_SH.height = SMK_L.height = Math.max(ph, SMK_C.height); }
   const g = SMK_C.getContext('2d'), gs = SMK_SH.getContext('2d');
   g.setTransform(1, 0, 0, 1, -X0, -Y0); g.globalCompositeOperation = 'source-over'; g.clearRect(X0, Y0, pw, ph);
   smokePuffs([i0, j0, i1, j1], eyes, (x, y, r, al, h, fb) => {
@@ -209,7 +209,16 @@ function drawSmokeField(vw, eyes) {
   g.globalCompositeOperation = 'source-atop'; for (const [d, o] of SMK_SELF) { g.globalAlpha = o; g.drawImage(SMK_SH, 0, 0, pw, ph, X0 + ux * d, Y0 + uy * d, pw, ph); }
   g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
   ctx.globalAlpha = 0.28; ctx.drawImage(SMK_SH, 0, 0, pw, ph, X0 + ux * SMK_DROP, Y0 + uy * SMK_DROP, pw, ph);
-  ctx.globalAlpha = 1; ctx.drawImage(SMK_C, 0, 0, pw, ph, X0, Y0, pw, ph);
+  ctx.globalAlpha = 1;
+  const S = SUNNOW && vw && _sun && _sun.lit; if (!S) { ctx.drawImage(SMK_C, 0, 0, pw, ph, X0, Y0, pw, ph); return; }
+  // lit as the world under it (the sun or the night, point lights): the smoke over black, times the frame's shade map,
+  // then in place of what it covers (cut out, added): exact where it's thin too
+  const l = SMK_L.getContext('2d'), wx = (vw.x - VOX) / VZ, wy = (vw.y - VOY) / VZ, ww = vw.w / VZ, wh = vw.h / VZ;
+  l.setTransform(1, 0, 0, 1, 0, 0); l.globalCompositeOperation = 'source-over'; l.fillStyle = '#000'; l.fillRect(0, 0, pw, ph); l.drawImage(SMK_C, 0, 0, pw, ph, 0, 0, pw, ph);
+  l.globalCompositeOperation = 'multiply'; l.imageSmoothingEnabled = true; l.drawImage(_sun.GC, ...S, wx - X0, wy - Y0, ww, wh); l.globalCompositeOperation = 'source-over';
+  ctx.save(); ctx.beginPath(); ctx.rect(wx, wy, ww, wh); ctx.clip();
+  ctx.globalCompositeOperation = 'destination-out'; ctx.drawImage(SMK_C, 0, 0, pw, ph, X0, Y0, pw, ph);
+  ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(SMK_L, 0, 0, pw, ph, X0, Y0, pw, ph); ctx.restore();
 }
 /* a wreck: solid cover, then gone over its last 2 s (also drawn into the remembered view) */
 function drawWreck(w) {

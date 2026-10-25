@@ -649,5 +649,6 @@ function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory
   else { ctx.globalCompositeOperation = 'multiply'; if (!devOff('shade')) ctx.drawImage(GC, ...at(0), rw, rh, ...to); pipe('comp', { m: 'multiply' }); ctx.globalCompositeOperation = 'color-dodge'; if (!devOff('hi')) ctx.drawImage(GC, ...at(1), rw, rh, ...to); pipe('comp', { m: 'color-dodge' }); if (add && !devOff('add')) { ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(GC, ...at(2), rw, rh, ...to); pipe('comp', { m: 'lighter' }); } }
   ctx.globalCompositeOperation = 'source-over'; ctx.imageSmoothingEnabled = false; worldT();
   S.fog = fog && !devOff('shade') ? [...at(3), rw, rh, ...to] : null;     // the memory's shade map (fogOverlay)
+  S.lit = !SUNDBG && !devOff('shade') ? [...at(0), rw, rh] : null;     // the frame's (smoke is lit by it)     // the memory's shade map (fogOverlay)
   if (M.dev && DEV.stats) { const e = gl.getError(); if (e) devLog('GL ERROR ' + e, '#ff5a45'); S.dg = `GC ${GC.width}×${GC.height} BUF ${gl.drawingBufferWidth}×${gl.drawingBufferHeight} · MAPS ${maps.join('')} · ADD ${add ? 1 : 0}`; }
 }
