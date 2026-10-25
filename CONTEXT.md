@@ -539,3 +539,6 @@ Per-state undersides: the settings' off list (states without it; jeep4, the wrec
 User art drop: atlas_m (jeep heights repainted, jeep underside painted, new under_jeep_tire: the steering tires stand on it) and atlas.png (jeep0 touch-up).
 
 drop.py: an art drop in one command, python drop.py <png> [<png>] (the opaque one is atlas_m): checks size + settings strip, puts the files in, builds, tests, notes the changed sprites in CONTEXT, commits, pushes, waits for Pages. --check: dry run; --no-push.
+
+## Build 188
+Dev panel broke the day cycle: DEV.ph was both the cycle's phase and the panel's laid-out height (written every frame while open). The panel's is DEV.panH now. DAY CYCLE row shows the cycle's clock (dayClock: ph 0 = 6:00, noon at pi/2).

@@ -17,7 +17,7 @@ const ROOM_MIN = 36, ROOM_SIDE = 5, SEC_MAX = 6;
 /* ramming, per unit of speed: damage to the wall, damage to the vehicle, speed kept; a tank always hits at least min */
 const RAM = { tank: { wall: 2.6, self: 0.15, keep: 0.8, min: 50, go: 12 }, jeep: { wall: 0.45, self: 1, keep: 0.15, min: 0, go: 25 } };
 const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];          // up, right, down, left
-const DEV = { cyc: 0, ph: 0, tab: 0, ts: 1, L: { shade: true, hi: true, add: true, smoke: true, parts: true, roofs: true, fog: true }, hit: false, lpts: false, hts: false, stats: false, lp: [], nq: 0, fps: 60, um: 0, rm: 0,
+const DEV = { cyc: 0, ph: 0, panH: 0, tab: 0, ts: 1, L: { shade: true, hi: true, add: true, smoke: true, parts: true, roofs: true, fog: true }, hit: false, lpts: false, hts: false, stats: false, lp: [], nq: 0, fps: 60, um: 0, rm: 0,
   roofQ: [], open: true, god: false, ammo: true, respawn: true, grid: false, secs: false, sightDbg: false, smokeDbg: false, range: 6, sel: 1, padNav: false, log: [], nums: [], lastA: 0, over: false, B: [], R: null, seed: 1 };
 const DEV_RANGES = [2, 4, 6, 8, 10, 15, 20, 30];
 const DEV_TABS = ['SPAWN', 'PLAYER', 'GFX', 'WORLD'], DEV_TS = [0, 0.1, 0.25, 0.5, 1, 2], DEV_WX = ['clear', 'rain', 'snow'];
@@ -31,6 +31,8 @@ function dayCycle(dt) {
   DEV.ph = (DEV.ph + dt * TAU / DAY_CYC[DEV.cyc]) % TAU;
   SUN.el = (22.5 + 52.5 * Math.sin(DEV.ph)) * Math.PI / 180; SUN.az = -Math.PI / 2 + Math.cos(DEV.ph) * 1.3;
 }
+/* the cycle's time of day: DEV.ph 0 is 6:00 (the sun rising through 22.5°), π / 2 noon */
+const dayClock = () => { const h = ((6 + DEV.ph / TAU * 24) % 24 + 24) % 24; return `${h | 0}:${String(Math.floor(h % 1 * 60)).padStart(2, '0')}`; };
 function devTime(dt, um, rm) { if (M && M.dev && state === 'play') dayCycle(dt); const e = 0.08; DEV.fps += ((dt > 0 ? 1 / dt : 60) - DEV.fps) * e; DEV.um += (um - DEV.um) * e; DEV.rm += (rm - DEV.rm) * e; }
 /* structural damage per blast, keyed by blast radius: rocket 62, tank shell 78, frag 88; anything else x1 */
 const STRUCT_K = { 62: 1.6, 78: 2, 88: 0.35 };
@@ -680,8 +682,8 @@ function devDrawPanel() {
   if (DEV.stats) devStats();
   const head = t => { txt(t, L, y + 8 * u, 10 * u, 'rgba(255,224,138,0.8)', 'left', 'middle', FD); y += 18 * u; };
   const row = (a, b) => { if (a) btn(...a.slice(0, 2), L, y, b ? cw2 : cw2 * 2 + gap, a[2], a[3]); if (b) btn(...b.slice(0, 2), R2, y, cw2, b[2]); y += rh + gap; };
-  // the backdrop fits what was laid out last frame (DEV.ph, in u), so it grows with any row added
-  const H0 = (DEV.ph || 560) * u;
+  // the backdrop fits what was laid out last frame (DEV.panH, in u), so it grows with any row added
+  const H0 = (DEV.panH || 560) * u;
   ctx.fillStyle = 'rgba(6,10,5,0.86)'; ctx.fillRect(x0, y0, pw, H0); ctx.strokeStyle = 'rgba(255,224,138,0.5)'; ctx.strokeRect(x0 + 0.5, y0 + 0.5, pw - 1, H0 - 1);
   DEV.R = { x: x0, y: y0, w: pw, h: H0 };
   stxt('DEV TOOLS', L, y0 + 18 * u, 15 * u, '#ffe08a', 'left', 'middle', FD);
@@ -728,13 +730,13 @@ function devDrawPanel() {
     row([`‹  WEATHER ${wx.toUpperCase()}  ›`, d => { const w = DEV_WX[(DEV_WX.indexOf(wx) + d + 3) % 3]; M.rain = w === 'rain'; M.snow = w === 'snow'; }, undefined, true]);
     row(tog('GRID', DEV, 'grid'), tog('SECTIONS', DEV, 'secs'));
     head('DAYLIGHT');
-    row([`‹  DAY CYCLE ${['OFF', '10 MIN', '4 MIN', '1 MIN'][DEV.cyc]}  ›`, d => { DEV.cyc = (DEV.cyc + d + DAY_CYC.length) % DAY_CYC.length; DEV.ph = Math.asin(clamp((SUN.el * 180 / Math.PI - 22.5) / 52.5, -1, 1)); }, undefined, true]);
+    row([`‹  DAY CYCLE ${['OFF', '10 MIN', '4 MIN', '1 MIN'][DEV.cyc]}${DEV.cyc ? ' · ' + dayClock() : ''}  ›`, d => { DEV.cyc = (DEV.cyc + d + DAY_CYC.length) % DAY_CYC.length; DEV.ph = Math.asin(clamp((SUN.el * 180 / Math.PI - 22.5) / 52.5, -1, 1)); }, undefined, true]);
     row([`‹  SUN DIR ${Math.round(SUN.az * 180 / Math.PI)}°  ›`, d => SUN.az = Math.atan2(Math.sin(SUN.az + d * Math.PI / 12), Math.cos(SUN.az + d * Math.PI / 12)), undefined, true]);
     { const e = Math.round(SUN.el * 180 / Math.PI); row([`‹  SUN HEIGHT ${e}°${e < -6 ? ' · NIGHT' : e < 14 ? ' · DUSK' : ''}  ›`, d => SUN.el = clamp(SUN.el + d * Math.PI / 36, -Math.PI / 6, Math.PI * 0.45), undefined, true]); }     // below the horizon: night
     row(['CLEAR LOG', () => DEV.log.length = 0]);
   }
   if (DEV.tab !== 2) { head('LOG'); for (const l of DEV.log) { txt(l.text, L, y + 6 * u, 10 * u, l.c, 'left', 'middle', FD); y += 15 * u; } }
-  DEV.ph = (y + 4 * u - y0) / u;
+  DEV.panH = (y + 4 * u - y0) / u;
 }
 /* pointerdown on the panel: run the button, swallow the click (true); a tap off the open panel closes it */
 function devClick(x, y, touch) {
