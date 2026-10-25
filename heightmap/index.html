@@ -120,7 +120,7 @@ button.hov { outline: 2px solid #ff4fd8; outline-offset: -2px; }
   <button id="sFill2" data-i="bucket">Apply set / nudge</button><button id="sUp" data-i="up">Nudge up</button><button id="sDn" data-i="down">Nudge down</button><button id="sClr" data-i="trash">Clear to 0</button>
 </div>
 <div class="menu" id="mView">
-  <button id="ovl" data-i="color">Show the art</button><button id="msk" data-i="mask">Paint only on the art</button><button id="grid" data-i="gridI">Pixel grid</button><button id="rdo" data-i="info">Pixel readout</button><hr>
+  <button id="ovl" data-i="color">Show the art</button><button id="msk" data-i="mask">Paint only on the art</button><button id="grid" data-i="gridI">Pixel grid</button><button id="rdo" data-i="info">Pixel readout</button><button id="stk" data-i="layers">Stack the underside (3D)</button><hr>
   <div class="h">Layout</div>
   <button id="lay0" data-i="layout">2D + 3D</button><button id="lay1" data-i="square">2D only</button><button id="lay2" data-i="cube">3D only</button><hr>
   <button id="vFit" data-i="fit">Fit to screen</button>
@@ -200,7 +200,7 @@ addEventListener('pointerdown', tipHide, true);
 for (const b of document.querySelectorAll('[data-i]')) b.insertAdjacentHTML('afterbegin', `<svg viewBox="0 0 24 24">${ICONS[b.dataset.i]}</svg>`);
 const MAXV = [63, 255, 255], NRANGE = [[8, 32, 32], [16, 64, 64], [32, 128, 128], [63, 255, 255]], HOLDMS = [0, 300, 500, 800], SIZES = [1, 2, 3, 5, 8], TOLS = [[0, 1, 2, 4, 8], [0, 8, 16, 32, 64], [0, 8, 16, 32, 64]];
 let W = 0, H = 0, META = {}, NAMES = [], COL = null, CH = null, FILE = null;
-const DEF = { hold: 2, pickAll: false, buzz: true, nr: 1, grid: true, rdo: true, look: 0, sky: 0, sunAz: 135, sunEl: 40, reflK: 100, bloomK: 100 };
+const DEF = { hold: 2, pickAll: false, buzz: true, nr: 1, grid: true, rdo: true, stack: true, look: 0, sky: 0, sunAz: 135, sunEl: 40, reflK: 100, bloomK: 100 };
 const st = { ...DEF, spr: '', ch: 0, tool: 'pen', prev: 'pen', mode: 'set', val: [8, 100, 0], nud: [1, 8, 8], size: 0, tol: [1, 1, 1], ovl: true, mask: true, lay: 0, smode: 0, gap: 0, pch: 0 };
 const GAPS = [0, 1, 2, 3, 4, 6, 8, 12];
 try { Object.assign(st, JSON.parse(localStorage.getItem('hp-prefs') || '{}')); } catch (e) {}
@@ -506,7 +506,7 @@ function initGL() {
   prog = mk(`#version 300 es
 layout(location=0) in vec3 p; layout(location=1) in vec3 n; layout(location=2) in vec3 inst; layout(location=3) in vec3 col; layout(location=4) in vec3 mat;
 uniform mat4 VP; uniform vec3 C; out vec3 vn, vc, wp, vm;
-void main() { float h = inst.z > 0. ? inst.z : 0.15; vec3 w = vec3(inst.x + p.x, p.y * h, inst.y + p.z); wp = w; vn = n; vc = col; vm = mat; gl_Position = VP * vec4(w - C, 1.); }`, `#version 300 es
+void main() { float h = inst.z > 0. ? inst.z : 0.15; vec3 w = vec3(inst.x + p.x, mat.z + p.y * h, inst.y + p.z); wp = w; vn = n; vc = col; vm = mat; gl_Position = VP * vec4(w - C, 1.); }`, `#version 300 es
 precision highp float; in vec3 vn, vc, wp, vm; uniform vec4 cur; uniform float LIT, AMB, RK; uniform vec3 E;
 ${SKYF}
 layout(location=0) out vec4 o; layout(location=1) out vec4 ob;
@@ -571,8 +571,19 @@ function targets(w, h) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, null); return FB;
 }
 let inst = new Float32Array(0);
+/* an underside and the body it hangs under, lifted: the game's SUNP (src/5e_light.js) lift / under. The underside's painted
+   heights hang DOWN from the body's base; the 3D view stacks the two (the other one greyed, pivots lined up) */
+const STACK = { under_tank: ['hull', 5], under_jeep: ['jeep', 5] };
+function stackOf(n) {        // { o the other sprite, lift, under: this is the underside }
+  if (!n || !st.stack) return null;
+  if (STACK[n]) { const b = STACK[n][0]; return { o: META[b + '0'] ? b + '0' : b, lift: STACK[n][1], under: true }; }
+  for (const u in STACK) if (STACK[u][0] === n.replace(/\d+$/, '') && META[u]) return { o: u, lift: STACK[u][1], under: false };
+  return null;
+}
 function rebuild3() {
-  const [rx, ry, rw, rh] = rect(); if (inst.length < rw * rh * 9) inst = new Float32Array(rw * rh * 9); let k = 0; const c = CH[st.ch], hh = CH[0], lit = !st.look;
+  const [rx, ry, rw, rh] = rect(), sk = stackOf(st.spr), om = sk && META[sk.o], need = (rw * rh + (om ? om[2] * om[3] : 0)) * 9;
+  if (inst.length < need) inst = new Float32Array(need); let k = 0; const c = CH[st.ch], hh = CH[0], lit = !st.look;
+  const z0 = (h, u) => u ? Math.max(0, sk.lift - h) : sk.lift;     // a stacked column's base: the body on the lift, the underside hanging from it
   for (let y = ry; y < ry + rh; y++) for (let x = rx; x < rx + rw; x++) {
     const i = y * W + x, o = i * 4, al = COL[o + 3], h = hh[i]; if (!al && !h) continue;
     const v = c[i] / MAXV[st.ch]; let r, g, b;
@@ -581,7 +592,14 @@ function rebuild3() {
     else if (st.ovl) { r = COL[o] / 255; g = COL[o + 1] / 255; b = COL[o + 2] / 255; if (st.ch) { const t = TINT[st.ch]; r = r * 0.6 + t[0] / 255 * v * 0.5; g = g * 0.6 + t[1] / 255 * v * 0.5; b = b * 0.6 + t[2] / 255 * v * 0.5; } }
     else if (st.ch) { const t = TINT[st.ch]; r = 0.2 + t[0] / 255 * v * 0.8; g = 0.22 + t[1] / 255 * v * 0.8; b = 0.26 + t[2] / 255 * v * 0.8; }
     else { [r, g, b] = ramp(h); r /= 255; g /= 255; b /= 255; }
-    inst[k++] = x; inst[k++] = y; inst[k++] = h; inst[k++] = r; inst[k++] = g; inst[k++] = b; inst[k++] = CH[1][i] / 255; inst[k++] = CH[2][i] / 255; inst[k++] = 0;
+    inst[k++] = x; inst[k++] = y; inst[k++] = h; inst[k++] = r; inst[k++] = g; inst[k++] = b; inst[k++] = CH[1][i] / 255; inst[k++] = CH[2][i] / 255; inst[k++] = sk && (h || !sk.under) ? z0(h, sk.under) : 0;
+  }
+  if (om) {     // the other one, its pivot on this one's, greyed
+    const m = META[st.spr], dx = rx + m[4] - om[4], dy = ry + m[5] - om[5];
+    for (let y = 0; y < om[3]; y++) for (let x = 0; x < om[2]; x++) {
+      const i = (om[1] + y) * W + om[0] + x, h = hh[i]; if (!h) continue;
+      inst[k++] = dx + x; inst[k++] = dy + y; inst[k++] = h; inst[k++] = 0.36; inst[k++] = 0.38; inst[k++] = 0.42; inst[k++] = 0; inst[k++] = 0; inst[k++] = z0(h, !sk.under);
+    }
   }
   nInst = k / 9; gl.bindBuffer(gl.ARRAY_BUFFER, ibuf); gl.bufferData(gl.ARRAY_BUFFER, inst.subarray(0, k), gl.DYNAMIC_DRAW); dirty3 = false; need3 = true;
 }
@@ -675,7 +693,7 @@ function ui() {
   const on = (id, v) => $(id).classList.toggle('on', !!v);
   on('ovl', st.ovl); on('ovlB', st.ovl); on('msk', st.mask); on('look', !st.look); $('look').textContent = st.look ? 'Channel' : 'Lit';
   for (let k = 0; k < 2; k++) on('look' + k, st.look === k); for (let k = 0; k < 5; k++) on('sky' + k, st.sky === k);
-  for (const k of ['sunAz', 'sunEl', 'reflK', 'bloomK']) $(k).value = st[k]; on('grid', st.grid); on('rdo', st.rdo); on('pAll', st.pickAll); on('buzz', st.buzz);
+  for (const k of ['sunAz', 'sunEl', 'reflK', 'bloomK']) $(k).value = st[k]; on('grid', st.grid); on('rdo', st.rdo); on('stk', st.stack); on('pAll', st.pickAll); on('buzz', st.buzz);
   for (let k = 0; k < 3; k++) on('lay' + k, st.lay === k); for (let k = 0; k < 4; k++) { on('hold' + k, st.hold === k); on('nr' + k, st.nr === k); }
   for (const id of ['eCpy', 'eLift', 'eNone']) $(id).disabled = !sel || !!flt; $('ePst').disabled = !clip || !!flt;
   for (const b of document.querySelectorAll('#tools button')) b.classList.toggle('on', b.dataset.t === t);
@@ -711,14 +729,14 @@ for (const b of document.querySelectorAll('.dd')) b.onclick = e => {
   m.style.top = (r.bottom + 4) + 'px'; m.style.left = clamp(r.left, 6, innerWidth - m.offsetWidth - 6) + 'px';
 };
 addEventListener('pointerdown', e => { if (!e.target.closest('.menu, .dd')) closeMenus(); });
-for (const m of document.querySelectorAll('.menu')) m.addEventListener('click', e => { const b = e.target.closest('button'); if (b && !/^(ovl|msk|grid|rdo|pAll|buzz|hold\d|nr\d|lay\d|look\d|sky\d)$/.test(b.id)) closeMenus(); });
+for (const m of document.querySelectorAll('.menu')) m.addEventListener('click', e => { const b = e.target.closest('button'); if (b && !/^(ovl|msk|grid|rdo|stk|pAll|buzz|hold\d|nr\d|lay\d|look\d|sky\d)$/.test(b.id)) closeMenus(); });
 $('ovl').onclick = $('ovlB').onclick = () => { st.ovl = !st.ovl; full2 = true; dirty3 = true; ui(); };
 $('look').onclick = () => { st.look = st.look ? 0 : 1; dirty3 = true; ui(); };
 for (let k = 0; k < 2; k++) $('look' + k).onclick = () => { st.look = k; dirty3 = true; ui(); };
 for (let k = 0; k < 5; k++) $('sky' + k).onclick = () => { st.sky = k; if (SKIES[k].az !== undefined) { st.sunAz = SKIES[k].az; st.sunEl = SKIES[k].el; } ui(); };
 for (const k of ['sunAz', 'sunEl', 'reflK', 'bloomK']) $(k).oninput = () => { st[k] = +$(k).value; need3 = true; savePrefs(); };
 $('msk').onclick = () => { st.mask = !st.mask; ui(); };
-$('grid').onclick = () => { st.grid = !st.grid; ui(); }; $('rdo').onclick = () => { st.rdo = !st.rdo; ui(); };
+$('grid').onclick = () => { st.grid = !st.grid; ui(); }; $('rdo').onclick = () => { st.rdo = !st.rdo; ui(); }; $('stk').onclick = () => { st.stack = !st.stack; dirty3 = true; ui(); };
 $('pAll').onclick = () => { st.pickAll = !st.pickAll; ui(); }; $('buzz').onclick = () => { st.buzz = !st.buzz; ui(); };
 for (let k = 0; k < 3; k++) $('lay' + k).onclick = () => { st.lay = k; ui(); requestAnimationFrame(fit); };
 for (let k = 0; k < 4; k++) { $('hold' + k).onclick = () => { st.hold = k; ui(); }; $('nr' + k).onclick = () => { st.nr = k; for (let c = 0; c < 3; c++) st.nud[c] = clamp(st.nud[c], -NRANGE[k][c], NRANGE[k][c]); ui(); }; }

@@ -50,6 +50,11 @@ if 'tur11' in meta:                               # first run: split the full-le
     t, px, py = old('tur11'); CUT = 51            # columns 0..50 = turret + mantlet (identical in every recoil frame)
     S['tur'] = (t[:, :CUT].copy(), px, py); S['tur_gun'] = (t[:, CUT:].copy(), px - CUT, py)
 else: S['tur'] = old('tur'); S['tur_gun'] = old('tur_gun')
+# ---- undersides (heights only, never drawn): the hull / jeep silhouette, its art greyed as a guide for painting in heightmap/;
+# the game hangs them under the lifted body (SUNP under), so the shadow has tracks / wheels with light between
+for n, b in (('under_tank', 'hull0'), ('under_jeep', 'jeep0')):
+    if n in meta: S[n] = old(n)
+    else: a, px, py = old(b); g = a.copy(); L = (a[:, :, :3].astype(float) @ [0.3, 0.59, 0.11]) * 0.45; g[:, :, 0] = g[:, :, 1] = g[:, :, 2] = L.astype(np.uint8); S[n] = (g, px, py)
 S['bar'] = old('bar' if 'bar' in meta else 'bar_white')
 if 'decal' not in S: S['decal'] = old('decal' if 'decal' in meta else 'decal_white')
 for n in ['jeep_tire', 'jeep_wheel', 'jeep_flat']:
@@ -104,7 +109,7 @@ bags, bagPts = bag_frames(np.array(Image.open('art/orig/4948b42c-image.png').con
 for n, v in bags.items(): S[n] = old(n) if n in meta else v
 if 'bagPts' not in extra: extra['bagPts'] = bagPts
 
-GROUPS = [['hull', 'jeep', 'tur', 'mg', 'bar', 'decal'], ['smoke', 'boom', 'dust', 'fire'], ['sol_', 'nsh_'], ['wi_'], ['ic_'], ['bagarc']]
+GROUPS = [['hull', 'jeep', 'tur', 'mg', 'bar', 'decal', 'under_'], ['smoke', 'boom', 'dust', 'fire'], ['sol_', 'nsh_'], ['wi_'], ['ic_'], ['bagarc']]
 def group(n):
     for i, G in enumerate(GROUPS):
         if any(n.startswith(p) for p in G): return i
@@ -127,6 +132,14 @@ MAT = {  # prefix: (height px, bevel px or 0 = a dome over the whole shape, refl
     'hull': (12, 4, 90, 1.5), 'tur_gun': (3, 0, 110, 0), 'tur_dead': (8, 4, 50, 1.5), 'tur': (10, 4, 90, 1.5), 'jeep_': (4, 0, 25, 0),
     'jeep': (14, 5, 70, 1.5), 'mg': (3, 0, 110, 0), 'bagarc': (10, 5, 15, 1), 'sol_': (8, 0, 30, 1), 'smoke': (14, 0, 0, 0),
     'dust': (6, 0, 0, 0), 'boom': (16, 0, 0, 0), 'fire': (10, 0, 0, 0)}
+def undergen(a, n, px, py):                                        # first pass: how far down from the body's base, R x 4 (tracks, wheels)
+    m = np.zeros(a.shape[:2] + (3,), np.uint8); h, w = a.shape[:2]; ys, xs = np.mgrid[0:h, 0:w]; lx, ly = xs + 0.5 - px, ys + 0.5 - py; inside = a[:, :, 3] > 0
+    if n == 'under_tank': hw = h / 2; d = np.where(np.abs(ly) > hw - 10, 5, 0)
+    else: d = np.zeros((h, w))
+    if n == 'under_jeep':
+        for wx, wy in extra['jeepWells']:
+            for sd in (-1, 1): d = np.where((lx - wx) ** 2 + (ly - wy * sd) ** 2 < 36, 5, d)
+    m[:, :, 0] = np.where(inside, d * 4, 0); return m
 def matgen(a, n):
     m = np.zeros(a.shape[:2] + (3,), np.uint8); al = a[:, :, 3]
     p = next((k for k in MAT if n.startswith(k)), None)
@@ -147,7 +160,7 @@ AMn = np.zeros((H, W, 3), np.uint8); gen = 0
 for n, x, y in places:
     a = S[n][0]; h, w = a.shape[:2]
     if AM is not None and n in meta and meta[n][2:4] == [w, h]: ox, oy = meta[n][:2]; AMn[y:y + h, x:x + w] = AM[oy:oy + h, ox:ox + w]
-    else: AMn[y:y + h, x:x + w] = matgen(a, n); gen += 1
+    else: AMn[y:y + h, x:x + w] = undergen(a, n, *S[n][1:]) if n.startswith('under_') else matgen(a, n); gen += 1
 Image.fromarray(AMn).save('atlas_m.png', optimize=True)
 extra['tips'] = {k: v for k, v in extra.get('tips', {}).items() if k.startswith('n_')}
 json.dump(extra, open('atlas_extra.json', 'w'))

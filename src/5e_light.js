@@ -141,7 +141,7 @@ const SUNH = { flag: 22, item: 4, wall: 40, fence: 9, hay: 14, crate: 10, nest: 
 const SUNB = { mgNest: SUNH.nest, stand: 18, jump: 4 };     // px: the nest MG rests on its bags (drawn over them, so never lower); a soldier's legs (added to his painted height, solid); a jump's gap
 /* per part (sprite name less its frame number) or shape (SUNH name): lift = an air gap (px) between it and what it rests
    on, add = px taller than painted. A part's start is the top of what's under it (+ lift); its pixels stand on that */
-const SUNP = { tur_gun: { lift: 4 } };
+const SUNP = { tur_gun: { lift: 4 }, hull: { lift: 5, under: 'under_tank' }, jeep: { lift: 5, under: 'under_jeep' }, jeep4: {} };     // under: what hangs below the lifted body (heights only: tracks, wheels), its top at the body's base
 /* draw order: each thing's height (px, its top as the sun pass has it); drawWorld draws low to high */
 const ZH = { body: 1, item: 2, shot: 12 };     // fallbacks; the rest comes from the art (topOf, artMax, shotZ)
 const solZ = s => s.down ? ZH.body : solLift(s) + solAdd(s) + artMax('sol_' + bodyPose(s));
@@ -271,9 +271,9 @@ void main() {
   vec2 f = gl_FragCoord.xy - O, p = vec2(f.x, V - f.y) + P;     // O: where this map sits in GC (GL pixels)
   if (Q > 4.5) { vec4 a = texture2D(LT, f / G); gl_FragColor = vec4(Q > 5.5 ? min(a.b * 4. * PLT + a.a * 2., 1.) : vec3(a.r), 1.); return; }     // dev: the sun's shadow alone, the point lights alone
   if (Q > 3.5) { gl_FragColor = vec4(mt(p).rgb, 1.); return; }
-  if (Q > 2.5) {     // dev HEIGHTS: the top (whatever it is) on one ramp, 0 dark blue .. 64 px red; hatched where it floats: the hatch is its underside
+  if (Q > 2.5) {     // dev HEIGHTS: the top (whatever it is) on one ramp, 0 dark blue .. 64 px red; hatched where it floats over air (not where it rests on a wheel / track): the hatch is its underside
     vec4 c = tx(p); float t = max(hh(p), c.b > 0.5 ? ${ROOF_Z[1].toFixed(1)} : 0.), fb = (1. - c.a) * 63.75;
-    vec3 col = hr(t / 64.); if (c.g > c.r && fb > 0.5 && mod(floor(p.x + p.y), 6.) < 2.) col = hr(fb / 64.);
+    vec3 col = hr(t / 64.); if (c.g > c.r && fb > c.r * 63.75 + 0.5 && mod(floor(p.x + p.y), 6.) < 2.) col = hr(fb / 64.);
     gl_FragColor = vec4(col, 1.); return; }
   vec4 a = texture2D(LT, f / G), m = mt(p);
   float sh = a.r, lam = a.g * 2., r = m.r, gw = m.g; vec3 tint = PLT, pl = a.b * 4. * tint;
@@ -295,7 +295,7 @@ void main() {
     /* heights: one quad per thing (i0 centre + x half-axis, i1 y half-axis + kind + p0, i2 p1 p2 + atlas uv0, i3 uv1 + its top),
        to buffer px by X (scale, offset); kinds: 0 sprite (p0 base, p1 add: its painted heights from base up), 1 box (p0 top,
        p1 bottom, p2 roof over it: B 1), 2 disc (p0 centre top, p1 rim top, p2 bottom), 3 ring arc (p0 top, p1 inner radius / outer,
-       p2 half angle), 5 material only (p0 reflectivity, p1 water, p2 2: a
+       p2 half angle), 4 underside (p0 its top: painted heights hang down from it), 5 material only (p0 reflectivity, p1 water, p2 2: a
        disc). Out: what stands on the ground (bottom under 1 px): R its top x 4; what floats (a gun past the hull, a jumper): G its
        top x 4, A 255 - its bottom x 4 (MAX: the highest top, the lowest bottom), so one over the other never fills the gap; B a roof over it (a slab ROOF_Z: casts, isn't the surface). With MM: the materials (R reflectivity, G glow, B water), the
        highest top winning (depth) */
@@ -309,6 +309,7 @@ void main() {
   if (k.x < 0.5) { vec4 m = texture2D(A, uv); if (m.a < 0.5) discard; gl_FragColor = MM > 0.5 ? vec4(m.g, m.b, 0., 1.) : span(m.r * 63.75 + k.y + k.z, k.y, 0.); return; }
   else if (k.x < 1.5) gl_FragColor = span(k.y, k.z, k.w);
   else if (k.x < 2.5) { if (r2 > 1.) discard; gl_FragColor = span(mix(k.y, k.z, sqrt(r2)), k.w, 0.); }
+  else if (k.x > 3.5) { vec4 m = texture2D(A, uv); if (MM > 0.5 || m.r <= 0.) discard; gl_FragColor = span(k.y, max(k.y - m.r * 63.75, 0.), 0.); return; }     // an underside: from p0 down by its painted depth (where painted)
   else { float r = sqrt(r2); if (r > 1. || r < k.z || abs(atan(q.y, q.x)) > k.w) discard; gl_FragColor = span(k.y, 0., 0.); }
   if (MM > 0.5) gl_FragColor = vec4(0., 0., 0., 1.);
 }`, ['c', 'i0', 'i1', 'i2', 'i3']);
@@ -370,6 +371,11 @@ function hspr(n, x, y, a, base, add) {
   hq(HLA, x + c * ox - s * oy, y + s * ox + c * oy, c * m[2] / 2, s * m[2] / 2, -s * m[3] / 2, c * m[3] / 2, 0, base || 0, add || 0, 0, m[0] / S.aw, m[1] / S.ah, (m[0] + m[2]) / S.aw, (m[1] + m[3]) / S.ah, (base || 0) + (add || 0) + artMax(n));
   HMAT |= artMat(n);
 }
+/* an underside: its painted heights hang down from top (where painted; to the ground: a track, a wheel) */
+function hund(n, x, y, a, top) {
+  const m = ATLAS[n]; if (!m) return; const c = Math.cos(a), s = Math.sin(a), ox = m[2] / 2 - m[4], oy = m[3] / 2 - m[5], S = _sun;
+  hq(HLA, x + c * ox - s * oy, y + s * ox + c * oy, c * m[2] / 2, s * m[2] / 2, -s * m[3] / 2, c * m[3] / 2, 4, top, 0, 0, m[0] / S.aw, m[1] / S.ah, (m[0] + m[2]) / S.aw, (m[1] + m[3]) / S.ah, top);
+}
 /* a part starts on top of what's already under it: the painted height of the parts stacked so far (the hull, the
    turret...) at its rest point (its pivot unless given: an MG's mount, a seat), the highest within 1 px; at least min */
 let _stk = [], _pp = null;
@@ -388,6 +394,7 @@ function hUnder(x, y) {
 function hpart(n, x, y, a, o = {}) {         // o: min (start at least), add, rx / ry (rest point), keep (others stand on it), who (the crewman)
   if (!ATLAS[n]) return; const P = sunP(n), b = Math.max(o.min || 0, Math.round(hUnder(o.rx ?? x, o.ry ?? y))) + (P.lift || 0), add = (o.add || 0) + (P.add || 0), q = { n, x, y, a, b, add, who: o.who };
   if (o.keep) _stk.push(q); if (_pp) _pp.push(q); else hspr(n, x, y, a, b, add);
+  if (P.under) { const u = { n: P.under, x, y, a, b, add: 0, u: 1 }; if (_pp) _pp.push(u); else hund(P.under, x, y, a, b); }     // what hangs under it
 }
 /* a thing's parts, bottom up, each standing on what's under it (worked out once a frame): what the height pass draws,
    and where its guns, crew and top are */
@@ -398,7 +405,7 @@ function partsOf(o) {
 }
 function partH(q, x, y) { const c = Math.cos(q.a), s = Math.sin(q.a), dx = x - q.x, dy = y - q.y; return q.b + q.add + artH(q.n, dx * c + dy * s, -dx * s + dy * c); }
 /* its top (px): the tallest part (crew left out: they don't make the hull taller in the draw order) */
-function topOf(o) { let t = 0; for (const q of partsOf(o)) if (!q.who) t = Math.max(t, q.b + q.add + artMax(q.n)); return t; }
+function topOf(o) { let t = 0; for (const q of partsOf(o)) if (!q.who && !q.u) t = Math.max(t, q.b + q.add + artMax(q.n)); return t; }
 function solParts(s) {
   if (s.down) { hpart('sol_dead', s.x, s.y, s.a + Math.PI); return; }
   const body = 'sol_' + bodyPose(s), up = solLift(s);     // a jump lifts him off the ground
@@ -425,7 +432,7 @@ function vehParts(v) {
     hpart(mg, mx, my, v.mgA, mount); crew(2, 0, SUNB.stand);     // the MG on its post; the gunner stands in the bed
   }
 }
-const hParts = o => { for (const q of partsOf(o)) hspr(q.n, q.x, q.y, q.a, q.b, q.add); };
+const hParts = o => { for (const q of partsOf(o)) if (q.u) hund(q.n, q.x, q.y, q.a, q.b); else hspr(q.n, q.x, q.y, q.a, q.b, q.add); };
 /* a shape's [top, bottom]: SUNH height h (+ add) standing on its lift */
 const shp = (h, n) => { const P = sunP(n), b = P.lift || 0; return [h + b + (P.add || 0), b]; };
 /* everything solid, as heights (the same things, and the same hidden ones left out, as the frame draws) */

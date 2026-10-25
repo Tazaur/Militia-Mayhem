@@ -507,3 +507,6 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 
 ## Build 179
 - Dev FLASHLIGHT POOL (`DEV.lampX`, `lampPool`): a ray along the aim (walls, trees, hay, bags, vehicles) sets where the beam meets the ground, 60 to 260 px, eased (`POOL`, `s.poolD`). The beam tilts down from gun height. The shader gets the slope of the lower edge as spot w - 1: steeper (near ground) is dark, raised things nearby are lit, and the ground past the upper edge fades out (the far end of the pool). `S.pd` takes a 4-value d as is.
+
+## Build 180
+- Vehicle undersides: the hull and jeep bodies sit 5 px up (`SUNP` lift) and each has an `under` part (`under_tank`, `under_jeep`): heights-only atlas slots (greyed art, same silhouette and pivot; no damage states) whose painted heights hang DOWN from the body's base (height kind 4, `hund`). Tracks / wheels reach the ground; light passes between them. atlas_pack.py `undergen` paints a first pass (tracks along the sides, wheel discs at `jeepWells`); repaint them in the heightmap editor. `topOf`, fog sight shapes skip `q.u` parts. Heights view hatches only where there's air under a floating span. Heightmap editor: View › Stack the underside (3D) shows the body on its lift with the underside hanging below it (`STACK` mirrors SUNP).
