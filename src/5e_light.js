@@ -349,12 +349,14 @@ void main() {
        kept as two records so one never hides the other: RG the skyline of things standing on the ground (the highest t - d DH:
        exact, two bytes), B / A the span of floating things (a gun past the hull, an MG over the hood: lo / hi, a byte each;
        none: lo > hi). N 0: from the heights 1 px sunward; then N = 1, 2, 4...: joined with what's N px sunward, lowered N DH.
-       Two floating spans that don't meet: the lower one kept */
+       A span reaching the ground or the skyline is folded into the skyline (the same heights shaded: nothing under 0 receives),
+       so the slot stays free for what floats (a hull on its underside no longer pushes the turret's out). Two floating spans that don't meet: the lower one kept */
     const SP = prog(VS, `precision highp float; ${TX}
 uniform sampler2D B; uniform vec2 D; uniform float N, DH;
 float un(vec2 c) { return (c.x * 255. + c.y) / 255. * 128. - 64.; }
 vec2 pk(float v) { float x = clamp((v + 64.) / 128., 0., 0.99998) * 255.; return vec2(floor(x) / 255., fract(x)); }
 bool out_(vec2 q) { return any(lessThan(q, R.xy)) || any(greaterThan(q, R.zw)); }
+void fold(inout vec2 s, inout float g) { if (s.x <= s.y && s.x <= max(g, 0.) + 0.5) { g = max(g, s.y); s = vec2(64., -64.); } }
 void main() {
   vec2 p = gl_FragCoord.xy, a = vec2(64., -64.); float g = -64.;     // a: floating (lo, hi), none; g: the skyline, none
   if (N < 0.5) { vec2 q = p + D; if (!out_(q)) { vec4 c = texture2D(H, (floor(q) + 0.5) / S); float t = c.r * 63.75, ft = c.g * 63.75; if (t > 0.01) g = t - DH; if (ft > 0.01) a = vec2((1. - c.a) * 63.75, ft) - DH; if (c.b > 0.5) { vec2 r = vec2(${ROOF_Z[0].toFixed(1)}, ${ROOF_Z[1].toFixed(1)}) - DH; a = a.x > a.y ? r : vec2(min(a.x, r.x), max(a.y, r.y)); } } }
@@ -362,9 +364,10 @@ void main() {
     vec4 c = texture2D(B, (floor(p) + 0.5) / S); g = un(c.rg); a = vec2(c.b, c.a) * 128. - 64.;
     vec2 q = p + D * N;
     if (!out_(q)) { c = texture2D(B, (floor(q) + 0.5) / S); g = max(g, un(c.rg) - N * DH); vec2 b = vec2(c.b, c.a) * 128. - 64. - N * DH;
+      fold(a, g); fold(b, g); fold(a, g);
       if (b.y > -1. && b.x <= b.y) { if (a.x > a.y) a = b; else if (b.x <= a.y + 0.5 && a.x <= b.y + 0.5) a = vec2(min(a.x, b.x), max(a.y, b.y)); else if (b.x < a.x) a = b; } }
   }
-  if (a.y < -1.) a = vec2(64., -64.);
+  fold(a, g); if (a.y < -1.) a = vec2(64., -64.);
   gl_FragColor = vec4(pk(max(g, -64.)), clamp((a + 64.) / 128., 0., 1.));
 }`, ['p']);
     /* the memory's heights: PP the sight polygons (world px, X as the heights'; writes nothing: clears what's under them),

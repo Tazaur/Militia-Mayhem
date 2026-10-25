@@ -559,3 +559,6 @@ Fix: the lamp toggle ran after `controlSoldier`'s vehicle early return, so vehic
 
 ## Build 193
 Night through smoke / windows. The remembered view FOG_OUT (shown through the soft mask in sight: smoke, windows) was unshaded, so at night it showed day-bright; only fogOverlay multiplied it. `fogShade(vw)` (5b_fog) multiplies the memory's shade map into FOG_OUT once a frame (flag on vw._fog) before drawSoftFog or fogOverlay use it. The smoke itself was drawn after the light pass, unlit: now `drawSmokeField` lights it with the frame's shade map (`_sun.lit`, map 0: sun / night / point lights): smoke over black × shade (SMK_L), then the scene cut by the smoke's alpha (destination-out) and that added (lighter), clipped to the view: exact at thin edges too. Without the sun pass: as before.
+
+## Build 194
+Turret shadow cut off in a band around the hull's shadow (again): since undersides, the hull stands on its underside, so it is a floating span and fought the turret / barrel for the sweep's one floating slot (the lower kept). SP now folds any span reaching the ground or the skyline (lo <= max(g, 0) + 0.5) into the skyline (`fold`: lossless, receivers are >= 0), on the first pass, both sides of a join, and the result; the slot is left for what truly floats.
