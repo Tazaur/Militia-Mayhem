@@ -10,14 +10,15 @@ function drawWorld(vw) {
   const x0 = (vw.x - VOX) / VZ - 4, y0 = (vw.y - VOY) / VZ - 4, x1 = (vw.x + vw.w - VOX) / VZ + 4, y1 = (vw.y + vw.h - VOY) / VZ + 4;
   const vis = (x, y, r) => x + r > x0 && x - r < x1 && y + r > y0 && y - r < y1;
   screenT(); ctx.save(); ctx.beginPath(); ctx.rect(vw.x, vw.y, vw.w, vw.h); ctx.clip();
-  ctx.fillStyle = '#0c140a'; ctx.fillRect(vw.x, vw.y, vw.w, vw.h);
+  ctx.fillStyle = '#0c140a'; ctx.fillRect(vw.x, vw.y, vw.w, vw.h); pipe('clear');
   worldT(); ctx.imageSmoothingEnabled = false;
   SUNNOW = sunOn();
-  const rv = MAP.tiled ? roofView(vw, x0, y0, x1, y1) : null, fogPolys = applyFog(vw, vis, x0, y0, x1, y1, rv), fogged = !!fogPolys;
+  const rv = MAP.tiled ? roofView(vw, x0, y0, x1, y1) : null, fogPolys = applyFog(vw, vis, x0, y0, x1, y1, rv), fogged = !!fogPolys; pipe('memory', { fogged });
   // ---- layer 0: ground + fading footprints
   drawSkirt(x0, y0, x1, y1);
   const gx0 = Math.max(0, Math.floor(x0)), gy0 = Math.max(0, Math.floor(y0)), gx1 = Math.min(WW, Math.ceil(x1)), gy1 = Math.min(WH, Math.ceil(y1));
   if (gx1 > gx0 && gy1 > gy0) { ctx.drawImage(ground, gx0, gy0, gx1 - gx0, gy1 - gy0, gx0, gy0, gx1 - gx0, gy1 - gy0); ctx.drawImage(decals, gx0, gy0, gx1 - gx0, gy1 - gy0, gx0, gy0, gx1 - gx0, gy1 - gy0); ctx.drawImage(prints, gx0, gy0, gx1 - gx0, gy1 - gy0, gx0, gy0, gx1 - gx0, gy1 - gy0); }
+  pipe('ground');
   if (MAP.water.length) { ctx.globalAlpha = 0.18; ctx.fillStyle = CFG.style === 'grit' ? '#7a8a82' : '#9fd0f0'; for (const w of MAP.water) { if (!vis(w.x + w.w / 2, w.y + w.h / 2, Math.max(w.w, w.h))) continue; for (let i = 0; i < 26; i++) { const y = w.y + ((i * 97 + M.time * 14) % w.h), x = w.x + ((i * 53) % (w.w - 20)) + Math.sin(M.time + i) * 6; ctx.fillRect(x, y, 12, 1); } } ctx.globalAlpha = 1; }
   // flags
   for (const f of M.flags) {
@@ -33,50 +34,52 @@ function drawWorld(vw) {
     ctx.fill();
     ctx.fillStyle = '#111'; ctx.font = `bold 9px ${FB}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(f.name.length > 1 ? 'H' : f.name, f.x + 14, f.y - 10 + Math.sin(f.wave + 2.5) * 2.5);
   }
+  pipe('flags');
   // ---- everything standing on the ground, low to high by its height (px, as the sun pass has them: ZH): the taller
   // covers the lower, so jump dust stays behind the jumper, a prone man under the sandbags. Then the light over all of it
   // (roofs and canopies too), then what glows or floats in the air over the light (fire, flashes, smoke)
   const eyes = viewEyes(vw), hidden = s => smokeHides(eyes, s, vw), Q = DRAWQ; Q.length = 0;
-  const at = (z, f, post) => Q.push({ z, f, post, i: Q.length });
-  for (const c of M.crates) if (c.live && vis(c.x, c.y, 14)) at(SUNH.crate, () => { worldT(); ctx.fillStyle = 'rgba(0,0,0,0.35)'; if (!SUNNOW) ctx.fillRect(c.x - 7, c.y - 6, 18, 18); img(SPR.crate, c.x, c.y, c.a, 1, CFG.style === 'grit' ? 0.85 : 1); });
-  for (const it of M.items) if (vis(it.x, it.y, 30)) at(ZH.item, () => drawItem(it, vw));
-  at(0, () => { worldT(); ctx.fillStyle = '#c9a443'; for (const b of M.brass) if (vis(b.x, b.y, 4)) { ctx.globalAlpha = 0.8 * (1 - b.t / BRASS_T); ctx.fillRect(b.x, b.y, 2, 1); } ctx.globalAlpha = 1; });
-  for (const c of M.corpses) if (vis(c.x, c.y, 30)) at(ZH.body, () => { worldT(); if (!c.baked) drawPool(ctx, c, c.t / POOL_T); solDraw(c, c.n, c.x, c.y, c.rot, 1, 1, c.t > BODY_T ? corpseAlpha(c) : undefined); });
-  if (!SUNNOW) at(ZH.body, () => drawShadowLayer(vw, vis));     // without the sun: one shared offset shadow for soldiers, vehicles and bodies in the air
-  for (const s of M.sol) if (s.alive && !s.veh && vis(s.x, s.y, 30) && !hidden(s) && sightNear(vw, s, 4)) at(solZ(s), () => drawSoldier(s, vw));
-  for (const A of MAP.arcs) if (vis(A.x, A.y, 50)) at(artMax('bagarc0'), () => { const f = A.lost / A.bags.length; spr(f < 0.25 ? 'bagarc0' : f < 0.75 ? 'bagarc1' : 'bagarc2', A.x, A.y, A.a); });
+  const at = (z, f, post) => Q.push({ z, f, post, k: AK, i: Q.length });     // AK: what it is (for the pipeline viewer)
+  AK = 'crate'; for (const c of M.crates) if (c.live && vis(c.x, c.y, 14)) at(SUNH.crate, () => { worldT(); ctx.fillStyle = 'rgba(0,0,0,0.35)'; if (!SUNNOW) ctx.fillRect(c.x - 7, c.y - 6, 18, 18); img(SPR.crate, c.x, c.y, c.a, 1, CFG.style === 'grit' ? 0.85 : 1); });
+  AK = 'item'; for (const it of M.items) if (vis(it.x, it.y, 30)) at(ZH.item, () => drawItem(it, vw));
+  AK = 'brass'; at(0, () => { worldT(); ctx.fillStyle = '#c9a443'; for (const b of M.brass) if (vis(b.x, b.y, 4)) { ctx.globalAlpha = 0.8 * (1 - b.t / BRASS_T); ctx.fillRect(b.x, b.y, 2, 1); } ctx.globalAlpha = 1; });
+  AK = 'body'; for (const c of M.corpses) if (vis(c.x, c.y, 30)) at(ZH.body, () => { worldT(); if (!c.baked) drawPool(ctx, c, c.t / POOL_T); solDraw(c, c.n, c.x, c.y, c.rot, 1, 1, c.t > BODY_T ? corpseAlpha(c) : undefined); });
+  AK = 'flat shadows'; if (!SUNNOW) at(ZH.body, () => drawShadowLayer(vw, vis));     // without the sun: one shared offset shadow for soldiers, vehicles and bodies in the air
+  AK = 'soldier'; for (const s of M.sol) if (s.alive && !s.veh && vis(s.x, s.y, 30) && !hidden(s) && sightNear(vw, s, 4)) at(solZ(s), () => drawSoldier(s, vw));
+  AK = 'sandbags'; for (const A of MAP.arcs) if (vis(A.x, A.y, 50)) at(artMax('bagarc0'), () => { const f = A.lost / A.bags.length; spr(f < 0.25 ? 'bagarc0' : f < 0.75 ? 'bagarc1' : 'bagarc2', A.x, A.y, A.a); });
   for (const s of MAP.statics) {
-    if (!s.alive || !vis(s.x, s.y, s.type === 'tree' ? 40 : 16)) continue;
+    if (!s.alive || !vis(s.x, s.y, s.type === 'tree' ? 40 : 16)) continue; AK = s.type;
     if (s.type === 'fence') at(SUNH.fence, () => { worldT(); ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.a); ctx.fillStyle = 'rgba(0,0,0,0.3)'; if (!SUNNOW) ctx.fillRect(-7, 2, 15, 3); ctx.fillStyle = CFG.style === 'grit' ? '#5a4632' : '#8a6a42'; ctx.fillRect(-7, -1, 14, 2.5); ctx.fillStyle = CFG.style === 'grit' ? '#3e3022' : '#5e4428'; ctx.fillRect(-2, -3, 4, 6); ctx.restore(); });
     else if (s.type === 'hay') at(SUNH.hay, () => { worldT(); ctx.fillStyle = 'rgba(0,0,0,0.3)'; if (!SUNNOW) { ctx.beginPath(); ctx.arc(s.x + 3, s.y + 4, 13, 0, TAU); ctx.fill(); } ctx.fillStyle = CFG.style === 'grit' ? '#857344' : '#c8a64e'; ctx.beginPath(); ctx.arc(s.x, s.y, 13, 0, TAU); ctx.fill(); ctx.strokeStyle = CFG.style === 'grit' ? '#665834' : '#a0823a'; ctx.lineWidth = 1.5; for (const r of [9, 5]) { ctx.beginPath(); ctx.arc(s.x, s.y, r, s.a, s.a + 5); ctx.stroke(); } });
     else if (s.type === 'tree') at(SUNH.tree[0], () => { const tc = s.pine ? SPR.pines[s.v] : SPR.trees[s.v]; worldT(); ctx.fillStyle = 'rgba(0,0,0,0.28)'; if (!SUNNOW) { ctx.beginPath(); ctx.arc(s.x + 6, s.y + 7, 24 * s.sc, 0, TAU); ctx.fill(); } img(tc, s.x, s.y, s.a, s.sc, 0.94); });
   }
-  for (const w of M.wrecks) if (vis(w.x, w.y, 70)) at(topOf(w), () => drawWreck(w));
-  for (const v of M.vehicles) if (v.active && vis(v.x, v.y, 80) && sightNear(vw, v, 24)) at(topOf(v), () => drawVehicle(v));     // one piece: hull, crew, turret, MG in their own order
-  for (const p of M.proj) if (vis(p.x, p.y, 20)) at(shotZ(p), () => drawProj(p));
-  for (const f of M.flings) if (vis(f.x, f.y, 40)) { const k = f.t / f.T, h = Math.sin(Math.PI * k); at(ZH.body + h * 34, () => solDraw(f, solSpr(f.color, 'dead'), f.x, f.y - h * 34, f.rot, 1 + h * 0.6, 1 + h * 0.6)); }
+  AK = 'wreck'; for (const w of M.wrecks) if (vis(w.x, w.y, 70)) at(topOf(w), () => drawWreck(w));
+  AK = 'vehicle'; for (const v of M.vehicles) if (v.active && vis(v.x, v.y, 80) && sightNear(vw, v, 24)) at(topOf(v), () => drawVehicle(v));     // one piece: hull, crew, turret, MG in their own order
+  AK = 'shot'; for (const p of M.proj) if (vis(p.x, p.y, 20)) at(shotZ(p), () => drawProj(p));
+  AK = 'thrown body'; for (const f of M.flings) if (vis(f.x, f.y, 40)) { const k = f.t / f.T, h = Math.sin(Math.PI * k); at(ZH.body + h * 34, () => solDraw(f, solSpr(f.color, 'dead'), f.x, f.y - h * 34, f.rot, 1 + h * 0.6, 1 + h * 0.6)); }
   if (!devOff('parts')) partsInto(at, vis);
   const roofs = roofsIn(vis);
-  at(SUNH.wall, () => {     // roofs (always known: the memory's hole leaves them showing, lit); the dev yard's as you see it
+  AK = 'roofs'; at(SUNH.wall, () => {     // roofs (always known: the memory's hole leaves them showing, lit); the dev yard's as you see it
     if (rv) { worldT(); ctx.imageSmoothingEnabled = false; ctx.drawImage(rv.c, 0, 0, rv.w, rv.h, rv.x, rv.y, rv.w, rv.h); }
     worldT(); if (!devOff('roofs')) drawRoofs(roofs);
   });
-  at(99, () => drawKillerGlow(vw), true);
+  AK = 'killer glow'; at(99, () => drawKillerGlow(vw), true);
   Q.sort((a, b) => a.z - b.z || a.i - b.i);
-  for (const d of Q) if (!d.post) { d.f(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
+  for (const d of Q) if (!d.post) { d.f(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; pipe('q', d); }
   // the light, over the whole view (out of sight: the shade for the memory, no point lights, units only cast)
   if (SUNNOW) drawSun(vw, vis, hidden, fogged ? roofs : null);
   else if (!devOff('add')) drawLights(vis); else lightsNow(vis);
-  for (const d of Q) if (d.post) { d.f(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
+  if (!SUNNOW) pipe('lights2d');
+  for (const d of Q) if (d.post) { d.f(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; pipe('q', d); }
   // the soft layers (smoke, windows) over everything in sight alike: units, vehicles, roofs, trees, fire
-  if (fogged && !devOff('fog')) drawSoftFog(vw);
-  if (!devOff('smoke')) drawSmokes(vw);
-  drawLasers(vis);
+  if (fogged && !devOff('fog')) drawSoftFog(vw); pipe('softfog');
+  if (!devOff('smoke')) drawSmokes(vw); pipe('smokes');
+  drawLasers(vis); pipe('lasers');
   // the remembered world over what's out of sight (everything above was drawn whole; dev views: the whole screen)
   if (fogged && !(SUNNOW && SUNDBG)) { const H = new Path2D(); polyPath(H, fogPolys); for (const b of roofs) H.rect(b.x, b.y, b.w, b.h); worldT(); fogOverlay(vw, H); }
   // tags, reticles
   worldT(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  const eyN = viewEyes(vw);
+  pipe('overlay-done'); const eyN = viewEyes(vw);
   for (const s of M.sol) {
     if (!s.alive || !s.player || !vis(s.x, s.y, 40)) continue;
     if (smokeHides(eyN, s, vw) || (fogged && eyN.length && !eyN.some(e => e.s === s || (!M.ffa && e.team === s.team) || sees(e.x, e.y, s.x, s.y)))) continue;
@@ -84,6 +87,7 @@ function drawWorld(vw) {
     ctx.font = `bold ${Math.round(8 / Math.max(0.8, VZ * 0.6))}px ${FB}`; ctx.globalAlpha = 0.5;      // small and faint: a label, not a sign
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillText(s.name, x + 1, y + 1); ctx.fillStyle = CHEX[s.color]; ctx.fillText(s.name, x, y); ctx.globalAlpha = 1;
   }
+  pipe('tags');
   for (const p of (M.demo ? [] : LOCALS())) {
     const s = p.sol; if (!s.alive || (p.raw && p.raw.mouse)) continue;
     if (!vw.p && !M.shared) continue; if (vw.p && vw.p !== p) continue;
@@ -97,6 +101,7 @@ function drawWorld(vw) {
     if (scoped) { ctx.globalAlpha = 0.25; ctx.setLineDash([3, 5]); ctx.beginPath(); ctx.moveTo(ox + Math.cos(a) * 24, oy + Math.sin(a) * 24); ctx.lineTo(rx, ry); ctx.stroke(); ctx.setLineDash([]); }
     ctx.globalAlpha = 1;
   }
+  pipe('reticle');
   if (M.dev) devDrawWorld(vw);
   // weather + grit grade
   screenT();
@@ -108,9 +113,10 @@ function drawWorld(vw) {
     const g = ctx.createRadialGradient(vw.x + vw.w / 2, vw.y + vw.h / 2, Math.min(vw.w, vw.h) * 0.35, vw.x + vw.w / 2, vw.y + vw.h / 2, Math.max(vw.w, vw.h) * 0.75);
     g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.38)'); ctx.fillStyle = g; ctx.fillRect(vw.x, vw.y, vw.w, vw.h);
   } else if (M.rain) { ctx.fillStyle = 'rgba(20,30,50,0.18)'; ctx.fillRect(vw.x, vw.y, vw.w, vw.h); }
+  pipe('grade');
   ctx.restore();
 }
-const DRAWQ = [];
+const DRAWQ = []; let AK = '';
 function drawItem(it, vw) {
   worldT();
   if (it.k === 'med' || it.k === 'ammo') {
@@ -430,7 +436,7 @@ const _pb = {};
 function partsInto(at, vis) {     // one bucket per kind, each drawn at its height
   for (const k in _pb) _pb[k].length = 0;
   for (const q of M.parts) if (PZ[q.k] && vis(q.x, q.y, q.sz + 30)) (_pb[q.k] || (_pb[q.k] = [])).push(q);
-  for (const k in _pb) if (_pb[k].length) at(PZ[k][0], () => drawParts(k, _pb[k]), PZ[k][1] > 0);
+  for (const k in _pb) if (_pb[k].length) (AK = 'particles · ' + k, at)(PZ[k][0], () => drawParts(k, _pb[k]), PZ[k][1] > 0);
 }
 function drawParts(k, qs) {
   worldT(); if (PZ[k][1] === 2) ctx.globalCompositeOperation = 'lighter';
