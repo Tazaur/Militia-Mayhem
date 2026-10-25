@@ -581,7 +581,7 @@ function netSnap() {
   }
   const V = M.vehicles.map(v => {
     if (!v.active) return 'A';
-    const fl = 1 | (v.dead ? 2 : 0) | (v.hitFlash > 0 ? 4 : 0) | (v.over > 0 ? 8 : 0);
+    const fl = 1 | (v.dead ? 2 : 0) | (v.hitFlash > 0 ? 4 : 0) | (v.over > 0 ? 8 : 0) | (v.lights ? 16 : 0);
     return pk(fl, 1) + pk(v.x, 2) + pk(v.y, 2) + angE(v.a) + angE(v.ta) + angE(v.mgA) + pk(v.hp, 2) + pk(v.recoil * 63, 1) + pk(Math.min(1, v.heat) * 63, 1) + pk(Math.max(0, v.cd) / 2.3 * 63, 1) + pk((clamp(v.spd / v.T.maxF, -1, 1) + 1) * 31.5, 1) + pk((v.cN || 0) % 64, 1) + pk((v.mN || 0) % 64, 1);
   }).join('');
   let P = '', np = 0;
@@ -906,7 +906,7 @@ function netApplySnaps(now, dt) {
     const px = v.x, py = v.y, pa = v.a, lr = rb && rb !== ra && Math.hypot(rb.x - ra.x, rb.y - ra.y) < 200 ? rb : null;
     if (lr) { v.x = lerp(ra.x, lr.x, k); v.y = lerp(ra.y, lr.y, k); v.a = lerpAng(ra.a, lr.a, k); v.ta = lerpAng(ra.ta, lr.ta, k); v.mgA = lerpAng(ra.mgA, lr.mgA, k); }
     else { v.x = ra.x + ra.vx * ext; v.y = ra.y + ra.vy * ext; v.a = ra.a; v.ta = ra.ta; v.mgA = ra.mgA; }
-    v.dead = !!(ra.fl & 2); v.hp = ra.hp; v.recoil = ra.rec; v.heat = ra.heat; v.cd = ra.cd; v.spd = ra.spd * v.T.maxF; v.over = ra.fl & 8 ? 1 : 0; if (ra.fl & 4) v.hitFlash = 0.08;
+    v.dead = !!(ra.fl & 2); v.hp = ra.hp; v.recoil = ra.rec; v.heat = ra.heat; v.cd = ra.cd; v.spd = ra.spd * v.T.maxF; v.over = ra.fl & 8 ? 1 : 0; v.lights = !!(ra.fl & 16); if (ra.fl & 4) v.hitFlash = 0.08;
     v.vx = lr ? lerp(ra.vx, lr.vx, k) : ra.vx; v.vy = lr ? lerp(ra.vy, lr.vy, k) : ra.vy; v.tRel = angDiff(v.a, v.ta); v.mgRel = angDiff(v.type === 'tank' ? v.ta : v.a, v.mgA);
     if (v._cN === undefined) { v._cN = ra.cN; v._mN = ra.mN; }
     if (ra.cN !== v._cN) { v._cN = ra.cN; v._cfx = true; }

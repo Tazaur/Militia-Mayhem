@@ -55,6 +55,7 @@ function drawWorld(vw) {
   }
   AK = 'wreck'; for (const w of M.wrecks) if (vis(w.x, w.y, 70)) at(topOf(w), () => drawWreck(w));
   AK = 'vehicle'; for (const v of M.vehicles) if (v.active && vis(v.x, v.y, 80) && sightNear(vw, v)) at(topOf(v), () => drawVehicle(v));     // one piece: hull, crew, turret, MG in their own order
+  AK = 'tail lights'; for (const v of M.vehicles) if (v.lights && v.active && !v.dead && v.type !== 'nest' && vis(v.x, v.y, 80) && sightNear(vw, v)) at(topOf(v), () => drawTailLights(v), true);     // after the light: they glow
   AK = 'shot'; for (const p of M.proj) if (vis(p.x, p.y, 20)) at(shotZ(p), () => drawProj(p));
   AK = 'thrown body'; for (const f of M.flings) if (vis(f.x, f.y, 40)) { const k = f.t / f.T, h = Math.sin(Math.PI * k); at(ZH.body + h * 34, () => solDraw(f, solSpr(f.color, 'dead'), f.x, f.y - h * 34, f.rot, 1 + h * 0.6, 1 + h * 0.6)); }
   if (!devOff('parts')) partsInto(at, vis);
@@ -380,6 +381,14 @@ function flashAt(x, y, r, soft) {
   worldT();
   ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = soft ? 0.75 : 0.9; ctx.drawImage(soft ? SPR.flashSoft : SPR.flash, x - r, y - r, r * 2, r * 2); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
 function hullFrame(v) { const f = v.hp / v.T.hp; return f > 0.82 ? 0 : f > 0.66 ? 1 : f > 0.5 ? 2 : f > 0.34 ? 3 : f > 0.18 ? 4 : 5; }
+/* a vehicle's tail lights (its lights on): two small red glows at the back corners, added over the light, stronger in the dark */
+let _tail = null;
+function drawTailLights(v) {
+  if (!_tail) { _tail = mk(32, 32); const g = _tail.getContext('2d'), r = g.createRadialGradient(16, 16, 0, 16, 16, 16); r.addColorStop(0, 'rgba(255,90,70,1)'); r.addColorStop(0.18, 'rgba(255,30,20,0.9)'); r.addColorStop(0.5, 'rgba(160,0,0,0.25)'); r.addColorStop(1, 'rgba(120,0,0,0)'); g.fillStyle = r; g.fillRect(0, 0, 32, 32); }
+  const m = ATLAS[v.type === 'tank' ? 'hull0' : 'jeep0'] || [0, 0, v.T.hl * 2, v.T.hw * 2, v.T.hl, v.T.hw], c = Math.cos(v.a), s = Math.sin(v.a), bx = -m[4] + 1;
+  worldT(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.35 + 0.65 * (1 - sunTone().day);
+  for (const sd of [-1, 1]) { const ly = sd * (m[3] / 2 - 4), x = v.x + c * bx - s * ly, y = v.y + s * bx + c * ly; ctx.drawImage(_tail, x - 7, y - 7, 14, 14); }
+}
 function drawVehicle(v) {
   worldT(); FLASH = v.hitFlash > 0 ? 0.45 : 0;
   if (v.type !== 'nest' && v.hp < v.T.hp * 0.25) light(v.x, v.y, 100, topOf(v) + 6, 0.3 + 0.12 * Math.sin(M.time * 23 + v.x) * Math.sin(M.time * 9.7), v);     // on fire (as a burning wreck flickers)
@@ -766,7 +775,7 @@ function drawTouch_(s) {
   // top-left: pause, and the minimap opens the full map
   btn('pause', SAFE.l + 26 * k, SAFE.t + 26 * k, 19 * k, 'pause');
   btn('score', SAFE.l + 72 * k, SAFE.t + 26 * k, 19 * k, 'score', { fill: TOUCH.scoreOn ? 'rgba(255,224,138,0.5)' : undefined });
-  if (!v) btn('lamp', SAFE.l + 118 * k, SAFE.t + 26 * k, 19 * k, 'lamp', { fill: s.lamp ? 'rgba(255,224,138,0.5)' : undefined });
+  if (!v || v.type !== 'nest') btn('lamp', SAFE.l + 118 * k, SAFE.t + 26 * k, 19 * k, 'lamp', { fill: (v ? v.lights : s.lamp) ? 'rgba(255,224,138,0.5)' : undefined });
   if (CFG.minimap !== false) { const mr = miniRect(); if (!mr.many) reg('map', { x: mr.mx, y: mr.my, w: mr.mw, h: mr.mh }); }
   // move stick: floats under the left thumb; a faint ring shows where to put it
   const mt = [...TOUCH.pts.values()].find(t => t.role === 'move');

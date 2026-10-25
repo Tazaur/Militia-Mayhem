@@ -6,7 +6,7 @@ const _en = [];
    stance and how lit you stand (litAt): by day as ever, in the dark only close */
 const SEE_DAY = [1e4, 380, 240], SEE_DARK = [150, 100, 70];
 function visibleTo(s, o, d) {
-  if (o.firedT > 0 || (o.spotT > 0 && o.spotTeam === s.team) || (o.lamp && !o.veh)) return true;
+  if (o.firedT > 0 || (o.spotT > 0 && o.spotTeam === s.team) || (o.lamp && !o.veh) || (o.veh && o.veh.lights)) return true;
   const st = o.stance | 0; if (d <= SEE_DARK[st]) return true;
   return d <= lerp(SEE_DARK[st], SEE_DAY[st], litAt(o.x, o.y));
 }

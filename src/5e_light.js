@@ -12,14 +12,25 @@ const LH = { tank: 30, jeep: 20, nest: 12, bag: 12, hay: 16, tree: 255 };       
    none for all round); lightFx: one that fades over T s */
 function light(x, y, r, h, k, skip, d) { LIGHTS.push({ x, y, r: r * LSC, h, k, skip, d }); }
 const spotK = (d, ux, uy) => !d ? 1 : clamp((ux * d[0] + uy * d[1] - d[2]) / ((1 - d[2]) * 0.35), 0, 1);     // in the cone: 1, a soft rim
-const lampD = s => [Math.cos(s.a), Math.sin(s.a), Math.cos(LAMP.cone)];
-/* dev EXPERIMENTAL FLASHLIGHT: the beam tilts down to meet the ground where the aim first meets something (a ray: walls,
-   trees, hay, bags, vehicles; 60..260 px, eased), so in the open the pool is far off and up against cover it's close. The
-   ground nearer than the beam's lower edge stays dark; raised things there still catch it. Returns the shader's spot w:
-   1 + the slope (height drop per px) of that lower edge */
+const lampD = a => [Math.cos(a), Math.sin(a), Math.cos(LAMP.cone)];
+/* every beam that's on, as f(x, y, h, a, o): flashlights, and vehicles' lights (a jeep's two headlights, a tank's
+   spotlight on its turret's side: the flashlight's beam, all of them); o keeps the beam's pool (lampPool) */
+function lampsOn(f) {
+  for (const s of M.sol) if (s.alive && s.lamp && !s.veh) { const [x, y] = gunTip(s); f(x, y, gunH(s), s.a, s); }
+  for (const v of M.vehicles) {
+    if (!v.lights || !v.active || v.dead || v.type === 'nest') continue; const P = v._lp = v._lp || [{}, {}];
+    if (v.type === 'tank') { const m = ATLAS.tur, [px, py] = turretPivot(v), c = Math.cos(v.ta), s = Math.sin(v.ta), sd = m[3] - m[5] + 2; f(px + c * 4 - s * sd, py + s * 4 + c * sd, topOf(v) - 4, v.ta, P[0]); continue; }
+    const m = ATLAS.jeep0, c = Math.cos(v.a), s = Math.sin(v.a), fx = m[2] - m[4] + 1, h = Math.round(artMax('jeep0') * 0.55);
+    for (const i of [0, 1]) { const sd = (i ? 1 : -1) * (m[3] / 2 - 5); f(v.x + c * fx - s * sd, v.y + s * fx + c * sd, h, v.a, P[i]); }
+  }
+}
+/* dev EXPERIMENTAL FLASHLIGHT: the beam is a round cone in 3D, tilted down so its top edge meets the ground where the aim
+   first meets something (a ray: walls, trees, hay, bags, vehicles; 60..260 px, eased): in the open the pool reaches far,
+   up against cover it's short. The cone meets the ground in an oval, longer the lower the lamp (prone: grazing).
+   Returns the shader's spot w: 1 + the tilt of the beam's middle (height drop per px) */
 const POOL = { min: 60, max: 260, ease: 10 };
-function lampPool(s, gx, gy, h) {
-  const c = Math.cos(s.a), sn = Math.sin(s.a), hitAt = d => { const x = gx + c * d, y = gy + sn * d;
+function lampPool(s, a, gx, gy, h) {
+  const c = Math.cos(a), sn = Math.sin(a), hitAt = d => { const x = gx + c * d, y = gy + sn * d;
     for (const o of staticsNear(x, y, 14, _near)) if (o.type !== 'fence' && Math.hypot(o.x - x, o.y - y) < (o.type === 'tree' ? 9 : o.type === 'hay' ? 12 : o.r || 8)) return true;
     for (const v of M.vehicles) if (v.active && !v.dead && Math.abs(v.x - x) < 70 && Math.abs(v.y - y) < 70) { const [lx, ly] = toLocal(v, x, y); if (Math.abs(lx) < v.T.hl && Math.abs(ly) < v.T.hw) return true; }
     return false; };
@@ -28,7 +39,7 @@ function lampPool(s, gx, gy, h) {
   D = Math.max(POOL.min, D);
   const dt = Math.min(0.1, M.time - (s.poolT || 0)); s.poolT = M.time;
   s.poolD = s.poolD === undefined ? D : s.poolD + (D - s.poolD) * (1 - Math.exp(-dt * POOL.ease));
-  return 1 + Math.tan(1.5 * Math.atan(h / s.poolD));     // the lower edge: half again as steep as the beam's middle
+  return 1 + Math.tan(Math.atan(Math.max(h, 1) / s.poolD) + LAMP.cone);     // its top edge lands there: the whole cone on the ground
 }
 /* how lit (0 dark .. 1) a spot is, for bots' eyes: the daylight, then the same lights the renderer draws from the world's
    state (blasts, fires, muzzle flashes, flashlights in whose cone and sight it is) */
@@ -41,16 +52,16 @@ function litAt(x, y) {
   for (const s of M.sol) {
     if (!s.alive) continue;
     if (s.firedT > 0) add(0.7, 100 * LSC, s.x, s.y);
-    if (s.lamp && !s.veh) { const dx = x - s.x, dy = y - s.y, d = Math.hypot(dx, dy) || 1; if (d < LAMP.r * LSC && spotK(lampD(s), dx / d, dy / d) > 0 && sees(s.x, s.y, x, y)) add(LAMP.k * spotK(lampD(s), dx / d, dy / d), LAMP.r * LSC, s.x, s.y); }
     if (L >= 1) return 1;
   }
+  lampsOn((lx, ly, h, a) => { const dx = x - lx, dy = y - ly, d = Math.hypot(dx, dy) || 1, k = spotK(lampD(a), dx / d, dy / d); if (d < LAMP.r * LSC && k > 0 && sees(lx, ly, x, y)) add(LAMP.k * k, LAMP.r * LSC, lx, ly); });
   return Math.min(1, L);
 }
 function lightFx(x, y, r, h, T) { LFX.push({ x, y, r, h, t0: M.time, T }); }
 function lightsNow(vis) {          // this frame's strongest lights in view (and the queue emptied)
   for (let i = LFX.length - 1; i >= 0; i--) { const f = LFX[i], u = (M.time - f.t0) / f.T; if (u >= 1 || u < 0) LFX.splice(i, 1); else light(f.x, f.y, f.r, f.h, (1 - u) ** 2); }
   for (const w of M.wrecks) if (w.burn > 0) light(w.x, w.y, 110, topOf(w) + 6, 0.4 + 0.15 * Math.sin(M.time * 23 + w.x) * Math.sin(M.time * 9.7), w);   // still burning
-  for (const s of M.sol) if (s.alive && s.lamp && !s.veh) { const [gx, gy] = gunTip(s), h = gunH(s); light(gx, gy, LAMP.r, h, LAMP.k, null, M.dev && DEV.lampX ? [...lampD(s), lampPool(s, gx, gy, h)] : lampD(s)); }     // flashlights (from the state: one out of sight still throws its beam in)
+  lampsOn((x, y, h, a, o) => light(x, y, LAMP.r, h, LAMP.k, null, M.dev && DEV.lampX ? [...lampD(a), lampPool(o, a, x, y, h)] : lampD(a)));     // flashlights, headlights (from the state: one out of sight still throws its beam in)
   const L = LIGHTS.filter(l => l.k > 0.02 && vis(l.x, l.y, l.r)).sort((a, b) => b.k * b.r - a.k * a.r).slice(0, LMAX); LIGHTS.length = 0; if (M.dev) DEV.lp = L;
   return L;
 }
@@ -246,12 +257,8 @@ void main() {
     if (PK[i] <= 0. || ou) continue;     // the memory's: none (they'd give a shot away)
     vec2 v = PL[i].xy - p; float dl = length(v) / K, lh = PL[i].w - h0;
     if (dl >= PL[i].z) continue;
-    float cn = 1.; if (PD[i].w > 0.5) { cn = clamp((dot(-v / max(length(v), 0.001), PD[i].xy) - PD[i].z) / ((1. - PD[i].z) * 0.35), 0., 1.); if (cn <= 0.) continue; }     // a spot: its cone (spotK)
-    float tn = PD[i].w - 1.; if (tn > 0.) {     // a tilted beam (lampPool): tn the slope of its lower edge; e how far below the lamp this is, per px out
-      float e = lh / max(dl, 1.);
-      cn *= 1. - smoothstep(tn * 0.85, tn * 1.15, e);     // steeper than the lower edge: under the beam (near ground stays dark; raised things are less steep)
-      if (h0 < 3.) cn *= smoothstep(tn * 0.12, tn * 0.4, e);     // the ground past the upper edge: the pool's far end
-      if (cn <= 0.) continue; }
+    float cn = 1.; if (PD[i].w > 0.5 && PD[i].w < 1.0001) { cn = clamp((dot(-v / max(length(v), 0.001), PD[i].xy) - PD[i].z) / ((1. - PD[i].z) * 0.35), 0., 1.); if (cn <= 0.) continue; }     // a spot: its cone (spotK)
+    if (PD[i].w > 1.) { cn = clamp((dot(normalize(vec3(PD[i].xy, 1. - PD[i].w)), normalize(vec3(-v / K, -lh))) - PD[i].z) / ((1. - PD[i].z) * 0.35), 0., 1.); if (cn <= 0.) continue; }     // a tilted beam (lampPool): the cone in 3D, its middle dropping w - 1 per px (on the ground: an oval)
     float s = 1., n = clamp(length(v) / 6., 8., 64.);     // steps of 6 buffer px or less (up to 64): a wall isn't stepped over
     for (int k = 1; k < 64; k++) { if (float(k) >= n) break; float o, th, t = (float(k) - j) / n, d = blk(p + v * t, h0 + lh * t, o, th); if (d > 0.) s = min(s, 1. - clamp(d / min(3., th * 0.35), 0., 1.) * o); }
     s *= cn;
