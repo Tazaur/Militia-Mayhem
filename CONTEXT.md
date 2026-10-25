@@ -534,3 +534,9 @@ An underside only counts under the art of the state it carries: hund draws over 
 ## Build 186
 Undersides span every state: size / pivot = the union of the part's frames' bounds, pivots lined up (whole px; fitOf). atlas_m migrated (hull 111x62 @56,32; jeep 87x44 @43,21), paint kept on the pivot; the editor refits any that don't fit on load / import (fitUnders, one undoable stroke). Editor: the state worked on (st.from: the last part state open) drives the underside's guide, its 3D stack, and Edit part goes back to it.
 Per-state undersides: the settings' off list (states without it; jeep4, the wreck, was the hard-coded SUNP jeep4.under); the game's underOf reads it, the fit spans only the states with it (jeep 87x43). Editor Edit menu: Give / Take <state>'s underside (refits, one undoable stroke), Remove underside (all states).
+
+## Build 187
+User art drop: atlas_m (jeep heights repainted, jeep underside painted, new under_jeep_tire: the steering tires stand on it) and atlas.png (jeep0 touch-up).
+
+## Build 187
+Art drop (drop.py): atlas_m.png: no change; atlas.png: no change.
