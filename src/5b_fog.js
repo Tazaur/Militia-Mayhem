@@ -102,7 +102,7 @@ function fogMemory(vw) {
     const c = mk(Math.ceil(WW * FOGK), Math.ceil(WH * FOGK)), g = c.getContext('2d');
     g.setTransform(FOGK, 0, 0, FOGK, 0, 0); g.drawImage(ground, 0, 0); g.drawImage(decals, 0, 0);
     if (MAP.tiled && MAP.tiled.roof) g.drawImage(ROOF_C, 0, 0);      // houses you've never looked into: roofed
-    m = M.fogMem[key] = { c, g, st: new Map(), arc: new Map() };
+    m = M.fogMem[key] = { c, g, st: new Map(), arc: new Map(), wall: new Set(), roof: new Set() };
   }
   return m;
 }
@@ -132,6 +132,7 @@ function applyFog(vw, vis, x0, y0, x1, y1, rv) {
     if (MAP.tiled && MAP.tiled.roof) m.g.drawImage(ROOF_C, bx0, by0, bw, bh, bx0, by0, bw, bh);
     m.g.restore();
   }
+  { const F = { polys }; for (const k in FOG_KEEP) for (const o of m[k]) if (FOG_KEEP[k](F, o)) m[k].delete(o); }     // what fell out of sight, now looked at
   const seen = (x, y) => polys.some(P => inPoly(x, y, P)) && eyes.some(([ex, ey]) => 1 - softOcc(ex, ey, x, y) >= SIGHT_MIN);
   for (const s of MAP.statics) if (vis(s.x, s.y, 20) && (s.type === 'fence' || s.type === 'hay' || s.type === 'tree') && seen(s.x, s.y)) m.st.set(s, s.alive);
   for (const A of MAP.arcs) if (vis(A.x, A.y, 40) && seen(A.x, A.y)) m.arc.set(A, A.lost);
@@ -161,6 +162,13 @@ function applyFog(vw, vis, x0, y0, x1, y1, rv) {
   vw._fog = { polys, eyes, box };
   return polys;
 }
+/* a wall section or roof tile came down: a view that can't see it keeps it standing in its memory (in the picture, and
+   in the heights its shadows come from: sunHeights) until it looks there */
+const FOG_KEEP = {
+  wall: (F, sec) => sec.bs.some(b => { for (let y = b.y + SUB / 2; y < b.y + b.h; y += SUB) for (let x = b.x + SUB / 2; x < b.x + b.w; x += SUB) if (circleSeen(F, x, y, SUB / 2 + 1)) return true; return false; }),
+  roof: (F, k) => circleSeen(F, (k % MAP.tiled.sc + 0.5) * SUB, (((k / MAP.tiled.sc) | 0) + 0.5) * SUB, SUB / 2 + 1)
+};
+function fogKeep(kind, o) { for (const vw of M.views || []) if (vw._fog && !FOG_KEEP[kind](vw._fog, o)) fogMemory(vw)[kind].add(o); }
 /* the remembered world over everything out of sight, last: FOG_OUT, shaded by the sun's shade map (drawSun: out of sight
    no point lights, and units only cast), with a hole cut where you see (H: the sight polygons + the roofs, always known).
    The world under it was drawn whole, nothing clipped: one plain fill makes the edge */
@@ -172,14 +180,32 @@ function fogOverlay(vw, H) {
   g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-over'; pipe('ov-hole');
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(FOG_TMP, X, Y, Wd, Ht, X, Y, Wd, Ht); worldT(); pipe('ov-draw');
 }
-/* a unit (o, radius r) counts for the view if it or its shadow reaches the sight (its near side toward an eye counts:
-   a hull blocks sight itself): drawn and casting. Further out it's left out, drawn nowhere (the memory covers there) */
-const SIGHT_SHADOW = 40, _snc = [];     // px: the tallest unit's height, for its shadow's reach
-function sightNear(vw, o, r) {
+/* a unit counts for the view if any drawn part of it, or that part's shadow, reaches the sight: drawn and casting.
+   Each part is a circle round its whole sprite, swept away from the sun by its own shadow's length (its top / tan of
+   the sun's height). Further out it's left out, drawn nowhere (the memory covers there) */
+const _snp = [];
+function sightParts(o) {         // [x, y, r, shadow length] per part
+  const k = SUNNOW ? 1 / Math.tan(SUN.el) : 0; _snp.length = 0;
+  for (const q of partsOf(o)) { const m = ATLAS[q.n]; if (m) _snp.push([q.x, q.y, Math.hypot(Math.max(m[4], m[2] - m[4]), Math.max(m[5], m[3] - m[5])), (q.b + q.add + artMax(q.n)) * k]); }
+  return _snp;
+}
+function circleSeen(F, x, y, r) {         // does a circle touch any sight polygon (inside it or across an edge)
+  const r2 = r * r;
+  for (const P of F.polys) {
+    const B = P._bb || (P._bb = P.reduce((b, [px, py]) => [Math.min(b[0], px), Math.min(b[1], py), Math.max(b[2], px), Math.max(b[3], py)], [1e9, 1e9, -1e9, -1e9]));
+    if (x + r < B[0] || x - r > B[2] || y + r < B[1] || y - r > B[3]) continue;
+    if (inPoly(x, y, P)) return true;
+    for (let a = 0, b = P.length - 1; a < P.length; b = a++) {
+      const [ax, ay] = P[b], dx = P[a][0] - ax, dy = P[a][1] - ay, t = clamp(((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1), 0, 1), ex = ax + dx * t - x, ey = ay + dy * t - y;
+      if (ex * ex + ey * ey < r2) return true;
+    }
+  }
+  return false;
+}
+function sightNear(vw, o) {
   const F = vw && vw._fog; if (!F) return true;
-  const seen = (x, y, r) => F.polys.some((P, i) => { const [ex, ey] = F.eyes[i], d = Math.hypot(ex - x, ey - y) || 1, k = Math.min(r, d) / d; return inPoly(x, y, P) || inPoly(x + (ex - x) * k, y + (ey - y) * k, P); });
-  const L = SUNNOW ? SIGHT_SHADOW / Math.tan(SUN.el) : 0, ux = -Math.cos(SUN.az), uy = -Math.sin(SUN.az);     // the shadow falls away from the sun
-  for (const [x, y, cr] of o.T && o.T.circles ? vehCircles(o, _snc) : [[o.x, o.y, r]]) for (let t = 0; t <= L; t += Math.max(cr, 10)) if (seen(x + ux * t, y + uy * t, cr)) return true;
+  const ux = -Math.cos(SUN.az), uy = -Math.sin(SUN.az);     // the shadow falls away from the sun
+  for (const [x, y, r, L] of sightParts(o)) for (let t = 0; ; t = Math.min(L, t + Math.max(r, 4))) { if (circleSeen(F, x + ux * t, y + uy * t, r)) return true; if (t >= L) break; }
   return false;
 }
 /* the out-of-sight look (setting OUT OF SIGHT): drained of colour fully / by half / not at all, and dimmed (more when

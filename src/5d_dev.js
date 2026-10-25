@@ -314,7 +314,7 @@ function devRoofFall(sec) {
 }
 /* one roof tile lands: collapse dust (even row + even column only), debris, a shake nearby, and whoever is under it is hurt (once per fall) */
 function devRoofTile(k, ev) {
-  const TL = MAP.tiled; if (TL.roof[k] !== 1) return; TL.roof[k] = 2;
+  const TL = MAP.tiled; if (TL.roof[k] !== 1) return; TL.roof[k] = 2; fogKeep('roof', k);
   const i = k % TL.sc, j = (k / TL.sc) | 0, cx = (i + 0.5) * SUB, cy = (j + 0.5) * SUB;
   paintCell(i, j); repaintRoofAround([k]);
   if (i % 2 === 0 && j % 2 === 0) devDust(cx, cy);          // dust from roof tiles on an even row and even column
@@ -432,6 +432,7 @@ function devDust(x, y) { popSmoke(x, y, { dust: true, T: rnd(6, 15), quiet: true
 function devCollapse(sec) {
   const TL = MAP.tiled; sec.alive = false; sec.hp = 0;
   for (const b of sec.bs) { const bi = MAP.buildings.indexOf(b); if (bi >= 0) MAP.buildings.splice(bi, 1); }
+  fogKeep('wall', sec);
   secCells(sec, (i, j) => {
     TL.cell[j * TL.sc + i] = C_RUB;
     const cx = (i + 0.5) * SUB, cy = (j + 0.5) * SUB;

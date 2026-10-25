@@ -45,7 +45,7 @@ function drawWorld(vw) {
   AK = 'brass'; at(0, () => { worldT(); ctx.fillStyle = '#c9a443'; for (const b of M.brass) if (vis(b.x, b.y, 4)) { ctx.globalAlpha = 0.8 * (1 - b.t / BRASS_T); ctx.fillRect(b.x, b.y, 2, 1); } ctx.globalAlpha = 1; });
   AK = 'body'; for (const c of M.corpses) if (vis(c.x, c.y, 30)) at(ZH.body, () => { worldT(); if (!c.baked) drawPool(ctx, c, c.t / POOL_T); solDraw(c, c.n, c.x, c.y, c.rot, 1, 1, c.t > BODY_T ? corpseAlpha(c) : undefined); });
   AK = 'flat shadows'; if (!SUNNOW) at(ZH.body, () => drawShadowLayer(vw, vis));     // without the sun: one shared offset shadow for soldiers, vehicles and bodies in the air
-  AK = 'soldier'; for (const s of M.sol) if (s.alive && !s.veh && vis(s.x, s.y, 30) && !hidden(s) && sightNear(vw, s, 4)) at(solZ(s), () => drawSoldier(s, vw));
+  AK = 'soldier'; for (const s of M.sol) if (s.alive && !s.veh && vis(s.x, s.y, 30) && !hidden(s) && sightNear(vw, s)) at(solZ(s), () => drawSoldier(s, vw));
   AK = 'sandbags'; for (const A of MAP.arcs) if (vis(A.x, A.y, 50)) at(artMax('bagarc0'), () => { const f = A.lost / A.bags.length; spr(f < 0.25 ? 'bagarc0' : f < 0.75 ? 'bagarc1' : 'bagarc2', A.x, A.y, A.a); });
   for (const s of MAP.statics) {
     if (!s.alive || !vis(s.x, s.y, s.type === 'tree' ? 40 : 16)) continue; AK = s.type;
@@ -54,7 +54,7 @@ function drawWorld(vw) {
     else if (s.type === 'tree') at(SUNH.tree[0], () => { const tc = s.pine ? SPR.pines[s.v] : SPR.trees[s.v]; worldT(); ctx.fillStyle = 'rgba(0,0,0,0.28)'; if (!SUNNOW) { ctx.beginPath(); ctx.arc(s.x + 6, s.y + 7, 24 * s.sc, 0, TAU); ctx.fill(); } img(tc, s.x, s.y, s.a, s.sc, 0.94); });
   }
   AK = 'wreck'; for (const w of M.wrecks) if (vis(w.x, w.y, 70)) at(topOf(w), () => drawWreck(w));
-  AK = 'vehicle'; for (const v of M.vehicles) if (v.active && vis(v.x, v.y, 80) && sightNear(vw, v, 24)) at(topOf(v), () => drawVehicle(v));     // one piece: hull, crew, turret, MG in their own order
+  AK = 'vehicle'; for (const v of M.vehicles) if (v.active && vis(v.x, v.y, 80) && sightNear(vw, v)) at(topOf(v), () => drawVehicle(v));     // one piece: hull, crew, turret, MG in their own order
   AK = 'shot'; for (const p of M.proj) if (vis(p.x, p.y, 20)) at(shotZ(p), () => drawProj(p));
   AK = 'thrown body'; for (const f of M.flings) if (vis(f.x, f.y, 40)) { const k = f.t / f.T, h = Math.sin(Math.PI * k); at(ZH.body + h * 34, () => solDraw(f, solSpr(f.color, 'dead'), f.x, f.y - h * 34, f.rot, 1 + h * 0.6, 1 + h * 0.6)); }
   if (!devOff('parts')) partsInto(at, vis);

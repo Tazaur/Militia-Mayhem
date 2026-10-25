@@ -293,7 +293,7 @@ void main() {
   return _sun;
 }
 /* this frame's height quads: a (MAX blended), w (walls, written over: what's there is inside them) then t (trees, MAX) */
-const hbuf = () => ({ f: new Float32Array(16 * 256), n: 0 }), HL = { a: hbuf(), u: hbuf(), w: hbuf(), t: hbuf(), m: hbuf() };     // u: what the memory doesn't keep (units, crates, items...); m: materials only (water...)
+const hbuf = () => ({ f: new Float32Array(16 * 256), n: 0 }), HL = { a: hbuf(), u: hbuf(), w: hbuf(), t: hbuf(), m: hbuf(), r: hbuf() };     // u: what the memory doesn't keep (units, crates, items...), or keeps otherwise; m: materials only (water...); r: what only the memory has (fallen out of sight)
 let HMAT = 0, HMAX = 0;     // this frame: 1 something reflective in view, 2 something glowing; the tallest top in view
 function hq(L, cx, cy, ux, uy, vx, vy, k, p0, p1, p2, u0, v0, u1, v1, z) {
   if ((L.n + 1) * 16 > L.f.length) { const g = new Float32Array(L.f.length * 2); g.set(L.f); L.f = g; }
@@ -369,20 +369,33 @@ const hParts = o => { for (const q of partsOf(o)) hspr(q.n, q.x, q.y, q.a, q.b, 
 const shp = (h, n) => { const P = sunP(n), b = P.lift || 0; return [h + b + (P.add || 0), b]; };
 /* everything solid, as heights (the same things, and the same hidden ones left out, as the frame draws) */
 function sunHeights(vis, hidden, vw) {
+  /* with vision fog, what the memory keeps is drawn as it remembers it: where that differs from now, now goes in u
+     (in sight only) and the remembered one in r (out of sight only) */
+  const mem = vw && vw._fog ? fogMemory(vw) : null;
   const [wt, wb] = shp(SUNH.wall, 'wall');
   for (const b of MAP.buildings) if (!b.glass && vis(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h))) hbox(HL.w, b.x + b.w / 2, b.y + b.h / 2, b.w / 2, b.h / 2, 0, 1, wt, wb, 0);
   const [t0, tb] = shp(SUNH.tree[0], 'tree'), t1 = shp(SUNH.tree[1], 'tree')[0], [h0, hb] = shp(SUNH.hay, 'hay'), [ft, fb] = shp(SUNH.fence, 'fence');
   for (const s of MAP.statics) {
-    if (!s.alive || !vis(s.x, s.y, 40)) continue;
-    if (s.type === 'tree') { const r = (s.pine ? SPR.pines : SPR.trees)[s.v].width / 2 * s.sc * 0.85; hbox(HL.t, s.x, s.y, r, r, 0, 2, t0, t1, tb); }
-    else if (s.type === 'hay') hbox(HL.a, s.x, s.y, 13, 13, 0, 2, h0, h0 - SUNH.hay * 0.4, hb);
-    else if (s.type === 'fence') hbox(HL.a, s.x, s.y, 7, 1.5, s.a, 1, ft, fb, 0);
+    if (!vis(s.x, s.y, 40)) continue;
+    const was = mem ? (mem.st.has(s) ? mem.st.get(s) : true) : s.alive; if (!s.alive && !was) continue;
+    const L = !s.alive === !was ? null : s.alive ? HL.u : HL.r;
+    if (s.type === 'tree') { const r = (s.pine ? SPR.pines : SPR.trees)[s.v].width / 2 * s.sc * 0.85; hbox(L || HL.t, s.x, s.y, r, r, 0, 2, t0, t1, tb); }
+    else if (s.type === 'hay') hbox(L || HL.a, s.x, s.y, 13, 13, 0, 2, h0, h0 - SUNH.hay * 0.4, hb);
+    else if (s.type === 'fence') hbox(L || HL.a, s.x, s.y, 7, 1.5, s.a, 1, ft, fb, 0);
   }
   for (const f of M.flags) if (vis(f.x, f.y, 30)) hbox(HL.u, f.x, f.y, 1, 1, 0, 1, SUNH.flag, 0, 0);
   for (const it of M.items) if ((it.k === 'med' || it.k === 'ammo') && vis(it.x, it.y, 8)) hbox(HL.u, it.x, it.y, 6, 5, 0, 1, SUNH.item, 0, 0);
   for (const p of M.proj) if (p.k === 'nade' && vis(p.x, p.y, 8)) hbox(HL.u, p.x, nadeY(p), 3, 3, 0, 2, p.h + 3, p.h + 3, p.h);
   const [ct, cb] = shp(SUNH.crate, 'crate'); for (const c of M.crates) if (c.live && vis(c.x, c.y, 14)) hbox(HL.u, c.x, c.y, 8, 8, c.a, 1, ct, cb, 0);
-  for (const A of MAP.arcs) { if (!vis(A.x, A.y, 50)) continue; const f = A.lost / A.bags.length; hpart(f < 0.25 ? 'bagarc0' : f < 0.75 ? 'bagarc1' : 'bagarc2', A.x, A.y, A.a); }
+  const arc = (A, lost) => { const f = lost / A.bags.length; return f < 0.25 ? 'bagarc0' : f < 0.75 ? 'bagarc1' : 'bagarc2'; };
+  for (const A of MAP.arcs) {
+    if (!vis(A.x, A.y, 50)) continue; const n = arc(A, A.lost), o = mem ? arc(A, mem.arc.has(A) ? mem.arc.get(A) : 0) : n;
+    if (n === o) hpart(n, A.x, A.y, A.a); else { HLA = HL.u; hpart(n, A.x, A.y, A.a); HLA = HL.r; hpart(o, A.x, A.y, A.a); HLA = HL.a; }
+  }
+  if (mem && MAP.tiled) {     // fallen out of sight: still standing in the memory
+    for (const sec of mem.wall) for (const b of sec.bs) if (!b.glass && vis(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h))) hbox(HL.r, b.x + b.w / 2, b.y + b.h / 2, b.w / 2, b.h / 2, 0, 1, wt, wb, 0);
+    for (const k of mem.roof) { const x = (k % MAP.tiled.sc + 0.5) * SUB, y = (((k / MAP.tiled.sc) | 0) + 0.5) * SUB; if (vis(x, y, SUB)) { hbox(HL.r, x, y, SUB / 2, SUB / 2, 0, 1, 0, 64, 1, 0); HMAX = Math.max(HMAX, ROOF_Z[1]); } }
+  }
   for (const w of M.wrecks) if (vis(w.x, w.y, 70) && w.t >= 1) hParts(w);
   const TL = MAP.tiled;
   if (TL && TL.roof) for (let j = 0; j < TL.sr; j++) for (let i = 0; i < TL.sc; i++) {     // the roof, a run of cells a quad
@@ -390,10 +403,10 @@ function sunHeights(vis, hidden, vw) {
     const x0 = i * SUB, x1 = (e + 1) * SUB, y = (j + 0.5) * SUB; i = e;
     if (vis((x0 + x1) / 2, y, (x1 - x0) / 2 + SUB)) { hbox(HL.t, (x0 + x1) / 2, y, (x1 - x0) / 2, SUB / 2, 0, 1, 0, 64, 1, 0); HMAX = Math.max(HMAX, ROOF_Z[1]); }
   }
-  HLA = HL.u; for (const s of M.sol) if (s.alive && !s.veh && !s.swim && vis(s.x, s.y, 30) && !hidden(s) && sightNear(vw, s, 4)) hParts(s);     // what's out of sight, its shadow too: left out
+  HLA = HL.u; for (const s of M.sol) if (s.alive && !s.veh && !s.swim && vis(s.x, s.y, 30) && !hidden(s) && sightNear(vw, s)) hParts(s);     // what's out of sight, its shadow too: left out
   const nt = shp(SUNH.nest, 'nest')[0];
   for (const v of M.vehicles) {
-    if (!v.active || !vis(v.x, v.y, 80) || !sightNear(vw, v, 24)) continue;
+    if (!v.active || !vis(v.x, v.y, 80) || !sightNear(vw, v)) continue;
     if (v.type === 'nest') hbox(HL.u, v.x, v.y, 22, 22, v.a, 3, nt, 14 / 22, 1.35);     // the bags: an arc 8 wide round 18
     hParts(v);
   }
@@ -405,21 +418,21 @@ function sunHeights(vis, hidden, vw) {
 /* the quads (uploaded once, one buffer per list) into the height texture HT (box cleared, then a MAX, w over, t MAX)
    and the materials MT (depth: the highest top wins) */
 function sunDrawHeights(S, X, box, fog) {
-  const { gl, IA, MX } = S, lists = ['a', 'u', 'w', 't', 'm'];
+  const { gl, IA, MX } = S, lists = ['a', 'u', 'w', 't', 'm'], all = [...lists, 'r'];
   gl.useProgram(S.HP); gl.uniform3f(S.HU.X, ...X); gl.uniform2f(S.HU.F, S.fw, S.fh);
   gl.bindBuffer(gl.ARRAY_BUFFER, S.quad); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.enableVertexAttribArray(0);
   for (let i = 1; i <= 4; i++) { gl.enableVertexAttribArray(i); IA.vertexAttribDivisorANGLE(i, 1); }
-  for (const n of lists) if (HL[n].n) { gl.bindBuffer(gl.ARRAY_BUFFER, S.ib[n]); gl.bufferData(gl.ARRAY_BUFFER, HL[n].f.subarray(0, HL[n].n * 16), gl.STREAM_DRAW); }
+  for (const n of all) if (HL[n].n) { gl.bindBuffer(gl.ARRAY_BUFFER, S.ib[n]); gl.bufferData(gl.ARRAY_BUFFER, HL[n].f.subarray(0, HL[n].n * 16), gl.STREAM_DRAW); }
   const draw = n => { const L = HL[n]; if (!L.n) return; gl.bindBuffer(gl.ARRAY_BUFFER, S.ib[n]); for (let i = 1; i <= 4; i++) gl.vertexAttribPointer(i, 4, gl.FLOAT, false, 64, (i - 1) * 16); IA.drawArraysInstancedANGLE(gl.TRIANGLES, 0, 6, L.n); };
   gl.viewport(0, 0, S.fw, S.fh); gl.scissor(...box); gl.clearColor(0, 0, 0, 0);
   gl.bindFramebuffer(gl.FRAMEBUFFER, S.FB); gl.clear(gl.COLOR_BUFFER_BIT); gl.uniform1f(S.HU.MM, 0);
   gl.blendEquation(MX.MAX_EXT); gl.enable(gl.BLEND); draw('a'); pipe('gpu-h', { l: 'a' }); draw('u'); pipe('gpu-h', { l: 'u' }); gl.disable(gl.BLEND); draw('w'); pipe('gpu-h', { l: 'w' }); gl.enable(gl.BLEND); draw('t'); gl.disable(gl.BLEND); pipe('gpu-h', { l: 't' });
-  if (fog) { gl.bindFramebuffer(gl.FRAMEBUFFER, S.FBS); gl.clear(gl.COLOR_BUFFER_BIT); gl.enable(gl.BLEND); draw('a'); gl.disable(gl.BLEND); draw('w'); gl.enable(gl.BLEND); draw('t'); gl.disable(gl.BLEND); pipe('gpu-hs'); }     // the remembered things alone
+  if (fog) { gl.bindFramebuffer(gl.FRAMEBUFFER, S.FBS); gl.clear(gl.COLOR_BUFFER_BIT); gl.enable(gl.BLEND); draw('a'); draw('r'); gl.disable(gl.BLEND); draw('w'); gl.enable(gl.BLEND); draw('t'); gl.disable(gl.BLEND); pipe('gpu-hs'); }     // the remembered things alone, as remembered
   gl.bindFramebuffer(gl.FRAMEBUFFER, S.FM); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); gl.uniform1f(S.HU.MM, 1);
   gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS); for (const n of lists) draw(n); gl.disable(gl.DEPTH_TEST); pipe('gpu-mat');
   for (let i = 1; i <= 4; i++) { IA.vertexAttribDivisorANGLE(i, 0); gl.disableVertexAttribArray(i); }
-  if (M.dev) DEV.nq = lists.reduce((a, n) => a + HL[n].n, 0);
-  for (const n of lists) HL[n].n = 0;
+  if (M.dev) DEV.nq = all.reduce((a, n) => a + HL[n].n, 0);
+  for (const n of all) HL[n].n = 0;
 }
 /* the sweep's passes (box: the height buffer's) from the heights on unit hu into the pair T (framebuffers FS), the last
    left on unit u for the light: enough doublings to reach the tallest thing's shadow (mxh / DH px; DH: how much lower a
