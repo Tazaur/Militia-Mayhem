@@ -479,3 +479,6 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - Night: `SUN.el` may go below the horizon (dev WORLD › DAYLIGHT, −30°…81°). Shadows use `sunEl()` (≥ 10°). `sunTone()` gives the colours: low sun golden (GOLD) with a purplish shade (DUSK). Below the horizon, sunlit and shade both go to NIGHT, so only point lights light things. The CP shader has a new LI uniform (sunlit colour, roofs too).
 - Bots: `visibleTo` lets darkness shorten sight: `SEE_DARK` to `SEE_DAY` by `litAt(x, y)` (daylight plus blasts, fires, muzzle flashes, and flashlights in whose cone and sight it is). A lit flashlight always gives you away.
 - Dev: grid and sections off by default; sun controls moved to WORLD.
+
+## Build 173
+- Point lights twice the reach again: `LSC` 4 (blasts and flashes light a whole room), `LAMP.r` 85. The shadow march takes 6 px steps (8 to 64 steps), so walls still stop them. The canvas fallback cell size grows with reach (`r/24`).

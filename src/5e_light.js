@@ -5,8 +5,8 @@
    So something lower than the light throws a shadow that ends (a jeep beside an MG flash), a wall's runs to the edge.
    The patch is drawn smoothed (soft shadow edges) and brightens what's under it: dodged, then a little added.
    With the sun on, the sun's shader does them instead, from its height buffer (per pixel, slopes facing a light lit more) */
-const LC = 4, LMAX = 10, LIGHTS = [], LFX = [], LSC = 2;     // LSC: every light's reach x this (a flash lights up a room)
-const LAMP = { r: 170, k: 0.95, cone: 0.36 };     // a flashlight: reach (before LSC), strength, half-angle (rad)
+const LC = 4, LMAX = 10, LIGHTS = [], LFX = [], LSC = 4;     // LSC: every light's reach x this (a flash lights up a room)
+const LAMP = { r: 85, k: 0.95, cone: 0.36 };     // a flashlight: reach (before LSC), strength, half-angle (rad)
 const LH = { tank: 30, jeep: 20, nest: 12, bag: 12, hay: 16, tree: 255 };                 // how tall things are
 /* a light this frame (skip: the thing it comes from, which mustn't shade it; d: a spot's [cos, sin, cos of its half-angle],
    none for all round); lightFx: one that fades over T s */
@@ -217,8 +217,8 @@ void main() {
     vec2 v = PL[i].xy - p; float dl = length(v) / K, lh = PL[i].w - h0;
     if (dl >= PL[i].z) continue;
     float cn = 1.; if (PD[i].w > 0.5) { cn = clamp((dot(-v / max(length(v), 0.001), PD[i].xy) - PD[i].z) / ((1. - PD[i].z) * 0.35), 0., 1.); if (cn <= 0.) continue; }     // a spot: its cone (spotK)
-    float s = 1., n = clamp(length(v) / 5., 8., 40.);     // steps of 5 buffer px or less (up to 40): a wall isn't stepped over
-    for (int k = 1; k < 40; k++) { if (float(k) >= n) break; float o, th, t = (float(k) - j) / n, d = blk(p + v * t, h0 + lh * t, o, th); if (d > 0.) s = min(s, 1. - clamp(d / min(3., th * 0.35), 0., 1.) * o); }
+    float s = 1., n = clamp(length(v) / 6., 8., 64.);     // steps of 6 buffer px or less (up to 64): a wall isn't stepped over
+    for (int k = 1; k < 64; k++) { if (float(k) >= n) break; float o, th, t = (float(k) - j) / n, d = blk(p + v * t, h0 + lh * t, o, th); if (d > 0.) s = min(s, 1. - clamp(d / min(3., th * 0.35), 0., 1.) * o); }
     s *= cn;
     vec3 ld = normalize(vec3(v / K, max(lh, dl * 0.5)));     // the slope it lights: from at least a little above (a flash at hip height still lights the hull facing it)
     pl += PK[i] * s * (0.5 * pow(1. - dl / PL[i].z, 1.3) + 0.5 * pow(max(0., 1. - dl / 40.), 2.)) * clamp(dot(N, ld) / max(ld.z, 0.15), 0., 2.);     // what faces the light (flat ground: x 1)
