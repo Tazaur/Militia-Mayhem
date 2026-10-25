@@ -14,7 +14,14 @@ function light(x, y, r, h, k, skip, d, c) { LIGHTS.push({ x, y, r: r * LSC, h, k
 const LCOL = [1, 0.96, 0.86];
 /* a vehicle's tail lights (its lights on): two dim red point lights, 3 px over its hull's floor (the hull part's base), just
    behind its art: a jeep's either side of the spare tire (TAIL.jeep: art px), a tank's at its back corners */
-const TAIL = { r: 14, k: 0.35, c: [1, 0.1, 0.05], jeep: [[5.5, 10], [5.5, 32]] };
+const TAIL = { r: 14, k: 0.35, c: [1, 0.1, 0.05], jeep: [[5.5, 10], [5.5, 32]], brake: 1.8, dec: 20 };     // brake: how much brighter slowing / reversing; dec: the slowing (px/s²) that counts
+/* how hard a vehicle's tail lights are lit up (0..1): on while it slows (by more than TAIL.dec) or backs up, fading in a
+   quarter second after; from its speed alone, so a joiner's screen shows it too */
+function brakeK(v) {
+  const t = M.time, sp = Math.abs(v.spd); if (v._bt === undefined) { v._bt = t; v._bs = sp; } const dt = t - v._bt; if (dt <= 0) return v._bk || 0;
+  const slow = (v._bs - sp) / dt > TAIL.dec || v.spd < -3; v._bt = t; v._bs = sp;
+  return v._bk = slow ? 1 : Math.max(0, (v._bk || 0) - dt * 4);
+}
 function tailLights(v, f) {
   const q = partsOf(v).find(q => /^(jeep|hull)\d/.test(q.n)); if (!q) return;
   const m = ATLAS[q.n], c = Math.cos(v.a), s = Math.sin(v.a), P = v.type === 'jeep' ? TAIL.jeep : [[-1, 6], [-1, m[3] - 6]];
@@ -30,23 +37,35 @@ const FIXED = { jeep: { tilt: 0.42, cone: LAMP.cone }, tank: { tilt: 0.3, cone: 
 function lampsOn(f) {
   for (const s of M.sol) if (s.alive && s.lamp && !s.veh) { const [x, y] = gunTip(s); f(x, y, gunH(s), s.a, s); }
   for (const v of M.vehicles) {
-    if (!v.lights || !v.active || v.dead || v.type === 'nest') continue; const P = v._lp = v._lp || [{}, {}];
+    if (!v.lights || !v.active || v.dead || v.type === 'nest') continue; const P = v._lp = v._lp || [{ v }, { v }];
     if (v.type === 'tank') { const m = ATLAS.tur, [px, py] = turretPivot(v), c = Math.cos(v.ta), s = Math.sin(v.ta), sd = m[3] - m[5] + 2; f(px + c * 4 - s * sd, py + s * 4 + c * sd, topOf(v) + LAMP.post, v.ta, P[0], FIXED.tank); continue; }
     const m = ATLAS.jeep0, c = Math.cos(v.a), s = Math.sin(v.a), fx = m[2] - m[4] + 1, h = Math.round(artMax('jeep0') * 0.55);
     for (const i of [0, 1]) { const sd = (i ? 1 : -1) * (m[3] / 2 - 5); f(v.x + c * fx - s * sd, v.y + s * fx + c * sd, h, v.a, P[i], FIXED.jeep); }
   }
 }
-/* a beam (flashlight, headlight, spotlight) is a round cone in 3D, tilted down so its top edge meets the ground where the aim
-   first meets something (aimRay, as guns aim: walls, trees, hay, bags, vehicles; 60..260 px, eased), or a vehicle's at
-   its fixed tilt: in the open the pool reaches far, up against cover it's short. The cone meets the ground in an oval, longer the lower the lamp (prone: grazing).
-   Returns the shader's spot w: 1 + the tilt of the beam's middle (height drop per px) */
-const POOL = { min: 60, max: 260, ease: 10 };
-function lampPool(s, a, gx, gy, h, fix) {
-  if (fix) return 1 + Math.tan(fix.tilt);
-  const r = aimRay(gx, gy, a, POOL.max, null, true), D = Math.max(POOL.min, r ? r.d : POOL.max);
-  const dt = Math.min(0.1, M.time - (s.poolT || 0)); s.poolT = M.time;
-  s.poolD = s.poolD === undefined ? D : s.poolD + (D - s.poolD) * (1 - Math.exp(-dt * POOL.ease));
-  return 1 + Math.tan(Math.atan(Math.max(h, 1) / s.poolD) + LAMP.cone);     // its top edge lands there: the whole cone on the ground
+/* a beam (flashlight, headlight, spotlight) is a round cone in 3D. A flashlight's tilts down so its top edge meets the
+   ground POOL.max out in the open, and against what the aim first meets (aimRay, as guns aim: walls, trees, hay, bags,
+   vehicles; eased) further down, so the oval it lights is centred there (midTilt); a vehicle's keeps its fixed tilt. The cone
+   meets the ground in an oval, longer the lower the lamp (prone: grazing). Every beam splashes back (SPLASH): a dim point
+   light just in front of what it shines on, dimmer the further off, so a jeep nosed up to a wall is lit by its own
+   headlights. o keeps the eased pool and splash; returns the shader's spot w: 1 + the tilt of the beam's middle (height drop per px) */
+const POOL = { min: 60, max: 260, ease: 10 }, SPLASH = { r: 30, k: 0.3, back: 8 };
+function midTilt(h, D, c) {     // the tilt whose ground oval's middle is D px out (a lamp h up, half-angle c)
+  let lo = c + 0.001, hi = Math.PI / 2;
+  for (let i = 0; i < 14; i++) { const t = (lo + hi) / 2, m = h / 2 * (1 / Math.tan(t - c) + 1 / Math.tan(t + c)); if (m > D) lo = t; else hi = t; }
+  return (lo + hi) / 2;
+}
+function lampPool(o, a, gx, gy, h, fix) {
+  const R = LAMP.r * LSC, r = aimRay(gx, gy, a, R, o.v, true), dt = Math.min(0.1, M.time - (o.poolT || 0)), e = 1 - Math.exp(-dt * POOL.ease); o.poolT = M.time;
+  o.sd = o.sd === undefined ? (r ? r.d : R) : o.sd + ((r ? r.d : o.sd) - o.sd) * e; o.sk = (o.sk || 0) + ((r ? 1 : 0) - (o.sk || 0)) * e; o.top = r ? r.top : o.top;
+  const c = fix ? fix.cone : LAMP.cone, H = Math.max(h, 1);
+  let tilt = fix ? fix.tilt : 0;
+  if (!fix) { const D = Math.max(POOL.min, r && r.d < POOL.max ? r.d : POOL.max); o.poolD = o.poolD === undefined ? D : o.poolD + (D - o.poolD) * e; tilt = Math.max(Math.atan(H / POOL.max) + c, midTilt(H, o.poolD, c)); }
+  if (o.sk > 0.02) {     // the splash: back off the surface toward the lamp, at the beam's height there (on what it hits)
+    const d = Math.max(0, o.sd - SPLASH.back), z = clamp(h - Math.tan(tilt) * o.sd, 1, Math.min(h, (o.top || 99) - 1));
+    light(gx + Math.cos(a) * d, gy + Math.sin(a) * d, SPLASH.r, z, LAMP.k * SPLASH.k * o.sk * Math.pow(Math.max(0, 1 - o.sd / R), 1.5));
+  }
+  return 1 + Math.tan(tilt);
 }
 /* how lit (0 dark .. 1) a spot is, for bots' eyes: the daylight, then the same lights the renderer draws from the world's
    state (blasts, fires, muzzle flashes, flashlights in whose cone and sight it is) */
@@ -69,7 +88,7 @@ function lightsNow(vis) {          // this frame's strongest lights in view (and
   for (let i = LFX.length - 1; i >= 0; i--) { const f = LFX[i], u = (M.time - f.t0) / f.T; if (u >= 1 || u < 0) LFX.splice(i, 1); else light(f.x, f.y, f.r, f.h, (1 - u) ** 2); }
   for (const w of M.wrecks) if (w.burn > 0) light(w.x, w.y, 110, topOf(w) + 6, 0.4 + 0.15 * Math.sin(M.time * 23 + w.x) * Math.sin(M.time * 9.7), w);   // still burning
   lampsOn((x, y, h, a, o, fix) => light(x, y, LAMP.r, h, LAMP.k, null, [...lampD(a, fix), lampPool(o, a, x, y, h, fix)]));     // flashlights, headlights (from the state: one out of sight still throws its beam in)
-  for (const v of M.vehicles) if (v.lights && v.active && !v.dead && v.type !== 'nest') tailLights(v, (x, y, h) => light(x, y, TAIL.r, h, TAIL.k, v, null, TAIL.c));
+  for (const v of M.vehicles) if (v.lights && v.active && !v.dead && v.type !== 'nest') { const b = brakeK(v); tailLights(v, (x, y, h) => light(x, y, TAIL.r * (1 + 0.4 * b), h, TAIL.k * (1 + TAIL.brake * b), v, null, TAIL.c)); }
   const L = LIGHTS.filter(l => l.k > 0.02 && vis(l.x, l.y, l.r)).sort((a, b) => b.k * b.r - a.k * a.r).slice(0, LMAX); LIGHTS.length = 0; if (M.dev) DEV.lp = L;
   return L;
 }

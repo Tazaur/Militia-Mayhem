@@ -578,3 +578,8 @@ Light cost trimmed: the point light march back to 6 px average steps (the packin
 
 ## Build 198
 Shots fly the aim ray (dev AIM RAYS = where they go). aimRay starts at the muzzle (10 px steps) for walls, vehicles, wrecks, trees; only low cover (`lowCover`: bags, hay) is skipped inside AIM.min, and shots skip it the same (bagBlocks' own-cover radius and hay's are AIM.min from p.ox; shotFall sets ox / oy for shells and rockets). Guns now pass all: a bag or hay bale past AIM.min lower than the muzzle is aimed down at and hit (standing rifle: bag 20 px 0/20 shot over, 60 px 20/20, 150 px 19/20, 300 px 11/20 with spread); something taller than the muzzle (nose against a jeep) stops the ray where the shots hit it. Overlay labels: red aimed down (heights), orange TALLER THAN z: HITS AT d, white FALLS ON.
+
+## Build 199
+Flashlight pools centre on what they hit: lampPool's tilt is max(open: top edge at POOL.max, `midTilt(h, D, cone)`: the tilt whose ground oval's middle is D), so up close the oval's middle sits on the contact (past ~140 px for a standing gun the open pool already reaches it). Fixed lamps keep their tilt.
+Splashback (SPLASH r 30, k 0.3, back 8): every beam (flashlight, headlights, tank spotlight) casts aimRay to its reach (LAMP.r x LSC, skipping its own vehicle: o.v) and puts a dim warm point light SPLASH.back px in front of what it hits, at the beam's height there (under the thing's top), k x (1 - d / reach)^1.5; distance and fade eased (o.sd, o.sk). A jeep nosed up to a wall is lit by its own headlights.
+Tail lights brighten (k x 1 + 1.8 b, reach x 1 + 0.4 b) while slowing by more than TAIL.dec (20 px/s²) or reversing, fading over 0.25 s (`brakeK(v)`, from v.spd: joiners see it).
