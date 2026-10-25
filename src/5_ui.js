@@ -763,6 +763,7 @@ function drawTouch(s) {
   // top-left: pause, and the minimap opens the full map
   btn('pause', SAFE.l + 26 * k, SAFE.t + 26 * k, 19 * k, 'pause');
   btn('score', SAFE.l + 72 * k, SAFE.t + 26 * k, 19 * k, 'score', { fill: TOUCH.scoreOn ? 'rgba(255,224,138,0.5)' : undefined });
+  if (!v) btn('lamp', SAFE.l + 118 * k, SAFE.t + 26 * k, 19 * k, 'lamp', { fill: s.lamp ? 'rgba(255,224,138,0.5)' : undefined });
   { const mr = miniRect(); if (!mr.many) reg('map', { x: mr.mx, y: mr.my, w: mr.mw, h: mr.mh }); }
   // move stick: floats under the left thumb; a faint ring shows where to put it
   const mt = [...TOUCH.pts.values()].find(t => t.role === 'move');

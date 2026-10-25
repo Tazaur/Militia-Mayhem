@@ -100,7 +100,7 @@ function makeSoldier(o) {
     id: ++UID, x: 0, y: 0, a: 0, vx: 0, vy: 0, r: 7, hp: 100, mhp: o.player && M && M.coop ? 200 : 100, team: o.team, color: o.color, name: o.name, player: o.player || null,
     bot: o.bot ? { thinkT: 0, goal: null, goalT: 0, path: null, pathI: 0, pathT: 0, target: null, burst: 0, rest: 0, strafe: 1, strafeT: 0, stuckT: 0, lx: 0, ly: 0, nadeCd: 3, vehCd: rnd(2, 6), react: 0, err: 0, wantSeat: null, exitCd: 0, gadCd: rnd(4, 10), proneT: 0 } : null,
     alive: false, respawnT: 1, kit: 0, var: 0, w: null, wi: 0, nades: 2, mines: 0, gcd: 0, fireCd: 0, reloadT: 0, nadeCd: 0, lastHurt: -9, protect: 0,
-    stance: 0, throwT: 0, stanceT: 0, swim: false, torch: false, ads: false, bloom: 0, jumpT: 0, jdx: 0, jdy: 0, meleeCd: 0, meleeT: 0, spotCd: 0, stepAcc: 0, stepSide: 1,
+    stance: 0, throwT: 0, stanceT: 0, swim: false, torch: false, lamp: false, ads: false, bloom: 0, jumpT: 0, jdx: 0, jdy: 0, meleeCd: 0, meleeT: 0, spotCd: 0, stepAcc: 0, stepSide: 1,
     veh: null, seat: -1, seatT: 0, seatFrom: null, seatMax: 0.5, walkT: 0, moving: false, flash: 0, hurtT: 0,
     k: 0, d: 0, caps: 0, vk: 0, rk: 0, heal: 0, rep: 0, longest: 0, pts: 0, pops: [],
     spawnSel: 0, msg: null, hitT: 0, firedT: 0, spotT: 0, spotTeam: -1, deployIdle: 0
@@ -1058,6 +1058,7 @@ function controlSoldier(s, I, dt) {
     s.meleeCd = 0.7; s.meleeT = 0.18; sfx('knife', s.x, s.y); s.vx += Math.cos(s.a) * 90; s.vy += Math.sin(s.a) * 90;
     for (const o of M.sol) { if (!o.alive || o === s || o.veh || !canHurt(s, o) || o.team === s.team && !M.ff) continue; const dx = o.x - s.x, dy = o.y - s.y; if (Math.hypot(dx, dy) < 28 && Math.abs(angDiff(s.a, Math.atan2(dy, dx))) < 1.0) { o.protect = 0; hurtSoldier(o, 100, s, 'knife', dx, dy, 'KNIFE'); sfx('thud', o.x, o.y); break; } }
   }
+  if (I.lamp) s.lamp = !s.lamp;     // flashlight on / off (off in a vehicle: lightsNow, litAt)
   // spotting: mark enemies in front of you for the whole team
   if (I.spot && s.spotCd <= 0) {
     s.spotCd = 2.5; let n = 0;

@@ -194,7 +194,7 @@ function fogOverlay(vw, H) {
    the sun's height). Further out it's left out, drawn nowhere (the memory covers there) */
 const _snp = [];
 function sightParts(o) {         // [x, y, r, shadow length] per part
-  const k = SUNNOW ? 1 / Math.tan(SUN.el) : 0; _snp.length = 0;
+  const k = SUNNOW ? 1 / Math.tan(sunEl()) : 0; _snp.length = 0;
   for (const q of partsOf(o)) { const m = ATLAS[q.n]; if (m) _snp.push([q.x, q.y, Math.hypot(Math.max(m[4], m[2] - m[4]), Math.max(m[5], m[3] - m[5])), (q.b + q.add + artMax(q.n)) * k]); }
   return _snp;
 }

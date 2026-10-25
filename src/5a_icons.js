@@ -49,6 +49,7 @@ function icon(kind, cx, cy, s, col, al) {
     case 'mine': ctx.fillStyle = '#3e4232'; C(0, 1, 8); ctx.fillStyle = '#5c6048'; C(0, 1, 5); ctx.fillStyle = '#ff3a2a'; C(0, 1, 1.8); break;
     case 'reload': ctx.lineWidth = 2.6; ctx.beginPath(); ctx.arc(0, 0, 6.5, -0.4, Math.PI * 1.45); ctx.stroke(); P([[6.5, -6], [8.5, 1], [1.5, -1.5]]); break;
     case 'seat': R(-5, -8, 4, 13); R(-5, 2, 11, 4); R(4, 2, 3, 7); R(-5, 5, 3, 4); break;
+    case 'lamp': ctx.rotate(-0.6); ctx.fillStyle = '#e8e8e0'; R(-9, -2.5, 10, 5); P([[1, -4], [6, -7], [6, 7], [1, 4]]); ctx.fillStyle = '#ffe08a'; R(6, -6, 2, 12); break;     // a flashlight
     case 'map': P([[-9, -6], [-3, -8], [3, -6], [9, -8], [9, 6], [3, 8], [-3, 6], [-9, 8]]); ctx.fillStyle = 'rgba(0,0,0,0.45)'; R(-3.5, -8, 1.2, 14); R(2.4, -6, 1.2, 14); ctx.fillStyle = '#ff4a3a'; C(5, -1, 2); break;
     case 'eye': ctx.beginPath(); ctx.moveTo(-10, 0); ctx.quadraticCurveTo(0, -10, 10, 0); ctx.quadraticCurveTo(0, 10, -10, 0); ctx.fill(); ctx.fillStyle = '#141a10'; C(0, 0, 3.6); break;
     case 'shell': R(-8, -3, 11, 6); P([[3, -3], [9, 0], [3, 3]]); ctx.fillStyle = 'rgba(0,0,0,0.35)'; R(-8, -3, 2, 6); break;

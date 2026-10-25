@@ -11,7 +11,7 @@ const NET = {
   matchId: 0, seq: 0, seqS: 0, slowT: 0, gs: null, slow: null, evId: 0, evLog: [], t0: performance.now(), sendT: 0, lastPres: '', pid: 0, kicked: new Set(), bn: {}, L: null, maxSnap: 0, hdr: null, roster: '',
   // client
   hostPeer: null, dev: null, myPid: -1, joined: false, wasJoined: false, curMatch: -1, lastSeq: -1, buf: [], off: null, lastEv: 0, evq: [], lobby: null, me: null,
-  cc: new Array(14).fill(0), sd: 0, si: 0, pw: 0, dep: null, depN: 0, want: { c: '', t: -1, r: 0 }, lastI: null, pmap: new Map(), bul: [], lastHostT: 0, lastSnapT: 0, joinT: 0, lastA: null, demoMap: -1, selfD: null
+  cc: new Array(15).fill(0), sd: 0, si: 0, pw: 0, dep: null, depN: 0, want: { c: '', t: -1, r: 0 }, lastI: null, pmap: new Map(), bul: [], lastHostT: 0, lastSnapT: 0, joinT: 0, lastA: null, demoMap: -1, selfD: null
 };
 const cleanName = n => String(n || '').toUpperCase().replace(/[^A-Z0-9 -]/g, '').replace(/\s+/g, ' ').trimStart().slice(0, 10);
 NET.name = cleanName(store.get('name', '')).trim();
@@ -464,7 +464,7 @@ function netInputHost(p) {
   I.mx = clamp((q.m[0] || 0) / 100, -1, 1); I.my = clamp((q.m[1] || 0) / 100, -1, 1);
   I.aimA = typeof q.a === 'number' ? q.a / 1000 : null; I.fire = !!q.f; I.ads = !!q.ad; I.sprint = !!q.sp; I.gadget = !!q.g; I.altDist = q.ds || 220; I.interactSwap = !!q.is;
   const c = Array.isArray(q.c) ? q.c : [], pc = p.netC || c, e = k => c[k] !== pc[k];
-  I.jump = e(0); I.reload = e(1); I.alt = e(2); I.nadeCyc = e(3); I.gadgetP = e(4); I.enter = e(5); I.melee = e(6); I.spot = e(7); I.stanceCycle = e(8); I.swapW = e(9); I.seatNext = e(10);
+  I.jump = e(0); I.reload = e(1); I.alt = e(2); I.nadeCyc = e(3); I.gadgetP = e(4); I.enter = e(5); I.melee = e(6); I.spot = e(7); I.stanceCycle = e(8); I.swapW = e(9); I.seatNext = e(10); I.lamp = e(14);
   I.seatDir = e(11) ? clamp(q.sd | 0, 0, 3) : -1; I.seatIdx = e(12) ? clamp(q.si | 0, 0, 3) : -1; I.pickW = e(13) ? clamp(q.pw | 0, 0, 1) : -1;
   p.netC = c.slice(); p.netVt = typeof q.vt === 'number' ? q.vt : null;
   // when they sent it, on our clock: their timestamp plus the smallest gap we've seen (so network jitter doesn't become position jitter)
@@ -577,7 +577,7 @@ function netSnap() {
     const W_ = s.w ? cw(s) : null, vi = s.veh ? M.vehicles.indexOf(s.veh) : -1;
     const fA = 1 | (s.stance === 2 ? 2 : 0) | (s.swim ? 4 : 0) | (s.torch ? 8 : 0) | (s.ads ? 16 : 0) | (s.protect > 0 ? 32 : 0);
     const fB = (s.thrownSmoke ? 1 : 0) | (s.handT > 0 ? 2 : 0) | (s.meleeT > 0 ? 4 : 0) | (s.spotT > 0 && s.spotTeam === 0 ? 8 : 0) | (s.spotT > 0 && s.spotTeam === 1 ? 16 : 0) | (W_ && W_.mag > 0 ? 32 : 0);
-    S.push(pk(fA, 1) + pk(fB, 1) + pk(Math.max(0, s.throwT) / 0.35 * 63, 1) + pk(Math.max(0, s.jumpT) / 0.42 * 63, 1) + pk(s.x, 2) + pk(s.y, 2) + angE(s.a) + pk(W_ ? WPNK.indexOf(W_.id) : 0, 1) + pk((s.shotN || 0) % 64, 1) + pk(vi >= 0 ? vi * 4 + s.seat + 1 : 0, 1) + pk(s.kit, 1));
+    S.push(pk(fA, 1) + pk(fB, 1) + pk(Math.max(0, s.throwT) / 0.35 * 63, 1) + pk(Math.max(0, s.jumpT) / 0.42 * 63, 1) + pk(s.x, 2) + pk(s.y, 2) + angE(s.a) + pk(W_ ? WPNK.indexOf(W_.id) : 0, 1) + pk((s.shotN || 0) % 64, 1) + pk(vi >= 0 ? vi * 4 + s.seat + 1 : 0, 1) + pk(s.kit | (s.lamp ? 32 : 0), 1));     // kit, and 32: flashlight on
   }
   const V = M.vehicles.map(v => {
     if (!v.active) return 'A';
@@ -761,7 +761,7 @@ function netDecode(g, pv) {
   for (let i = 0; i < M.sol.length; i++) {
     const fA = r.u(1); if (!(fA & 1)) { S.push(null); continue; }
     const fB = r.u(1), thr = r.u(1), jmp = r.u(1), x = r.u(2), y = r.u(2), a = angD(r.u(2)), w = r.u(1), sh = r.u(1), st = r.u(1), kit = r.u(1);
-    const o = { fA, fB, thr: thr / 63 * 0.35, jmp: jmp / 63 * 0.42, x, y, a, w: WPNK[w] || WPNK[0], sh, vi: st ? (st - 1) >> 2 : -1, seat: st ? (st - 1) & 3 : -1, kit: clamp(kit, 0, KITS.length - 1), vx: 0, vy: 0 };
+    const o = { fA, fB, thr: thr / 63 * 0.35, jmp: jmp / 63 * 0.42, x, y, a, w: WPNK[w] || WPNK[0], sh, vi: st ? (st - 1) >> 2 : -1, seat: st ? (st - 1) & 3 : -1, kit: clamp(kit & 31, 0, KITS.length - 1), lamp: !!(kit & 32), vx: 0, vy: 0 };
     const q = prev && prev.S[i]; if (q && q.vi === o.vi && pdt) { o.vx = (x - q.x) / pdt; o.vy = (y - q.y) / pdt; if (Math.hypot(o.vx, o.vy) > 400) o.vx = o.vy = 0; }
     S.push(o);
   }
@@ -819,6 +819,7 @@ function netCount(I) {
   if (I.seatDir >= 0) { NET.cc[11]++; NET.sd = I.seatDir; }
   if (I.seatIdx >= 0) { NET.cc[12]++; NET.si = I.seatIdx; }
   if (I.pickW >= 0) { NET.cc[13]++; NET.pw = I.pickW; }
+  if (I.lamp) NET.cc[14]++;
 }
 function netDeployReq(s, opt) {
   NET.dep = { n: ++NET.depN, k: s.kit, v: s.var || 0, sc: s.sec || 0, nt: s.nt || 0, o: opt ? opt.name : '' };
@@ -944,7 +945,7 @@ function netApplySnaps(now, dt) {
     else if (mine && s.netPos && ra.vi < 0 && Math.hypot(tx - px, ty - py) < 60) { const q = 1 - Math.exp(-dt * 22); s.x = lerp(px, tx, q); s.y = lerp(py, ty, q); } else { s.x = tx; s.y = ty; }
     s.netPos = true;
     s.stance = ra.fA & 2 ? 2 : 0; s.swim = !!(ra.fA & 4); s.torch = !!(ra.fA & 8); s.ads = !!(ra.fA & 16); s.protect = ra.fA & 32 ? 1 : 0;
-    s.thrownSmoke = !!(ra.fB & 1); s.handT = ra.fB & 2 ? 0.3 : 0; s.kit = ra.kit; s.handK = KITS[s.kit].g;
+    s.thrownSmoke = !!(ra.fB & 1); s.handT = ra.fB & 2 ? 0.3 : 0; s.kit = ra.kit; s.lamp = ra.lamp; s.handK = KITS[s.kit].g;
     if (ra.fB & 4) { if (!s._mel) { s.meleeT = 0.18; s._mel = 1; } } else s._mel = 0;
     s.spotT = (myTeam === 0 && ra.fB & 8) || (myTeam === 1 && ra.fB & 16) ? 1 : 0; s.spotTeam = myTeam;
     s.throwT = ra.thr; s.jumpT = mine && NET.auth ? ojt : ra.jmp;

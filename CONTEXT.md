@@ -471,3 +471,11 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - Light maps sit 2 × 2 in GC (`at(n)`; the CP's `O` is a vec2 GL offset). Four in a row reached ~9500 px on a phone, past the 8192 GPU limit.
 - Shade memory streaks: canvas drawImage with smoothing blends a source rect's outer texel with its GC neighbour. The memory write now skips map 3's outer texel ring. It is also one draw (no clearRect), since the map is opaque.
 - Ground memory ghosts (inner walls and sight-ray lines on remembered roofs): ground, decals and roof were each drawn under the anti-aliased sight clip, so lower layers leaked a(1−a) through along clip edges every frame. Now they're composed in FOG_NOW first and laid in with one clipped draw.
+
+## Build 172
+- Point lights: `light()` multiplies every reach by `LSC` (2). The shader's shadow march steps ≤ 5 buffer px (8–40 steps), so a bigger light doesn't step over walls. The canvas fallback (`drawLight`) grows its cells with reach (≤ 24 a side), so a big light costs what a small one did. LT's point-light channel is dithered (8-bit rings showed in the dark).
+- Spot lights: `light(..., d)` with d = [cos, sin, cos half-angle]. In the shader that's `PD[i]` (soft-rimmed cone, `spotK` on the CPU).
+- Flashlight: `s.lamp` (keyboard L, hold D-pad up, touch button next to score). lightsNow lights it from state (`LAMP`, from the gun tip, off in vehicles), so one out of sight still throws its beam in. Net: the client sends input counter 14; snapshots pack lamp into the kit char (bit 32).
+- Night: `SUN.el` may go below the horizon (dev WORLD › DAYLIGHT, −30°…81°). Shadows use `sunEl()` (≥ 10°). `sunTone()` gives the colours: low sun golden (GOLD) with a purplish shade (DUSK). Below the horizon, sunlit and shade both go to NIGHT, so only point lights light things. The CP shader has a new LI uniform (sunlit colour, roofs too).
+- Bots: `visibleTo` lets darkness shorten sight: `SEE_DARK` to `SEE_DAY` by `litAt(x, y)` (daylight plus blasts, fires, muzzle flashes, and flashlights in whose cone and sight it is). A lit flashlight always gives you away.
+- Dev: grid and sections off by default; sun controls moved to WORLD.

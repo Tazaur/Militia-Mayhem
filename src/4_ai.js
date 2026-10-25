@@ -2,11 +2,13 @@
    BOTS, PLAYER INPUT, DEPLOYMENT, MAIN UPDATE, CAMERAS
    ===================================================================== */
 const _en = [];
+/* can s make o out at d (sight itself is sees()): firing, spotted or a flashlight on gives you away; else how far depends on
+   stance and how lit you stand (litAt): by day as ever, in the dark only close */
+const SEE_DAY = [1e4, 380, 240], SEE_DARK = [150, 100, 70];
 function visibleTo(s, o, d) {
-  if (o.firedT > 0 || (o.spotT > 0 && o.spotTeam === s.team)) return true;
-  if (o.stance === 2 && d > 240) return false;
-  if (o.stance === 1 && d > 380) return false;
-  return true;
+  if (o.firedT > 0 || (o.spotT > 0 && o.spotTeam === s.team) || (o.lamp && !o.veh)) return true;
+  const st = o.stance | 0; if (d <= SEE_DARK[st]) return true;
+  return d <= lerp(SEE_DARK[st], SEE_DAY[st], litAt(o.x, o.y));
 }
 function enemiesOf(s, out) {
   out.length = 0;
@@ -106,7 +108,7 @@ function botHeard(s, o) {
   const B = s.bot, e = Math.hypot(o.x - s.x, o.y - s.y) * HEARD_ERR;
   B.heard = { x: o.x + rnd(-e, e), y: o.y + rnd(-e, e), t: M.time };
 }
-function newI() { return { mx: 0, my: 0, aimA: null, fire: false, alt: false, smoke: false, altDist: 0, swapW: false, enter: false, reload: false, sprint: false, seatNext: false, seatDir: -1, seatIdx: -1, crouch: false, proneT: false, stanceCycle: false, gadget: false, gadgetP: false, ads: false, jump: false, melee: false, spot: false, pickW: -1, interactSwap: false }; }
+function newI() { return { mx: 0, my: 0, aimA: null, fire: false, alt: false, smoke: false, altDist: 0, swapW: false, enter: false, reload: false, sprint: false, seatNext: false, seatDir: -1, seatIdx: -1, crouch: false, proneT: false, stanceCycle: false, gadget: false, gadgetP: false, ads: false, jump: false, melee: false, spot: false, lamp: false, pickW: -1, interactSwap: false }; }
 function setStance(s, st) { if (st === 1) st = 2; if (s.stance !== st && !s.swim) { s.stance = st; s.stanceT = 0.25; } }
 function botControl(s, dt) {
   const B = s.bot, sk = M.skill, I = newI();
@@ -279,7 +281,7 @@ function readPlayers() { for (const p of PLAYERS) p.raw = isNet(p) ? null : devS
 function humanInput(p) {
   const st = p.raw, s = p.sol, I = newI();
   if (!st) return I;
-  Object.assign(I, { mx: st.mx, my: st.my, fire: st.fire, alt: st.alt, swapW: !!st.swapW, pickW: st.pickW === undefined ? -1 : st.pickW, enter: !!st.interact, interactSwap: !st.mouse, reload: st.reload, sprint: st.sprint, seatNext: st.seatNext, seatDir: st.seatDir, seatIdx: st.seatIdx, nadeCyc: !!st.nadeCyc, crouch: !!st.crouch, proneT: !!st.proneT, stanceCycle: !!st.stanceCycle, gadget: !!st.gadget, gadgetP: !!st.gadgetP, ads: !!st.ads, jump: !!st.jump, melee: !!st.melee, spot: !!st.spot });
+  Object.assign(I, { mx: st.mx, my: st.my, fire: st.fire, alt: st.alt, swapW: !!st.swapW, pickW: st.pickW === undefined ? -1 : st.pickW, enter: !!st.interact, interactSwap: !st.mouse, reload: st.reload, sprint: st.sprint, seatNext: st.seatNext, seatDir: st.seatDir, seatIdx: st.seatIdx, nadeCyc: !!st.nadeCyc, crouch: !!st.crouch, proneT: !!st.proneT, stanceCycle: !!st.stanceCycle, gadget: !!st.gadget, gadgetP: !!st.gadgetP, ads: !!st.ads, jump: !!st.jump, melee: !!st.melee, spot: !!st.spot, lamp: !!st.lamp });
   if (st.mapT && !(s.veh && p.dev.type === 'pad')) { p.mapOpen = !p.mapOpen; sfx('ui'); }
   if (st.mouse) {
     const vw = M.views.find(v => v.p === p) || M.views[0];

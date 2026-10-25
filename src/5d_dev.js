@@ -18,7 +18,7 @@ const ROOM_MIN = 36, ROOM_SIDE = 5, SEC_MAX = 6;
 const RAM = { tank: { wall: 2.6, self: 0.15, keep: 0.8, min: 50, go: 12 }, jeep: { wall: 0.45, self: 1, keep: 0.15, min: 0, go: 25 } };
 const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];          // up, right, down, left
 const DEV = { tab: 0, ts: 1, L: { shade: true, hi: true, add: true, smoke: true, parts: true, roofs: true, fog: true }, hit: false, lpts: false, hts: false, stats: false, lp: [], nq: 0, fps: 60, um: 0, rm: 0,
-  roofQ: [], open: true, god: false, ammo: true, respawn: true, grid: true, secs: true, sightDbg: false, smokeDbg: false, range: 6, sel: 1, padNav: false, log: [], nums: [], lastA: 0, over: false, B: [], R: null, seed: 1 };
+  roofQ: [], open: true, god: false, ammo: true, respawn: true, grid: false, secs: false, sightDbg: false, smokeDbg: false, range: 6, sel: 1, padNav: false, log: [], nums: [], lastA: 0, over: false, B: [], R: null, seed: 1 };
 const DEV_RANGES = [2, 4, 6, 8, 10, 15, 20, 30];
 const DEV_TABS = ['SPAWN', 'PLAYER', 'GFX', 'WORLD'], DEV_TS = [0, 0.1, 0.25, 0.5, 1, 2], DEV_WX = ['clear', 'rain', 'snow'];
 const DEV_VIEWS = ['NORMAL', 'HEIGHTS', 'SHADE', 'HIGHLIGHTS', 'GLOW + LIGHTS', 'MATERIALS', 'SUN SHADOWS', 'POINT LIGHTS'];     // SUNDBG
@@ -680,8 +680,6 @@ function devDrawPanel() {
     head('SUN');
     row(['SUNLIGHT', () => CFG.sun = CFG.sun === false, CFG.sun !== false]);
     row([`‹  VIEW ${DEV_VIEWS[SUNDBG]}  ›`, d => SUNDBG = (SUNDBG + d + DEV_VIEWS.length) % DEV_VIEWS.length, undefined, true]);
-    row([`‹  SUN DIR ${Math.round(SUN.az * 180 / Math.PI)}°  ›`, d => SUN.az = Math.atan2(Math.sin(SUN.az + d * Math.PI / 12), Math.cos(SUN.az + d * Math.PI / 12)), undefined, true]);
-    row([`‹  SUN HEIGHT ${Math.round(SUN.el * 180 / Math.PI)}°  ›`, d => SUN.el = clamp(SUN.el + d * Math.PI / 36, Math.PI / 18, Math.PI * 0.45), undefined, true]);
     head('LAYERS');
     row(tog('SHADE', DEV.L, 'shade'), tog('HIGHLIGHTS', DEV.L, 'hi'));
     row(tog('LIGHTS + GLOW', DEV.L, 'add'), tog('SMOKE', DEV.L, 'smoke'));
@@ -698,6 +696,9 @@ function devDrawPanel() {
     const wx = M.snow ? 'snow' : M.rain ? 'rain' : 'clear';
     row([`‹  WEATHER ${wx.toUpperCase()}  ›`, d => { const w = DEV_WX[(DEV_WX.indexOf(wx) + d + 3) % 3]; M.rain = w === 'rain'; M.snow = w === 'snow'; }, undefined, true]);
     row(tog('GRID', DEV, 'grid'), tog('SECTIONS', DEV, 'secs'));
+    head('DAYLIGHT');
+    row([`‹  SUN DIR ${Math.round(SUN.az * 180 / Math.PI)}°  ›`, d => SUN.az = Math.atan2(Math.sin(SUN.az + d * Math.PI / 12), Math.cos(SUN.az + d * Math.PI / 12)), undefined, true]);
+    { const e = Math.round(SUN.el * 180 / Math.PI); row([`‹  SUN HEIGHT ${e}°${e < -6 ? ' · NIGHT' : e < 14 ? ' · DUSK' : ''}  ›`, d => SUN.el = clamp(SUN.el + d * Math.PI / 36, -Math.PI / 6, Math.PI * 0.45), undefined, true]); }     // below the horizon: night
     row(['CLEAR LOG', () => DEV.log.length = 0]);
   }
   if (DEV.tab !== 2) { head('LOG'); for (const l of DEV.log) { txt(l.text, L, y + 6 * u, 10 * u, l.c, 'left', 'middle', FD); y += 15 * u; } }

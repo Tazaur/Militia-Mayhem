@@ -595,7 +595,7 @@ const DZ = (x, y, z) => { const m = Math.hypot(x, y); if (m < z) return [0, 0, 0
 /* Pad (Battlefield / CoD layout):
    LS move · LS-click sprint · RS aim · RS-click melee · RT fire · LT aim down sights · RB grenade · LB gadget
    A jump / vault · B go prone / stand up (in a vehicle: next seat) · X reload · Y enter/exit vehicle, else swap weapon
-   D-pad on foot: up spot · down map · left/right throwable (in a vehicle the D-pad picks a seat) · Start pause · View scoreboard */
+   D-pad on foot: up spot (hold: flashlight) · down map · left/right throwable (in a vehicle the D-pad picks a seat) · Start pause · View scoreboard */
 function padState(i) {
   const gp = gpList[i]; if (!gp || !gp.connected) { PADS[i] = null; return null; }
   const P = PADS[i] || (PADS[i] = { prev: [], sx: 0, sy: 0, bT: -1 });
@@ -609,12 +609,13 @@ function padState(i) {
   let navX = dpX || stX, navY = dpY || stY; P.sx = sx; P.sy = sy;
   let crouch = false, proneT = false; const now = performance.now();
   if (pr(1)) P.bT = now;
+  if (pr(12)) P.uT = now; let lamp = false; if (cur[12] && P.uT > 0 && now - P.uT > 400) { lamp = true; P.uT = -1; }     // hold D-pad up: flashlight
   if (cur[1] && P.bT > 0 && now - P.bT > 300) { proneT = true; P.bT = -1; }
   if (!cur[1] && prev[1] && P.bT > 0) { crouch = true; P.bT = -1; }
   return {
     pad: gp, mx: lx, my: ly, aim: rm > 0.25 ? Math.atan2(ry, rx) : null, aimMag: rm,
     fire: b(7), ads: b(6), alt: pr(5), gadget: b(4), gadgetP: pr(4), interact: pr(3), swapW: false, reload: pr(2), crouch, proneT,
-    jump: pr(0), melee: pr(11), spot: pr(12), sprint: b(10),
+    jump: pr(0), melee: pr(11), spot: pr(12), lamp, sprint: b(10),
     seatNext: pr(1), seatDir: pr(12) ? 0 : pr(15) ? 1 : pr(13) ? 2 : pr(14) ? 3 : -1, seatIdx: -1,
     pause: pr(9), score: b(8), navX, navY, confirm: pr(0), back: pr(1), join: pr(0) || pr(9), deploy: pr(0),
     tabL: pr(4), tabR: pr(5), opt: pr(8), dpX, dpY, stX, stY, mapT: pr(13), nadeCyc: dpX
@@ -622,7 +623,7 @@ function padState(i) {
 }
 /* Keyboard + mouse (PC shooter layout):
    WASD · mouse aim · LMB fire · RMB aim down sights · Shift sprint · Space jump/vault · C / Z / Ctrl prone
-   R reload · E enter/exit vehicle · G grenade · F gadget · V melee · Q spot · 1/2 or wheel swap weapon · 1-4 / F1-F4 seats in a vehicle */
+   R reload · E enter/exit vehicle · G grenade · F gadget · V melee · Q spot · L flashlight · 1/2 or wheel swap weapon · 1-4 / F1-F4 seats in a vehicle */
 let KB_CT = -1;
 function kbState() {
   const K = c => !!KB.keys[c], P = c => KB.pressed.has(c);
@@ -637,7 +638,7 @@ function kbState() {
     my: (K('KeyS') || K('ArrowDown') ? 1 : 0) - (K('KeyW') || K('ArrowUp') ? 1 : 0),
     aim: null, mouse: true, fire: KB.mouse.down, ads: KB.mouse.rdown, alt: P('KeyG'), gadget: K('KeyF'), gadgetP: P('KeyF'), interact: P('KeyE'),
     swapW: !!wheel, pickW: P('Digit1') ? 0 : P('Digit2') ? 1 : -1, reload: P('KeyR'), crouch, proneT,
-    jump: P('Space'), melee: P('KeyV'), spot: P('KeyQ'), sprint: K('ShiftLeft') || K('ShiftRight'),
+    jump: P('Space'), melee: P('KeyV'), spot: P('KeyQ'), lamp: P('KeyL'), sprint: K('ShiftLeft') || K('ShiftRight'),
     seatNext: P('KeyF'), seatDir: -1, seatIdx,
     pause: P('Escape') || P('KeyP'), score: K('Tab'),
     navX: (P('ArrowRight') || P('KeyD') ? 1 : 0) - (P('ArrowLeft') || P('KeyA') ? 1 : 0),
@@ -688,7 +689,7 @@ function touchState() {
   const b = T.btn, seatIdx = ['seat0', 'seat1', 'seat2', 'seat3'].findIndex(k => b[k]), pickW = b.w0 ? 0 : b.w1 ? 1 : -1;
   if (b.auto) { T.auto = AUTO_MODES[(AUTO_MODES.indexOf(T.auto) + 1) % 3]; store.set('autofire', T.auto); }
   if (b.score) T.scoreOn = !T.scoreOn; if (state !== 'play') T.scoreOn = false;     // the scoreboard button flips it open and shut
-  const s = { touch: true, mx, my, aim, aimMag, fire, ads, alt: !!b.nade, gadget: !!T.hold.gadget, gadgetP: !!b.gadget, swapW: false, pickW, interact: !!(b.enter || b.exit), jump: !!b.jump, melee: !!b.melee, spot: false, reload: !!b.reload, stanceCycle: !!b.stance, sprint, seatNext: false, seatDir: -1, seatIdx, pause: !!b.pause, score: T.scoreOn, navX: 0, navY: 0, confirm: false, back: false, join: false, deploy: false, tabL: false, tabR: false, opt: false, mapT: !!b.map, nadeCyc: b.nadeCyc ? 1 : 0, dpX: 0, dpY: 0, stX: 0, stY: 0 };
+  const s = { touch: true, mx, my, aim, aimMag, fire, ads, alt: !!b.nade, gadget: !!T.hold.gadget, gadgetP: !!b.gadget, swapW: false, pickW, interact: !!(b.enter || b.exit), jump: !!b.jump, melee: !!b.melee, spot: false, lamp: !!b.lamp, reload: !!b.reload, stanceCycle: !!b.stance, sprint, seatNext: false, seatDir: -1, seatIdx, pause: !!b.pause, score: T.scoreOn, navX: 0, navY: 0, confirm: false, back: false, join: false, deploy: false, tabL: false, tabR: false, opt: false, mapT: !!b.map, nadeCyc: b.nadeCyc ? 1 : 0, dpX: 0, dpY: 0, stX: 0, stY: 0 };
   T.btn = {};
   return s;
 }
