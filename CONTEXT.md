@@ -504,3 +504,6 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 ## Build 178
 - Bullets fall: `p.z` starts at shotZ and loses `p.fall` px/s, which is start height x rnd(BULLET_FALL 0.8..2), so prone shots keep their range. Sandbags (`bagBlocks(p, s, z)`), hay, vehicles and wrecks only stop a bullet below their top (LH.bag, LH.hay, topOf); walls and trees always do. At 0 the bullet goes into the ground (dirt). Standing fire at bags: all pass up to 250 px, about 70% at 350, 45% at 450. Soldiers are hit at any height.
 - Settings: core tabs (VIDEO, AUDIO, HUD, CONTROLS) sit in the title row, with their pages as sub-tabs under them (`SET_TABS` nested; `SET.sub`). Q / E or LB / RB step through every page (`setPage`).
+
+## Build 179
+- Dev FLASHLIGHT POOL (`DEV.lampX`, `lampPool`): a ray along the aim (walls, trees, hay, bags, vehicles) sets where the beam meets the ground, 60 to 260 px, eased (`POOL`, `s.poolD`). The beam tilts down from gun height. The shader gets the slope of the lower edge as spot w - 1: steeper (near ground) is dark, raised things nearby are lit, and the ground past the upper edge fades out (the far end of the pool). `S.pd` takes a 4-value d as is.
