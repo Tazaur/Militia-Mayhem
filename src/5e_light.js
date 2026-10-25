@@ -6,7 +6,7 @@
    The patch is drawn smoothed (soft shadow edges) and brightens what's under it: dodged, then a little added.
    With the sun on, the sun's shader does them instead, from its height buffer (per pixel, slopes facing a light lit more) */
 const LC = 4, LMAX = 10, LIGHTS = [], LFX = [], LSC = 4;     // LSC: every light's reach x this (a flash lights up a room)
-const LAMP = { r: 85, k: 0.95, cone: 0.36 };     // a flashlight: reach (before LSC), strength, half-angle (rad)
+const LAMP = { r: 85, k: 0.95, cone: 0.36, post: 8 };     // a flashlight: reach (before LSC), strength, half-angle (rad); post: a tank spotlight over its turret top
 const LH = { tank: 30, jeep: 20, nest: 12, bag: 12, hay: 16, tree: 255 };                 // how tall things are
 /* a light this frame (skip: the thing it comes from, which mustn't shade it; d: a spot's [cos, sin, cos of its half-angle],
    none for all round); lightFx: one that fades over T s */
@@ -21,31 +21,29 @@ function tailLights(v, f) {
   for (const [ax, ay] of P) { const lx = ax - m[4], ly = ay - m[5]; f(v.x + c * lx - s * ly, v.y + s * lx + c * ly, q.b + 3); }
 }
 const spotK = (d, ux, uy) => !d ? 1 : clamp((ux * d[0] + uy * d[1] - d[2]) / ((1 - d[2]) * 0.35), 0, 1);     // in the cone: 1, a soft rim
-const lampD = a => [Math.cos(a), Math.sin(a), Math.cos(LAMP.cone)];
-/* every beam that's on, as f(x, y, h, a, o): flashlights, and vehicles' lights (a jeep's two headlights, a tank's
-   spotlight on its turret's side: the flashlight's beam, all of them); o keeps the beam's pool (lampPool) */
+const lampD = (a, fix) => [Math.cos(a), Math.sin(a), Math.cos(fix ? fix.cone : LAMP.cone)];
+/* every beam that's on, as f(x, y, h, a, o, fix): flashlights, and vehicles' lights (a jeep's two headlights, a tank's
+   spotlight on top of its turret's side: the flashlight's beam, all of them); o keeps the beam's pool (lampPool); fix: a
+   mounted lamp's fixed beam (FIXED: its tilt down and half-angle, rad; it doesn't dip at what's in front). The tank's is
+   narrow and near level, so its lower edge clears the hull in front of it */
+const FIXED = { jeep: { tilt: 0.42, cone: LAMP.cone }, tank: { tilt: 0.17, cone: 0.24 } };
 function lampsOn(f) {
   for (const s of M.sol) if (s.alive && s.lamp && !s.veh) { const [x, y] = gunTip(s); f(x, y, gunH(s), s.a, s); }
   for (const v of M.vehicles) {
     if (!v.lights || !v.active || v.dead || v.type === 'nest') continue; const P = v._lp = v._lp || [{}, {}];
-    if (v.type === 'tank') { const m = ATLAS.tur, [px, py] = turretPivot(v), c = Math.cos(v.ta), s = Math.sin(v.ta), sd = m[3] - m[5] + 2; f(px + c * 4 - s * sd, py + s * 4 + c * sd, topOf(v) - 4, v.ta, P[0]); continue; }
+    if (v.type === 'tank') { const m = ATLAS.tur, [px, py] = turretPivot(v), c = Math.cos(v.ta), s = Math.sin(v.ta), sd = m[3] - m[5] + 2; f(px + c * 4 - s * sd, py + s * 4 + c * sd, topOf(v) + LAMP.post, v.ta, P[0], FIXED.tank); continue; }
     const m = ATLAS.jeep0, c = Math.cos(v.a), s = Math.sin(v.a), fx = m[2] - m[4] + 1, h = Math.round(artMax('jeep0') * 0.55);
-    for (const i of [0, 1]) { const sd = (i ? 1 : -1) * (m[3] / 2 - 5); f(v.x + c * fx - s * sd, v.y + s * fx + c * sd, h, v.a, P[i]); }
+    for (const i of [0, 1]) { const sd = (i ? 1 : -1) * (m[3] / 2 - 5); f(v.x + c * fx - s * sd, v.y + s * fx + c * sd, h, v.a, P[i], FIXED.jeep); }
   }
 }
 /* a beam (flashlight, headlight, spotlight) is a round cone in 3D, tilted down so its top edge meets the ground where the aim
-   first meets something (a ray: walls, trees, hay, bags, vehicles; 60..260 px, eased): in the open the pool reaches far,
-   up against cover it's short. The cone meets the ground in an oval, longer the lower the lamp (prone: grazing).
+   first meets something (aimRay, as guns aim: walls, trees, hay, bags, vehicles; 60..260 px, eased), or a vehicle's at
+   its fixed tilt: in the open the pool reaches far, up against cover it's short. The cone meets the ground in an oval, longer the lower the lamp (prone: grazing).
    Returns the shader's spot w: 1 + the tilt of the beam's middle (height drop per px) */
 const POOL = { min: 60, max: 260, ease: 10 };
-function lampPool(s, a, gx, gy, h) {
-  const c = Math.cos(a), sn = Math.sin(a), hitAt = d => { const x = gx + c * d, y = gy + sn * d;
-    for (const o of staticsNear(x, y, 14, _near)) if (o.type !== 'fence' && Math.hypot(o.x - x, o.y - y) < (o.type === 'tree' ? 9 : o.type === 'hay' ? 12 : o.r || 8)) return true;
-    for (const v of M.vehicles) if (v.active && !v.dead && Math.abs(v.x - x) < 70 && Math.abs(v.y - y) < 70) { const [lx, ly] = toLocal(v, x, y); if (Math.abs(lx) < v.T.hl && Math.abs(ly) < v.T.hw) return true; }
-    return false; };
-  let D = POOL.max;
-  for (let d = 12; d < POOL.max; d += 10) if (!clearPath(gx, gy, gx + c * d, gy + sn * d) || hitAt(d)) { D = d; break; }
-  D = Math.max(POOL.min, D);
+function lampPool(s, a, gx, gy, h, fix) {
+  if (fix) return 1 + Math.tan(fix.tilt);
+  const r = aimRay(gx, gy, a, POOL.max, null, true), D = Math.max(POOL.min, r ? r.d : POOL.max);
   const dt = Math.min(0.1, M.time - (s.poolT || 0)); s.poolT = M.time;
   s.poolD = s.poolD === undefined ? D : s.poolD + (D - s.poolD) * (1 - Math.exp(-dt * POOL.ease));
   return 1 + Math.tan(Math.atan(Math.max(h, 1) / s.poolD) + LAMP.cone);     // its top edge lands there: the whole cone on the ground
@@ -63,14 +61,14 @@ function litAt(x, y) {
     if (s.firedT > 0) add(0.7, 100 * LSC, s.x, s.y);
     if (L >= 1) return 1;
   }
-  lampsOn((lx, ly, h, a) => { const dx = x - lx, dy = y - ly, d = Math.hypot(dx, dy) || 1, k = spotK(lampD(a), dx / d, dy / d); if (d < LAMP.r * LSC && k > 0 && sees(lx, ly, x, y)) add(LAMP.k * k, LAMP.r * LSC, lx, ly); });
+  lampsOn((lx, ly, h, a, o, fix) => { const dx = x - lx, dy = y - ly, d = Math.hypot(dx, dy) || 1, k = spotK(lampD(a, fix), dx / d, dy / d); if (d < LAMP.r * LSC && k > 0 && sees(lx, ly, x, y)) add(LAMP.k * k, LAMP.r * LSC, lx, ly); });
   return Math.min(1, L);
 }
 function lightFx(x, y, r, h, T) { LFX.push({ x, y, r, h, t0: M.time, T }); }
 function lightsNow(vis) {          // this frame's strongest lights in view (and the queue emptied)
   for (let i = LFX.length - 1; i >= 0; i--) { const f = LFX[i], u = (M.time - f.t0) / f.T; if (u >= 1 || u < 0) LFX.splice(i, 1); else light(f.x, f.y, f.r, f.h, (1 - u) ** 2); }
   for (const w of M.wrecks) if (w.burn > 0) light(w.x, w.y, 110, topOf(w) + 6, 0.4 + 0.15 * Math.sin(M.time * 23 + w.x) * Math.sin(M.time * 9.7), w);   // still burning
-  lampsOn((x, y, h, a, o) => light(x, y, LAMP.r, h, LAMP.k, null, [...lampD(a), lampPool(o, a, x, y, h)]));     // flashlights, headlights (from the state: one out of sight still throws its beam in)
+  lampsOn((x, y, h, a, o, fix) => light(x, y, LAMP.r, h, LAMP.k, null, [...lampD(a, fix), lampPool(o, a, x, y, h, fix)]));     // flashlights, headlights (from the state: one out of sight still throws its beam in)
   for (const v of M.vehicles) if (v.lights && v.active && !v.dead && v.type !== 'nest') tailLights(v, (x, y, h) => light(x, y, TAIL.r, h, TAIL.k, v, null, TAIL.c));
   const L = LIGHTS.filter(l => l.k > 0.02 && vis(l.x, l.y, l.r)).sort((a, b) => b.k * b.r - a.k * a.r).slice(0, LMAX); LIGHTS.length = 0; if (M.dev) DEV.lp = L;
   return L;
@@ -266,8 +264,8 @@ void main() {
     if (dl >= PL[i].z) continue;
     float cn = 1.;
     if (PD[i].w > 1.) { cn = clamp((dot(normalize(vec3(PD[i].xy, 1. - PD[i].w)), normalize(vec3(-v / K, -lh))) - PD[i].z) / ((1. - PD[i].z) * 0.35), 0., 1.); if (cn <= 0.) continue; }     // a spotlight (lampPool): the cone in 3D, its middle dropping w - 1 per px (on the ground: an oval)
-    float s = 1., n = clamp(length(v) / 6., 8., 64.);     // steps of 6 buffer px or less (up to 64): a wall isn't stepped over
-    for (int k = 1; k < 64; k++) { if (float(k) >= n) break; float o, th, t = (float(k) - j) / n, d = blk(p + v * t, h0 + lh * t, o, th); if (d > 0.) s = min(s, 1. - clamp(d / min(3., th * 0.35), 0., 1.) * o); }
+    float s = 1., n = clamp(length(v) / 5., 8., 64.);     // 5 buffer px apart on average (up to 64), closer toward the light (what carries it: a barrel, a hull's edge, isn't stepped over and dithered into stripes), wider near here
+    for (int k = 1; k < 64; k++) { if (float(k) >= n) break; float o, th, u = (float(k) - j) / n, t = mix(u, u * (2. - u), 0.6), d = blk(p + v * t, h0 + lh * t, o, th); if (d > 0.) s = min(s, 1. - clamp(d / min(3., th * 0.35), 0., 1.) * o); }
     s *= cn;
     vec3 ld = normalize(vec3(v / K, max(lh, dl * 0.5)));     // the slope it lights: from at least a little above (a flash at hip height still lights the hull facing it)
     pl += PC[i] * PK[i] * s * (0.5 * pow(1. - dl / PL[i].z, 1.3) + 0.5 * pow(max(0., 1. - dl / 40.), 2.)) * clamp(dot(N, ld) / max(ld.z, 0.15), 0., 2.);     // what faces the light (flat ground: x 1)

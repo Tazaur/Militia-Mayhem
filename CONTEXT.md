@@ -562,3 +562,10 @@ Night through smoke / windows. The remembered view FOG_OUT (shown through the so
 
 ## Build 194
 Turret shadow cut off in a band around the hull's shadow (again): since undersides, the hull stands on its underside, so it is a floating span and fought the turret / barrel for the sweep's one floating slot (the lower kept). SP now folds any span reaching the ground or the skyline (lo <= max(g, 0) + 0.5) into the skyline (`fold`: lossless, receivers are >= 0), on the first pass, both sides of a join, and the result; the slot is left for what truly floats.
+
+## Build 195
+Aim ray (3_sim `aimRay(x, y, a, max, skip, all)`): the first thing along an aim past AIM.min (30 px: what's right in front is shot over), up to max, 10 px steps: walls (glass seen through), vehicles, wrecks; `all` adds trees / hay / bags (lamps). Shared by guns and lamps (lampPool's own ray is gone).
+Every projectile has a height now (shells and rockets were a flat 99, so they flew over every vehicle and wreck; the MG from a tank's height cleared a jeep at any range). `shotFall(p)`: if the aim ray meets something lower than the muzzle within AIM.max (320), the shot loses height to reach its middle there; else a bullet falls at its random rate, a shell / rocket meets the ground at the end of its flight. Tank vs jeep at 120..600 px: cannon direct hit every time, MG 15/20.
+Mounted lamps are fixed (FIXED: tilt + half-angle; `lampD(a, fix)`): jeep headlights 0.42 / LAMP.cone, the tank spotlight narrow and near level (0.17 / 0.24) at turret top + LAMP.post (8), so its lower edge clears the hull (it used to run into it: a striped penumbra). Flashlights still dip at what they're aimed at.
+Point light shadow march: 5 px average steps, packed toward the light (t = mix(u, u(2-u), 0.6)).
+Dev: LIGHT POINTS draws a spotlight as its direction, cone sides and the ground ellipse with tilt / reach (no reach circle); AIM RAYS (new toggle) draws each player's gun aim ray (dim inside AIM.min; red where it aims down at something, with the heights).

@@ -804,6 +804,31 @@ function barrelHits(v, a) {
   for (const b of rectsOnSeg(MAP.buildings, px, py, x, y, _rq)) if (!b.glass && segRect(px, py, x, y, b, 0) >= 0) return true;
   return false;
 }
+/* what a gun or a lamp is pointed at: the first thing along the aim from (x, y), past AIM.min (what's right in front is
+   shot over: your own cover), up to max px, stepped 10 px: walls (glass seen through; top Infinity), vehicles and wrecks
+   (their tops); all: trees, hay, bags too (a lamp's pool stops at them; a gun shoots over them). skip: your own vehicle.
+   null: nothing in reach */
+const AIM = { min: 30, max: 320 };
+function aimRay(x, y, a, max, skip, all) {
+  const c = Math.cos(a), sn = Math.sin(a), box = (o, hl, hw, qx, qy) => Math.abs(o.x - qx) < 70 && Math.abs(o.y - qy) < 70 && (([lx, ly]) => Math.abs(lx) < hl && Math.abs(ly) < hw)(toLocal(o, qx, qy));
+  for (let d = AIM.min, px = x, py = y; d <= max; d += 10) {
+    const qx = x + c * d, qy = y + sn * d;
+    for (const b of rectsOnSeg(MAP.buildings, px, py, qx, qy, _rq)) if (!b.glass && segRect(px, py, qx, qy, b, 0) >= 0) return { d, top: Infinity };
+    px = qx; py = qy;
+    if (all) for (const o of staticsNear(qx, qy, 14, _near)) if (o.type !== 'fence' && Math.hypot(o.x - qx, o.y - qy) < (o.type === 'tree' ? 9 : o.type === 'hay' ? 12 : o.r || 8)) return { d, top: LH[o.type] || LH.bag };
+    for (const v of M.vehicles) if (v !== skip && v.active && !v.dead && box(v, v.T.hl, v.T.hw, qx, qy)) return { d, top: topOf(v) };
+    for (const w of M.wrecks) if (box(w, w.hl, w.hw, qx, qy)) return { d, top: topOf(w) };
+  }
+  return null;
+}
+/* how fast a shot loses height (px a second): what the aim ray meets lower than the muzzle is aimed at (its middle height
+   reached there: a jeep in front of a tank is hit), else its own: a bullet at a random rate (BULLET_FALL), a shell or a
+   rocket meeting the ground at the end of its flight */
+function shotFall(p) {
+  const z = shotZ(p), sp = Math.hypot(p.vx, p.vy) || 1, r = aimRay(p.x, p.y, Math.atan2(p.vy, p.vx), AIM.max, p.srcV || (p.src && p.src.veh));
+  if (r && r.top < z) return (z - r.top * 0.5) * sp / r.d;
+  return p.k === 'bullet' ? z * rnd(...BULLET_FALL) : z / p.life;
+}
 function fireCannon(v, s) {
   const c = Math.cos(v.ta), sn = Math.sin(v.ta), [px, py] = turretPivot(v);
   const x = px + c * BARREL, y = py + sn * BARREL, inWall = barrelHits(v, v.ta);
@@ -940,8 +965,8 @@ function updateProjectiles(dt) {
     if (p.k === 'nade') { updateNade(p, dt); continue; }
     EXP_REW = p.rew || 0;
     const x0 = p.x, y0 = p.y, x1 = x0 + p.vx * dt, y1 = y0 + p.vy * dt, bl = p.k === 'bullet';
-    if (bl && p.fall === undefined) { shotZ(p); p.fall = p.z * rnd(...BULLET_FALL); }
-    const z0 = bl ? p.z : 99, z1 = bl ? p.z - p.fall * dt : 99, zt = t => lerp(z0, z1, t);     // its height along this step
+    if (p.fall === undefined) p.fall = shotFall(p);
+    const z0 = p.z, z1 = p.z - p.fall * dt, zt = t => lerp(z0, z1, t);     // its height along this step
     let bt = 2, hit = null, gl = null, gt = 2;
     if (z1 <= 0) { bt = z0 / (z0 - z1); hit = { k: 'ground' }; }
     for (const b of rectsOnSeg(MAP.buildings, x0, y0, x1, y1, _rb)) {
@@ -954,7 +979,7 @@ function updateProjectiles(dt) {
     for (const s of _near) {
       if (s.type === 'fence') continue;
       const t = segCirc(x0, y0, x1, y1, s.x, s.y, s.type === 'tree' ? 9 : s.type === 'hay' ? 12 : s.r); if (t < 0 || t >= bt) continue;
-      if (bl && (s.type === 'bag' ? !bagBlocks(p, s, zt(t)) : s.type === 'hay' && zt(t) >= LH.hay)) continue;     // over it
+      if (s.type === 'bag' ? !bagBlocks(p, s, zt(t)) : s.type === 'hay' && zt(t) >= LH.hay) continue;     // over it
       bt = t; hit = { k: 'static', s };
     }
     // a joiner's shot is judged against where things were on their screen when they pulled the trigger (lag compensation)
@@ -993,7 +1018,7 @@ function updateProjectiles(dt) {
       else { sparks(hx, hy, 2); if (hit.k === 'static' && hit.s.type === 'bag') part({ k: 'dirt', x: hx, y: hy, vx: -p.vx * 0.05 + rnd(-20, 20), vy: -p.vy * 0.05 + rnd(-20, 20), life: 0.3, max: 0.3, sz: 2, drag: 4 }); }
       continue;
     }
-    p.x = x1; p.y = y1; p.life -= dt; if (bl) p.z = z1;
+    p.x = x1; p.y = y1; p.life -= dt; p.z = z1;
     if (p.x < -SKIRT || p.y < -SKIRT || p.x > WW + SKIRT || p.y > WH + SKIRT) p.life = 0;
     if (p.life <= 0 && BLAST[p.k]) { const B = BLAST[p.k]; explosion(p.x, p.y, B.r, B.s, B.v, p.src, p.team, B.big); }
     if (p.life <= 0 && p.k === 'bullet' && inWater(p.x, p.y)) part({ k: 'steam', x: p.x, y: p.y, vx: 0, vy: 0, life: 0.4, max: 0.4, sz: 4, drag: 0 });

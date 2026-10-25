@@ -17,7 +17,7 @@ const ROOM_MIN = 36, ROOM_SIDE = 5, SEC_MAX = 6;
 /* ramming, per unit of speed: damage to the wall, damage to the vehicle, speed kept; a tank always hits at least min */
 const RAM = { tank: { wall: 2.6, self: 0.15, keep: 0.8, min: 50, go: 12 }, jeep: { wall: 0.45, self: 1, keep: 0.15, min: 0, go: 25 } };
 const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];          // up, right, down, left
-const DEV = { cyc: 0, ph: 0, panH: 0, tab: 0, ts: 1, L: { shade: true, hi: true, add: true, smoke: true, parts: true, roofs: true, fog: true }, hit: false, lpts: false, hts: false, stats: false, lp: [], nq: 0, fps: 60, um: 0, rm: 0,
+const DEV = { cyc: 0, ph: 0, panH: 0, tab: 0, ts: 1, L: { shade: true, hi: true, add: true, smoke: true, parts: true, roofs: true, fog: true }, hit: false, lpts: false, hts: false, aim: false, stats: false, lp: [], nq: 0, fps: 60, um: 0, rm: 0,
   roofQ: [], open: true, god: false, ammo: true, respawn: true, grid: false, secs: false, sightDbg: false, smokeDbg: false, range: 6, sel: 1, padNav: false, log: [], nums: [], lastA: 0, over: false, B: [], R: null, seed: 1 };
 const DEV_RANGES = [2, 4, 6, 8, 10, 15, 20, 30];
 const DEV_TABS = ['SPAWN', 'PLAYER', 'GFX', 'WORLD'], DEV_TS = [0, 0.1, 0.25, 0.5, 1, 2], DEV_WX = ['clear', 'rain', 'snow'];
@@ -597,8 +597,9 @@ function devDrawWorld(vw) {
   for (const n of DEV.nums) { ctx.globalAlpha = Math.min(1, n.t * 2); stxt(String(n.v), n.x, n.y, 10, n.c, 'center', 'middle', FD); }
   ctx.globalAlpha = 1;
 }
-/* HITBOXES: the bullet circles (solHitR) and vehicle / wreck boxes; LIGHT POINTS: each light this frame (reach, height,
-   strength); HEIGHTS: the draw / spawn heights (solZ, gunH, topOf, shotZ); PIVOTS + SEATS: what things turn about (white,
+/* HITBOXES: the bullet circles (solHitR) and vehicle / wreck boxes; LIGHT POINTS: each light this frame (a point light:
+   its reach, height, strength; a spotlight: its direction, the cone's sides, the oval it lights on the ground, its tilt);
+   AIM RAYS: each player's gun's aim ray (aimRay: dim inside AIM.min, red to what it aims down at, the height reached there); HEIGHTS: the draw / spawn heights (solZ, gunH, topOf, shotZ); PIVOTS + SEATS: what things turn about (white,
    with their heading), mounts (cyan: turret, MG, their barrels), seats (yellow; an arrow where the seat sets the facing,
    the nest's arc as a wedge) and the spots you get in from (hollow) */
 function devOverlays() {
@@ -633,8 +634,32 @@ function devOverlays() {
     ctx.fillStyle = '#ff4fd8'; for (const p of M.proj) ctx.fillRect(p.x - 1.5 * k, p.y - 1.5 * k, 3 * k, 3 * k);
   }
   if (DEV.lpts) for (const l of DEV.lp) {
-    ctx.strokeStyle = 'rgba(255,214,120,0.35)'; ctx.lineWidth = k; ctx.beginPath(); ctx.arc(l.x, l.y, l.r, 0, TAU); ctx.stroke();
-    ctx.fillStyle = '#ffd678'; ctx.fillRect(l.x - 2 * k, l.y - 2 * k, 4 * k, 4 * k); lab(`H${Math.round(l.h)} ×${l.k.toFixed(2)}`, l.x, l.y - 8 * k, '#ffd678');
+    const col = l.c ? `rgb(${l.c.map(v => Math.round(v * 255)).join(',')})` : '#ffd678'; ctx.lineWidth = k; ctx.strokeStyle = col; ctx.fillStyle = col;
+    if (l.d && l.d[3] > 1) {     // a spotlight: no reach circle (it lights only its cone)
+      const [dx, dy, cc, w] = l.d, cn = Math.acos(cc), th = Math.atan(w - 1), h = Math.max(l.h, 1), a = Math.atan2(dy, dx);
+      const near = Math.min(l.r, h / Math.tan(th + cn)), far = th > cn ? Math.min(l.r, h / Math.tan(th - cn)) : l.r, m = (near + far) / 2;
+      const half = Math.min(l.r, th > cn ? h * Math.sin(cn) / Math.sqrt(Math.sin(th - cn) * Math.sin(th + cn)) : l.r * Math.tan(cn)), cx = l.x + dx * m, cy = l.y + dy * m;     // the cone on the ground: an ellipse
+      ctx.globalAlpha = 0.45; ctx.beginPath(); for (const s of [-1, 1]) { ctx.moveTo(l.x, l.y); ctx.lineTo(cx - dy * half * s, cy + dx * half * s); } ctx.stroke();     // the cone's sides
+      ctx.globalAlpha = 0.9; ctx.beginPath(); ctx.moveTo(l.x, l.y); ctx.lineTo(cx, cy); ctx.stroke();     // its middle
+      ctx.beginPath(); ctx.ellipse(cx, cy, Math.max(1, (far - near) / 2), Math.max(1, half), a, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1;
+      ctx.fillRect(l.x - 2 * k, l.y - 2 * k, 4 * k, 4 * k); lab(`SPOT H${Math.round(l.h)} ×${l.k.toFixed(2)} ↓${Math.round(th * 180 / Math.PI)}° ${Math.round(far)}PX`, l.x, l.y - 8 * k, col);
+      continue;
+    }
+    ctx.globalAlpha = 0.35; ctx.beginPath(); ctx.arc(l.x, l.y, l.r, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1;
+    ctx.fillRect(l.x - 2 * k, l.y - 2 * k, 4 * k, 4 * k); lab(`H${Math.round(l.h)} ×${l.k.toFixed(2)}`, l.x, l.y - 8 * k, col);
+  }
+  if (DEV.aim) for (const P of PLAYERS) {
+    const s = P.sol; if (!s || !s.alive) continue; const v = s.veh, sd = v && v.T.seats[s.seat];
+    let x, y, a, z;
+    if (!v) { [x, y] = gunTip(s); a = s.a; z = gunH(s); }
+    else if (v.type === 'tank' && s.seat === 0) { const [px, py] = turretPivot(v); a = v.ta; x = px + Math.cos(a) * BARREL; y = py + Math.sin(a) * BARREL; z = canH(v); }
+    else if (sd.role === 'mg') { const [px, py] = mgPos(v); a = v.mgA; x = px + Math.cos(a) * 22; y = py + Math.sin(a) * 22; z = mgH(v); }
+    else continue;
+    const r = aimRay(x, y, a, AIM.max, v), d = r ? r.d : AIM.max, aimed = r && r.top < z, c = Math.cos(a), sn = Math.sin(a);
+    ctx.lineWidth = 1.2 * k; ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + c * AIM.min, y + sn * AIM.min); ctx.stroke();
+    ctx.strokeStyle = aimed ? '#ff5050' : r ? '#ffb040' : 'rgba(255,255,255,0.6)'; ctx.beginPath(); ctx.moveTo(x + c * AIM.min, y + sn * AIM.min); ctx.lineTo(x + c * d, y + sn * d); ctx.stroke();
+    ctx.fillStyle = ctx.strokeStyle; ctx.fillRect(x + c * d - 2 * k, y + sn * d - 2 * k, 4 * k, 4 * k);
+    lab(aimed ? `${Math.round(z)} › ${Math.round(r.top * 0.5)} AT ${d}` : r ? `WALL / TALL AT ${d}` : `${Math.round(z)} · FALLS`, x + c * d, y + sn * d - 8 * k, ctx.fillStyle);
   }
   if (DEV.hts) {
     for (const s of M.sol) if (s.alive && !s.veh) lab(`${Math.round(solZ(s))} · GUN ${Math.round(gunH(s))}`, s.x, s.y + 16, '#9fffb0');
@@ -721,7 +746,7 @@ function devDrawPanel() {
     row(tog('SIGHT LINES', DEV, 'sightDbg'), tog('SMOKE VALUES', DEV, 'smokeDbg'));
     row(tog('HITBOXES', DEV, 'hit'), tog('LIGHT POINTS', DEV, 'lpts'));
     row(tog('HEIGHTS', DEV, 'hts'), tog('STATS', DEV, 'stats'));
-    row(tog('PIVOTS + SEATS', DEV, 'piv'));
+    row(tog('PIVOTS + SEATS', DEV, 'piv'), tog('AIM RAYS', DEV, 'aim'));
   } else {
     head('WORLD');
     row(['RESET MAP', devResetMap], ['NEW HOUSES', () => { DEV.seed++; devResetMap(); }]);
