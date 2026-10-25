@@ -435,7 +435,7 @@ function updateNetLobby(ins) {
 }
 
 /* ================= settings (main menu corner, lobby and pause) ================= */
-const SET = { open: false, from: null, tab: 0, sel: 0 };
+const SET = { open: false, from: null, tab: 0, sub: 0, sel: 0 };
 /* every setting: a choice (o: [value, label], cycles) or a slider (lo..hi by st, unit); get / set read and write it,
    after runs once it changed. Names as other games call them */
 const choice = (n, key, o, after) => ({ n, o, get: () => CFG[key], set: v => { CFG[key] = v; if (after) after(); } });
@@ -468,14 +468,18 @@ const SETS = {
   tLfire: choice('LEFT FIRE BUTTON', 'tLfire', [[true, 'ON'], [false, 'OFF']]),
   tAuto: { n: 'DRAG TO AIM', o: [['on', 'AIMS + FIRES'], ['off', 'AIMS ONLY'], ['range', 'FIRES IN RANGE']], get: () => TOUCH.auto, set: v => { TOUCH.auto = v; store.set('autofire', v); } }
 };
-const SET_TABS = [['GRAPHICS', ['style', 'sun', 'clearLos', 'fullscreen', 'camera']], ['FOG OF WAR', ['fogStyle', 'fogD', 'fogK', 'fogE', 'fogW']],
-  ['PERFORMANCE', ['res', 'lightQ']], ['HUD', ['fps', 'minimap', 'teams']], ['AUDIO', ['volMaster', 'volSfx', 'volMus', 'sound']], ['TOUCH', ['tSize', 'tAlpha', 'tFireX', 'tFireY', 'tLfire', 'tAuto']], ['CONTROLS', null]];
-const setRows = () => SET_TABS[SET.tab][1];
+/* core tabs (title row), each with its pages (sub tabs, the row under it); Q / E or LB / RB step through every page */
+const SET_TABS = [['VIDEO', [['GRAPHICS', ['style', 'sun', 'clearLos', 'fullscreen', 'camera']], ['FOG OF WAR', ['fogStyle', 'fogD', 'fogK', 'fogE', 'fogW']], ['PERFORMANCE', ['res', 'lightQ']]]],
+  ['AUDIO', [['VOLUME', ['volMaster', 'volSfx', 'volMus']], ['SOUND', ['sound']]]], ['HUD', [['DISPLAY', ['fps', 'minimap', 'teams']]]],
+  ['CONTROLS', [['TOUCH', ['tSize', 'tAlpha', 'tFireX', 'tFireY', 'tLfire', 'tAuto']], ['BINDINGS', null]]]];
+const SET_PAGES = SET_TABS.flatMap(([, P], i) => P.map((_, j) => [i, j]));
+const setRows = () => SET_TABS[SET.tab][1][SET.sub][1];
+function setPage(d) { const n = SET_PAGES.length, k = SET_PAGES.findIndex(([i, j]) => i === SET.tab && j === SET.sub); [SET.tab, SET.sub] = SET_PAGES[(k + d + n) % n]; SET.sel = 0; sfx('ui'); }
 const CONTROLS = [['MOVE', 'LEFT STICK', 'W A S D'], ['AIM', 'RIGHT STICK', 'MOUSE'], ['FIRE', 'RT', 'LEFT CLICK'], ['AIM DOWN SIGHTS', 'LT', 'RIGHT CLICK'],
   ['SPRINT', 'L3', 'SHIFT'], ['JUMP / VAULT', 'A', 'SPACE'], ['PRONE / STAND', 'B', 'C / Z'], ['RELOAD', 'X', 'R'],
   ['USE · EXIT · SWAP', 'Y', 'E · 1 / 2'], ['GRENADE', 'RB', 'G'], ['GADGET', 'LB', 'F'], ['MELEE', 'R3', 'V'],
   ['SPOT ENEMY', 'D-PAD UP', 'Q'], ['FLASHLIGHT', 'HOLD D-PAD UP', 'L'], ['VEHICLE SEAT', 'B / D-PAD', 'F / 1-4'], ['SCOREBOARD', 'VIEW', 'TAB'], ['PAUSE', 'START', 'ESC']];
-function openSettings(from) { SET.open = true; SET.from = from; SET.tab = 0; SET.sel = 0; sfx('ui'); }
+function openSettings(from) { SET.open = true; SET.from = from; SET.tab = 0; SET.sub = 0; SET.sel = 0; sfx('ui'); }
 function closeSettings() { SET.open = false; sfx('ui'); }
 const inMatch = () => M && !M.demo;
 /* [name, value shown, slider fill 0..1 or null] */
@@ -494,7 +498,7 @@ function setChange(k, d, f) {
 function updateSettings(ins) {
   for (const { st } of ins) {
     if (st.back || st.opt || st.pause) { closeSettings(); return; }
-    if (st.tabL || st.tabR) { SET.tab = (SET.tab + (st.tabR ? 1 : -1) + SET_TABS.length) % SET_TABS.length; SET.sel = 0; sfx('ui'); }
+    if (st.tabL || st.tabR) setPage(st.tabR ? 1 : -1);
     const rows = setRows();
     if (rows) {
       if (st.navY) { SET.sel = (SET.sel + st.navY + rows.length) % rows.length; sfx('ui'); }
@@ -515,10 +519,15 @@ function drawSettings() {
   txt('SETTINGS', px + pad, py + hh / 2 + 1, fpx(22, u, 17), '#f2e6c4', 'left', 'middle', FD);
   txt(`v${VERSION.build}`, px + pad, py + ph - Math.max(14, 15 * u), fpx(11, u, 10), 'rgba(242,230,196,0.4)', 'left', 'middle', FD);
   const dv = devOf(null), cs = Math.max(40, 40 * u); iconButton(px + pw - cs - 8, py + (hh - cs) / 2, cs, 'close', () => closeSettings(), false, ['back', dv]);
-  // category tabs, on their own row under the title (LB / RB or Q / E cycle them)
-  const kw = Math.max(34, 40 * u), nt = SET_TABS.length, tw = Math.min(170 * u, (pw - pad * 2 - kw * 2) / nt), tx = px + pw / 2 - tw * nt / 2, ty = py + hh;
-  SET_TABS.forEach(([t], i) => { ctx.font = `${fpx(14, u, 11)}px ${FD}`; const fw = ctx.measureText(t).width, fs = fpx(14, u, 11) * Math.min(1, (tw - 16) / fw);     // a long name shrinks to fit its tab
-    button({ x: tx + i * tw, y: ty, w: tw - 6, h: cs, label: t, sel: SET.tab === i, fn: () => { SET.tab = i; SET.sel = 0; sfx('ui'); }, size: fs }); });
+  // a row of tabs, each name shrunk to fit its tab
+  const tabs = (names, on, x, y, tw, h, fsz, pick) => names.forEach((t, i) => { ctx.font = `${fsz}px ${FD}`; const fs = fsz * Math.min(1, (tw - 16) / ctx.measureText(t).width);
+    button({ x: x + i * tw, y, w: tw - 6, h, label: t, sel: on === i, fn: () => { pick(i); SET.sel = 0; sfx('ui'); }, size: fs }); });
+  // core tabs: in the title row, between the title and the close button
+  ctx.font = `${fpx(22, u, 17)}px ${FD}`; const c0 = px + pad + ctx.measureText('SETTINGS').width + 16 * u, c1 = px + pw - cs - 8 - 64 * u, ct = Math.min(150 * u, (c1 - c0) / SET_TABS.length);
+  tabs(SET_TABS.map(([t]) => t), SET.tab, c1 - ct * SET_TABS.length, py + (hh - cs * 0.86) / 2, ct, cs * 0.86, fpx(14, u, 11), i => { SET.tab = i; SET.sub = 0; });
+  // its pages, on the row under the title (Q / E or LB / RB step through all of them)
+  const P = SET_TABS[SET.tab][1], kw = Math.max(34, 40 * u), nt = P.length, tw = Math.min(190 * u, (pw - pad * 2 - kw * 2) / nt), tx = px + pw / 2 - tw * nt / 2, ty = py + hh;
+  tabs(P.map(([t]) => t), SET.sub, tx, ty, tw, cs, fpx(13, u, 10.5), i => SET.sub = i);
   keyTag('prev', dv, { x: tx, y: ty, w: tw - 6, h: cs }, 'left'); keyTag('next', dv, { x: tx + (nt - 1) * tw, y: ty, w: tw - 6, h: cs }, 'right');
   const bodyY = ty + cs + 12 * u, bodyH = py + ph - bodyY - Math.max(28, 30 * u), rows = setRows();
   if (rows) {

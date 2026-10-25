@@ -919,11 +919,15 @@ function los(x0, y0, x1, y1) {
   for (const s of _near) if ((s.type === 'tree' || s.type === 'hay') && segCirc(x0, y0, x1, y1, s.x, s.y, s.type === 'hay' ? 12 : 9) >= 0) return false;
   return true;
 }
-/* sandbags only stop bullets for crouched or prone soldiers: standing fire passes over the bags */
+/* bullets fall: each leaves the gun at its height (shotZ) and loses height (its own random rate), so low
+   cover near you is shot over and the same cover far off stops most of them; at 0 it's in the ground. It falls
+   BULLET_FALL x its start height a second (prone shots, low already, fall slower: the same range). Sandbags also
+   always shield whoever lies right behind them, and never your own (within 30 px) */
+const BULLET_FALL = [0.8, 2];
 let PRONE = [];
-function bagBlocks(p, s) {
+function bagBlocks(p, s, z) {
   if (Math.hypot(s.x - p.ox, s.y - p.oy) < 30) return false;     // shooting over your own cover
-  if (p.low) return true;
+  if (p.low || z < LH.bag) return true;
   for (const o of PRONE) if (Math.abs(o.x - s.x) < 30 && Math.abs(o.y - s.y) < 30) return true;
   return false;
 }
@@ -935,19 +939,23 @@ function updateProjectiles(dt) {
     EXP_REW = 0;
     if (p.k === 'nade') { updateNade(p, dt); continue; }
     EXP_REW = p.rew || 0;
-    const x0 = p.x, y0 = p.y, x1 = x0 + p.vx * dt, y1 = y0 + p.vy * dt;
+    const x0 = p.x, y0 = p.y, x1 = x0 + p.vx * dt, y1 = y0 + p.vy * dt, bl = p.k === 'bullet';
+    if (bl && p.fall === undefined) { shotZ(p); p.fall = p.z * rnd(...BULLET_FALL); }
+    const z0 = bl ? p.z : 99, z1 = bl ? p.z - p.fall * dt : 99, zt = t => lerp(z0, z1, t);     // its height along this step
     let bt = 2, hit = null, gl = null, gt = 2;
+    if (z1 <= 0) { bt = z0 / (z0 - z1); hit = { k: 'ground' }; }
     for (const b of rectsOnSeg(MAP.buildings, x0, y0, x1, y1, _rb)) {
       if (b.glass) { if (b.sec && b.sec.hp >= b.sec.mhp) { const t = segRect(x0, y0, x1, y1, b, 0); if (t >= 0 && t < gt) { gt = t; gl = b; } } continue; }   // windows let shots through (an intact one cracks)
       const t = segRect(x0, y0, x1, y1, b, 0); if (t >= 0 && t < bt) { bt = t; hit = { k: 'wall' }; }
     }
-    for (const w of M.wrecks) { const t = segWreck(x0, y0, x1, y1, w); if (t >= 0 && t < bt) { bt = t; hit = { k: 'wall' }; } }
+    for (const w of M.wrecks) { const t = segWreck(x0, y0, x1, y1, w); if (t >= 0 && t < bt && zt(t) < topOf(w)) { bt = t; hit = { k: 'wall' }; } }
     const mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
     staticsNear(mx, my, Math.hypot(x1 - x0, y1 - y0) / 2 + 14, _near);
     for (const s of _near) {
       if (s.type === 'fence') continue;
-      if (s.type === 'bag' && p.k === 'bullet' && !bagBlocks(p, s)) continue;
-      const t = segCirc(x0, y0, x1, y1, s.x, s.y, s.type === 'tree' ? 9 : s.type === 'hay' ? 12 : s.r); if (t >= 0 && t < bt) { bt = t; hit = { k: 'static', s }; }
+      const t = segCirc(x0, y0, x1, y1, s.x, s.y, s.type === 'tree' ? 9 : s.type === 'hay' ? 12 : s.r); if (t < 0 || t >= bt) continue;
+      if (bl && (s.type === 'bag' ? !bagBlocks(p, s, zt(t)) : s.type === 'hay' && zt(t) >= LH.hay)) continue;     // over it
+      bt = t; hit = { k: 'static', s };
     }
     // a joiner's shot is judged against where things were on their screen when they pulled the trigger (lag compensation)
     const T = p.rew ? netNow() - p.rew : 0;
@@ -965,7 +973,7 @@ function updateProjectiles(dt) {
       if (Math.abs(vo.x - mx) > 140 || Math.abs(vo.y - my) > 140) continue;
       const [ax, ay] = toLocal(vo, x0, y0), [bx, by] = toLocal(vo, x1, y1);
       const t = segRect(ax, ay, bx, by, { x: -v.T.hl, y: -v.T.hw, w: v.T.hl * 2, h: v.T.hw * 2 }, 0);
-      if (t >= 0 && t < bt) { bt = t; hit = { k: 'veh', v }; }
+      if (t >= 0 && t < bt && zt(t) < topOf(v)) { bt = t; hit = { k: 'veh', v }; }
     }
     if (gl && gt <= bt) devGlass(gl.sec, x0 + (x1 - x0) * gt, y0 + (y1 - y0) * gt);
     if ((p.k === 'rocket' || p.k === 'shell') && Math.random() < 0.8) part({ k: 'smoke', z: shotZ(p), x: p.x, y: p.y, vx: rnd(-10, 10), vy: rnd(-10, 10), life: 0.6, max: 0.6, sz: p.k === 'rocket' ? 7 : 5, drag: 2 });
@@ -981,10 +989,11 @@ function updateProjectiles(dt) {
         for (const o of v.seats) { if (!o || !v.T.seats[o.seat].exposed || !canHurt(p.src, o)) continue; const oo = p.rew ? lagAt(o, netNow() - p.rew) : o, t = Math.hypot(oo.x - hx, oo.y - hy) < 13 ? 0 : segCirc(hx, hy, ex, ey, oo.x, oo.y, 9); if (t >= 0 && t < vt) { vt = t; victim = o; } }
         if (victim && Math.random() < 0.6) hurtSoldier(victim, p.dmg, p.src, p.mg ? 'mg' : 'bullet', p.vx, p.vy, p.wname);
         else { hurtVehicle(v, v.type === 'tank' ? p.vdmg * 0.2 : p.vdmg, p.src); sfx('ting', hx, hy); sparks(hx, hy, 3); }
-      } else { sparks(hx, hy, 2); if (hit.k === 'static' && hit.s.type === 'bag') part({ k: 'dirt', x: hx, y: hy, vx: -p.vx * 0.05 + rnd(-20, 20), vy: -p.vy * 0.05 + rnd(-20, 20), life: 0.3, max: 0.3, sz: 2, drag: 4 }); }
+      } else if (hit.k === 'ground') part({ k: 'dirt', x: hx, y: hy, vx: p.vx * 0.04 + rnd(-15, 15), vy: p.vy * 0.04 + rnd(-15, 15), life: 0.3, max: 0.3, sz: 2, drag: 4 });
+      else { sparks(hx, hy, 2); if (hit.k === 'static' && hit.s.type === 'bag') part({ k: 'dirt', x: hx, y: hy, vx: -p.vx * 0.05 + rnd(-20, 20), vy: -p.vy * 0.05 + rnd(-20, 20), life: 0.3, max: 0.3, sz: 2, drag: 4 }); }
       continue;
     }
-    p.x = x1; p.y = y1; p.life -= dt;
+    p.x = x1; p.y = y1; p.life -= dt; if (bl) p.z = z1;
     if (p.x < -SKIRT || p.y < -SKIRT || p.x > WW + SKIRT || p.y > WH + SKIRT) p.life = 0;
     if (p.life <= 0 && BLAST[p.k]) { const B = BLAST[p.k]; explosion(p.x, p.y, B.r, B.s, B.v, p.src, p.team, B.big); }
     if (p.life <= 0 && p.k === 'bullet' && inWater(p.x, p.y)) part({ k: 'steam', x: p.x, y: p.y, vx: 0, vy: 0, life: 0.4, max: 0.4, sz: 4, drag: 0 });

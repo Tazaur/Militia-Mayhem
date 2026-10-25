@@ -500,3 +500,7 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 
 ## Build 177
 - Settings TOUCH tab: BUTTON SIZE (`CFG.tSize`, scales drawTouch's k), OPACITY (`tAlpha`; drawTouch wraps drawTouch_ in one globalAlpha), FIRE STICK FROM EDGE / BOTTOM (`tFireX/Y`; the action arc follows it), LEFT FIRE BUTTON (`tLfire`), DRAG TO AIM (TOUCH.auto). Long tab names shrink to fit.
+
+## Build 178
+- Bullets fall: `p.z` starts at shotZ and loses `p.fall` px/s, which is start height x rnd(BULLET_FALL 0.8..2), so prone shots keep their range. Sandbags (`bagBlocks(p, s, z)`), hay, vehicles and wrecks only stop a bullet below their top (LH.bag, LH.hay, topOf); walls and trees always do. At 0 the bullet goes into the ground (dirt). Standing fire at bags: all pass up to 250 px, about 70% at 350, 45% at 450. Soldiers are hit at any height.
+- Settings: core tabs (VIDEO, AUDIO, HUD, CONTROLS) sit in the title row, with their pages as sub-tabs under them (`SET_TABS` nested; `SET.sub`). Q / E or LB / RB step through every page (`setPage`).
