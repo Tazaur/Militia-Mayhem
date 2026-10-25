@@ -87,7 +87,7 @@ button.hov { outline: 2px solid #ff4fd8; outline-offset: -2px; }
   </div>
   <div class="bar">
     <button id="prev" data-i="left" title="Previous sprite"></button><select id="spr"></select><button id="next" data-i="right" title="Next sprite"></button>
-    <div class="seg"><button id="chH" class="on">Height</button><button id="chR">Refl</button><button id="chE">Glow</button><button id="chA">Art</button></div><button id="ovlB" data-i="color" data-tip="Show the art (color overlay)"></button><button id="undB" data-i="layers" data-tip="Underside: tracks / wheels under this part (painted as depth down; the game hangs it under the part)">Under</button><button id="swpB" data-i="down" data-tip="Switch between the part and its underside">Under</button>
+    <div class="seg"><button id="chH" class="on">Height</button><button id="chR">Refl</button><button id="chE">Glow</button><button id="chA">Art</button></div><button id="ovlB" data-i="color" data-tip="Show the art (color overlay)"></button><button id="swpB" data-i="down" data-tip="Switch between the part and its underside">Under</button>
   </div>
   <div id="views"><div id="w3"><canvas id="v3"></canvas><div class="ov"><button id="look" data-tip="3D: as in game (lit) / the channel alone">Lit</button><button class="dd" data-menu="mScene" data-i="sun" data-tip="Sky, sun, bloom"></button></div></div><canvas id="v2"></canvas></div>
   <div class="bar" id="cbar">
@@ -136,6 +136,7 @@ button.hov { outline: 2px solid #ff4fd8; outline-offset: -2px; }
   <button id="eAll" data-i="select">Select all</button><button id="eNone" data-i="x">Deselect</button><hr>
   <div class="h">Selection (or sprite)</div>
   <button id="sFill2" data-i="bucket">Apply set / nudge</button><button id="sUp" data-i="up">Nudge up</button><button id="sDn" data-i="down">Nudge down</button><button id="sClr" data-i="trash">Clear to 0</button>
+  <hr><button id="undB" data-i="layers" title="Tracks / wheels under this part (painted as depth down; the game hangs it under the part)">Add underside</button>
 </div>
 <div class="menu" id="mView">
   <button id="ovl" data-i="color">Show the art</button><button id="msk" data-i="mask">Paint only on the art</button><button id="grid" data-i="gridI">Pixel grid</button><button id="rdo" data-i="info">Pixel readout</button><button id="stk" data-i="layers">Stack the underside (3D)</button><hr>
@@ -225,7 +226,8 @@ addEventListener('pointerdown', tipHide, true);
 for (const b of document.querySelectorAll('[data-i]')) b.insertAdjacentHTML('afterbegin', `<svg viewBox="0 0 24 24">${ICONS[b.dataset.i]}</svg>`);
 const ART = 3, ACH = [3, 4, 5, 6], GRIDS = [2, 3, 4, 5, 6, 8, 10, 12, 16], MAXV = [63, 255, 255, 255, 255, 255, 255], NRANGE = [[8, 32, 32], [16, 64, 64], [32, 128, 128], [63, 255, 255]], HOLDMS = [0, 300, 500, 800], SIZES = [1, 2, 3, 5, 8], TOLS = [[0, 1, 2, 4, 8], [0, 8, 16, 32, 64], [0, 8, 16, 32, 64], [0, 8, 16, 32, 64]];     // per channel (3: art, the largest colour difference)
 let POOL0 = 0, POOL1 = 0;     // the underside pool's pixel range (art isn't painted there)
-let W = 0, H = 0, FMETA = {}, META = {}, NAMES = [], COL0 = null, COL = null, CH = null, FILE = null, CFG = {}, CFGS = null;     // FMETA atlas.json; META its sprites + the undersides; COL the art + their guides
+let W = 0, H = 0, FMETA = {}, META = {}, NAMES = [], COL0 = null, COL = null, CH = null, FILE = null, CFG = {}, CFGS = null, GUIDE = null;     /* GUIDE: a part's pixel -> its underside's guide pixel (or -1) */
+     // FMETA atlas.json; META its sprites + the undersides; COL the art + their guides
 const DEF = { hold: 2, pickAll: false, buzz: true, nr: 1, grid: true, rdo: true, stack: true, alock: false, glock: false, gsz: 2, gdi: false, look: 0, sky: 0, sunAz: 135, sunEl: 40, reflK: 100, bloomK: 100 };
 const st = { ...DEF, spr: '', ch: 0, tool: 'pen', prev: 'pen', mode: 'set', val: [8, 100, 0], nud: [1, 8, 8], size: 0, tol: [1, 1, 1, 0], c1: [200, 70, 60], c2: [40, 44, 60], act: 0, pal: [], prow: -1, shd: 1, ovl: true, mask: true, lay: 0, smode: 0, gap: 0, pch: 0 };
 const GAPS = [0, 1, 2, 3, 4, 6, 8, 12];
@@ -303,18 +305,19 @@ const ownerOf = b => FMETA[b + '0'] ? b + '0' : FMETA[b] ? b : null;
 function syncCfg() {
   CFG = cfgRead(); const k = JSON.stringify(CFG); if (k === CFGS) return; CFGS = k;
   META = {}; for (const n in FMETA) if (n[0] !== '_') META[n] = FMETA[n];
-  COL = COL0.slice(); const P = FMETA._pool; if (P) { POOL0 = P[1] * W; POOL1 = (P[1] + P[3]) * W; }
+  COL = COL0.slice(); GUIDE = new Int32Array(W * H).fill(-1); const P = FMETA._pool; if (P) { POOL0 = P[1] * W; POOL1 = (P[1] + P[3]) * W; }
   for (const [b, r] of Object.entries(CFG.under || {})) {
     const u = META['under_' + b] = [r[0], P[1] + r[1], r[2], r[3], r[4], r[5]], o = META[ownerOf(b)]; if (!o) continue;
     for (let y = 0; y < Math.min(r[3], o[3]); y++) for (let x = 0; x < Math.min(r[2], o[2]); x++) {
-      const s = ((o[1] + y) * W + o[0] + x) * 4, d = ((u[1] + y) * W + u[0] + x) * 4, L = (COL0[s] * 0.3 + COL0[s + 1] * 0.59 + COL0[s + 2] * 0.11) * 0.8;
-      COL[d] = COL[d + 1] = COL[d + 2] = L; COL[d + 3] = COL0[s + 3];
+      const s = (o[1] + y) * W + o[0] + x; GUIDE[s] = (u[1] + y) * W + u[0] + x; guide(s);
     }
   }
   NAMES = Object.keys(META); if (st.spr && !META[st.spr]) st.spr = st.spr.startsWith('under_') ? ownerOf(partOf(st.spr)) || '' : '';     // an underside taken out: back to its part
   $('spr').innerHTML = '<option value="">— whole atlas —</option>' + NAMES.map(n => `<option>${n}</option>`).join(''); $('spr').value = st.spr;
   full2 = true; dirty3 = true;
 }
+/* an underside's guide pixel from its part's art now (greyed); the art changing changes it */
+function guide(s) { const d = GUIDE[s] * 4, o = s * 4; COL[d] = COL[d + 1] = COL[d + 2] = (COL0[o] * 0.3 + COL0[o + 1] * 0.59 + COL0[o + 2] * 0.11) * 0.8; COL[d + 3] = COL0[o + 3]; }
 /* the Underside toggle: a part gets a place in the pool (the first free spot, 1 px apart) and the settings say so; off
    takes it out (undo brings it back) */
 function poolSpot(w, h, U) {
@@ -365,7 +368,8 @@ function cancel() { if (!stroke) return; unput(); stroke = null; }
 function history(from, to, key) { if (flt || stroke) return; const e = from.pop(); if (!e) return; e.idx.forEach((k, j) => { CH[k / NN() | 0][k % NN()] = e[key][j]; touch(k % NN()); }); to.push(e); changed(); syncCfg(); ui(); }     // the settings may have changed
 function touch(i) {
   const o = i * 4, g = i >= POOL0 && i < POOL1; for (let k = 0; k < 4; k++) { COL0[o + k] = CH[3 + k][i]; if (!g) COL[o + k] = CH[3 + k][i]; }     // the art as shown (the pool keeps its guides)
-  if (!full2) paint2(i); dirty3 = true;
+  const d = GUIDE ? GUIDE[i] : -1; if (d >= 0) guide(i);     // the art under an underside: its guide follows
+  if (!full2) { paint2(i); if (d >= 0) paint2(d); } dirty3 = true;
 }
 function brush(x, y, f) {
   if (st.ch === ART && st.glock) { const g = GRIDS[st.gsz], [rx, ry] = rect(), x0 = rx + Math.floor((x - rx) / g) * g, y0 = ry + Math.floor((y - ry) / g) * g; for (let j = y0; j < y0 + g; j++) for (let i = x0; i < x0 + g; i++) if (can(i, j)) f(j * W + i); return; }     // grid lock: the whole cell
@@ -782,7 +786,8 @@ let inst = new Float32Array(0);
    the paint */
 function deepest(n) { const m = META[n]; let v = 0; for (let y = m[1]; y < m[1] + m[3]; y++) for (let x = m[0]; x < m[0] + m[2]; x++) { const i = y * W + x; if (COL[i * 4 + 3]) v = Math.max(v, CH[0][i]); } return v; }
 function stackOf(n) {        // { o the other sprite, lift, under: this is the underside }
-  if (!n || !st.stack) return null; const b = partOf(n), u = 'under_' + b, o = n === u ? ownerOf(b) : u;
+  if (!n) return null; const b = partOf(n), u = 'under_' + b, o = n === u ? ownerOf(b) : u;
+  if (!st.stack) return n === u && META[u] ? { o: null, lift: deepest(u), under: true } : null;     // unstacked: an underside still hangs (from its deepest pixel)
   return META[u] && o && META[o] ? { o, lift: deepest(u), under: n === u } : null;
 }
 function rebuild3() {
@@ -797,7 +802,7 @@ function rebuild3() {
     else if (st.ovl) { r = COL[o] / 255; g = COL[o + 1] / 255; b = COL[o + 2] / 255; if (st.ch) { const t = TINT[st.ch]; r = r * 0.6 + t[0] / 255 * v * 0.5; g = g * 0.6 + t[1] / 255 * v * 0.5; b = b * 0.6 + t[2] / 255 * v * 0.5; } }
     else if (st.ch) { const t = TINT[st.ch]; r = 0.2 + t[0] / 255 * v * 0.8; g = 0.22 + t[1] / 255 * v * 0.8; b = 0.26 + t[2] / 255 * v * 0.8; }
     else { [r, g, b] = ramp(h); r /= 255; g /= 255; b /= 255; }
-    inst[k++] = x; inst[k++] = y; inst[k++] = h; inst[k++] = r; inst[k++] = g; inst[k++] = b; inst[k++] = CH[1][i] / 255; inst[k++] = CH[2][i] / 255; inst[k++] = sk && (h || !sk.under) ? z0(h, sk.under) : 0;
+    inst[k++] = x; inst[k++] = y; inst[k++] = h; inst[k++] = r; inst[k++] = g; inst[k++] = b; inst[k++] = CH[1][i] / 255; inst[k++] = CH[2][i] / 255; inst[k++] = !sk ? 0 : sk.under && !h ? sk.lift - 0.15 : z0(h, sk.under);     // an unpainted underside pixel: a thin tile at the ceiling (the part's base), not on the floor
   }
   if (om) {     // the other one, its pivot on this one's, greyed
     const m = META[st.spr], dx = rx + m[4] - om[4], dy = ry + m[5] - om[5];
@@ -898,7 +903,7 @@ function ui() {
   const art = ch === ART; $('pbar').hidden = !art; $('vbar').hidden = art; for (const b of document.querySelectorAll('#tools .art')) b.hidden = !art; if (art) renderPal();
   const on = (id, v) => $(id).classList.toggle('on', !!v);
   on('ovl', st.ovl); on('ovlB', st.ovl); const ub = st.spr && META['under_' + partOf(st.spr)];
-  $('undB').hidden = !st.spr || st.spr.startsWith('under_'); on('undB', ub); $('swpB').hidden = !ub; on('swpB', st.spr.startsWith('under_')); lab('swpB', st.spr.startsWith('under_') ? 'Edit part' : 'Edit under'); on('msk', st.mask); on('look', !st.look); $('look').textContent = st.look ? 'Channel' : 'Lit';
+  $('undB').hidden = !st.spr; lab('undB', ub ? 'Remove underside' : 'Add underside'); $('swpB').hidden = !ub; on('swpB', st.spr.startsWith('under_')); lab('swpB', st.spr.startsWith('under_') ? 'Edit part' : 'Edit under'); on('msk', st.mask); on('look', !st.look); $('look').textContent = st.look ? 'Channel' : 'Lit';
   for (let k = 0; k < 2; k++) on('look' + k, st.look === k); for (let k = 0; k < 5; k++) on('sky' + k, st.sky === k);
   for (const k of ['sunAz', 'sunEl', 'reflK', 'bloomK']) $(k).value = st[k]; on('grid', st.grid); on('rdo', st.rdo); on('stk', st.stack); on('pAll', st.pickAll); on('buzz', st.buzz);
   for (let k = 0; k < 3; k++) on('lay' + k, st.lay === k); for (let k = 0; k < 4; k++) { on('hold' + k, st.hold === k); on('nr' + k, st.nr === k); }

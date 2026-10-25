@@ -522,3 +522,8 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - Heightmap editor ART mode (channel 3; the art's R G B A are channels 3..6 in `CH`, so undo, selection, copy / paste / array, revert and the saved work all take them; `touch` keeps `COL0` / `COL` in step). Loaded exactly through WebGL unpremultiplied (`exactPx`) and exported with its own PNG encoder (`pngRGBA`, CompressionStream), so an untouched export is byte-for-byte the same pixels (semi-clear ones too). File › Download / Share atlas.png; Import in Art takes an atlas.png.
 - Art tools: pen / erase / fill / select / array / pick, plus Shade (moves colours along their palette row, once per pixel per stroke), Blur (3x3 tent, alpha-weighted), Gradient (drag; selection or the area you start in; main → second colour, through their palette row when both are in one, optional 4x4 ordered dither). Alpha lock, grid lock (2–16 px cells, drawn). Palette bar: two swatches (tap again = colour picker), swap, rows (prefs), menu: from this sprite (top 64 colours, rows by hue, dark → light), add / new row / remove / sort / clear. Selection menu in Art: shade lighter / darker, fill, clear.
 - Fullscreen button (where supported; iPhone: Add to Home Screen, now marked web-app capable).
+
+## Build 184
+Editor: an underside is an inverted heightmap. Unpainted (0) pixels sit at the part's base (the ceiling), not the floor; painted ones hang down. The underside draws inverted from its deepest pixel even with Stack off.
+Its guide (greyed copy of the part's art, also its paint mask) follows art edits live: a part pixel -> guide pixel map, refreshed in touch.
+Add / Remove underside moved off the toolbar into the Edit menu (the Edit under / Edit part switch stays).
