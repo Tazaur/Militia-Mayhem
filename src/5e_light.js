@@ -241,13 +241,18 @@ float roofA(vec2 p, vec2 w, bool ou) {     // how much of the roof shows here (r
   for (int i = 0; i < 4; i++) { if (float(i) >= EN) break; vec4 e = E[i / 2]; float d = length(w - (i - i / 2 * 2 == 0 ? e.xy : e.zw)); a *= i == 0 ? ro(d) : ro(d) / ${ROOF_CAP.toFixed(2)}; }
   return mix(1., a, RF); }     // RF: how far inside a house the view is (roofView's vw.rf)
 vec4 mt(vec2 p) { return texture2D(MT, clamp(p, R.xy, R.zw) / S); }
+vec3 hr(float t) { t = clamp(t, 0., 1.) * 4.; return t < 1. ? mix(vec3(0.04, 0.04, 0.16), vec3(0.1, 0.3, 0.95), t) : t < 2. ? mix(vec3(0.1, 0.3, 0.95), vec3(0.1, 0.85, 0.35), t - 1.) : t < 3. ? mix(vec3(0.1, 0.85, 0.35), vec3(1., 0.85, 0.1), t - 2.) : mix(vec3(1., 0.85, 0.1), vec3(1., 0.2, 0.15), t - 3.); }     // dev heights' ramp
 float hs(vec2 p) { vec3 q = fract(p.xyx * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }     // fract hash: no big sin (it splits between cells)
 float vn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); return mix(mix(hs(i), hs(i + vec2(1., 0.)), f.x), mix(hs(i + vec2(0., 1.)), hs(i + vec2(1., 1.)), f.x), f.y); }
 float wv(vec2 w) { return vn(w * 0.06 + vec2(TM * 0.35, TM * 0.25)) + 0.5 * vn(w * 0.14 - vec2(TM * 0.45, -TM * 0.2)); }
 void main() {
   vec2 f = gl_FragCoord.xy - O, p = vec2(f.x, V - f.y) + P;     // O: where this map sits in GC (GL pixels)
   if (Q > 4.5) { vec4 a = texture2D(LT, f / G); gl_FragColor = vec4(Q > 5.5 ? min(a.b * 4. * PLT + a.a * 2., 1.) : vec3(a.r), 1.); return; }     // dev: the sun's shadow alone, the point lights alone
-  if (Q > 2.5) { gl_FragColor = vec4(Q > 3.5 ? mt(p).rgb : tx(p).rgb, 1.); return; }
+  if (Q > 3.5) { gl_FragColor = vec4(mt(p).rgb, 1.); return; }
+  if (Q > 2.5) {     // dev HEIGHTS: the top (whatever it is) on one ramp, 0 dark blue .. 64 px red; hatched where it floats: the hatch is its underside
+    vec4 c = tx(p); float t = max(hh(p), c.b > 0.5 ? ${ROOF_Z[1].toFixed(1)} : 0.), fb = (1. - c.a) * 63.75;
+    vec3 col = hr(t / 64.); if (c.g > c.r && fb > 0.5 && mod(floor(p.x + p.y), 6.) < 2.) col = hr(fb / 64.);
+    gl_FragColor = vec4(col, 1.); return; }
   vec4 a = texture2D(LT, f / G), m = mt(p);
   float sh = a.r, lam = a.g * 2., r = m.r, gw = m.g; vec3 tint = PLT, pl = a.b * 4. * tint;
   vec2 w = (p - WX.xy) / WX.z;

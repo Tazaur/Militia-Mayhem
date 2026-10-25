@@ -21,7 +21,7 @@ const DEV = { cyc: 0, ph: 0, tab: 0, ts: 1, L: { shade: true, hi: true, add: tru
   roofQ: [], open: true, god: false, ammo: true, respawn: true, grid: false, secs: false, sightDbg: false, smokeDbg: false, range: 6, sel: 1, padNav: false, log: [], nums: [], lastA: 0, over: false, B: [], R: null, seed: 1 };
 const DEV_RANGES = [2, 4, 6, 8, 10, 15, 20, 30];
 const DEV_TABS = ['SPAWN', 'PLAYER', 'GFX', 'WORLD'], DEV_TS = [0, 0.1, 0.25, 0.5, 1, 2], DEV_WX = ['clear', 'rain', 'snow'];
-const DEV_VIEWS = ['NORMAL', 'HEIGHTS', 'SHADE', 'HIGHLIGHTS', 'GLOW + LIGHTS', 'MATERIALS', 'SUN SHADOWS', 'POINT LIGHTS'];     // SUNDBG
+const DEV_VIEWS = ['NORMAL', 'HEIGHTS (BLUE 0 › RED 64)', 'SHADE', 'HIGHLIGHTS', 'GLOW + LIGHTS', 'MATERIALS', 'SUN SHADOWS', 'POINT LIGHTS'];     // SUNDBG
 const devOff = k => M.dev && !DEV.L[k];     // a layer switched off in the GFX tab
 /* the frame's cost (smoothed): fps, update and draw ms (CPU; the GPU's share shows as fps) */
 /* dev WORLD › DAY CYCLE: the sun runs a day (one turn of DEV.ph) in DAY_CYC[i] s: up from the east (-30°..75°), down in the west */
@@ -596,9 +596,32 @@ function devDrawWorld(vw) {
   ctx.globalAlpha = 1;
 }
 /* HITBOXES: the bullet circles (solHitR) and vehicle / wreck boxes; LIGHT POINTS: each light this frame (reach, height,
-   strength); HEIGHTS: the draw / spawn heights (solZ, gunH, topOf, shotZ) */
+   strength); HEIGHTS: the draw / spawn heights (solZ, gunH, topOf, shotZ); PIVOTS + SEATS: what things turn about (white,
+   with their heading), mounts (cyan: turret, MG, their barrels), seats (yellow; an arrow where the seat sets the facing,
+   the nest's arc as a wedge) and the spots you get in from (hollow) */
 function devOverlays() {
   const k = 1 / VZ, lab = (t, x, y, c) => stxt(t, x, y, 7, c, 'center', 'middle', FD);
+  if (DEV.piv) {
+    const line = (x, y, a, l, c) => { ctx.strokeStyle = c; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); ctx.stroke(); };
+    const piv = (x, y, a, l) => { ctx.fillStyle = '#fff'; ctx.fillRect(x - 2 * k, y - 2 * k, 4 * k, 4 * k); line(x, y, a, l, '#fff'); };
+    const dot = (x, y, c) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, 2.2 * k, 0, TAU); ctx.fill(); };
+    ctx.lineWidth = 1.2 * k;
+    for (const s of M.sol) if (s.alive && !s.veh) { piv(s.x, s.y, s.a, 10); const [gx, gy] = gunTip(s); dot(gx, gy, '#4fe0ff'); }
+    for (const w of M.wrecks) piv(w.x, w.y, w.a, 14);
+    for (const v of M.vehicles) {
+      if (!v.active || v.dead) continue;
+      piv(v.x, v.y, v.a, v.T.hl * 0.6);
+      if (v.type === 'tank') { const [px, py] = turretPivot(v); dot(px, py, '#4fe0ff'); line(px, py, v.ta, BARREL, 'rgba(79,224,255,0.6)'); }
+      { const [mx, my] = mgPos(v); dot(mx, my, '#4fe0ff'); line(mx, my, v.mgA, 22, 'rgba(79,224,255,0.6)'); }
+      if (v.T.arc) for (const d of [-1, 1]) line(v.x, v.y, v.a + d * v.T.arc, 40, 'rgba(255,224,138,0.5)');
+      v.T.seats.forEach((sd, i) => {
+        const [x, y] = toWorld(v, ...seatLocal(v, i)); ctx.fillStyle = '#ffe08a'; ctx.fillRect(x - 2.5 * k, y - 2.5 * k, 5 * k, 5 * k);
+        if (sd.role === 'drive') line(x, y, v.a, 9, '#ffe08a');     // drivers face the way they drive
+        lab(sd.n.split(' ').map(w => w[0]).join(''), x, y - 7 * k, '#ffe08a');
+        ctx.strokeStyle = 'rgba(255,224,138,0.5)'; for (const an of [sd.anchor, ...(sd.alts || [])]) { const [ax, ay] = toWorld(v, ...an); ctx.beginPath(); ctx.arc(ax, ay, 3 * k, 0, TAU); ctx.stroke(); }
+      });
+    }
+  }
   if (DEV.hit) {
     ctx.lineWidth = 1.2 * k; ctx.strokeStyle = '#ff4fd8';
     for (const s of M.sol) if (s.alive) { ctx.beginPath(); ctx.arc(s.x, s.y, solHitR(s), 0, TAU); ctx.stroke(); }
@@ -696,6 +719,7 @@ function devDrawPanel() {
     row(tog('SIGHT LINES', DEV, 'sightDbg'), tog('SMOKE VALUES', DEV, 'smokeDbg'));
     row(tog('HITBOXES', DEV, 'hit'), tog('LIGHT POINTS', DEV, 'lpts'));
     row(tog('HEIGHTS', DEV, 'hts'), tog('STATS', DEV, 'stats'));
+    row(tog('PIVOTS + SEATS', DEV, 'piv'));
   } else {
     head('WORLD');
     row(['RESET MAP', devResetMap], ['NEW HOUSES', () => { DEV.seed++; devResetMap(); }]);

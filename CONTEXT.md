@@ -493,3 +493,7 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - Point lights and flashlights are near-white (`PLT` in the CP shader; canvas fallback 255/245/220).
 - Shadows grow down to 5° (`SUN_MIN`); the sun fades out from 6° to -6° (`sunTone` day), so there is no frozen span. The buffer pad is capped at 720.
 - Dev WORLD > DAY CYCLE (`DEV.cyc`, `dayCycle`): the sun runs a day in 10, 4 or 1 min, -30° to 75°, from east to west.
+
+## Build 176
+- Dev VIEW HEIGHTS: one ramp (`hr`) of the top height, from dark blue at 0 to red at 64, roofs included. It is hatched in the underside's colour where a floating span (G over R) has a gap under it.
+- Dev PIVOTS + SEATS (`DEV.piv`): pivots with heading in white (soldiers, vehicles, wrecks). Mounts in cyan: turret pivot, MG and barrels, gun tips. Seats in yellow (initials; drivers get an arrow), the nest arc as a wedge, and entry anchors (hollow).
