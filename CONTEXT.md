@@ -465,3 +465,9 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 
 ## Build 169
 - Settings › Graphics › BUILDING CLEAR LOS (`CFG.clearLos`, on by default). When on, the tiled roof fades round the eyes from anywhere (the pre-168 look). When off, it fades only from inside a house (build 168).
+
+## Build 171
+- (Build 170 was the same as 169; the version counter double-bumped.)
+- Light maps sit 2 × 2 in GC (`at(n)`; the CP's `O` is a vec2 GL offset). Four in a row reached ~9500 px on a phone, past the 8192 GPU limit.
+- Shade memory streaks: canvas drawImage with smoothing blends a source rect's outer texel with its GC neighbour. The memory write now skips map 3's outer texel ring. It is also one draw (no clearRect), since the map is opaque.
+- Ground memory ghosts (inner walls and sight-ray lines on remembered roofs): ground, decals and roof were each drawn under the anti-aliased sight clip, so lower layers leaked a(1−a) through along clip edges every frame. Now they're composed in FOG_NOW first and laid in with one clipped draw.

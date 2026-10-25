@@ -109,7 +109,7 @@ function fogMemory(vw) {
 }
 /* screen-sized scratch canvases: the remembered world (OUT), the low-res soft mask (smoke + windows; a second one for a
    second eye) and a temp */
-const FOG_OUT = document.createElement('canvas'), FOG_TMP = document.createElement('canvas'), FOG_SH = document.createElement('canvas'), FOG_MASK = document.createElement('canvas'), FOG_MASK2 = document.createElement('canvas'), FOG_MS = 10;
+const FOG_OUT = document.createElement('canvas'), FOG_TMP = document.createElement('canvas'), FOG_SH = document.createElement('canvas'), FOG_NOW = document.createElement('canvas'), FOG_MASK = document.createElement('canvas'), FOG_MASK2 = document.createElement('canvas'), FOG_MS = 10;
 function fogCanvases() {
   if (FOG_OUT.width !== cv.width || FOG_OUT.height !== cv.height) {
     FOG_OUT.width = FOG_TMP.width = FOG_SH.width = cv.width; FOG_OUT.height = FOG_TMP.height = FOG_SH.height = cv.height;
@@ -128,10 +128,14 @@ function applyFog(vw, vis, x0, y0, x1, y1, rv) {
   // remember what is in sight now, roofs and all
   const bx0 = Math.max(0, Math.floor(x0)), by0 = Math.max(0, Math.floor(y0)), bx1 = Math.min(WW, Math.ceil(x1)), by1 = Math.min(WH, Math.ceil(y1)), bw = bx1 - bx0, bh = by1 - by0;
   if (bw > 0 && bh > 0) {
+    // built whole first, then laid in with one clipped draw: layer by layer, the clip's soft edge let each lower layer
+    // (walls, floors) leak a little through the roof along every sight ray, and it built up as you moved
+    if (FOG_NOW.width < bw || FOG_NOW.height < bh) { FOG_NOW.width = Math.max(FOG_NOW.width, bw); FOG_NOW.height = Math.max(FOG_NOW.height, bh); }
+    const n = FOG_NOW.getContext('2d'); n.setTransform(1, 0, 0, 1, 0, 0);
+    n.drawImage(ground, bx0, by0, bw, bh, 0, 0, bw, bh); n.drawImage(decals, bx0, by0, bw, bh, 0, 0, bw, bh);
+    if (MAP.tiled && MAP.tiled.roof) n.drawImage(ROOF_C, bx0, by0, bw, bh, 0, 0, bw, bh);
     m.g.save(); m.g.setTransform(FOGK, 0, 0, FOGK, 0, 0); polyPath(m.g, polys); m.g.clip();
-    m.g.drawImage(ground, bx0, by0, bw, bh, bx0, by0, bw, bh); m.g.drawImage(decals, bx0, by0, bw, bh, bx0, by0, bw, bh);
-    if (MAP.tiled && MAP.tiled.roof) m.g.drawImage(ROOF_C, bx0, by0, bw, bh, bx0, by0, bw, bh);
-    m.g.restore();
+    m.g.drawImage(FOG_NOW, 0, 0, bw, bh, bx0, by0, bw, bh); m.g.restore();
   }
   const seen = (x, y) => polys.some(P => inPoly(x, y, P)) && eyes.some(([ex, ey]) => 1 - softOcc(ex, ey, x, y) >= SIGHT_MIN);
   for (const s of MAP.statics) if (vis(s.x, s.y, 20) && (s.type === 'fence' || s.type === 'hay' || s.type === 'tree') && seen(s.x, s.y)) m.st.set(s, s.alive);
@@ -173,7 +177,11 @@ function fogOverlay(vw, H) {
   if (SUNNOW && S && S.fog) {
     const m = fogMemory(vw), sg = m.sg, z = FOGK / (VZ * DPR), sx = (vw.x - VOX) / VZ * FOGK, sy = (vw.y - VOY) / VZ * FOGK, sw = vw.w / VZ * FOGK, sh = vw.h / VZ * FOGK;
     sg.save(); sg.setTransform(FOGK, 0, 0, FOGK, 0, 0); polyPath(sg, vw._fog.polys); sg.clip();
-    sg.setTransform(z, 0, 0, z, -VOX / VZ * FOGK, -VOY / VZ * FOGK); sg.imageSmoothingEnabled = true; sg.clearRect(X, Y, Wd, Ht); sg.drawImage(S.GC, ...S.fog); sg.restore();     // what you see now, remembered
+    sg.setTransform(z, 0, 0, z, -VOX / VZ * FOGK, -VOY / VZ * FOGK); sg.imageSmoothingEnabled = true;
+    // what you see now, remembered: one draw (the map is opaque, so the clip's soft edge blends, never thins it), less the
+    // map's outer texel, which smoothing blends with its neighbour in GC (stamped in as the view slid: streaks)
+    const [fx, fy, fw, fh, dx, dy, dw, dh] = S.fog, ex = dw / fw, ey = dh / fh;
+    sg.drawImage(S.GC, fx + 1, fy + 1, fw - 2, fh - 2, dx + ex, dy + ey, dw - 2 * ex, dh - 2 * ey); sg.restore();
     const t = FOG_SH.getContext('2d'); t.setTransform(1, 0, 0, 1, 0, 0); t.imageSmoothingEnabled = true; t.drawImage(S.GC, ...S.fog); t.drawImage(m.s, sx, sy, sw, sh, X, Y, Wd, Ht);
     g.globalCompositeOperation = 'multiply'; g.drawImage(FOG_SH, X, Y, Wd, Ht, X, Y, Wd, Ht); pipe('ov-shade');
   }
