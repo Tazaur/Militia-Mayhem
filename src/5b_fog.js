@@ -115,12 +115,11 @@ function fogCanvases() {
     FOG_MASK.width = FOG_MASK2.width = Math.ceil(cv.width / FOG_MS) + 2; FOG_MASK.height = FOG_MASK2.height = Math.ceil(cv.height / FOG_MS) + 2;
   }
 }
-/* draws the remembered world for the whole view, then clips everything after it to what's in sight (the hard layer:
-   the walls). In the dev yard the roof is remembered over the ground: whole, as it stands (ROOF_C), so out of
+/* builds the remembered world for the whole view (FOG_OUT; laid over what's out of sight last, fogOverlay). In the dev yard the roof is remembered over the ground: whole, as it stands (ROOF_C), so out of
    sight a house is only ever its roof as you last saw it, never its walls or a fade. The remembered view (FOG_OUT, what
    smoke and windows let show through in sight too) has the roofs; in sight it's the world as it is now, the dev yard's
    roof as you see it (rv, faded round you), so smoke in a room never shows the roof.
-   Returns the sight polygons (caller restores the clip), or null when vision is off. */
+   Returns the sight polygons, or null when vision is off. */
 function applyFog(vw, vis, x0, y0, x1, y1, rv) {
   vw._fog = null;
   const eyes = fogEyes(vw); if (!eyes.length) return null;
@@ -158,12 +157,30 @@ function applyFog(vw, vis, x0, y0, x1, y1, rv) {
   drawRoofs(roofsIn(vis));
   for (const s of MAP.statics) if (s.type === 'tree' && vis(s.x, s.y, 40) && (m.st.has(s) ? m.st.get(s) : true)) { img(s.pine ? SPR.pines[s.v] : SPR.trees[s.v], s.x, s.y, s.a, s.sc, 0.94); worldT(); }
   ctx.setTransform(1, 0, 0, 1, 0, 0); fogLook(ctx, vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR);
-  ctx = main;
-  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(FOG_OUT, vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR, vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR);
+  ctx = main; worldT();
   vw._fog = { polys, eyes, box };
-  // everything from here on is only drawn where you can see
-  worldT(); ctx.save(); polyPath(ctx, polys); ctx.clip();
   return polys;
+}
+/* the remembered world over everything out of sight, last: FOG_OUT, shaded by the sun's shade map (drawSun: out of sight
+   no point lights, and units only cast), with a hole cut where you see (H: the sight polygons + the roofs, always known).
+   The world under it was drawn whole, nothing clipped: one plain fill makes the edge */
+function fogOverlay(vw, H) {
+  const g = FOG_TMP.getContext('2d'), X = vw.x * DPR, Y = vw.y * DPR, Wd = vw.w * DPR, Ht = vw.h * DPR, S = _sun;
+  g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-over'; g.clearRect(X, Y, Wd, Ht); g.drawImage(FOG_OUT, X, Y, Wd, Ht, X, Y, Wd, Ht);
+  if (SUNNOW && S && S.fog) { g.globalCompositeOperation = 'multiply'; g.imageSmoothingEnabled = true; g.drawImage(S.GC, ...S.fog); }
+  g.globalCompositeOperation = 'destination-out'; g.setTransform(ctx.getTransform()); g.fillStyle = '#000'; g.fill(H);
+  g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-over';
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(FOG_TMP, X, Y, Wd, Ht, X, Y, Wd, Ht); worldT();
+}
+/* a unit (o, radius r) counts for the view if it or its shadow reaches the sight (its near side toward an eye counts:
+   a hull blocks sight itself): drawn and casting. Further out it's left out, drawn nowhere (the memory covers there) */
+const SIGHT_SHADOW = 40, _snc = [];     // px: the tallest unit's height, for its shadow's reach
+function sightNear(vw, o, r) {
+  const F = vw && vw._fog; if (!F) return true;
+  const seen = (x, y, r) => F.polys.some((P, i) => { const [ex, ey] = F.eyes[i], d = Math.hypot(ex - x, ey - y) || 1, k = Math.min(r, d) / d; return inPoly(x, y, P) || inPoly(x + (ex - x) * k, y + (ey - y) * k, P); });
+  const L = SUNNOW ? SIGHT_SHADOW / Math.tan(SUN.el) : 0, ux = -Math.cos(SUN.az), uy = -Math.sin(SUN.az);     // the shadow falls away from the sun
+  for (const [x, y, cr] of o.T && o.T.circles ? vehCircles(o, _snc) : [[o.x, o.y, r]]) for (let t = 0; t <= L; t += Math.max(cr, 10)) if (seen(x + ux * t, y + uy * t, cr)) return true;
+  return false;
 }
 /* the out-of-sight look (setting OUT OF SIGHT): drained of colour fully / by half / not at all, and dimmed (more when
    only darkened). The region of g must be opaque (a blend mode paints on transparent pixels). */

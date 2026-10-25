@@ -439,3 +439,9 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - HP: unit sprites (p2 = HSEEN, set while soldiers and vehicles go in) are discarded outside the mask's R, so the hidden part of a half-seen jeep neither shows nor casts, and the seen part keeps its shading.
 - Point lights: the shading direction is `vec3(v / K, max(lh, dl * 0.5))`, so a flash below an object's top still lights the side facing it.
 - Nest MG: `SUNB.mgNest = SUNH.nest`; it rests on its bags, so no bridge under the gun.
+
+## Build 164
+- Vision as an overlay, nothing clipped: the world, the light and the effects are drawn whole; applyFog only builds FOG_OUT (the memory) and `vw._fog`. Last (after smoke and lasers, before tags), `fogOverlay(vw, H)` lays FOG_OUT over the view: multiplied by the sun's shade map (S.fog = map 0's rect), then a hole cut with one destination-out fill of H (sight polygons + the roof rects). The world clip, the roof entry's clip juggling and applyFog's save/clip are gone. Dev views (SUNDBG) skip the overlay.
+- `sightNear(vw, o, r)` (5b_fog): a unit counts if it or its shadow (SIGHT_SHADOW 40 px / tan(el), away from the sun, sampled every max(r, 10) px; vehicles by vehCircles) reaches the sight. The same test culls the unit's sprite (drawWorld) and its heights (sunHeights), so a tank's shadow can show before the tank.
+- Out of sight on the GPU (sunMask KT, unit 5, now read by P and CP via TX): unit sprites are flagged in the height texture (HP: B 0.25, p2 = HSEEN). `hv(p)` gives the shown height: a flagged pixel out of sight reads as the ground, so a hidden unit casts but shows no relief (its pixels sit in its own shadow). Out of sight, P skips the point lights, and CP zeroes pl and reflectivity and outputs black for Q1 and Q2.
+- Sun shadows: the sweep only. The ray-march branch, uniforms T / D / SW / MXH, the CFG.shadows setting (menu and dev row) are removed. Point-light shadows still march (12 steps).

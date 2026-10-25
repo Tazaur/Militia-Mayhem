@@ -43,7 +43,7 @@ function drawWorld(vw) {
   at(0, () => { worldT(); ctx.fillStyle = '#c9a443'; for (const b of M.brass) if (vis(b.x, b.y, 4)) { ctx.globalAlpha = 0.8 * (1 - b.t / BRASS_T); ctx.fillRect(b.x, b.y, 2, 1); } ctx.globalAlpha = 1; });
   for (const c of M.corpses) if (vis(c.x, c.y, 30)) at(ZH.body, () => { worldT(); if (!c.baked) drawPool(ctx, c, c.t / POOL_T); solDraw(c, c.n, c.x, c.y, c.rot, 1, 1, c.t > BODY_T ? corpseAlpha(c) : undefined); });
   if (!SUNNOW) at(ZH.body, () => drawShadowLayer(vw, vis));     // without the sun: one shared offset shadow for soldiers, vehicles and bodies in the air
-  for (const s of M.sol) if (s.alive && !s.veh && vis(s.x, s.y, 30) && !hidden(s)) at(solZ(s), () => drawSoldier(s, vw));
+  for (const s of M.sol) if (s.alive && !s.veh && vis(s.x, s.y, 30) && !hidden(s) && sightNear(vw, s, 4)) at(solZ(s), () => drawSoldier(s, vw));
   for (const A of MAP.arcs) if (vis(A.x, A.y, 50)) at(artMax('bagarc0'), () => { const f = A.lost / A.bags.length; spr(f < 0.25 ? 'bagarc0' : f < 0.75 ? 'bagarc1' : 'bagarc2', A.x, A.y, A.a); });
   for (const s of MAP.statics) {
     if (!s.alive || !vis(s.x, s.y, s.type === 'tree' ? 40 : 16)) continue;
@@ -52,31 +52,28 @@ function drawWorld(vw) {
     else if (s.type === 'tree') at(SUNH.tree[0], () => { const tc = s.pine ? SPR.pines[s.v] : SPR.trees[s.v]; worldT(); ctx.fillStyle = 'rgba(0,0,0,0.28)'; if (!SUNNOW) { ctx.beginPath(); ctx.arc(s.x + 6, s.y + 7, 24 * s.sc, 0, TAU); ctx.fill(); } img(tc, s.x, s.y, s.a, s.sc, 0.94); });
   }
   for (const w of M.wrecks) if (vis(w.x, w.y, 70)) at(topOf(w), () => drawWreck(w));
-  for (const v of M.vehicles) if (v.active && vis(v.x, v.y, 80)) at(topOf(v), () => drawVehicle(v));     // one piece: hull, crew, turret, MG in their own order
+  for (const v of M.vehicles) if (v.active && vis(v.x, v.y, 80) && sightNear(vw, v, 24)) at(topOf(v), () => drawVehicle(v));     // one piece: hull, crew, turret, MG in their own order
   for (const p of M.proj) if (vis(p.x, p.y, 20)) at(shotZ(p), () => drawProj(p));
   for (const f of M.flings) if (vis(f.x, f.y, 40)) { const k = f.t / f.T, h = Math.sin(Math.PI * k); at(ZH.body + h * 34, () => solDraw(f, solSpr(f.color, 'dead'), f.x, f.y - h * 34, f.rot, 1 + h * 0.6, 1 + h * 0.6)); }
   if (!devOff('parts')) partsInto(at, vis);
-  const roofs = roofsIn(vis), FP = fogged ? new Path2D() : null; if (FP) polyPath(FP, fogPolys);     // the sight clip, built once
-  at(SUNH.wall, () => {     // roofs: always known, so drawn over the out-of-sight memory too (out of the sight clip); the dev yard's in sight
+  const roofs = roofsIn(vis);
+  at(SUNH.wall, () => {     // roofs (always known: the memory's hole leaves them showing, lit); the dev yard's as you see it
     if (rv) { worldT(); ctx.imageSmoothingEnabled = false; ctx.drawImage(rv.c, 0, 0, rv.w, rv.h, rv.x, rv.y, rv.w, rv.h); }
-    if (fogged) ctx.restore();
     worldT(); if (!devOff('roofs')) drawRoofs(roofs);
-    if (fogged) { ctx.save(); worldT(); ctx.clip(FP); }
   });
   at(99, () => drawKillerGlow(vw), true);
   Q.sort((a, b) => a.z - b.z || a.i - b.i);
   for (const d of Q) if (!d.post) { d.f(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
-  // the light: over the whole view (in sight and on the roofs in full; the remembered world without point lights)
-  if (SUNNOW) {
-    if (fogged) { ctx.restore(); ctx.save(); worldT(); }     // unclipped: the sight is masked on the GPU (sunMask)
-    drawSun(vw, vis, hidden, fogged ? roofs : null);
-    if (fogged) { ctx.restore(); ctx.save(); worldT(); ctx.clip(FP); }
-  } else if (!devOff('add')) drawLights(vis); else lightsNow(vis);
+  // the light, over the whole view (out of sight: the shade for the memory, no point lights, units only cast)
+  if (SUNNOW) drawSun(vw, vis, hidden, fogged ? roofs : null);
+  else if (!devOff('add')) drawLights(vis); else lightsNow(vis);
   for (const d of Q) if (d.post) { d.f(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
   // the soft layers (smoke, windows) over everything in sight alike: units, vehicles, roofs, trees, fire
   if (fogged && !devOff('fog')) drawSoftFog(vw);
   if (!devOff('smoke')) drawSmokes(vw);
   drawLasers(vis);
+  // the remembered world over what's out of sight (everything above was drawn whole; dev views: the whole screen)
+  if (fogged && !(SUNNOW && SUNDBG)) { const H = new Path2D(); polyPath(H, fogPolys); for (const b of roofs) H.rect(b.x, b.y, b.w, b.h); worldT(); fogOverlay(vw, H); }
   // tags, reticles
   worldT(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   const eyN = viewEyes(vw);
@@ -100,7 +97,6 @@ function drawWorld(vw) {
     if (scoped) { ctx.globalAlpha = 0.25; ctx.setLineDash([3, 5]); ctx.beginPath(); ctx.moveTo(ox + Math.cos(a) * 24, oy + Math.sin(a) * 24); ctx.lineTo(rx, ry); ctx.stroke(); ctx.setLineDash([]); }
     ctx.globalAlpha = 1;
   }
-  if (fogged) ctx.restore();
   if (M.dev) devDrawWorld(vw);
   // weather + grit grade
   screenT();

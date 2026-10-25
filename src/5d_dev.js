@@ -610,7 +610,7 @@ function devOverlays() {
 function devStats() {
   const u = clamp(W / 1100, 0.75, 1.1), x = SAFE.l + 10 * u, S = _sun, f = M.gsf;
   const L = [`${Math.round(DEV.fps)} FPS · UPDATE ${DEV.um.toFixed(1)} MS · DRAW ${DEV.rm.toFixed(1)} MS`,
-    `SUN ${SUNNOW ? (CFG.shadows === 'sweep' ? 'SWEEP' : 'MARCH') : 'OFF'} · VIEW ${DEV_VIEWS[SUNDBG] || SUNDBG} · ${S ? S.lw + '×' + S.lh : '-'} PX LIGHT · ${DEV.nq} HEIGHT QUADS · TALLEST ${Math.round(HMAX)}`,
+    `SUN ${SUNNOW ? 'ON' : 'OFF'} · VIEW ${DEV_VIEWS[SUNDBG] || SUNDBG} · ${S ? S.lw + '×' + S.lh : '-'} PX LIGHT · ${DEV.nq} HEIGHT QUADS · TALLEST ${Math.round(HMAX)}`,
     `${M.sol.filter(s => s.alive).length} SOLDIERS · ${M.vehicles.filter(v => v.active && !v.dead).length} VEHICLES · ${M.proj.length} SHOTS · ${M.parts.length} PARTICLES`,
     `${DEV.lp.length} LIGHTS · ${f ? f.act.length : 0} SMOKE TILES · TIME ×${DEV.ts} · ${Math.round(W)}×${Math.round(H)} @${DPR.toFixed(2)}`];
   if (S && S.dg) L.push(S.dg);
@@ -673,7 +673,7 @@ function devDrawPanel() {
     }
   } else if (DEV.tab === 2) {
     head('SUN');
-    row(['SUNLIGHT', () => CFG.sun = CFG.sun === false, CFG.sun !== false], [CFG.shadows === 'sweep' ? 'SWEEP' : 'RAY MARCH', () => CFG.shadows = CFG.shadows === 'sweep' ? 'march' : 'sweep']);
+    row(['SUNLIGHT', () => CFG.sun = CFG.sun === false, CFG.sun !== false]);
     row([`‹  VIEW ${DEV_VIEWS[SUNDBG]}  ›`, d => SUNDBG = (SUNDBG + d + DEV_VIEWS.length) % DEV_VIEWS.length, undefined, true]);
     row([`‹  SUN DIR ${Math.round(SUN.az * 180 / Math.PI)}°  ›`, d => SUN.az = Math.atan2(Math.sin(SUN.az + d * Math.PI / 12), Math.cos(SUN.az + d * Math.PI / 12)), undefined, true]);
     row([`‹  SUN HEIGHT ${Math.round(SUN.el * 180 / Math.PI)}°  ›`, d => SUN.el = clamp(SUN.el + d * Math.PI / 36, Math.PI / 18, Math.PI * 0.45), undefined, true]);
