@@ -613,6 +613,7 @@ function devStats() {
     `SUN ${SUNNOW ? (CFG.shadows === 'sweep' ? 'SWEEP' : 'MARCH') : 'OFF'} · VIEW ${DEV_VIEWS[SUNDBG] || SUNDBG} · ${S ? S.lw + '×' + S.lh : '-'} PX LIGHT · ${DEV.nq} HEIGHT QUADS · TALLEST ${Math.round(HMAX)}`,
     `${M.sol.filter(s => s.alive).length} SOLDIERS · ${M.vehicles.filter(v => v.active && !v.dead).length} VEHICLES · ${M.proj.length} SHOTS · ${M.parts.length} PARTICLES`,
     `${DEV.lp.length} LIGHTS · ${f ? f.act.length : 0} SMOKE TILES · TIME ×${DEV.ts} · ${Math.round(W)}×${Math.round(H)} @${DPR.toFixed(2)}`];
+  if (S && S.dg) L.push(S.dg);
   ctx.fillStyle = 'rgba(6,10,5,0.75)'; ctx.fillRect(x - 6 * u, SAFE.t + 76 * u, 430 * u, (L.length * 14 + 8) * u);
   L.forEach((t, i) => txt(t, x, SAFE.t + (86 + i * 14) * u, 10 * u, i ? '#f2e6c4' : '#7dff7a', 'left', 'middle', FD));
 }
@@ -717,6 +718,7 @@ function devInputs() {
 function devPad(st) {
   const B = DEV.B; DEV.padNav = true;
   if (st.back) { DEV.open = false; sfx('ui'); return; }
+  if (st.tabL || st.tabR) { DEV.tab = (DEV.tab + (st.tabR ? 1 : -1) + DEV_TABS.length) % DEV_TABS.length; DEV.sel = 0; sfx('ui'); return; }     // bumpers: the tabs
   const i = DEV.sel = clamp(DEV.sel, 0, B.length - 1), b = B[i]; if (!b) return;
   if (st.confirm) { b.fn(1); sfx('ui'); return; }
   const dx = st.navX, dy = dx ? 0 : st.navY; if (!dx && !dy) return;

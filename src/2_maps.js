@@ -20,11 +20,23 @@ const SNOWY = () => MAP && MAP.id === 'snowfield';
 const prints = mk(WW, WH); const px_ = prints.getContext('2d');
 /* everything left behind (bodies, blood, tread marks) lives on a decal layer that fades over ~3 minutes (craters don't: scorch) */
 const decals = mk(WW, WH); const dgx = decals.getContext('2d');
-/* every 3 s both layers lose a step: footprints 7.5 %, decals 5 % */
+/* every 3 s both layers lose a step: footprints 7.5 %, decals 5 %, and a little more (FADE_CUT), so the faintest reach zero:
+   erasing a share alone sticks at a faint alpha (8-bit: 5 % of 10 rounds to nothing) and leaves a ghost. As an alpha
+   filter where the canvas has them; else the old erase */
+const FADE_CUT = 0.007, FADE_F = typeof dgx.filter === 'string' && (() => {
+  const d = document.createElement('div'); d.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden';
+  d.innerHTML = `<svg width="0" height="0">${[0.075, 0.05].map((a, i) => `<filter id="fade${i}" color-interpolation-filters="sRGB"><feComponentTransfer><feFuncA type="linear" slope="${1 - a}" intercept="${-FADE_CUT}"/></feComponentTransfer></filter>`).join('')}</svg>`;
+  document.body.appendChild(d); return true;
+})();
 let layerFadeT = 0;
 function fadeLayers(dt) {
   layerFadeT += dt; if (layerFadeT < 3) return; layerFadeT = 0;
-  for (const [g, a] of [[px_, 0.075], [dgx, 0.05]]) { g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'destination-out'; g.fillStyle = `rgba(0,0,0,${a})`; g.fillRect(0, 0, WW, WH); g.globalCompositeOperation = 'source-over'; }
+  [[px_, 0.075], [dgx, 0.05]].forEach(([g, a], i) => {
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    if (FADE_F) { g.globalCompositeOperation = 'copy'; g.filter = `url(#fade${i})`; g.drawImage(g.canvas, 0, 0); g.filter = 'none'; }
+    else { g.globalCompositeOperation = 'destination-out'; g.fillStyle = `rgba(0,0,0,${a})`; g.fillRect(0, 0, WW, WH); }
+    g.globalCompositeOperation = 'source-over';
+  });
 }
 function footprint(x, y, a, side, prone) {
   const snow = SNOWY() && !onRoad(x, y, 0), road = onRoad(x, y, 0);
