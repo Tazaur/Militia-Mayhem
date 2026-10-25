@@ -433,3 +433,9 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - `unseen` (sunHeights) counts a vehicle as seen if any of its `vehCircles` (centre, or the point r toward an eye) is in sight, so a half-hidden jeep keeps its heights and its shading.
 - fadeLayers: a canvas alpha filter (an SVG feFuncA, slope 1 − a, intercept −FADE_CUT 0.007, applied by a self-copy) instead of a destination-out fill. The fill's 8-bit rounding stuck at alpha ≈ 9 (a ghost); the filter reaches 0. Without canvas filters it falls back to the fill.
 - Dev: LB / RB (st.tabL / tabR) change tab in devPad. STATS shows `S.dg`: GC size against the drawing buffer, the maps drawn, and the add flag, for diagnosing the phone-only flat lighting.
+
+## Build 163
+- Sight mask on the GPU (sunMask): KT on texture unit 5 (framebuffer FK, program KP). R = the sight fans (each visPoly as a fan from its eye, plus the wall strips); G = the roof rects. It is drawn before the heights. The light composite is no longer clipped by a canvas Path2D; a complex clip with blend-mode draws is the suspected cause of the phone losing all shading when walls or roofs are on screen. Out of sight (FG on, R + G < 0.5), CP drops point lights from Q0 and outputs black for Q1/Q2 (no highlights or glow), and the roof shows in full. Q7, sunFog, S.fog and the fourth map are gone; GC is back to w × 3.
+- HP: unit sprites (p2 = HSEEN, set while soldiers and vehicles go in) are discarded outside the mask's R, so the hidden part of a half-seen jeep neither shows nor casts, and the seen part keeps its shading.
+- Point lights: the shading direction is `vec3(v / K, max(lh, dl * 0.5))`, so a flash below an object's top still lights the side facing it.
+- Nest MG: `SUNB.mgNest = SUNH.nest`; it rests on its bags, so no bridge under the gun.
