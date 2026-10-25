@@ -527,3 +527,6 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 Editor: an underside is an inverted heightmap. Unpainted (0) pixels sit at the part's base (the ceiling), not the floor; painted ones hang down. The underside draws inverted from its deepest pixel even with Stack off.
 Its guide (greyed copy of the part's art, also its paint mask) follows art edits live: a part pixel -> guide pixel map, refreshed in touch.
 Add / Remove underside moved off the toolbar into the Edit menu (the Edit under / Edit part switch stays).
+
+## Build 185
+An underside only counts under the art of the state it carries: hund draws over the overlap of the frame and the underside (pivots lined up, whole px: shift), discards where the frame has no art, reads the underside p1/p2 (uv) away. A state with other edges never shadows from paint past them. Editor: the underside guide (and paint mask) is every state's art (GSRC: guide px -> its frames' px); the 3D stack shows it only under the stacked state's art, lined up the same way; deepest (the lift) counts all paint, as the game.

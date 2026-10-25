@@ -307,7 +307,7 @@ void main() {
     /* heights: one quad per thing (i0 centre + x half-axis, i1 y half-axis + kind + p0, i2 p1 p2 + atlas uv0, i3 uv1 + its top),
        to buffer px by X (scale, offset); kinds: 0 sprite (p0 base, p1 add: its painted heights from base up), 1 box (p0 top,
        p1 bottom, p2 roof over it: B 1), 2 disc (p0 centre top, p1 rim top, p2 bottom), 3 ring arc (p0 top, p1 inner radius / outer,
-       p2 half angle), 4 underside (p0 its top: painted heights hang down from it), 5 material only (p0 reflectivity, p1 water, p2 2: a
+       p2 half angle), 4 underside (p0 its top: painted heights hang down from it; uv the frame it carries, p1 p2 the underside's offset from it), 5 material only (p0 reflectivity, p1 water, p2 2: a
        disc). Out: what stands on the ground (bottom under 1 px): R its top x 4; what floats (a gun past the hull, a jumper): G its
        top x 4, A 255 - its bottom x 4 (MAX: the highest top, the lowest bottom), so one over the other never fills the gap; B a roof over it (a slab ROOF_Z: casts, isn't the surface). With MM: the materials (R reflectivity, G glow, B water), the
        highest top winning (depth) */
@@ -321,7 +321,7 @@ void main() {
   if (k.x < 0.5) { vec4 m = texture2D(A, uv); if (m.a < 0.5) discard; gl_FragColor = MM > 0.5 ? vec4(m.g, m.b, 0., 1.) : span(m.r * 63.75 + k.y + k.z, k.y, 0.); return; }
   else if (k.x < 1.5) gl_FragColor = span(k.y, k.z, k.w);
   else if (k.x < 2.5) { if (r2 > 1.) discard; gl_FragColor = span(mix(k.y, k.z, sqrt(r2)), k.w, 0.); }
-  else if (k.x > 3.5) { vec4 m = texture2D(A, uv); if (MM > 0.5 || m.r <= 0.) discard; gl_FragColor = span(k.y, max(k.y - m.r * 63.75, 0.), 0.); return; }     // an underside: from p0 down by its painted depth (where painted)
+  else if (k.x > 3.5) { if (MM > 0.5 || texture2D(A, uv).a < 0.5) discard; vec4 m = texture2D(A, uv + k.zw); if (m.r <= 0.) discard; gl_FragColor = span(k.y, max(k.y - m.r * 63.75, 0.), 0.); return; }     // an underside: under the frame's art (uv), from p0 down by its painted depth (p1 p2 away)
   else { float r = sqrt(r2); if (r > 1. || r < k.z || abs(atan(q.y, q.x)) > k.w) discard; gl_FragColor = span(k.y, 0., 0.); }
   if (MM > 0.5) gl_FragColor = vec4(0., 0., 0., 1.);
 }`, ['c', 'i0', 'i1', 'i2', 'i3']);
@@ -383,10 +383,14 @@ function hspr(n, x, y, a, base, add) {
   hq(HLA, x + c * ox - s * oy, y + s * ox + c * oy, c * m[2] / 2, s * m[2] / 2, -s * m[3] / 2, c * m[3] / 2, 0, base || 0, add || 0, 0, m[0] / S.aw, m[1] / S.ah, (m[0] + m[2]) / S.aw, (m[1] + m[3]) / S.ah, (base || 0) + (add || 0) + artMax(n));
   HMAT |= artMat(n);
 }
-/* an underside: its painted heights hang down from top (where painted; to the ground: a track, a wheel) */
-function hund(n, x, y, a, top) {
-  const m = ATLAS[n]; if (!m) return; const c = Math.cos(a), s = Math.sin(a), ox = m[2] / 2 - m[4], oy = m[3] / 2 - m[5], S = _sun;
-  hq(HLA, x + c * ox - s * oy, y + s * ox + c * oy, c * m[2] / 2, s * m[2] / 2, -s * m[3] / 2, c * m[3] / 2, 4, top, 0, 0, m[0] / S.aw, m[1] / S.ah, (m[0] + m[2]) / S.aw, (m[1] + m[3]) / S.ah, top);
+/* an underside: its painted heights hang down from top (where painted; to the ground: a track, a wheel), only under the art
+   of the frame it carries (o): the quad is where the two overlap (pivots lined up, whole px), drawn over the frame's art, the
+   underside read a whole-px offset away, so a state with other edges never shadows from paint past them */
+function hund(n, o, x, y, a, top) {
+  const m = ATLAS[n], f = ATLAS[o]; if (!m || !f) return; const S = _sun, dx = Math.round(f[4] - m[4]), dy = Math.round(f[5] - m[5]);
+  const X0 = Math.max(0, dx), X1 = Math.min(f[2], m[2] + dx), Y0 = Math.max(0, dy), Y1 = Math.min(f[3], m[3] + dy); if (X1 <= X0 || Y1 <= Y0) return;
+  const c = Math.cos(a), s = Math.sin(a), ox = (X0 + X1) / 2 - f[4], oy = (Y0 + Y1) / 2 - f[5], hw = (X1 - X0) / 2, hh = (Y1 - Y0) / 2;
+  hq(HLA, x + c * ox - s * oy, y + s * ox + c * oy, c * hw, s * hw, -s * hh, c * hh, 4, top, (m[0] - dx - f[0]) / S.aw, (m[1] - dy - f[1]) / S.ah, (f[0] + X0) / S.aw, (f[1] + Y0) / S.ah, (f[0] + X1) / S.aw, (f[1] + Y1) / S.ah, top);
 }
 /* a part starts on top of what's already under it: the painted height of the parts stacked so far (the hull, the
    turret...) at its rest point (its pivot unless given: an MG's mount, a seat), the highest within 1 px; at least min */
@@ -408,7 +412,7 @@ function hpart(n, x, y, a, o = {}) {         // o: min (start at least), add, rx
   if (!ATLAS[n]) return; const P = sunP(n), un = underOf(n), f = Math.max(o.min || 0, Math.round(hUnder(o.rx ?? x, o.ry ?? y)));
   const b = f + (un ? artMax(un) : 0) + (P.lift || 0), add = (o.add || 0) + (P.add || 0), q = { n, x, y, a, b, add, who: o.who };
   if (o.keep) _stk.push(q); if (_pp) _pp.push(q); else hspr(n, x, y, a, b, add);
-  if (un) { const u = { n: un, x, y, a, b, add: 0, u: 1 }; if (_pp) _pp.push(u); else hund(un, x, y, a, b); }     // what it stands on, hanging from its base
+  if (un) { const u = { n: un, o: n, x, y, a, b, add: 0, u: 1 }; if (_pp) _pp.push(u); else hund(un, n, x, y, a, b); }     // what it stands on, hanging from its base
 }
 /* a thing's parts, bottom up, each standing on what's under it (worked out once a frame): what the height pass draws,
    and where its guns, crew and top are */
@@ -446,7 +450,7 @@ function vehParts(v) {
     hpart(mg, mx, my, v.mgA, mount); crew(2, 0, SUNB.stand);     // the MG on its post; the gunner stands in the bed
   }
 }
-const hParts = o => { for (const q of partsOf(o)) if (q.u) hund(q.n, q.x, q.y, q.a, q.b); else hspr(q.n, q.x, q.y, q.a, q.b, q.add); };
+const hParts = o => { for (const q of partsOf(o)) if (q.u) hund(q.n, q.o, q.x, q.y, q.a, q.b); else hspr(q.n, q.x, q.y, q.a, q.b, q.add); };
 /* a shape's [top, bottom]: SUNH height h (+ add) standing on its lift */
 const shp = (h, n) => { const P = sunP(n), b = P.lift || 0; return [h + b + (P.add || 0), b]; };
 /* everything solid, as heights (the same things, and the same hidden ones left out, as the frame draws) */
