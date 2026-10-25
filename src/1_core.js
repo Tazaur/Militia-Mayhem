@@ -705,7 +705,7 @@ function touchPlayer() { return PLAYERS.find(p => p.dev.type === 'touch'); }
 
 /* ---------------- settings ---------------- */
 const CFG = Object.assign({ mode: 0, map: 0, bots: 5, limit: 1, skill: 1, ff: false, board: false, midjoin: true, camera: 'split', style: 'classic', fogLook: 'grey', weather: 'clear', teamColors: 'player', fog: 'los', sound: 'exp', sun: true, clearLos: true,
-  res: 100, lightQ: 1, fps: 0, minimap: true, volMaster: 100, volSfx: store.get('sfx', true) ? 100 : 0, volMus: store.get('mus', true) ? 100 : 0 }, store.get('cfg3', {}));
+  res: 100, lightQ: 1, fps: 0, minimap: true, tSize: 100, tAlpha: 100, tFireX: 96, tFireY: 92, tLfire: true, volMaster: 100, volSfx: store.get('sfx', true) ? 100 : 0, volMus: store.get('mus', true) ? 100 : 0 }, store.get('cfg3', {}));
 /* settings › FOG OF WAR presets: [name, values] (drawn by fogLook / fogEdge) */
 const FOG_PRESETS = [['GREYSCALE', { fogD: 100, fogK: 22, fogE: 0, fogW: 24 }], ['MUTED', { fogD: 50, fogK: 22, fogE: 0, fogW: 24 }],
   ['DARKENED', { fogD: 0, fogK: 42, fogE: 0, fogW: 24 }], ['EDGE ONLY', { fogD: 0, fogK: 0, fogE: 60, fogW: 24 }]];

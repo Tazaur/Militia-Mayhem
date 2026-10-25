@@ -698,12 +698,15 @@ function wrapCenter(str, x, y, maxW, size, col) {
 }
 /* touch controls, drawn above every view: only what can be used right now is on screen */
 function drawTouch(s) {
-  const k = clamp(Math.min(W, H) / 390, 0.85, 1.45), v = s.veh, sd = v ? v.T.seats[s.seat] : null, rifle = !v || sd.role === 'rifle', K = KITS[s.kit];
+  ctx.globalAlpha = CFG.tAlpha / 100; drawTouch_(s); ctx.globalAlpha = 1;     // settings › TOUCH: opacity (icons multiply it)
+}
+function drawTouch_(s) {
+  const k = clamp(Math.min(W, H) / 390, 0.85, 1.45) * CFG.tSize / 100, v = s.veh, sd = v ? v.T.seats[s.seat] : null, rifle = !v || sd.role === 'rifle', K = KITS[s.kit];
   TB_ON = [];
   const reg = (key, b) => { TB[key] = b; TB_ON.push(key); return b; };
   const disc = (x, y, r, held, fill) => { ctx.fillStyle = held ? 'rgba(255,224,138,0.38)' : fill || 'rgba(0,0,0,0.38)'; ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); ctx.stroke(); };
   const btn = (key, x, y, r, ic, o = {}) => { reg(key, { x, y, r }); disc(x, y, r, TOUCH.hold[key], o.fill); icon(ic, x, y, r * (o.sc || 1), o.col || '#fff', o.al); };
-  const F = reg('fire', { x: W - SAFE.r - 96 * k, y: H - SAFE.b - 92 * k, r: 50 * k });
+  const F = reg('fire', { x: W - SAFE.r - CFG.tFireX * k, y: H - SAFE.b - CFG.tFireY * k, r: 50 * k });     // settings › TOUCH: where
   const at = (deg, rad) => [F.x + Math.cos(deg * Math.PI / 180) * rad * k, F.y + Math.sin(deg * Math.PI / 180) * rad * k];
   // fire stick: drag to aim + fire, tap to fire ahead
   const ft = [...TOUCH.pts.values()].find(t => t.role === 'fire');
@@ -759,7 +762,7 @@ function drawTouch(s) {
     });
   }
   // left side: fire button for the left thumb (on foot or in a gun seat)
-  if (!v || sd.role !== 'drive' || v.type === 'tank') btn('lfire', SAFE.l + 46 * k, H - SAFE.b - 196 * k, 30 * k, 'cross', { fill: 'rgba(160,30,20,0.4)', col: '#fff', sc: 1.1 });
+  if (CFG.tLfire !== false && (!v || sd.role !== 'drive' || v.type === 'tank')) btn('lfire', SAFE.l + 46 * k, H - SAFE.b - 196 * k, 30 * k, 'cross', { fill: 'rgba(160,30,20,0.4)', col: '#fff', sc: 1.1 });
   // top-left: pause, and the minimap opens the full map
   btn('pause', SAFE.l + 26 * k, SAFE.t + 26 * k, 19 * k, 'pause');
   btn('score', SAFE.l + 72 * k, SAFE.t + 26 * k, 19 * k, 'score', { fill: TOUCH.scoreOn ? 'rgba(255,224,138,0.5)' : undefined });

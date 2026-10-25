@@ -497,3 +497,6 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 ## Build 176
 - Dev VIEW HEIGHTS: one ramp (`hr`) of the top height, from dark blue at 0 to red at 64, roofs included. It is hatched in the underside's colour where a floating span (G over R) has a gap under it.
 - Dev PIVOTS + SEATS (`DEV.piv`): pivots with heading in white (soldiers, vehicles, wrecks). Mounts in cyan: turret pivot, MG and barrels, gun tips. Seats in yellow (initials; drivers get an arrow), the nest arc as a wedge, and entry anchors (hollow).
+
+## Build 177
+- Settings TOUCH tab: BUTTON SIZE (`CFG.tSize`, scales drawTouch's k), OPACITY (`tAlpha`; drawTouch wraps drawTouch_ in one globalAlpha), FIRE STICK FROM EDGE / BOTTOM (`tFireX/Y`; the action arc follows it), LEFT FIRE BUTTON (`tLfire`), DRAG TO AIM (TOUCH.auto). Long tab names shrink to fit.

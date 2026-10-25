@@ -460,10 +460,16 @@ const SETS = {
   volMaster: slider('MASTER VOLUME', 'volMaster', 0, 100, 10, '%', applyMute),
   volSfx: slider('EFFECTS VOLUME', 'volSfx', 0, 100, 10, '%', applyMute),
   volMus: slider('MUSIC VOLUME', 'volMus', 0, 100, 10, '%', applyMute),
-  sound: choice('SOUND MIX', 'sound', [['exp', 'MODERN'], ['classic', 'CLASSIC']], () => engineKillAll())
+  sound: choice('SOUND MIX', 'sound', [['exp', 'MODERN'], ['classic', 'CLASSIC']], () => engineKillAll()),
+  tSize: slider('BUTTON SIZE', 'tSize', 70, 140, 5, '%'),
+  tAlpha: slider('OPACITY', 'tAlpha', 20, 100, 5, '%'),
+  tFireX: slider('FIRE STICK FROM EDGE', 'tFireX', 70, 240, 10, ' PX'),
+  tFireY: slider('FIRE STICK FROM BOTTOM', 'tFireY', 70, 240, 10, ' PX'),
+  tLfire: choice('LEFT FIRE BUTTON', 'tLfire', [[true, 'ON'], [false, 'OFF']]),
+  tAuto: { n: 'DRAG TO AIM', o: [['on', 'AIMS + FIRES'], ['off', 'AIMS ONLY'], ['range', 'FIRES IN RANGE']], get: () => TOUCH.auto, set: v => { TOUCH.auto = v; store.set('autofire', v); } }
 };
 const SET_TABS = [['GRAPHICS', ['style', 'sun', 'clearLos', 'fullscreen', 'camera']], ['FOG OF WAR', ['fogStyle', 'fogD', 'fogK', 'fogE', 'fogW']],
-  ['PERFORMANCE', ['res', 'lightQ']], ['HUD', ['fps', 'minimap', 'teams']], ['AUDIO', ['volMaster', 'volSfx', 'volMus', 'sound']], ['CONTROLS', null]];
+  ['PERFORMANCE', ['res', 'lightQ']], ['HUD', ['fps', 'minimap', 'teams']], ['AUDIO', ['volMaster', 'volSfx', 'volMus', 'sound']], ['TOUCH', ['tSize', 'tAlpha', 'tFireX', 'tFireY', 'tLfire', 'tAuto']], ['CONTROLS', null]];
 const setRows = () => SET_TABS[SET.tab][1];
 const CONTROLS = [['MOVE', 'LEFT STICK', 'W A S D'], ['AIM', 'RIGHT STICK', 'MOUSE'], ['FIRE', 'RT', 'LEFT CLICK'], ['AIM DOWN SIGHTS', 'LT', 'RIGHT CLICK'],
   ['SPRINT', 'L3', 'SHIFT'], ['JUMP / VAULT', 'A', 'SPACE'], ['PRONE / STAND', 'B', 'C / Z'], ['RELOAD', 'X', 'R'],
@@ -511,7 +517,8 @@ function drawSettings() {
   const dv = devOf(null), cs = Math.max(40, 40 * u); iconButton(px + pw - cs - 8, py + (hh - cs) / 2, cs, 'close', () => closeSettings(), false, ['back', dv]);
   // category tabs, on their own row under the title (LB / RB or Q / E cycle them)
   const kw = Math.max(34, 40 * u), nt = SET_TABS.length, tw = Math.min(170 * u, (pw - pad * 2 - kw * 2) / nt), tx = px + pw / 2 - tw * nt / 2, ty = py + hh;
-  SET_TABS.forEach(([t], i) => button({ x: tx + i * tw, y: ty, w: tw - 6, h: cs, label: t, sel: SET.tab === i, fn: () => { SET.tab = i; SET.sel = 0; sfx('ui'); }, size: fpx(14, u, 11) }));
+  SET_TABS.forEach(([t], i) => { ctx.font = `${fpx(14, u, 11)}px ${FD}`; const fw = ctx.measureText(t).width, fs = fpx(14, u, 11) * Math.min(1, (tw - 16) / fw);     // a long name shrinks to fit its tab
+    button({ x: tx + i * tw, y: ty, w: tw - 6, h: cs, label: t, sel: SET.tab === i, fn: () => { SET.tab = i; SET.sel = 0; sfx('ui'); }, size: fs }); });
   keyTag('prev', dv, { x: tx, y: ty, w: tw - 6, h: cs }, 'left'); keyTag('next', dv, { x: tx + (nt - 1) * tw, y: ty, w: tw - 6, h: cs }, 'right');
   const bodyY = ty + cs + 12 * u, bodyH = py + ph - bodyY - Math.max(28, 30 * u), rows = setRows();
   if (rows) {
