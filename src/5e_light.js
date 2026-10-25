@@ -141,7 +141,7 @@ const SUNH = { flag: 22, item: 4, wall: 40, fence: 9, hay: 14, crate: 10, nest: 
 const SUNB = { mgNest: SUNH.nest, stand: 18, jump: 4 };     // px: the nest MG rests on its bags (drawn over them, so never lower); a soldier's legs (added to his painted height, solid); a jump's gap
 /* per part (sprite name less its frame number) or shape (SUNH name): lift = an air gap (px) between it and what it rests
    on, add = px taller than painted. A part's start is the top of what's under it (+ lift); its pixels stand on that.
-   A part with an underside in the atlas (under_<part>: heights only, painted as depth down) stands on it: as high as its
+   A part with an underside (the atlas's settings: under_<part>, a rect in its pool; heights only, painted as depth down) stands on it: as high as its
    deepest pixel, so the tracks / wheels reach the ground and the clearance is whatever is painted */
 const SUNP = { tur_gun: { lift: 4 }, jeep4: { under: false } };     // under false: no underside (the wreck sits in the dirt)
 /* draw order: each thing's height (px, its top as the sun pass has it); drawWorld draws low to high */
@@ -157,7 +157,17 @@ function matData() {
   if (MAT || !MIMG || !MIMG.complete || !MIMG.width || !imgReady) return MAT;
   const w = MIMG.width, h = MIMG.height, g2 = mk(w, h).getContext('2d', { willReadFrequently: true });
   g2.drawImage(MIMG, 0, 0); const mp = g2.getImageData(0, 0, w, h).data; g2.clearRect(0, 0, w, h); g2.drawImage(IMG, 0, 0); const ap = g2.getImageData(0, 0, w, h).data;
-  return MAT = { mp, ap, w, h };
+  MAT = { mp, ap, w, h }; ATLAS_CFG = atlasCfg(mp, w);
+  const P = ATLAS._pool; for (const [n, r] of Object.entries(ATLAS_CFG.under || {})) ATLAS['under_' + n] = [r[0], P[1] + r[1], r[2], r[3], r[4], r[5]];     // undersides: where in the pool
+  return MAT;
+}
+/* the settings the atlas carries (the heightmap editor writes them): a JSON string in atlas_m's settings strip (ATLAS._cfg),
+   2 bytes of length then UTF-8, over its pixels' G / B bytes row by row. { under: { part: [x, y, w, h, px, py] in the pool } } */
+let ATLAS_CFG = {};
+function atlasCfg(mp, w) {
+  const C = ATLAS._cfg; if (!C) return {}; const b = [];
+  for (let y = C[1]; y < C[1] + C[3]; y++) for (let x = 0; x < C[2]; x++) { const i = (y * w + x) * 4; b.push(mp[i + 1], mp[i + 2]); }
+  const n = b[0] << 8 | b[1]; try { return n ? JSON.parse(new TextDecoder().decode(new Uint8Array(b.slice(2, 2 + n)))) : {}; } catch (e) { return {}; }
 }
 /* a sprite's painted height (px) at a point (from its pivot, unrotated); past its edge, the nearest pixel back toward the pivot */
 function artH(n, lx, ly) {
@@ -172,9 +182,9 @@ function artMat(n) {         // 1: some of it reflects, 2: some of it glows
   for (let y = 0; y < m[3]; y++) for (let x = 0; x < m[2]; x++) { const i = ((m[1] + y) * D.w + m[0] + x) * 4; if (D.ap[i + 3] >= 128) v |= (D.mp[i + 1] > 8 ? 1 : 0) | (D.mp[i + 2] > 8 ? 2 : 0); }
   _amt.set(n, v); return v;
 }
-function artMax(n) {         // its tallest pixel
-  let v = _amx.get(n); if (v !== undefined) return v; const D = matData(), m = ATLAS[n]; if (!D || !m) return 0; v = 0;
-  for (let y = 0; y < m[3]; y++) for (let x = 0; x < m[2]; x++) { const i = ((m[1] + y) * D.w + m[0] + x) * 4; if (D.ap[i + 3] >= 128) v = Math.max(v, D.mp[i] / 4); }
+function artMax(n) {         // its tallest pixel (an underside has no art: all of it)
+  let v = _amx.get(n); if (v !== undefined) return v; const D = matData(), m = ATLAS[n]; if (!D || !m) return 0; v = 0; const all = n.startsWith('under_');
+  for (let y = 0; y < m[3]; y++) for (let x = 0; x < m[2]; x++) { const i = ((m[1] + y) * D.w + m[0] + x) * 4; if (all || D.ap[i + 3] >= 128) v = Math.max(v, D.mp[i] / 4); }
   _amx.set(n, v); return v;
 }
 /* where things start: a soldier's gap under him (a jump) and his legs; the gun's muzzle, the throwing hand */

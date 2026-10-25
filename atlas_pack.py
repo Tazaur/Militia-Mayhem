@@ -10,18 +10,39 @@ edits of the 1:1 sprites (icons, MGs, dead turret) back into their source files.
 atlas_m.png is the material atlas, same layout, opaque (the silhouette is atlas.png's alpha): R = height above the object's
 base, 4 per px (0..63 px), G = reflectivity, B = glow. Painted in heightmap/ (the editor); a repack carries every sprite's
 material along with it, and a sprite that has none gets a first pass from its outline (rounded edges, flat top, a little
-relief from the art's shading). `--remat` regenerates them all."""
+relief from the art's shading). `--remat` regenerates them all.
+
+Under the sprites: the underside pool (atlas_m only, never drawn: heights painted as depth down, hung under a part) and, in
+the last rows, the settings strip: a JSON string in atlas_m's G / B bytes, written by the editor (its Underside toggle) so the
+game takes settings straight from the atlas. {"under": {part: [x, y, w, h, px, py]}}: x, y inside the pool. Both are carried
+over row for row; atlas.json has their rects as _pool / _cfg."""
 from PIL import Image
 import numpy as np, json, os, sys
 SYNC = '--sync' in sys.argv; REMAT = '--remat' in sys.argv
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 from mounts import mount_sprites, bag_frames
 
-meta = json.load(open('atlas.json')); meta.pop('_strip', None)
+meta = json.load(open('atlas.json')); meta.pop('_strip', None); pool_old = meta.pop('_pool', None); cfg_old = meta.pop('_cfg', None)
 A = np.array(Image.open('atlas.png').convert('RGBA'))
 extra = json.load(open('atlas_extra.json'))
 def old(n): x, y, w, h, px, py = meta[n]; return (A[y:y + h, x:x + w].copy(), px, py)
 AM = np.array(Image.open('atlas_m.png').convert('RGB')) if os.path.exists('atlas_m.png') and not REMAT else None
+POOL_H, CFG_H = 128, 4                            # the underside pool's rows; the settings strip's rows
+def cfg_read(M, y0):                              # 2 bytes of length, then UTF-8 JSON, over the strip's G / B bytes row by row
+    b = M[y0:y0 + CFG_H, :, 1:3].reshape(-1); n = int(b[0]) << 8 | int(b[1])
+    try: return json.loads(bytes(b[2:2 + n]).decode()) if n else {}
+    except ValueError: return {}
+def cfg_write(M, y0, c):
+    t = json.dumps(c, separators=(',', ':')).encode(); b = np.zeros(CFG_H * M.shape[1] * 2, np.uint8); assert len(t) + 2 <= len(b), 'settings too long'
+    b[0], b[1] = len(t) >> 8, len(t) & 255; b[2:2 + len(t)] = np.frombuffer(t, np.uint8); M[y0:y0 + CFG_H, :, 1:3] = b.reshape(CFG_H, -1, 2)
+AM0 = AM if AM is not None else np.zeros((1, 384, 3), np.uint8)
+CFG = cfg_read(AM0, cfg_old[1]) if cfg_old and AM is not None else {}
+POOL = AM0[pool_old[1]:pool_old[1] + POOL_H].copy() if pool_old and AM is not None else np.zeros((POOL_H, 384, 3), np.uint8)
+ox = 0
+for n, b in (('under_hull', 'hull'), ('under_jeep', 'jeep')):   # once: the old under_ atlas slots move into the pool
+    if n not in meta: continue
+    x, y, w, h, px, py = meta.pop(n)
+    if AM is not None: POOL[0:h, ox:ox + w] = AM[y:y + h, x:x + w]; CFG.setdefault('under', {})[b] = [ox, 0, w, h, px, py]; ox += w + 1
 
 S = {}                                            # name -> (arr, px, py)
 # ---- vehicles: hulls, jeeps, turret (body + separate cannon), wreck parts, mounted MG, white paint pieces
@@ -50,11 +71,6 @@ if 'tur11' in meta:                               # first run: split the full-le
     t, px, py = old('tur11'); CUT = 51            # columns 0..50 = turret + mantlet (identical in every recoil frame)
     S['tur'] = (t[:, :CUT].copy(), px, py); S['tur_gun'] = (t[:, CUT:].copy(), px - CUT, py)
 else: S['tur'] = old('tur'); S['tur_gun'] = old('tur_gun')
-# ---- undersides (heights only, never drawn): the hull / jeep silhouette, its art greyed as a guide for painting in heightmap/;
-# under_<part>: the game hangs it under that part, which stands as high as its deepest pixel, so the shadow has tracks / wheels with light between
-for n, b in (('under_hull', 'hull0'), ('under_jeep', 'jeep0')):
-    if n in meta: S[n] = old(n)
-    else: a, px, py = old(b); g = a.copy(); L = (a[:, :, :3].astype(float) @ [0.3, 0.59, 0.11]) * 0.45; g[:, :, 0] = g[:, :, 1] = g[:, :, 2] = L.astype(np.uint8); S[n] = (g, px, py)
 S['bar'] = old('bar' if 'bar' in meta else 'bar_white')
 if 'decal' not in S: S['decal'] = old('decal' if 'decal' in meta else 'decal_white')
 for n in ['jeep_tire', 'jeep_wheel', 'jeep_flat']:
@@ -109,7 +125,7 @@ bags, bagPts = bag_frames(np.array(Image.open('art/orig/4948b42c-image.png').con
 for n, v in bags.items(): S[n] = old(n) if n in meta else v
 if 'bagPts' not in extra: extra['bagPts'] = bagPts
 
-GROUPS = [['hull', 'jeep', 'tur', 'mg', 'bar', 'decal', 'under_'], ['smoke', 'boom', 'dust', 'fire'], ['sol_', 'nsh_'], ['wi_'], ['ic_'], ['bagarc']]
+GROUPS = [['hull', 'jeep', 'tur', 'mg', 'bar', 'decal'], ['smoke', 'boom', 'dust', 'fire'], ['sol_', 'nsh_'], ['wi_'], ['ic_'], ['bagarc']]
 def group(n):
     for i, G in enumerate(GROUPS):
         if any(n.startswith(p) for p in G): return i
@@ -123,7 +139,9 @@ for gi in range(len(GROUPS)):
         a, px, py = S[n]; h, w = a.shape[:2]
         if x + w > W: x = 0; y += rowh + 1; rowh = 0
         places.append((n, x, y)); out[n] = [x, y, w, h, round(float(px), 1), round(float(py), 1)]; x += w + 1; rowh = max(rowh, h)
-H = y + rowh; atlas = np.zeros((H, W, 4), np.uint8)
+PY = y + rowh + 2; H = PY + POOL_H + 1 + CFG_H; CY = H - CFG_H     # then the pool and the settings strip
+out['_pool'] = [0, PY, W, POOL_H, 0, 0]; out['_cfg'] = [0, CY, W, CFG_H, 0, 0]
+atlas = np.zeros((H, W, 4), np.uint8)
 for n, x, y in places: a = S[n][0]; atlas[y:y + a.shape[0], x:x + a.shape[1]] = a
 Image.fromarray(atlas).save('atlas.png', optimize=True)
 json.dump(out, open('atlas.json', 'w'))
@@ -132,16 +150,6 @@ MAT = {  # prefix: (height px, bevel px or 0 = a dome over the whole shape, refl
     'hull': (12, 4, 90, 1.5), 'tur_gun': (3, 0, 110, 0), 'tur_dead': (8, 4, 50, 1.5), 'tur': (10, 4, 90, 1.5), 'jeep_': (4, 0, 25, 0),
     'jeep': (14, 5, 70, 1.5), 'mg': (3, 0, 110, 0), 'bagarc': (10, 5, 15, 1), 'sol_': (8, 0, 30, 1), 'smoke': (14, 0, 0, 0),
     'dust': (6, 0, 0, 0), 'boom': (16, 0, 0, 0), 'fire': (10, 0, 0, 0)}
-def undergen(a, n, px, py):                                        # first pass: how far down from the body's base, R x 4 (tracks, wheels)
-    m = np.zeros(a.shape[:2] + (3,), np.uint8); h, w = a.shape[:2]; ys, xs = np.mgrid[0:h, 0:w]; lx, ly = xs + 0.5 - px, ys + 0.5 - py; inside = a[:, :, 3] > 0
-    d = np.zeros((h, w))
-    if n == 'under_hull':                                          # tracks down both sides, angled up over the last 12 px at each end
-        x0, x1 = lx[inside].min(), lx[inside].max(); e = np.clip(np.minimum(lx - x0, x1 - lx) / 12, 0, 1)
-        d = np.where(np.abs(ly) > h / 2 - 10, np.maximum(1, np.round(1 + 4 * e)), 0)
-    if n == 'under_jeep':                                          # round wheels: deepest under the axle, rising to the front and back
-        for wx, wy in extra['jeepWells']:
-            for sd in (-1, 1): r = np.abs(lx - wx); d = np.where((r < 6) & (np.abs(ly - wy * sd) < 3), np.maximum(1, np.round(5 * np.sqrt(np.clip(1 - (r / 6) ** 2, 0, 1)))), d)
-    m[:, :, 0] = np.where(inside, d * 4, 0); return m
 def matgen(a, n):
     m = np.zeros(a.shape[:2] + (3,), np.uint8); al = a[:, :, 3]
     p = next((k for k in MAT if n.startswith(k)), None)
@@ -162,7 +170,8 @@ AMn = np.zeros((H, W, 3), np.uint8); gen = 0
 for n, x, y in places:
     a = S[n][0]; h, w = a.shape[:2]
     if AM is not None and n in meta and meta[n][2:4] == [w, h]: ox, oy = meta[n][:2]; AMn[y:y + h, x:x + w] = AM[oy:oy + h, ox:ox + w]
-    else: AMn[y:y + h, x:x + w] = undergen(a, n, *S[n][1:]) if n.startswith('under_') else matgen(a, n); gen += 1
+    else: AMn[y:y + h, x:x + w] = matgen(a, n); gen += 1
+AMn[PY:PY + POOL_H] = POOL; cfg_write(AMn, CY, CFG)
 Image.fromarray(AMn).save('atlas_m.png', optimize=True)
 extra['tips'] = {k: v for k, v in extra.get('tips', {}).items() if k.startswith('n_')}
 json.dump(extra, open('atlas_extra.json', 'w'))
