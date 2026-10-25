@@ -572,3 +572,6 @@ Dev: LIGHT POINTS draws a spotlight as its direction, cone sides and the ground 
 
 ## Build 196
 Soft light shadows blend instead of dithering: LT is LINEAR and CP reads it as 4 taps at (±1, ±1) px (a 4 x 4 footprint), so the jittered march's half-shadows average out (dev view POINT LIGHTS still shows the raw single tap). Tank spotlight back to catching its hull a little: FIXED.tank tilt 0.3, half-angle 0.28.
+
+## Build 197
+Light cost trimmed: the point light march back to 6 px average steps (the packing toward the light kept: free); CP's 4-tap LT blur skipped when no point lights (uniform LB = S.pk[0] > 0; LT isn't read at all then, i.e. all day).
