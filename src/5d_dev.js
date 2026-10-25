@@ -721,7 +721,7 @@ function devDrawPanel() {
     row(tog('SIGHT LINES', DEV, 'sightDbg'), tog('SMOKE VALUES', DEV, 'smokeDbg'));
     row(tog('HITBOXES', DEV, 'hit'), tog('LIGHT POINTS', DEV, 'lpts'));
     row(tog('HEIGHTS', DEV, 'hts'), tog('STATS', DEV, 'stats'));
-    row(tog('PIVOTS + SEATS', DEV, 'piv'), tog('FLASHLIGHT POOL', DEV, 'lampX'));
+    row(tog('PIVOTS + SEATS', DEV, 'piv'));
   } else {
     head('WORLD');
     row(['RESET MAP', devResetMap], ['NEW HOUSES', () => { DEV.seed++; devResetMap(); }]);

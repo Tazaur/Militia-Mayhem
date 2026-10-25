@@ -12,11 +12,13 @@ const LH = { tank: 30, jeep: 20, nest: 12, bag: 12, hay: 16, tree: 255 };       
    none for all round); lightFx: one that fades over T s */
 function light(x, y, r, h, k, skip, d, c) { LIGHTS.push({ x, y, r: r * LSC, h, k, skip, d, c }); }     // c: its colour (none: LCOL, warm white)
 const LCOL = [1, 0.96, 0.86];
-/* a vehicle's tail lights (its lights on): two small red lights at its art's back corners, shining back */
-const TAIL = { r: 7, k: 0.8, cone: 1.2, c: [1, 0.1, 0.05] };
+/* a vehicle's tail lights (its lights on): two dim red point lights, 3 px over its hull's floor (the hull part's base), just
+   behind its art: a jeep's either side of the spare tire (TAIL.jeep: art px), a tank's at its back corners */
+const TAIL = { r: 14, k: 0.35, c: [1, 0.1, 0.05], jeep: [[5.5, 10], [5.5, 32]] };
 function tailLights(v, f) {
-  const m = ATLAS[v.type === 'tank' ? 'hull0' : 'jeep0'], c = Math.cos(v.a), s = Math.sin(v.a), bx = -m[4] - 1, h = Math.round(artMax(v.type === 'tank' ? 'hull0' : 'jeep0') * 0.5);
-  for (const sd of [-1, 1]) { const ly = sd * (m[3] / 2 - 4); f(v.x + c * bx - s * ly, v.y + s * bx + c * ly, h, v.a + Math.PI); }
+  const q = partsOf(v).find(q => /^(jeep|hull)\d/.test(q.n)); if (!q) return;
+  const m = ATLAS[q.n], c = Math.cos(v.a), s = Math.sin(v.a), P = v.type === 'jeep' ? TAIL.jeep : [[-1, 6], [-1, m[3] - 6]];
+  for (const [ax, ay] of P) { const lx = ax - m[4], ly = ay - m[5]; f(v.x + c * lx - s * ly, v.y + s * lx + c * ly, q.b + 3); }
 }
 const spotK = (d, ux, uy) => !d ? 1 : clamp((ux * d[0] + uy * d[1] - d[2]) / ((1 - d[2]) * 0.35), 0, 1);     // in the cone: 1, a soft rim
 const lampD = a => [Math.cos(a), Math.sin(a), Math.cos(LAMP.cone)];
@@ -31,7 +33,7 @@ function lampsOn(f) {
     for (const i of [0, 1]) { const sd = (i ? 1 : -1) * (m[3] / 2 - 5); f(v.x + c * fx - s * sd, v.y + s * fx + c * sd, h, v.a, P[i]); }
   }
 }
-/* dev EXPERIMENTAL FLASHLIGHT: the beam is a round cone in 3D, tilted down so its top edge meets the ground where the aim
+/* a beam (flashlight, headlight, spotlight) is a round cone in 3D, tilted down so its top edge meets the ground where the aim
    first meets something (a ray: walls, trees, hay, bags, vehicles; 60..260 px, eased): in the open the pool reaches far,
    up against cover it's short. The cone meets the ground in an oval, longer the lower the lamp (prone: grazing).
    Returns the shader's spot w: 1 + the tilt of the beam's middle (height drop per px) */
@@ -68,8 +70,8 @@ function lightFx(x, y, r, h, T) { LFX.push({ x, y, r, h, t0: M.time, T }); }
 function lightsNow(vis) {          // this frame's strongest lights in view (and the queue emptied)
   for (let i = LFX.length - 1; i >= 0; i--) { const f = LFX[i], u = (M.time - f.t0) / f.T; if (u >= 1 || u < 0) LFX.splice(i, 1); else light(f.x, f.y, f.r, f.h, (1 - u) ** 2); }
   for (const w of M.wrecks) if (w.burn > 0) light(w.x, w.y, 110, topOf(w) + 6, 0.4 + 0.15 * Math.sin(M.time * 23 + w.x) * Math.sin(M.time * 9.7), w);   // still burning
-  lampsOn((x, y, h, a, o) => light(x, y, LAMP.r, h, LAMP.k, null, M.dev && DEV.lampX ? [...lampD(a), lampPool(o, a, x, y, h)] : lampD(a)));     // flashlights, headlights (from the state: one out of sight still throws its beam in)
-  for (const v of M.vehicles) if (v.lights && v.active && !v.dead && v.type !== 'nest') tailLights(v, (x, y, h, a) => light(x, y, TAIL.r, h, TAIL.k, v, [Math.cos(a), Math.sin(a), Math.cos(TAIL.cone)], TAIL.c));
+  lampsOn((x, y, h, a, o) => light(x, y, LAMP.r, h, LAMP.k, null, [...lampD(a), lampPool(o, a, x, y, h)]));     // flashlights, headlights (from the state: one out of sight still throws its beam in)
+  for (const v of M.vehicles) if (v.lights && v.active && !v.dead && v.type !== 'nest') tailLights(v, (x, y, h) => light(x, y, TAIL.r, h, TAIL.k, v, null, TAIL.c));
   const L = LIGHTS.filter(l => l.k > 0.02 && vis(l.x, l.y, l.r)).sort((a, b) => b.k * b.r - a.k * a.r).slice(0, LMAX); LIGHTS.length = 0; if (M.dev) DEV.lp = L;
   return L;
 }
@@ -262,8 +264,8 @@ void main() {
     if (PK[i] <= 0.) continue;
     vec2 v = PL[i].xy - p; float dl = length(v) / K, lh = PL[i].w - h0;
     if (dl >= PL[i].z) continue;
-    float cn = 1.; if (PD[i].w > 0.5 && PD[i].w < 1.0001) { cn = clamp((dot(-v / max(length(v), 0.001), PD[i].xy) - PD[i].z) / ((1. - PD[i].z) * 0.35), 0., 1.); if (cn <= 0.) continue; }     // a spot: its cone (spotK)
-    if (PD[i].w > 1.) { cn = clamp((dot(normalize(vec3(PD[i].xy, 1. - PD[i].w)), normalize(vec3(-v / K, -lh))) - PD[i].z) / ((1. - PD[i].z) * 0.35), 0., 1.); if (cn <= 0.) continue; }     // a tilted beam (lampPool): the cone in 3D, its middle dropping w - 1 per px (on the ground: an oval)
+    float cn = 1.;
+    if (PD[i].w > 1.) { cn = clamp((dot(normalize(vec3(PD[i].xy, 1. - PD[i].w)), normalize(vec3(-v / K, -lh))) - PD[i].z) / ((1. - PD[i].z) * 0.35), 0., 1.); if (cn <= 0.) continue; }     // a spotlight (lampPool): the cone in 3D, its middle dropping w - 1 per px (on the ground: an oval)
     float s = 1., n = clamp(length(v) / 6., 8., 64.);     // steps of 6 buffer px or less (up to 64): a wall isn't stepped over
     for (int k = 1; k < 64; k++) { if (float(k) >= n) break; float o, th, t = (float(k) - j) / n, d = blk(p + v * t, h0 + lh * t, o, th); if (d > 0.) s = min(s, 1. - clamp(d / min(3., th * 0.35), 0., 1.) * o); }
     s *= cn;

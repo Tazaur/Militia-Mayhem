@@ -1054,6 +1054,7 @@ function controlSoldier(s, I, dt) {
   }
   if (M.time - s.lastHurt > 5 && s.hp < s.mhp) s.hp = Math.min(s.mhp, s.hp + 9 * dt * s.mhp / 100);
   if (s.reloadT > 0) { s.reloadT -= dt; if (s.reloadW !== s.wi) s.reloadT = 0; else if (s.reloadT <= 0) { const st = cw(s), need = WPN[st.id].mag - st.mag, take = Math.min(need, st.res); st.mag += take; st.res -= take; } }
+  if (I.lamp) { if (!s.veh) s.lamp = !s.lamp; else if (s.veh.type !== 'nest') s.veh.lights = !s.veh.lights; }     // flashlight on / off; in a vehicle, its lights (lampsOn; the flashlight's off in there)
   if (s.veh) { controlSeated(s, I, dt); return; }
   s.swim = inWater(s.x, s.y);
   if (s.swim) s.stance = 0;
@@ -1067,7 +1068,6 @@ function controlSoldier(s, I, dt) {
     s.meleeCd = 0.7; s.meleeT = 0.18; sfx('knife', s.x, s.y); s.vx += Math.cos(s.a) * 90; s.vy += Math.sin(s.a) * 90;
     for (const o of M.sol) { if (!o.alive || o === s || o.veh || !canHurt(s, o) || o.team === s.team && !M.ff) continue; const dx = o.x - s.x, dy = o.y - s.y; if (Math.hypot(dx, dy) < 28 && Math.abs(angDiff(s.a, Math.atan2(dy, dx))) < 1.0) { o.protect = 0; hurtSoldier(o, 100, s, 'knife', dx, dy, 'KNIFE'); sfx('thud', o.x, o.y); break; } }
   }
-  if (I.lamp) { if (!s.veh) s.lamp = !s.lamp; else if (s.veh.type !== 'nest') s.veh.lights = !s.veh.lights; }     // flashlight on / off; in a vehicle, its lights (lampsOn; the flashlight's off in there)
   // spotting: mark enemies in front of you for the whole team
   if (I.spot && s.spotCd <= 0) {
     s.spotCd = 2.5; let n = 0;
