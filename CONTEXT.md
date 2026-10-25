@@ -462,3 +462,6 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - Shade memory works like ground memory (craters): when fog is on, the light pass P and map pass CP run again with FG=1 (HTS heights / SS sweep, no point lights) into GC map 3 (x = 3w; GC is 4w wide). fogOverlay writes map 3 into the view memory's `m.s` (world space, FOGK) clipped to the sight polys, builds FOG_SH from map 3 with `m.s` over it, and multiplies the out-of-sight picture by it. So the memory keeps the shading as last seen, partly seen areas included.
 - Removed: the sight mask (sunMask / KP / KT / FK / hid uniforms), `fogKeep` / FOG_KEEP, and `HL.r`. sunHeights is back to current-state statics and arcs.
 - Tiled roofs fade only while an eye is under a roof (`TL.roof === 1`). `vw.rf` eases 0↔1 at 4/s; the CP roofA uses `mix(1, a, RF)`. From outside, roofs are solid like the memory, which fixes walls showing through Outskirts roofs.
+
+## Build 169
+- Settings › Graphics › BUILDING CLEAR LOS (`CFG.clearLos`, on by default). When on, the tiled roof fades round the eyes from anywhere (the pre-168 look). When off, it fades only from inside a house (build 168).

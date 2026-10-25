@@ -325,7 +325,8 @@ function devRoofTile(k, ev) {
   for (const s of M.sol) if (s.alive && !s.veh && !ev.hit.has(s) && under(s.x, s.y)) { ev.hit.add(s); hurtSoldier(s, s.mhp * rnd(0.5, 0.75), null, 'roof', 0, 0, 'ROOF'); }
   for (const v of M.vehicles) if (v.active && !v.dead && !ev.hit.has(v) && vehCircles(v, _vc).some(([x, y]) => under(x, y))) { ev.hit.add(v); hurtVehicle(v, v.type === 'tank' ? 40 : 120, null); }
 }
-/* the roof over the whole house, walls included, as the eyes of this view see it: from inside a house (vw.rf, eased in
+/* the roof over the whole house, walls included, as the eyes of this view see it: with BUILDING CLEAR LOS on
+   (CFG.clearLos, the default) or from inside a house (vw.rf, eased in
    and out as you step under a roof and back out) gone within ROOF_NEAR, fading in to ROOF_CAP at ROOF_FAR and beyond;
    from outside, whole, as the memory holds it (so the wall you look at stays under it). A world-space region
    (rv.x, rv.y, rv.w, rv.h) drawn in sight above units and walls. (Out of sight the memory holds the whole roof: applyFog) */
@@ -335,7 +336,7 @@ function roofView(vw, x0, y0, x1, y1) {
   const x = Math.max(0, Math.floor(x0)), y = Math.max(0, Math.floor(y0)), w = Math.min(WW, Math.ceil(x1)) - x, h = Math.min(WH, Math.ceil(y1)) - y; if (w <= 0 || h <= 0) return null;
   if (ROOF_V.width < w || ROOF_V.height < h) { ROOF_V.width = Math.max(ROOF_V.width, w); ROOF_V.height = Math.max(ROOF_V.height, h); }
   const g = ROOF_V.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, w, h); g.drawImage(ROOF_C, x, y, w, h, 0, 0, w, h);
-  const eyes = viewSols(vw).map(posOf), inside = eyes.some(o => TL.roof[((o.y / SUB) | 0) * TL.sc + ((o.x / SUB) | 0)] === 1);
+  const eyes = viewSols(vw).map(posOf), inside = CFG.clearLos !== false || eyes.some(o => TL.roof[((o.y / SUB) | 0) * TL.sc + ((o.x / SUB) | 0)] === 1);
   const dt = Math.min(0.1, Math.max(0, M.time - (vw.rfT ?? M.time))); vw.rfT = M.time; vw.rf = clamp((vw.rf || 0) + (inside ? dt : -dt) * 4, 0, 1);
   const f = vw.rf; if (f <= 0) return { c: ROOF_V, x, y, w, h };
   g.globalCompositeOperation = 'destination-out'; g.setTransform(1, 0, 0, 1, -x, -y);
