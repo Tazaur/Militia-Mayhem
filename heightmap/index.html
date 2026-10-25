@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Height Painter</title>
+<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes">
 <style>
 :root { --bg: #101216; --panel: #181b21; --btn: #23272f; --btn2: #2c313b; --on: #3d6df2; --tx: #e6e8ec; --dim: #8a909c; --line: #2a2f38; }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -67,6 +68,14 @@ button.hov { outline: 2px solid #ff4fd8; outline-offset: -2px; }
 #pchkHov { font-size: 15px; font-weight: 600; }
 #tip { position: fixed; z-index: 9; pointer-events: none; max-width: 240px; padding: 5px 9px; border-radius: 7px; background: #000e; color: var(--tx); font-size: 12px; line-height: 1.3; opacity: 0; transition: opacity .12s; }
 #tip.on { opacity: 1; }
+#pbar { flex: none; height: 49px; }
+.sw { width: 38px; padding: 0; border: 2px solid var(--line); }
+.sw.act { border-color: #fff; }
+#pal { display: flex; gap: 6px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; align-items: center; }
+#pal::-webkit-scrollbar { display: none; }
+.prow { display: flex; gap: 2px; padding: 3px; border-radius: 7px; background: #0006; flex: none; }
+.pc { width: 20px; min-width: 20px; height: 30px; padding: 0; border-radius: 4px; }
+.pc.cur { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #000; }
 </style>
 </head>
 <body>
@@ -74,11 +83,11 @@ button.hov { outline: 2px solid #ff4fd8; outline-offset: -2px; }
   <div class="bar">
     <button class="dd" data-menu="mFile">File</button><button class="dd" data-menu="mEdit">Edit</button><button class="dd" data-menu="mView">View</button><button class="dd" data-menu="mSet" data-i="gear" title="Settings"></button>
     <span class="sp"></span><span id="status"></span>
-    <button id="undo" data-i="undo" title="Undo"></button><button id="redo" data-i="redo" title="Redo"></button>
+    <button id="fs" data-i="full" title="Fullscreen"></button><button id="undo" data-i="undo" title="Undo"></button><button id="redo" data-i="redo" title="Redo"></button>
   </div>
   <div class="bar">
     <button id="prev" data-i="left" title="Previous sprite"></button><select id="spr"></select><button id="next" data-i="right" title="Next sprite"></button>
-    <div class="seg"><button id="chH" class="on">Height</button><button id="chR">Refl</button><button id="chE">Glow</button></div><button id="ovlB" data-i="color" data-tip="Show the art (color overlay)"></button><button id="undB" data-i="layers" data-tip="Underside: tracks / wheels under this part (painted as depth down; the game hangs it under the part)">Under</button><button id="swpB" data-i="down" data-tip="Switch between the part and its underside">Under</button>
+    <div class="seg"><button id="chH" class="on">Height</button><button id="chR">Refl</button><button id="chE">Glow</button><button id="chA">Art</button></div><button id="ovlB" data-i="color" data-tip="Show the art (color overlay)"></button><button id="undB" data-i="layers" data-tip="Underside: tracks / wheels under this part (painted as depth down; the game hangs it under the part)">Under</button><button id="swpB" data-i="down" data-tip="Switch between the part and its underside">Under</button>
   </div>
   <div id="views"><div id="w3"><canvas id="v3"></canvas><div class="ov"><button id="look" data-tip="3D: as in game (lit) / the channel alone">Lit</button><button class="dd" data-menu="mScene" data-i="sun" data-tip="Sky, sun, bloom"></button></div></div><canvas id="v2"></canvas></div>
   <div class="bar" id="cbar">
@@ -86,7 +95,7 @@ button.hov { outline: 2px solid #ff4fd8; outline-offset: -2px; }
       <button id="size" data-i="square" title="Brush size"></button>
       <button id="tol" title="Fill tolerance"></button>
       <div class="seg sm" id="smode"><button data-m="0" title="New selection">New</button><button data-m="1" title="Add to selection">+</button><button data-m="2" title="Take from selection">−</button></div>
-      <button id="gap" title="Gap between copies"></button><button id="pch" title="Channels the paste / array writes"></button>
+      <button id="gap" title="Gap between copies"></button><button id="alock" data-i="alock" title="Alpha lock: paint only on pixels that already have art">α lock</button><button id="glock" data-i="gridI" title="Grid lock: each dab fills a whole grid cell">Grid</button><button id="gsz" title="Grid cell size"></button><button id="shd" title="Shade direction: along the colour's palette row"></button><button id="gdi" title="Dither the gradient (ordered 4×4)">Dither</button><button id="pch" title="Channels the paste / array writes"></button>
     </span>
     <span class="div" id="optDiv"></span>
     <span id="selb" style="display:contents">
@@ -103,14 +112,23 @@ button.hov { outline: 2px solid #ff4fd8; outline-offset: -2px; }
     <div class="seg" id="mode"><button data-m="set" data-i="equal">Set</button><button data-m="nudge" data-i="plusminus">Nudge</button></div>
     <button id="vDn" data-i="minus"></button><input id="val" type="range" min="0" max="63" value="8"><button id="vUp" data-i="plus"></button><span class="num" id="vNum">8</span>
   </div>
+  <div class="bar" id="pbar" hidden>
+    <button id="sw1" class="sw" title="Main colour (tap again to change it)"></button><button id="sw2" class="sw" title="Second colour, the gradient's end (tap it, then a palette colour)"></button><button id="swX" data-i="swap" title="Swap the two colours"></button>
+    <div id="pal"></div><button class="dd" data-menu="mPal" data-i="palette" title="Palette"></button>
+  </div>
   <div class="bar" id="tools">
     <button data-t="pen" data-i="pen" class="on">Pen</button><button data-t="erase" data-i="eraser">Erase</button><button data-t="fill" data-i="bucket">Fill</button>
     <button data-t="sel" data-i="select">Select</button><button data-t="arr" data-i="array">Array</button><button data-t="pick" data-i="pipette">Pick</button>
+    <button data-t="shade" data-i="shade" class="art">Shade</button><button data-t="blur" data-i="blur" class="art">Blur</button><button data-t="grad" data-i="grad" class="art">Gradient</button>
   </div>
 </div>
 <div class="menu" id="mFile">
-  <button id="mDl" data-i="download">Download atlas_m.png</button><button id="mShare" data-i="share">Share atlas_m.png</button><button id="mImp" data-i="upload">Import PNG…</button>
+  <button id="mDl" data-i="download">Download atlas_m.png</button><button id="mShare" data-i="share">Share atlas_m.png</button><button id="mImp" data-i="upload">Import PNG…</button><hr><button id="aDl" data-i="download">Download atlas.png (art)</button><button id="aShare" data-i="share">Share atlas.png (art)</button>
   <hr><button id="mRevS" data-i="revert">Revert sprite to file</button><button id="mRevA" data-i="revert">Revert everything to file</button>
+</div>
+<div class="menu" id="mPal">
+  <button id="pEx" data-i="pipette">From this sprite</button><button id="pAdd" data-i="plus">Add the main colour to its row</button><button id="pRow" data-i="layers">New row with the main colour</button>
+  <button id="pDel" data-i="minus">Remove the main colour</button><button id="pSort" data-i="up">Sort its row dark → light</button><hr><button id="pClr" data-i="trash">Clear the palette</button>
 </div>
 <div class="menu" id="mEdit">
   <button id="eUndo" data-i="undo">Undo<span class="k">Ctrl Z</span></button><button id="eRedo" data-i="redo">Redo<span class="k">Ctrl ⇧ Z</span></button><hr>
@@ -141,7 +159,7 @@ button.hov { outline: 2px solid #ff4fd8; outline-offset: -2px; }
   <button id="nr0">± 8</button><button id="nr1">± 16</button><button id="nr2">± 32</button><button id="nr3">± 63</button><hr>
   <button id="mPchk" data-i="pen">Pen check…</button><button id="sReset" data-i="revert">Reset settings</button>
 </div>
-<input id="file" type="file" accept="image/png" hidden>
+<input id="file" type="file" accept="image/png" hidden><input id="cin" type="color" style="position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none">
 <div id="toast"></div><div id="info"></div><div id="tip"></div>
 <div id="pchk" hidden><div style="display:flex;align-items:center;gap:8px"><span id="pchkHov">Hover the pen over this panel…</span><span class="sp"></span><button id="pchkX" data-i="x"></button></div><pre id="pchkLog"></pre></div>
 <script>
@@ -176,12 +194,19 @@ const ICONS = {
   layers: '<path d="m12 2 10 5-10 5L2 7Z"/><path d="m2 12 10 5 10-5M2 17l10 5 10-5"/>', buzz: '<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M3 8v8M21 8v8"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   revert: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
+  swap: '<path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/>', full: '<path d="M3 8V3h5M16 3h5v5M21 16v5h-5M8 21H3v-5"/>',
+  palette: '<circle cx="12" cy="12" r="9"/><circle cx="8" cy="10" r="1.2"/><circle cx="12" cy="7.5" r="1.2"/><circle cx="16" cy="10" r="1.2"/><path d="M12 21a3 3 0 0 1 0-6h2"/>',
+  shade: '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18Z" fill="currentColor"/>',
+  blur: '<circle cx="12" cy="12" r="2"/><circle cx="6" cy="12" r="1.3"/><circle cx="18" cy="12" r="1.3"/><circle cx="12" cy="6" r="1.3"/><circle cx="12" cy="18" r="1.3"/><circle cx="7" cy="7" r=".8"/><circle cx="17" cy="7" r=".8"/><circle cx="7" cy="17" r=".8"/><circle cx="17" cy="17" r=".8"/>',
+  grad: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M11 3v18"/><path d="M15 3v18" opacity=".5"/><path d="M19 3v18" opacity=".25"/>',
+  alock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
 };
 /* tooltips: a hovering pen (or mouse) outlines the button under it and, held there a moment, says what it does */
 const TIPS = { pen: 'Pen: paint (Set writes the value, Nudge adds to it)', erase: 'Erase to 0', fill: 'Fill: flood the area (Set / Nudge, Tol = how alike)', sel: 'Select: drag a box (New / + add / − take away); tap to deselect',
   arr: 'Array: drag from the selection to repeat it', pick: 'Pick the value under a pixel (or hold anywhere on the canvas)', chH: 'Height channel (0–63)', chR: 'Reflectivity channel', chE: 'Glow channel',
   set: 'Set: pen and fill write this value', nudge: 'Nudge: pen and fill add this (− lowers), once per pixel per stroke', vDn: 'One less', vUp: 'One more', val: 'Value / nudge step', tol: 'Fill tolerance: how close a pixel must be to join',
-  gap: 'Gap between the array copies', pch: 'Which channels the paste / array writes', sel0: 'New selection', sel1: 'Add to the selection', sel2: 'Take from the selection' };
+  chA: 'Art: paint the colours (atlas.png)', shade: 'Shade: moves colours along their palette row (lighter / darker), once per pixel per stroke', blur: 'Blur: softens what it passes over, once per pixel per stroke',
+  grad: 'Gradient: drag across the selection (or the area you start in), main colour to second', gap: 'Gap between the array copies', pch: 'Which channels the paste / array writes', sel0: 'New selection', sel1: 'Add to the selection', sel2: 'Take from the selection' };
 const tipOf = e => TIPS[e.dataset.t] || TIPS[e.id] || TIPS[e.dataset.m] || (e.closest('#smode') && TIPS['sel' + e.dataset.m]) || e.dataset.tip || '';
 for (const e of document.querySelectorAll('[title]')) { e.dataset.tip = e.title; e.removeAttribute('title'); }     // ours, not the browser's
 let tipT = 0, tipE = null;
@@ -198,13 +223,15 @@ addEventListener('pointerover', e => {
 addEventListener('pointerout', e => { if (e.pointerType !== 'touch' && tipE && !tipE.contains(e.relatedTarget)) tipHide(); });
 addEventListener('pointerdown', tipHide, true);
 for (const b of document.querySelectorAll('[data-i]')) b.insertAdjacentHTML('afterbegin', `<svg viewBox="0 0 24 24">${ICONS[b.dataset.i]}</svg>`);
-const MAXV = [63, 255, 255], NRANGE = [[8, 32, 32], [16, 64, 64], [32, 128, 128], [63, 255, 255]], HOLDMS = [0, 300, 500, 800], SIZES = [1, 2, 3, 5, 8], TOLS = [[0, 1, 2, 4, 8], [0, 8, 16, 32, 64], [0, 8, 16, 32, 64]];
+const ART = 3, ACH = [3, 4, 5, 6], GRIDS = [2, 3, 4, 5, 6, 8, 10, 12, 16], MAXV = [63, 255, 255, 255, 255, 255, 255], NRANGE = [[8, 32, 32], [16, 64, 64], [32, 128, 128], [63, 255, 255]], HOLDMS = [0, 300, 500, 800], SIZES = [1, 2, 3, 5, 8], TOLS = [[0, 1, 2, 4, 8], [0, 8, 16, 32, 64], [0, 8, 16, 32, 64], [0, 8, 16, 32, 64]];     // per channel (3: art, the largest colour difference)
+let POOL0 = 0, POOL1 = 0;     // the underside pool's pixel range (art isn't painted there)
 let W = 0, H = 0, FMETA = {}, META = {}, NAMES = [], COL0 = null, COL = null, CH = null, FILE = null, CFG = {}, CFGS = null;     // FMETA atlas.json; META its sprites + the undersides; COL the art + their guides
-const DEF = { hold: 2, pickAll: false, buzz: true, nr: 1, grid: true, rdo: true, stack: true, look: 0, sky: 0, sunAz: 135, sunEl: 40, reflK: 100, bloomK: 100 };
-const st = { ...DEF, spr: '', ch: 0, tool: 'pen', prev: 'pen', mode: 'set', val: [8, 100, 0], nud: [1, 8, 8], size: 0, tol: [1, 1, 1], ovl: true, mask: true, lay: 0, smode: 0, gap: 0, pch: 0 };
+const DEF = { hold: 2, pickAll: false, buzz: true, nr: 1, grid: true, rdo: true, stack: true, alock: false, glock: false, gsz: 2, gdi: false, look: 0, sky: 0, sunAz: 135, sunEl: 40, reflK: 100, bloomK: 100 };
+const st = { ...DEF, spr: '', ch: 0, tool: 'pen', prev: 'pen', mode: 'set', val: [8, 100, 0], nud: [1, 8, 8], size: 0, tol: [1, 1, 1, 0], c1: [200, 70, 60], c2: [40, 44, 60], act: 0, pal: [], prow: -1, shd: 1, ovl: true, mask: true, lay: 0, smode: 0, gap: 0, pch: 0 };
 const GAPS = [0, 1, 2, 3, 4, 6, 8, 12];
 try { Object.assign(st, JSON.parse(localStorage.getItem('hp-prefs') || '{}')); } catch (e) {}
 for (const k of ['look', 'sky', 'sunAz', 'sunEl', 'reflK', 'bloomK']) if (st[k] === undefined) st[k] = DEF[k];
+if (st.tol.length < 4) st.tol[3] = 0;
 if (st.tool === 'up' || st.tool === 'down') { st.tool = 'pen'; st.mode = 'nudge'; }     // the old +1 / -1 tools
 const savePrefs = () => { try { localStorage.setItem('hp-prefs', JSON.stringify(st)); } catch (e) {} };
 const toast = (t) => { const e = $('toast'); e.textContent = t; e.style.opacity = 1; clearTimeout(toast.t); toast.t = setTimeout(() => e.style.opacity = 0, 1600); };
@@ -227,18 +254,31 @@ addEventListener('visibilitychange', () => { if (document.hidden && $('status').
 const fetchImg = async (url) => { const r = await fetch(url, { cache: 'no-cache' }); if (!r.ok) throw new Error(url + ' ' + r.status); return createImageBitmap(await r.blob()); };
 function pixels(bm) { const c = document.createElement('canvas'); c.width = bm.width; c.height = bm.height; const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(bm, 0, 0); return g.getImageData(0, 0, bm.width, bm.height).data; }
 function fromRGB(px) { const ch = [new Uint8Array(W * H), new Uint8Array(W * H), new Uint8Array(W * H)]; for (let i = 0; i < W * H; i++) { ch[0][i] = Math.min(63, Math.round(px[i * 4] / 4)); ch[1][i] = px[i * 4 + 1]; ch[2][i] = px[i * 4 + 2]; } return ch; }
-function copyRect(dst, src, srcW, [sx, sy], [dx, dy, w, h]) { for (let c = 0; c < 3; c++) for (let y = 0; y < h; y++) dst[c].set(src[c].subarray((sy + y) * srcW + sx, (sy + y) * srcW + sx + w), (dy + y) * W + dx); }
+function copyRect(dst, src, srcW, [sx, sy], [dx, dy, w, h]) { for (let c = 0; c < Math.min(dst.length, src.length); c++) for (let y = 0; y < h; y++) dst[c].set(src[c].subarray((sy + y) * srcW + sx, (sy + y) * srcW + sx + w), (dy + y) * W + dx); }
+/* a PNG's RGBA as stored: through WebGL unpremultiplied (a 2D canvas premultiplies, so semi-clear pixels would drift) */
+async function exactPx(src) {
+  const blob = typeof src === 'string' ? await (async () => { const r = await fetch(src, { cache: 'no-cache' }); if (!r.ok) throw new Error(src + ' ' + r.status); return r.blob(); })() : src;
+  const bm = await createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' }), w = bm.width, h = bm.height;
+  if (!gl) return { w, h, d: pixels(bm) };
+  const t = gl.createTexture(), f = gl.createFramebuffer(), d = new Uint8ClampedArray(w * h * 4); gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false); gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bm);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0); gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, d);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.deleteFramebuffer(f); gl.deleteTexture(t); return { w, h, d };
+}
+const artPlanes = px => [0, 1, 2, 3].map(k => { const a = new Uint8Array(W * H); for (let i = 0; i < W * H; i++) a[i] = px[i * 4 + k]; return a; });
 async function load() {
   FMETA = await (await fetch('../atlas.json', { cache: 'no-cache' })).json();
-  const at = await fetchImg('../atlas.png'); W = at.width; H = at.height; COL0 = pixels(at);
+  const at = await exactPx('../atlas.png'); W = at.w; H = at.h; COL0 = at.d;
   try { const m = await fetchImg('../atlas_m.png'); FILE = m.width === W && m.height === H ? fromRGB(pixels(m)) : null; } catch (e) { FILE = null; }
   if (!FILE) FILE = [new Uint8Array(W * H), new Uint8Array(W * H), new Uint8Array(W * H)];
+  FILE.push(...artPlanes(COL0));     // channels 3..6: the art's R G B A
   CH = FILE.map(a => a.slice());
   const s = await kv('work');
   if (s && s.ch) {
-    if (s.w === W && s.h === H && JSON.stringify(s.meta) === JSON.stringify(FMETA)) { CH = s.ch; toast('Restored your work'); }
+    if (s.w === W && s.h === H && JSON.stringify(s.meta) === JSON.stringify(FMETA)) { for (let c = 0; c < s.ch.length; c++) CH[c] = s.ch[c]; toast('Restored your work'); }     // older work: heights only
     else { let n = 0; for (const k in FMETA) { const a = s.meta[k], b = FMETA[k]; if (a && a[2] === b[2] && a[3] === b[3]) { copyRect(CH, s.ch, s.w, a, b); n++; } } toast('Atlas changed: carried ' + n + ' sprites over'); saveNow(); }
   }
+  for (let i = 0; i < W * H; i++) for (let k = 0; k < 4; k++) COL0[i * 4 + k] = CH[3 + k][i];     // the art as restored
   syncCfg(); ui(); fit();
 }
 
@@ -263,7 +303,7 @@ const ownerOf = b => FMETA[b + '0'] ? b + '0' : FMETA[b] ? b : null;
 function syncCfg() {
   CFG = cfgRead(); const k = JSON.stringify(CFG); if (k === CFGS) return; CFGS = k;
   META = {}; for (const n in FMETA) if (n[0] !== '_') META[n] = FMETA[n];
-  COL = COL0.slice(); const P = FMETA._pool;
+  COL = COL0.slice(); const P = FMETA._pool; if (P) { POOL0 = P[1] * W; POOL1 = (P[1] + P[3]) * W; }
   for (const [b, r] of Object.entries(CFG.under || {})) {
     const u = META['under_' + b] = [r[0], P[1] + r[1], r[2], r[3], r[4], r[5]], o = META[ownerOf(b)]; if (!o) continue;
     for (let y = 0; y < Math.min(r[3], o[3]); y++) for (let x = 0; x < Math.min(r[2], o[2]); x++) {
@@ -301,7 +341,8 @@ function swapUnder() { if (!st.spr) return; const b = partOf(st.spr), u = 'under
 const rect = () => st.spr ? META[st.spr].slice(0, 4) : [0, 0, W, H];
 let sel = null, selM = null;     // the selection: a mask (marquees added and taken away) and its bounds [x0, y0, x1, y1]
 const inRect = (x, y) => { const [rx, ry, rw, rh] = rect(); return x >= rx && y >= ry && x < rx + rw && y < ry + rh; };
-const canP = (x, y) => inRect(x, y) && (!st.mask || COL[(y * W + x) * 4 + 3] > 0);     // where a paste / array may land
+const canP = (x, y) => { if (!inRect(x, y)) return false; const i = y * W + x;     // where a paste / array may land
+  return st.ch === ART ? (i < POOL0 || i >= POOL1) && (!st.alock || COL0[i * 4 + 3] > 0) : !st.mask || COL[i * 4 + 3] > 0; };     // art: alpha lock; heights: on the art
 const can = (x, y) => canP(x, y) && (!selM || selM[y * W + x] === 1);
 function selBounds() {
   let x0 = W, y0 = H, x1 = -1, y1 = -1;
@@ -322,16 +363,23 @@ function end() {
 function unput() { for (const [k, v] of stroke) { CH[k / NN() | 0][k % NN()] = v; touch(k % NN()); } stroke.clear(); }     // back to how it was, stroke still open
 function cancel() { if (!stroke) return; unput(); stroke = null; }
 function history(from, to, key) { if (flt || stroke) return; const e = from.pop(); if (!e) return; e.idx.forEach((k, j) => { CH[k / NN() | 0][k % NN()] = e[key][j]; touch(k % NN()); }); to.push(e); changed(); syncCfg(); ui(); }     // the settings may have changed
-function touch(i) { if (!full2) paint2(i); dirty3 = true; }
-function brush(x, y, f) { const s = SIZES[st.size], o = Math.floor((s - 1) / 2); for (let j = y - o; j < y - o + s; j++) for (let i = x - o; i < x - o + s; i++) if (can(i, j)) f(j * W + i); }
+function touch(i) {
+  const o = i * 4, g = i >= POOL0 && i < POOL1; for (let k = 0; k < 4; k++) { COL0[o + k] = CH[3 + k][i]; if (!g) COL[o + k] = CH[3 + k][i]; }     // the art as shown (the pool keeps its guides)
+  if (!full2) paint2(i); dirty3 = true;
+}
+function brush(x, y, f) {
+  if (st.ch === ART && st.glock) { const g = GRIDS[st.gsz], [rx, ry] = rect(), x0 = rx + Math.floor((x - rx) / g) * g, y0 = ry + Math.floor((y - ry) / g) * g; for (let j = y0; j < y0 + g; j++) for (let i = x0; i < x0 + g; i++) if (can(i, j)) f(j * W + i); return; }     // grid lock: the whole cell
+  const s = SIZES[st.size], o = Math.floor((s - 1) / 2); for (let j = y - o; j < y - o + s; j++) for (let i = x - o; i < x - o + s; i++) if (can(i, j)) f(j * W + i); }
 /* what the pen / fill / selection does to a pixel: Set writes the value, Nudge adds the (signed) nudge to what it was before
    this stroke, so going over a pixel twice in one stroke doesn't stack */
 const amt = i => st.mode === 'nudge' ? was(i) + st.nud[st.ch] : st.val[st.ch];
 function apply(x, y) {
+  if (st.ch === ART) { artApply(x, y); return; }
   if (st.tool === 'pen') brush(x, y, i => put(i, amt(i)));
   else if (st.tool === 'erase') brush(x, y, i => put(i, 0));
 }
 function flood(x, y) {
+  if (st.ch === ART) { const c = C1(); for (const i of regionArt(x, y)) putC(i, c); return; }
   if (!can(x, y)) return; const v0 = CH[st.ch][y * W + x], tol = TOLS[st.ch][st.tol[st.ch]], seen = new Uint8Array(W * H), q = [y * W + x]; seen[q[0]] = 1;
   while (q.length) {
     const i = q.pop(), px = i % W, py = (i - px) / W; put(i, amt(i));
@@ -343,17 +391,106 @@ function bulk(f) {        // the selection, else the sprite (else the atlas)
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (can(x, y)) f(y * W + x);
   end();
 }
-/* clips: the selection's pixels (all three channels) with their place; turned copies; stamped down where they may land */
+/* ---------------- art: the colour planes (channels 3..6), the palette (rows of colours, dark to light) */
+const hx = c => '#' + c.slice(0, 3).map(v => v.toString(16).padStart(2, '0')).join(''), rgb = h => [1, 3, 5].map(k => parseInt(h.slice(k, k + 2), 16)), lum = c => c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11;
+const C1 = () => [...st.c1, 255];
+const putC = (i, c) => { for (let k = 0; k < 4; k++) put(i, c[k], 3 + k); };
+const colAt = (i, before) => ACH.map(c => before ? was(i, c) : CH[c][i]);     // before: as it was when this stroke began
+const DONE = new Set();     // the pixels shade / blur already did this stroke
+function artApply(x, y) {
+  const t = st.tool;
+  brush(x, y, i => {
+    if (t === 'pen') putC(i, C1()); else if (t === 'erase') putC(i, [0, 0, 0, 0]);
+    else if (DONE.has(i)) return;
+    else if (t === 'shade') { DONE.add(i); const c = shadeOf(colAt(i), st.shd); if (c) putC(i, c); }
+    else if (t === 'blur') { DONE.add(i); putC(i, blurAt(i)); }
+  });
+}
+/* shading: a colour in a palette row moves d steps along it (the row's ends stay put); not in the palette: untouched */
+function shadeOf(c, d) {
+  if (!c[3]) return null; const h = hx(c);
+  for (const r of st.pal) { const j = r.indexOf(h); if (j >= 0) { const k = clamp(j + d, 0, r.length - 1); return k === j ? null : [...rgb(r[k]), c[3]]; } }
+  return null;
+}
+/* blur: a 3x3 tent of the pixels as they were, weighted by their alpha (alpha lock keeps this pixel's own) */
+function blurAt(i) {
+  const x = i % W, y = (i - x) / W; let r = 0, g = 0, b = 0, a = 0, n = 0;
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    const X = x + dx, Y = y + dy; if (!inRect(X, Y)) continue; const j = Y * W + X, w = dx && dy ? 1 : dx || dy ? 2 : 4, A = was(j, 6) * w;
+    r += was(j, 3) * A; g += was(j, 4) * A; b += was(j, 5) * A; a += A; n += w * 255;
+  }
+  return a ? [r / a, g / a, b / a, st.alock ? was(i, 6) : a / n * 255].map(Math.round) : [0, 0, 0, 0];
+}
+/* the area a fill / gradient covers: alike pixels joined to (x, y) (Tol: the largest channel difference; clear joins clear) */
+function regionArt(x, y) {
+  if (!can(x, y)) return []; const i0 = y * W + x, c0 = colAt(i0, true), tol = TOLS[ART][st.tol[ART]], seen = new Uint8Array(W * H), q = [i0], out = []; seen[i0] = 1;
+  const alike = j => { const c = colAt(j, true); return !c[3] && !c0[3] || Math.max(...c.map((v, k) => Math.abs(v - c0[k]))) <= tol; };
+  while (q.length) {
+    const i = q.pop(), px = i % W, py = (i - px) / W; out.push(i);
+    for (const [nx, ny] of [[px + 1, py], [px - 1, py], [px, py + 1], [px, py - 1]]) { const j = ny * W + nx; if (can(nx, ny) && !seen[j] && alike(j)) { seen[j] = 1; q.push(j); } }
+  }
+  return out;
+}
+/* gradient: from where the drag starts to where it is, main colour to second; through their palette row when both are in
+   one (its colours in between, banded), else straight; Dither breaks each band's edge up with a 4x4 ordered pattern */
+let gr = null; const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + 0.5) / 16);
+function gradStops() {
+  const a = hx(st.c1), b = hx(st.c2);
+  for (const r of st.pal) { const i = r.indexOf(a), j = r.indexOf(b); if (i >= 0 && j >= 0 && i !== j) return { s: (i < j ? r.slice(i, j + 1) : r.slice(j, i + 1).reverse()).map(rgb), pal: true }; }
+  return { s: [st.c1, st.c2], pal: false };
+}
+function gradTo(q) {
+  unput(); const [x0, y0] = gr.q0, dx = q[0] - x0, dy = q[1] - y0, L = dx * dx + dy * dy || 1, { s, pal } = gr.st, n = s.length - 1;
+  for (const i of gr.px) {
+    const x = i % W, y = (i - x) / W, t = clamp(((x - x0) * dx + (y - y0) * dy) / L, 0, 1), u = t * n, k = Math.min(Math.floor(u), n - 1), f = u - k;
+    const c = st.gdi ? s[f > BAYER[(y & 3) * 4 + (x & 3)] ? k + 1 : k] : pal ? s[Math.round(u)] : s[0].map((v, m) => Math.round(v + (s[1][m] - v) * t));
+    putC(i, [...c, 255]);
+  }
+  need2 = true;
+}
+const selPx = () => { const o = []; if (sel) for (let y = sel[1]; y <= sel[3]; y++) for (let x = sel[0]; x <= sel[2]; x++) if (can(x, y)) o.push(y * W + x); return o; };
+/* the palette from a sprite: its most used colours (up to 64), in rows by hue (greys their own), each dark to light */
+function extractPal() {
+  const [rx, ry, rw, rh] = rect(), n = new Map();
+  for (let y = ry; y < ry + rh; y++) for (let x = rx; x < rx + rw; x++) { const o = (y * W + x) * 4; if (COL0[o + 3] < 128) continue; const h = hx([COL0[o], COL0[o + 1], COL0[o + 2]]); n.set(h, (n.get(h) || 0) + 1); }
+  const rows = new Map();
+  for (const [h] of [...n].sort((a, b) => b[1] - a[1]).slice(0, 64)) {
+    const [r, g, b] = rgb(h), mx = Math.max(r, g, b), mn = Math.min(r, g, b); let hue = 0;
+    if (mx !== mn) hue = ((mx === r ? (g - b) / (mx - mn) : mx === g ? 2 + (b - r) / (mx - mn) : 4 + (r - g) / (mx - mn)) * 60 + 360) % 360;
+    const k = mx < 30 || (mx - mn) / mx < 0.15 ? 'grey' : Math.round(hue / 30) % 12; if (!rows.has(k)) rows.set(k, []); rows.get(k).push(h);
+  }
+  return [...rows.values()].map(r => r.sort((a, b) => lum(rgb(a)) - lum(rgb(b))));
+}
+let palK = '';
+function renderPal() {
+  const k = JSON.stringify(st.pal) + hx(st.c1) + hx(st.c2) + st.act; if (k === palK) return; palK = k; const cur = hx(st.act ? st.c2 : st.c1);
+  $('pal').innerHTML = st.pal.length ? st.pal.map((r, ri) => `<div class="prow">${r.map((h, ci) => `<button class="pc${h === cur ? ' cur' : ''}" data-r="${ri}" data-c="${ci}" style="background:${h}"></button>`).join('')}</div>`).join('')
+    : '<span class="lab">No palette yet: ☰ › From this sprite</span>';
+  $('sw1').style.background = hx(st.c1); $('sw2').style.background = hx(st.c2); $('sw1').classList.toggle('act', !st.act); $('sw2').classList.toggle('act', !!st.act);
+}
+const setColor = c => { st[st.act ? 'c2' : 'c1'] = c.slice(0, 3); ui(); };
+/* an exact PNG (RGBA, no premultiplying), deflated by the browser */
+const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+async function pngRGBA(w, h, px) {
+  const raw = new Uint8Array((w * 4 + 1) * h); for (let y = 0; y < h; y++) raw.set(px.subarray(y * w * 4, (y + 1) * w * 4), y * (w * 4 + 1) + 1);
+  const z = new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new CompressionStream('deflate'))).arrayBuffer());
+  const chunk = (t, d) => { const o = new Uint8Array(12 + d.length), v = new DataView(o.buffer); v.setUint32(0, d.length); for (let i = 0; i < 4; i++) o[4 + i] = t.charCodeAt(i); o.set(d, 8);
+    let c = 0xffffffff; for (let i = 4; i < 8 + d.length; i++) c = CRC[(c ^ o[i]) & 255] ^ (c >>> 8); v.setUint32(8 + d.length, (c ^ 0xffffffff) >>> 0); return o; };
+  const hd = new Uint8Array(13), hv = new DataView(hd.buffer); hv.setUint32(0, w); hv.setUint32(4, h); hd[8] = 8; hd[9] = 6;
+  return new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', hd), chunk('IDAT', z), chunk('IEND', new Uint8Array(0))], { type: 'image/png' });
+}
+const artPng = () => { const px = new Uint8Array(W * H * 4); for (let i = 0; i < W * H; i++) for (let k = 0; k < 4; k++) px[i * 4 + k] = CH[3 + k][i]; return pngRGBA(W, H, px); };
+/* clips: the selection's pixels (all seven channels) with their place; turned copies; stamped down where they may land */
 let clip = null, flt = null, arr = null;
-const blank = (x, y, w, h) => ({ x, y, w, h, on: new Uint8Array(w * h), v: [0, 1, 2].map(() => new Uint8Array(w * h)) });
+const blank = (x, y, w, h) => ({ x, y, w, h, on: new Uint8Array(w * h), v: [0, 1, 2, 3, 4, 5, 6].map(() => new Uint8Array(w * h)) });
 function grab() {
   const [rx, ry, rw, rh] = rect(), [x0, y0, x1, y1] = sel || [rx, ry, rx + rw - 1, ry + rh - 1], c = blank(x0, y0, x1 - x0 + 1, y1 - y0 + 1);
-  for (let y = 0; y < c.h; y++) for (let x = 0; x < c.w; x++) { if (!can(x0 + x, y0 + y)) continue; const i = (y0 + y) * W + x0 + x, j = y * c.w + x; c.on[j] = 1; for (let k = 0; k < 3; k++) c.v[k][j] = CH[k][i]; }
+  for (let y = 0; y < c.h; y++) for (let x = 0; x < c.w; x++) { if (!can(x0 + x, y0 + y)) continue; const i = (y0 + y) * W + x0 + x, j = y * c.w + x; c.on[j] = 1; for (let k = 0; k < 7; k++) c.v[k][j] = CH[k][i]; }
   return c;
 }
 function flipped(c, fx, fy) {     // mirrored left-right / top-bottom in place
   if (!fx && !fy) return c; const o = blank(c.x, c.y, c.w, c.h);
-  for (let y = 0; y < c.h; y++) for (let x = 0; x < c.w; x++) { const s = (fy ? c.h - 1 - y : y) * c.w + (fx ? c.w - 1 - x : x), j = y * c.w + x; o.on[j] = c.on[s]; for (let k = 0; k < 3; k++) o.v[k][j] = c.v[k][s]; }
+  for (let y = 0; y < c.h; y++) for (let x = 0; x < c.w; x++) { const s = (fy ? c.h - 1 - y : y) * c.w + (fx ? c.w - 1 - x : x), j = y * c.w + x; o.on[j] = c.on[s]; for (let k = 0; k < 7; k++) o.v[k][j] = c.v[k][s]; }
   return o;
 }
 function rotated(c, deg) {        // turned about its centre, nearest pixel (quarter turns are exact)
@@ -363,14 +500,15 @@ function rotated(c, deg) {        // turned about its centre, nearest pixel (qua
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const dx = x + 0.5 - w / 2, dy = y + 0.5 - h / 2, sx = Math.floor(c.w / 2 + dx * cs + dy * sn + 1e-6), sy = Math.floor(c.h / 2 - dx * sn + dy * cs + 1e-6);
     if (sx < 0 || sy < 0 || sx >= c.w || sy >= c.h) continue; const s = sy * c.w + sx, j = y * w + x; if (!c.on[s]) continue;
-    o.on[j] = 1; for (let k = 0; k < 3; k++) o.v[k][j] = c.v[k][s];
+    o.on[j] = 1; for (let k = 0; k < 7; k++) o.v[k][j] = c.v[k][s];
   }
   return o;
 }
 function stamp(c, ox, oy, mark, clear) {           // mark: grow the selection mask over it instead of writing
   for (let y = 0; y < c.h; y++) for (let x = 0; x < c.w; x++) {
     const tx = ox + x, ty = oy + y, j = y * c.w + x; if (!c.on[j] || !canP(tx, ty)) continue; const i = ty * W + tx;
-    if (mark) mark[i] = 1; else for (let k = 0; k < 3; k++) if (!st.pch || st.pch === k + 1) put(i, clear ? 0 : c.v[k][j], k);     // all channels, or just one; clear: zero instead
+    if (mark) mark[i] = 1; else if (st.ch === ART) for (const k of ACH) put(i, clear ? 0 : c.v[k][j], k);     // art: the colours
+    else for (let k = 0; k < 3; k++) if (!st.pch || st.pch === k + 1) put(i, clear ? 0 : c.v[k][j], k);     // heights: all channels, or just one; clear: zero instead
   }
 }
 /* paste: the clip floats (drag it about, flip it, turn it) until placed; shown for real, as an open stroke */
@@ -400,6 +538,7 @@ let bd = null, full2 = true, z2 = 8, ox2 = 0, oy2 = 0, cur = null, need2 = true;
 const TINT = [null, [90, 230, 255], [255, 150, 40]];
 function paint2(i) {
   const v = CH[st.ch][i] / MAXV[st.ch], o = i * 4, al = COL[o + 3], d = bd.data; let r, g, b;
+  if (st.ch === ART) { const a = al / 255, ck = (i % W + (i / W | 0)) & 1 ? 34 : 26; d[o] = ck + (COL[o] - ck) * a; d[o + 1] = ck + (COL[o + 1] - ck) * a; d[o + 2] = ck + (COL[o + 2] - ck) * a; d[o + 3] = 255; need2 = true; return; }     // the art over a checker
   if (st.ch && v > 0) { const t = TINT[st.ch]; r = 40 + t[0] * v * 0.85; g = 44 + t[1] * v * 0.85; b = 52 + t[2] * v * 0.85; }
   else [r, g, b] = ramp(CH[0][i]);
   if (!al) { if (v > 0) { r = 200 * v + 40; g = 30; b = 160 * v + 40; } else { r = 21; g = 23; b = 27; } }      // painted outside the art: magenta
@@ -425,6 +564,12 @@ function draw2() {
     g2.beginPath(); for (let x = x0; x <= x1; x++) { g2.moveTo(ox2 + x * z2 + 0.5, oy2 + y0 * z2); g2.lineTo(ox2 + x * z2 + 0.5, oy2 + y1 * z2); } for (let y = y0; y <= y1; y++) { g2.moveTo(ox2 + x0 * z2, oy2 + y * z2 + 0.5); g2.lineTo(ox2 + x1 * z2, oy2 + y * z2 + 0.5); }
     g2.strokeStyle = 'rgba(255,255,255,0.07)'; g2.lineWidth = 1; g2.stroke();
   }
+  if (st.ch === ART && st.glock && z2 * GRIDS[st.gsz] >= 4) {          // grid lock's cells
+    const g = GRIDS[st.gsz], x0 = Math.max(rx, Math.floor(-ox2 / z2)), x1 = Math.min(rx + rw, Math.ceil((cw - ox2) / z2)), y0 = Math.max(ry, Math.floor(-oy2 / z2)), y1 = Math.min(ry + rh, Math.ceil((chh - oy2) / z2));
+    g2.beginPath(); for (let x = rx + Math.ceil((x0 - rx) / g) * g; x <= x1; x += g) { g2.moveTo(ox2 + x * z2 + 0.5, oy2 + y0 * z2); g2.lineTo(ox2 + x * z2 + 0.5, oy2 + y1 * z2); }
+    for (let y = ry + Math.ceil((y0 - ry) / g) * g; y <= y1; y += g) { g2.moveTo(ox2 + x0 * z2, oy2 + y * z2 + 0.5); g2.lineTo(ox2 + x1 * z2, oy2 + y * z2 + 0.5); }
+    g2.strokeStyle = 'rgba(120,200,255,0.3)'; g2.lineWidth = 1; g2.stroke();
+  }
   g2.lineWidth = 1;
   if (!st.spr) { g2.strokeStyle = 'rgba(120,140,255,0.25)'; for (const n of NAMES) { const m = META[n]; g2.strokeRect(ox2 + m[0] * z2 - 0.5, oy2 + m[1] * z2 - 0.5, m[2] * z2 + 1, m[3] * z2 + 1); } }
   else { g2.strokeStyle = 'rgba(120,140,255,0.6)'; g2.strokeRect(ox2 + rx * z2 - 0.5, oy2 + ry * z2 - 0.5, rw * z2 + 1, rh * z2 + 1); }
@@ -439,14 +584,18 @@ function draw2() {
     g2.strokeStyle = '#000'; g2.lineWidth = 2; g2.stroke(); g2.setLineDash([4, 3]); g2.strokeStyle = '#fff'; g2.lineWidth = 1.5; g2.stroke(); g2.setLineDash([]); g2.lineWidth = 1;
   }
   if (flt) { g2.setLineDash([6, 4]); g2.strokeStyle = '#4fd8ff'; g2.lineWidth = 1.5; g2.strokeRect(ox2 + flt.rx * z2, oy2 + flt.ry * z2, flt.r.w * z2, flt.r.h * z2); g2.setLineDash([]); g2.lineWidth = 1; }
-  if (cur && !flt) { const n = foot(), o = Math.floor((n - 1) / 2); g2.strokeStyle = '#ff4fd8'; g2.strokeRect(ox2 + (cur[0] - o) * z2, oy2 + (cur[1] - o) * z2, n * z2, n * z2); }
+  if (cur && !flt) {
+    let n = foot(), x = cur[0] - Math.floor((n - 1) / 2), y = cur[1] - Math.floor((n - 1) / 2);
+    if (st.ch === ART && st.glock && n > 1 || st.ch === ART && st.glock && st.tool === 'pen') { n = GRIDS[st.gsz]; x = rx + Math.floor((cur[0] - rx) / n) * n; y = ry + Math.floor((cur[1] - ry) / n) * n; }     // grid lock: its cell
+    g2.strokeStyle = '#ff4fd8'; g2.strokeRect(ox2 + x * z2, oy2 + y * z2, n * z2, n * z2);
+  }
   need2 = false;
 }
-const foot = () => ({ fill: 1, pick: 1, sel: 1, arr: 1 })[st.tool] ? 1 : SIZES[st.size];     // the brush's width for this tool
+const foot = () => ({ fill: 1, pick: 1, sel: 1, arr: 1, grad: 1 })[st.tool] ? 1 : SIZES[st.size];     // the brush's width for this tool
 function info() {
   const e = $('info'); if (!cur || !CH) { e.style.display = 'none'; return; }
   const i = cur[1] * W + cur[0], b = v2.getBoundingClientRect(); e.style.display = 'block'; e.style.left = (b.left + 6) + 'px'; e.style.top = (b.top + 6) + 'px';
-  e.textContent = `${cur[0] - rect()[0]}, ${cur[1] - rect()[1]}   H ${CH[0][i]}  Refl ${CH[1][i]}  Glow ${CH[2][i]}`;
+  e.textContent = `${cur[0] - rect()[0]}, ${cur[1] - rect()[1]}   H ${CH[0][i]}  Refl ${CH[1][i]}  Glow ${CH[2][i]}` + (st.ch === ART ? `   ${hx(colAt(i))} α${CH[6][i]}` : '');
 }
 /* fingers: one paints, two pan / zoom (and take back what the first one started); mouse: wheel zooms, right / middle drag
    pans. A hovering pen or mouse moves the outline, so you see the pixel before you touch */
@@ -455,13 +604,14 @@ let holdT = 0, holdAt = null;
 const holdOff = () => { clearTimeout(holdT); holdT = 0; };
 function pickAt(q) {
   if (q[0] < 0 || q[1] < 0 || q[0] >= W || q[1] >= H) return false; const i = q[1] * W + q[0];
+  if (st.ch === ART) { const c = colAt(i); if (!c[3]) return false; setColor(c); return true; }     // art: the colour (to the active swatch)
   for (let c = 0; c < 3; c++) if (c === st.ch || st.pickAll) st.val[c] = CH[c][i];
   st.mode = 'set'; ui(); return true;
 }
 function held(q) {
   holdT = 0; if (!painting || P2.size !== 1) return;
   abort(); if (!pickAt(q)) return; hold = true;     // the rest of this touch does nothing
-  const i = q[1] * W + q[0]; toast(st.pickAll ? `Picked H ${CH[0][i]} · Refl ${CH[1][i]} · Glow ${CH[2][i]}` : `Picked ${['Height', 'Refl', 'Glow'][st.ch]} ${CH[st.ch][i]}`);
+  const i = q[1] * W + q[0]; toast(st.ch === ART ? 'Picked ' + hx(colAt(i)) : st.pickAll ? `Picked H ${CH[0][i]} · Refl ${CH[1][i]} · Glow ${CH[2][i]}` : `Picked ${['Height', 'Refl', 'Glow'][st.ch]} ${CH[st.ch][i]}`);
   if (st.buzz && navigator.vibrate) navigator.vibrate(18);
 }
 const atPx = (x, y) => [Math.floor((x - ox2) / z2), Math.floor((y - oy2) / z2)];
@@ -508,7 +658,9 @@ function toolDown(q) {
   if (st.tool === 'sel') { selWas = selM; selFrom = q; selMoved = false; selRect(q); return; }
   if (st.tool === 'arr') { if (!sel) { toast('Select a piece first'); painting = false; return; } arr = { c: grab(), q0: q, n: 0 }; begin(); return; }
   if (st.tool === 'pick') { painting = false; if (pickAt(q)) { st.tool = st.prev; ui(); } return; }
-  begin(); if (st.tool === 'fill') flood(...q); else apply(...q);
+  begin(); DONE.clear();
+  if (st.tool === 'grad') { gr = { q0: q, st: gradStops(), px: sel ? selPx() : regionArt(...q) }; return; }
+  if (st.tool === 'fill') flood(...q); else apply(...q);
 }
 function selRect(q) {        // the marquee from selFrom to q, as a new selection or added to / taken from the one before
   const [rx, ry, rw, rh] = rect(), c = (v, a, n) => clamp(v, a, a + n - 1), m = st.smode && selWas ? selWas.slice() : new Uint8Array(W * H), v = st.smode === 2 ? 0 : 1;
@@ -519,6 +671,7 @@ function selRect(q) {        // the marquee from selFrom to q, as a new selectio
 function toolMove(q) {
   if (flt) { if (fdrag) { flt.x = fdrag.x + q[0] - fdrag.q[0]; flt.y = fdrag.y + q[1] - fdrag.q[1]; floatShow(); } return; }
   if (st.tool === 'fill') return;
+  if (st.tool === 'grad') { if (gr) gradTo(q); return; }
   if (st.tool === 'sel') { if (q[0] !== selFrom[0] || q[1] !== selFrom[1]) selMoved = true; selRect(q); return; }
   if (arr) { arrMove(q); return; }
   let [x0, y0] = lastPx; const [x1, y1] = q, dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1; let er = dx + dy;
@@ -529,7 +682,7 @@ function toolUp() {
   if (flt) { fdrag = null; return; }
   if (st.tool === 'sel') { if (!selMoved && !st.smode) { sel = selM = null; } ui(); return; }      // a tap: deselect
   if (arr) { arrEnd(); return; }
-  end();
+  gr = null; end();
 }
 
 /* ---------------- 3D view: one instanced box per pixel, as tall as its height; lines mark each voxel.
@@ -640,7 +793,7 @@ function rebuild3() {
     const i = y * W + x, o = i * 4, al = COL[o + 3], h = hh[i]; if (!al && !h) continue;
     const v = c[i] / MAXV[st.ch]; let r, g, b;
     if (!al) { r = 0.85; g = 0.15; b = 0.7; }
-    else if (lit) { if (st.ovl) { r = COL[o] / 255; g = COL[o + 1] / 255; b = COL[o + 2] / 255; } else r = g = b = 0.62; }     // the art (or plain grey, for the materials alone)
+    else if (lit || st.ch === ART) { if (st.ovl || st.ch === ART) { r = COL[o] / 255; g = COL[o + 1] / 255; b = COL[o + 2] / 255; } else r = g = b = 0.62; }     // the art (or plain grey, for the materials alone)
     else if (st.ovl) { r = COL[o] / 255; g = COL[o + 1] / 255; b = COL[o + 2] / 255; if (st.ch) { const t = TINT[st.ch]; r = r * 0.6 + t[0] / 255 * v * 0.5; g = g * 0.6 + t[1] / 255 * v * 0.5; b = b * 0.6 + t[2] / 255 * v * 0.5; } }
     else if (st.ch) { const t = TINT[st.ch]; r = 0.2 + t[0] / 255 * v * 0.8; g = 0.22 + t[1] / 255 * v * 0.8; b = 0.26 + t[2] / 255 * v * 0.8; }
     else { [r, g, b] = ramp(h); r /= 255; g /= 255; b /= 255; }
@@ -741,10 +894,11 @@ v3.addEventListener('wheel', e => { e.preventDefault(); cam.dist = clamp(cam.dis
 /* ---------------- UI */
 function ui() {
   const ch = st.ch, t = st.tool, nud = st.mode === 'nudge', lab = (id, html) => { const e = $(id), v = e.querySelector('svg'); e.innerHTML = (v ? v.outerHTML : '') + html; };
-  $('chH').classList.toggle('on', ch === 0); $('chR').classList.toggle('on', ch === 1); $('chE').classList.toggle('on', ch === 2);
+  $('chH').classList.toggle('on', ch === 0); $('chR').classList.toggle('on', ch === 1); $('chE').classList.toggle('on', ch === 2); $('chA').classList.toggle('on', ch === ART);
+  const art = ch === ART; $('pbar').hidden = !art; $('vbar').hidden = art; for (const b of document.querySelectorAll('#tools .art')) b.hidden = !art; if (art) renderPal();
   const on = (id, v) => $(id).classList.toggle('on', !!v);
   on('ovl', st.ovl); on('ovlB', st.ovl); const ub = st.spr && META['under_' + partOf(st.spr)];
-  $('undB').hidden = !st.spr || st.spr.startsWith('under_'); on('undB', ub); $('swpB').hidden = !ub; on('swpB', st.spr.startsWith('under_')); lab('swpB', st.spr.startsWith('under_') ? 'Part' : 'Under'); on('msk', st.mask); on('look', !st.look); $('look').textContent = st.look ? 'Channel' : 'Lit';
+  $('undB').hidden = !st.spr || st.spr.startsWith('under_'); on('undB', ub); $('swpB').hidden = !ub; on('swpB', st.spr.startsWith('under_')); lab('swpB', st.spr.startsWith('under_') ? 'Edit part' : 'Edit under'); on('msk', st.mask); on('look', !st.look); $('look').textContent = st.look ? 'Channel' : 'Lit';
   for (let k = 0; k < 2; k++) on('look' + k, st.look === k); for (let k = 0; k < 5; k++) on('sky' + k, st.sky === k);
   for (const k of ['sunAz', 'sunEl', 'reflK', 'bloomK']) $(k).value = st[k]; on('grid', st.grid); on('rdo', st.rdo); on('stk', st.stack); on('pAll', st.pickAll); on('buzz', st.buzz);
   for (let k = 0; k < 3; k++) on('lay' + k, st.lay === k); for (let k = 0; k < 4; k++) { on('hold' + k, st.hold === k); on('nr' + k, st.nr === k); }
@@ -756,24 +910,44 @@ function ui() {
   $('vNum').textContent = nud && v > 0 ? '+' + v : v;
   $('vbar').style.visibility = !(t === 'pen' || t === 'fill' || sel) || flt ? 'hidden' : '';     // hidden, not gone: the views keep their place
   // the context row: this tool's options, then the selection / clipboard, or the floating paste
-  $('size').hidden = !(t === 'pen' || t === 'erase'); lab('size', SIZES[st.size]);
+  $('size').hidden = !(t === 'pen' || t === 'erase' || t === 'shade' || t === 'blur') || art && st.glock; lab('size', SIZES[st.size]);
+  $('alock').hidden = $('glock').hidden = !art || !!flt; $('gsz').hidden = !art || !st.glock || !!flt; $('gsz').textContent = GRIDS[st.gsz] + ' px'; on('alock', st.alock); on('glock', st.glock);
+  $('shd').hidden = !art || t !== 'shade'; $('shd').textContent = st.shd > 0 ? 'Lighter' : 'Darker'; $('gdi').hidden = !art || t !== 'grad'; on('gdi', st.gdi);
   $('tol').hidden = t !== 'fill'; $('tol').textContent = 'Tol ' + TOLS[ch][st.tol[ch]];
   $('smode').hidden = t !== 'sel' || !!flt; for (const b of document.querySelectorAll('#smode button')) b.classList.toggle('on', +b.dataset.m === st.smode);
   $('gap').hidden = t !== 'arr'; $('gap').textContent = 'Gap ' + GAPS[st.gap];
-  $('pch').hidden = !(flt || t === 'arr'); $('pch').textContent = ['All ch', 'Height', 'Refl', 'Glow'][st.pch];
+  $('pch').hidden = art || !(flt || t === 'arr'); $('pch').textContent = ['All ch', 'Height', 'Refl', 'Glow'][st.pch];
   const showSel = !flt && (sel || clip || t === 'sel'); $('selb').hidden = !showSel;
   for (const id of ['cpy', 'lift', 'sFill', 'sNone']) $(id).hidden = !sel; $('pst').hidden = !clip;
   $('selLab').textContent = sel ? (sel[2] - sel[0] + 1) + '×' + (sel[3] - sel[1] + 1) : clip ? 'Clip' : 'Drag to select';
   const nn = Math.abs(st.nud[ch]) || 1, setL = (id, t) => { const e = $(id); e.lastChild.textContent = t; };
-  setL('sUp', 'Nudge up ' + nn); setL('sDn', 'Nudge down ' + nn); setL('sFill2', st.mode === 'nudge' ? 'Apply nudge ' + (st.nud[ch] > 0 ? '+' : '') + st.nud[ch] : 'Apply set ' + st.val[ch]);
+  if (art) { setL('sUp', 'Shade lighter'); setL('sDn', 'Shade darker'); setL('sFill2', 'Fill with the main colour'); setL('sClr', 'Clear (transparent)'); }
+  else { setL('sUp', 'Nudge up ' + nn); setL('sDn', 'Nudge down ' + nn); setL('sFill2', st.mode === 'nudge' ? 'Apply nudge ' + (st.nud[ch] > 0 ? '+' : '') + st.nud[ch] : 'Apply set ' + st.val[ch]); setL('sClr', 'Clear to 0'); }
   $('fbar').hidden = !flt; if (flt) { $('fLab').textContent = (flt.ang % 360) + '°'; $('fx').classList.toggle('on', flt.fx); $('fy').classList.toggle('on', flt.fy); }
   const anyOpt = [...$('opts').children].some(e => !e.hidden); $('optDiv').hidden = !(anyOpt && (showSel || flt));
   $('cbar').style.visibility = !anyOpt && !showSel && !flt ? 'hidden' : '';
   $('views').className = ['', 'only2', 'only3'][st.lay]; $('mShare').hidden = !navigator.canShare; $('info').hidden = !st.rdo;
   need2 = need3 = true; savePrefs(); requestAnimationFrame(() => { need2 = need3 = true; });
 }
-const setCh = c => { st.ch = c; full2 = true; dirty3 = true; ui(); };
-$('chH').onclick = () => setCh(0); $('chR').onclick = () => setCh(1); $('chE').onclick = () => setCh(2);
+const setCh = c => { pasteEnd(false); st.ch = c; if (c !== ART && /^(shade|blur|grad)$/.test(st.tool)) st.tool = 'pen'; full2 = true; dirty3 = true; ui(); };
+$('chH').onclick = () => setCh(0); $('chR').onclick = () => setCh(1); $('chE').onclick = () => setCh(2); $('chA').onclick = () => setCh(ART);
+$('alock').onclick = () => { st.alock = !st.alock; ui(); }; $('glock').onclick = () => { st.glock = !st.glock; ui(); }; $('gsz').onclick = () => { st.gsz = (st.gsz + 1) % GRIDS.length; ui(); };
+$('shd').onclick = () => { st.shd = -st.shd; ui(); }; $('gdi').onclick = () => { st.gdi = !st.gdi; ui(); };
+// the palette bar: tap a swatch to make it the one palette taps set (tap it again: the colour picker)
+const openPicker = () => { const c = $('cin'); c.value = hx(st.act ? st.c2 : st.c1); c.click(); };
+$('sw1').onclick = () => { if (st.act === 0) openPicker(); else { st.act = 0; ui(); } }; $('sw2').onclick = () => { if (st.act === 1) openPicker(); else { st.act = 1; ui(); } };
+$('cin').oninput = () => setColor(rgb($('cin').value)); $('swX').onclick = () => { [st.c1, st.c2] = [st.c2, st.c1]; ui(); };
+$('pal').onclick = e => { const b = e.target.closest('.pc'); if (!b) return; st.prow = +b.dataset.r; setColor(rgb(st.pal[st.prow][+b.dataset.c])); };
+$('pEx').onclick = () => { const p = extractPal(); if (!p.length) { toast('No art here'); return; } st.pal = p; st.prow = -1; ui(); toast(p.reduce((n, r) => n + r.length, 0) + ' colours in ' + p.length + ' rows'); };
+$('pAdd').onclick = () => { const h = hx(st.c1); if (st.pal.some(r => r.includes(h))) { toast('Already in the palette'); return; } if (st.pal[st.prow]) st.pal[st.prow].push(h); else { st.pal.push([h]); st.prow = st.pal.length - 1; } ui(); };
+$('pRow').onclick = () => { const h = hx(st.c1); st.pal = st.pal.map(r => r.filter(c => c !== h)).filter(r => r.length); st.pal.push([h]); st.prow = st.pal.length - 1; ui(); };
+$('pDel').onclick = () => { const h = hx(st.c1); st.pal = st.pal.map(r => r.filter(c => c !== h)).filter(r => r.length); ui(); };
+$('pSort').onclick = () => { const r = st.pal.find(r => r.includes(hx(st.c1))); if (!r) { toast('The main colour isn\'t in the palette'); return; } r.sort((a, b) => lum(rgb(a)) - lum(rgb(b))); ui(); };
+$('pClr').onclick = () => { if (confirm('Clear the palette?')) { st.pal = []; ui(); } };
+// fullscreen (where the browser has it; on an iPhone: Share › Add to Home Screen)
+$('fs').hidden = !document.fullscreenEnabled;
+$('fs').onclick = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(e => toast('Fullscreen: ' + e.message));
+addEventListener('fullscreenchange', () => { $('fs').classList.toggle('on', !!document.fullscreenElement); need2 = need3 = true; requestAnimationFrame(fit); });
 /* dropdowns: a bar button opens its menu under it; a tap anywhere else (or on an action) closes it. Toggles stay open */
 const closeMenus = () => { for (const m of document.querySelectorAll('.menu.open')) m.classList.remove('open'); for (const b of document.querySelectorAll('.dd.open')) b.classList.remove('open'); };
 for (const b of document.querySelectorAll('.dd')) b.onclick = e => {
@@ -824,10 +998,11 @@ $('vDn').onclick = () => setV(v => v - 1); $('vUp').onclick = () => setV(v => v 
 for (const b of document.querySelectorAll('#mode button')) b.onclick = () => { st.mode = b.dataset.m; ui(); };
 $('size').onclick = () => { st.size = (st.size + 1) % SIZES.length; ui(); };
 $('tol').onclick = () => { st.tol[st.ch] = (st.tol[st.ch] + 1) % TOLS[st.ch].length; ui(); };
-$('sUp').onclick = () => bulk(i => put(i, CH[st.ch][i] + Math.abs(st.nud[st.ch])));
-$('sDn').onclick = () => bulk(i => put(i, CH[st.ch][i] - Math.abs(st.nud[st.ch])));
-$('sFill').onclick = () => bulk(i => put(i, amt(i)));
-$('sClr').onclick = () => bulk(i => put(i, 0));
+const shadeAll = d => bulk(i => { const c = shadeOf(colAt(i), d); if (c) putC(i, c); });
+$('sUp').onclick = () => st.ch === ART ? shadeAll(1) : bulk(i => put(i, CH[st.ch][i] + Math.abs(st.nud[st.ch])));
+$('sDn').onclick = () => st.ch === ART ? shadeAll(-1) : bulk(i => put(i, CH[st.ch][i] - Math.abs(st.nud[st.ch])));
+$('sFill').onclick = () => bulk(i => st.ch === ART ? putC(i, C1()) : put(i, amt(i)));
+$('sClr').onclick = () => bulk(i => st.ch === ART ? putC(i, [0, 0, 0, 0]) : put(i, 0));
 $('sNone').onclick = () => { sel = selM = null; ui(); };
 for (const b of document.querySelectorAll('#smode button')) b.onclick = () => { st.smode = +b.dataset.m; ui(); };
 $('gap').onclick = () => { st.gap = (st.gap + 1) % GAPS.length; ui(); };
@@ -847,19 +1022,23 @@ function png() {
 }
 $('mDl').onclick = async () => { const b = await png(), a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'atlas_m.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); };
 $('mShare').onclick = async () => { const f = new File([await png()], 'atlas_m.png', { type: 'image/png' }); try { await navigator.share({ files: [f] }); } catch (e) { if (e.name !== 'AbortError') toast('Share failed: ' + e.message); } };
+const saveAs = (b, n) => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = n; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); };
+$('aDl').onclick = async () => saveAs(await artPng(), 'atlas.png');
+$('aShare').onclick = async () => { const f = new File([await artPng()], 'atlas.png', { type: 'image/png' }); try { await navigator.share({ files: [f] }); } catch (e) { if (e.name !== 'AbortError') toast('Share failed: ' + e.message); } };
 $('mImp').onclick = () => { $('file').click(); };
 $('file').onchange = async () => {
   const f = $('file').files[0]; $('file').value = ''; if (!f) return;
-  const bm = await createImageBitmap(f); if (bm.width !== W || bm.height !== H) { toast(`Wrong size: ${bm.width}×${bm.height}, the atlas is ${W}×${H}`); return; }
-  pasteEnd(false); const n = fromRGB(pixels(bm)); begin(); for (let c = 0; c < 3; c++) for (let i = 0; i < W * H; i++) put(i, n[c][i], c); end(); syncCfg(); full2 = true; ui(); toast('Imported');
+  const im = await exactPx(f); if (im.w !== W || im.h !== H) { toast(`Wrong size: ${im.w}×${im.h}, the atlas is ${W}×${H}`); return; }
+  pasteEnd(false); const art = st.ch === ART, n = art ? artPlanes(im.d) : fromRGB(im.d), c0 = art ? 3 : 0;     // in Art: an atlas.png, else an atlas_m.png
+  begin(); for (let c = 0; c < n.length; c++) for (let i = 0; i < W * H; i++) put(i, n[c][i], c0 + c); end(); syncCfg(); full2 = true; ui(); toast(art ? 'Imported the art' : 'Imported');
 };
 function revert(all) {
   pasteEnd(false); const [rx, ry, rw, rh] = all ? [0, 0, W, H] : rect();
-  begin(); for (let c = 0; c < 3; c++) for (let y = ry; y < ry + rh; y++) for (let x = rx; x < rx + rw; x++) { const i = y * W + x; put(i, FILE[c][i], c); } end(); syncCfg();
+  begin(); for (let c = 0; c < CH.length; c++) for (let y = ry; y < ry + rh; y++) for (let x = rx; x < rx + rw; x++) { const i = y * W + x; put(i, FILE[c][i], c); } end(); syncCfg();
   full2 = true; dirty3 = true; ui(); toast(all ? 'Reverted everything' : 'Reverted ' + (st.spr || 'atlas'));
 }
 $('mRevS').onclick = () => revert(false);
-$('mRevA').onclick = () => { if (confirm('Throw away all painting and go back to the published atlas_m.png?')) revert(true); };
+$('mRevA').onclick = () => { if (confirm('Throw away all painting (heights and art) and go back to the published atlas?')) revert(true); };
 new ResizeObserver(() => { need2 = need3 = true; }).observe($('views'));
 
 function frame() {
