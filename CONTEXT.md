@@ -538,5 +538,4 @@ Per-state undersides: the settings' off list (states without it; jeep4, the wrec
 ## Build 187
 User art drop: atlas_m (jeep heights repainted, jeep underside painted, new under_jeep_tire: the steering tires stand on it) and atlas.png (jeep0 touch-up).
 
-## Build 187
-Art drop (drop.py): atlas_m.png: no change; atlas.png: no change.
+drop.py: an art drop in one command, python drop.py <png> [<png>] (the opaque one is atlas_m): checks size + settings strip, puts the files in, builds, tests, notes the changed sprites in CONTEXT, commits, pushes, waits for Pages. --check: dry run; --no-push.
