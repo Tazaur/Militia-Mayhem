@@ -136,7 +136,7 @@ button.hov { outline: 2px solid #ff4fd8; outline-offset: -2px; }
   <button id="eAll" data-i="select">Select all</button><button id="eNone" data-i="x">Deselect</button><hr>
   <div class="h">Selection (or sprite)</div>
   <button id="sFill2" data-i="bucket">Apply set / nudge</button><button id="sUp" data-i="up">Nudge up</button><button id="sDn" data-i="down">Nudge down</button><button id="sClr" data-i="trash">Clear to 0</button>
-  <hr><button id="undB" data-i="layers" title="Tracks / wheels under this part (painted as depth down; the game hangs it under the part)">Add underside</button><button id="undS" data-i="check" title="Whether this state stands on the underside (a wreck: off)">Underside on this state</button>
+  <hr><button id="undB" data-i="layers" title="Tracks / wheels under this part (painted as depth down; the game hangs it under the part)">Add underside</button><label id="undW" class="rng" title="What this sprite stands on: a pool underside, another sprite, itself, or the ground (a wreck in the dirt)">Stands on <select id="undU"></select></label>
 </div>
 <div class="menu" id="mView">
   <button id="ovl" data-i="color">Show the art</button><button id="msk" data-i="mask">Paint only on the art</button><button id="grid" data-i="gridI">Pixel grid</button><button id="rdo" data-i="info">Pixel readout</button><button id="stk" data-i="layers">Stack the underside (3D)</button><hr>
@@ -286,12 +286,16 @@ async function load() {
 
 /* ---------------- the atlas's settings (the game reads them too): a JSON string in the settings strip (atlas.json _cfg),
    2 bytes of length then UTF-8, over its pixels' G / B bytes row by row. They're pixels like the rest: undo, revert, import
-   and the saved work take them along. { under: { part: [x, y, w, h, px, py] } }: a part's underside, a rect in the pool
-   (atlas.json _pool) the size of the part's first frame, its pivot too */
+   and the saved work take them along. { under: { name: [x, y, w, h, px, py] }, use: { sprite: what it stands on } }:
+   undersides, rects in the pool (atlas.json _pool) sized to fit every sprite on them, pivot too; a sprite stands on a
+   pool underside (under_<name>), another sprite, itself, or nothing. Older settings (off: the states without their
+   part's underside) read as the same thing */
 function cfgRead() {
   const C = FMETA._cfg; if (!C) return {}; const b = [];
   for (let y = C[1]; y < C[1] + C[3]; y++) for (let x = 0; x < C[2]; x++) { const i = y * W + x; b.push(CH[1][i], CH[2][i]); }
-  const n = b[0] << 8 | b[1]; try { return n ? JSON.parse(new TextDecoder().decode(new Uint8Array(b.slice(2, 2 + n)))) : {}; } catch (e) { return {}; }
+  const n = b[0] << 8 | b[1]; let c = {}; try { c = n ? JSON.parse(new TextDecoder().decode(new Uint8Array(b.slice(2, 2 + n)))) : {}; } catch (e) { }
+  if (!c.use) { c.use = {}; for (const u in c.under || {}) for (const f of framesOf(u)) if (!(c.off || []).includes(f)) c.use[f] = 'under_' + u; }
+  delete c.off; return c;
 }
 function cfgWrite(c) {        // inside a stroke
   const C = FMETA._cfg, t = new TextEncoder().encode(JSON.stringify(c)), n = C[2] * C[3] * 2; if (t.length + 2 > n) return false;
@@ -330,10 +334,10 @@ function guide(d) {
 const framesOf = b => Object.keys(FMETA).filter(n => n[0] !== '_' && (n === b || n.startsWith(b) && /^\d+$/.test(n.slice(b.length))));
 const shift = (f, u) => [Math.round(f[4] - u[4]), Math.round(f[5] - u[5])];
 /* the state an underside is worked on with (the one last open, else the first): its guide, its 3D stack, where Edit part goes */
-const activeOf = b => st.from && partOf(st.from) === b && FMETA[st.from] ? st.from : ownerOf(b);
-/* the states without the underside (the settings' off: a wreck sitting in the dirt); the ones with it */
-const offIn = (c, n) => (c.off || []).includes(n);
-const liveOf = (b, c = CFG) => framesOf(b).filter(n => !offIn(c, n));
+const activeOf = b => st.from && useOf(st.from) === 'under_' + b ? st.from : liveOf(b)[0] || ownerOf(b);
+/* what a sprite stands on (or null); the sprites standing on a pool underside */
+const useOf = (n, c = CFG) => (c.use || {})[n] || null;
+const liveOf = (b, c = CFG) => Object.keys(c.use || {}).filter(n => c.use[n] === 'under_' + b && FMETA[n]);
 /* an underside's size and pivot: the bounds of every state with it, pivots lined up (whole px), so none reaches past it */
 function fitOf(b, c = CFG) {
   let X0 = 0, Y0 = 0, X1 = 0, Y1 = 0;
@@ -359,13 +363,18 @@ function fitUnders() {
   begin(); const r = refit(CFG); if (!r || !r.length) { cancel(); if (!r) toast('The underside pool is full'); return; }
   end(); syncCfg(); toast('Undersides resized to fit their states: ' + r.join(', '));
 }
-/* one state with or without its part's underside (the state open, or the one an underside is worked with) */
-function toggleState() {
-  if (!st.spr) return; const b = partOf(st.spr), n = st.spr.startsWith('under_') ? activeOf(b) : st.spr; if (!CFG.under || !CFG.under[b] || !n) return;
-  const was = offIn(CFG, n), off = was ? CFG.off.filter(x => x !== n) : [...(CFG.off || []), n];
-  if (!was && !liveOf(b, { off }).length) { toast('That is its last state with the underside: Remove underside instead'); return; }
-  pasteEnd(false); begin(); if (!refit({ ...CFG, off })) { cancel(); toast('The underside pool is full'); return; }
-  end(); syncCfg(); ui(); toast(was ? `${n} has the underside again` : `${n} sits without the underside`);
+/* what the sprite open stands on: v a pool underside, a sprite (itself too) or '' (the ground) */
+function setUse(v) {
+  const n = st.spr; if (!n || n.startsWith('under_') || useOf(n) === (v || null)) return; const use = { ...CFG.use }; if (v) use[n] = v; else delete use[n];
+  pasteEnd(false); begin(); if (!refit({ ...CFG, use })) { cancel(); toast('The underside pool (or the settings) is full'); useK = ''; ui(); return; }
+  end(); syncCfg(); ui(); toast(v ? `${n} stands on ${v === n ? 'itself' : v}` : `${n} stands on the ground`);
+}
+let useK = '';
+function useList() {      // the Stands on choices: the ground, the pool's undersides, every sprite (this one: itself)
+  const n = st.spr, v = useOf(n) || '', k = n + '|' + v + '|' + NAMES.join(); if (k === useK) return; useK = k;
+  const U = NAMES.filter(m => m.startsWith('under_')), S = NAMES.filter(m => !m.startsWith('under_'));
+  $('undU').innerHTML = '<option value="">the ground</option>' + U.map(m => `<option value="${m}">underside ${m.slice(6)}</option>`).join('') + S.map(m => `<option value="${m}">${m === n ? 'itself' : m}</option>`).join('');
+  $('undU').value = v;
 }
 /* the Underside toggle: a part gets a place in the pool (the first free spot, 1 px apart) and the settings say so; off
    takes it out (undo brings it back) */
@@ -375,20 +384,23 @@ function poolSpot(w, h, U) {
   return null;
 }
 function toggleUnder() {
-  if (!st.spr) return; const b = partOf(st.spr), U = { ...(CFG.under || {}) }, had = !!U[b];
-  const off = (CFG.off || []).filter(n => partOf(n) !== b);     // a new or removed underside: every state's own setting goes
-  if (had) { if (!confirm(`Take ${b}'s underside out of every state? (Undo brings it back. One state: Underside on this state)`)) return; delete U[b]; }
-  else {
-    if (!framesOf(b).length) return; const [w, h, px, py] = fitOf(b, { off }), at = poolSpot(w, h, U); if (!at) { toast('The underside pool is full'); return; }
+  if (!st.spr) return; const pool = st.spr.startsWith('under_'), U = { ...(CFG.under || {}) }, use = { ...CFG.use };
+  if (pool) {     // delete it: the sprites on it go back to the ground (undo brings it back)
+    const b = partOf(st.spr), on = liveOf(b); if (!confirm(`Delete underside ${b}?` + (on.length ? ` (${on.join(', ')} go back to the ground. Undo brings it back)` : ''))) return;
+    delete U[b]; for (const n of on) delete use[n];
+  } else {        // a new one under this sprite (and its part's other states standing on nothing)
+    const p = partOf(st.spr); let b = p; for (let k = 2; U[b]; k++) b = p + k;
+    use[st.spr] = 'under_' + b; for (const n of framesOf(p)) if (!use[n]) use[n] = 'under_' + b;
+    const [w, h, px, py] = fitOf(b, { use }), at = poolSpot(w, h, U); if (!at) { toast('The underside pool is full'); return; }
     U[b] = [at[0], at[1], w, h, px, py];
   }
   pasteEnd(false); begin();
-  if (!had) { const P = FMETA._pool, r = U[b]; for (let c = 0; c < 3; c++) for (let y = 0; y < r[3]; y++) for (let x = 0; x < r[2]; x++) put((P[1] + r[1] + y) * W + r[0] + x, 0, c); }     // a clean start
-  if (!cfgWrite({ ...CFG, under: U, off })) { cancel(); toast('The settings are full'); return; }
-  end(); syncCfg(); pickSpr(had ? activeOf(b) : 'under_' + b); toast(had ? 'Underside taken out' : 'Underside added: paint how far down it reaches');
+  if (!pool) { const P = FMETA._pool, r = U[use[st.spr].slice(6)]; for (let c = 0; c < 3; c++) for (let y = 0; y < r[3]; y++) for (let x = 0; x < r[2]; x++) put((P[1] + r[1] + y) * W + r[0] + x, 0, c); }     // a clean start
+  if (!refit({ ...CFG, under: U, use })) { cancel(); toast('The settings are full'); return; }
+  const to = pool ? activeOf(partOf(st.spr)) : use[st.spr]; end(); syncCfg(); pickSpr(META[to] ? to : ''); toast(pool ? 'Underside deleted' : 'Underside added: paint how far down it reaches');
 }
-/* between a part and its underside (the same stack), in both views */
-function swapUnder() { if (!st.spr) return; const b = partOf(st.spr), u = 'under_' + b; if (!META[u]) return; pickSpr(st.spr === u ? activeOf(b) : u); }     // back to the state it came from
+/* between a sprite and what it stands on, in both views (a pool underside: back to the state it came from) */
+function swapUnder() { if (!st.spr) return; const pool = st.spr.startsWith('under_'), o = pool ? activeOf(partOf(st.spr)) : useOf(st.spr); if (o && META[o] && o !== st.spr) pickSpr(o); }
 
 /* ---------------- editing */
 const rect = () => st.spr ? META[st.spr].slice(0, 4) : [0, 0, W, H];
@@ -647,7 +659,7 @@ function draw2() {
 }
 const foot = () => ({ fill: 1, pick: 1, sel: 1, arr: 1, grad: 1 })[st.tool] ? 1 : SIZES[st.size];     // the brush's width for this tool
 function info() {
-  const e = $('info'); if (!cur || !CH) { e.style.display = 'none'; return; }
+  const e = $('info'); if (!cur || !CH || cur[0] < 0 || cur[1] < 0 || cur[0] >= W || cur[1] >= H) { e.style.display = 'none'; return; }     // off the atlas: nothing to read
   const i = cur[1] * W + cur[0], b = v2.getBoundingClientRect(); e.style.display = 'block'; e.style.left = (b.left + 6) + 'px'; e.style.top = (b.top + 6) + 'px';
   e.textContent = `${cur[0] - rect()[0]}, ${cur[1] - rect()[1]}   H ${CH[0][i]}  Refl ${CH[1][i]}  Glow ${CH[2][i]}` + (st.ch === ART ? `   ${hx(colAt(i))} α${CH[6][i]}` : '');
 }
@@ -838,10 +850,10 @@ const onArt = (f, x, y) => x >= 0 && y >= 0 && x < f[2] && y < f[3] && COL0[((f[
 /* as the game: the deepest paint, art or not (the lift stays the same in every state) */
 function deepest(n) { const m = META[n]; let v = 0; for (let y = m[1]; y < m[1] + m[3]; y++) for (let x = m[0]; x < m[0] + m[2]; x++) { const i = y * W + x; v = Math.max(v, CH[0][i]); } return v; }
 function stackOf(n) {        // { o the other sprite, lift, under: this is the underside }
-  if (!n) return null; const b = partOf(n), u = 'under_' + b, o = n === u ? activeOf(b) : u;
-  if (!META[u] || n !== u && offIn(CFG, n)) return null;     // a state without it: on the ground
-  if (!st.stack || !o || offIn(CFG, o)) return n === u ? { o: null, lift: deepest(u), under: true } : null;     // unstacked: an underside still hangs (from its deepest pixel)
-  return META[o] ? { o, lift: deepest(u), under: n === u } : null;
+  if (!n) return null; const pool = n.startsWith('under_'), u = pool ? n : useOf(n), o = pool ? activeOf(partOf(n)) : u;
+  if (!u || !META[u]) return null;     // on the ground
+  if (!st.stack || !o || !META[o] || pool && useOf(o) !== n) return pool ? { o: null, lift: deepest(u), under: true } : null;     // unstacked: an underside still hangs (from its deepest pixel)
+  return { o, lift: deepest(u), under: pool };
 }
 function rebuild3() {
   const [rx, ry, rw, rh] = rect(), sk = stackOf(st.spr), om = sk && META[sk.o], D = om ? (sk.under ? shift(om, META[st.spr]) : shift(META[st.spr], om)) : 0, need = (rw * rh + (om ? om[2] * om[3] : 0)) * 9;
@@ -957,7 +969,9 @@ function ui() {
   const art = ch === ART; $('pbar').hidden = !art; $('vbar').hidden = art; for (const b of document.querySelectorAll('#tools .art')) b.hidden = !art; if (art) renderPal();
   const on = (id, v) => $(id).classList.toggle('on', !!v);
   on('ovl', st.ovl); on('ovlB', st.ovl); const ub = st.spr && META['under_' + partOf(st.spr)];
-  $('undB').hidden = !st.spr; lab('undB', ub ? 'Remove underside (all states)' : 'Add underside'); const sn = ub && (st.spr.startsWith('under_') ? activeOf(partOf(st.spr)) : st.spr); $('undS').hidden = !sn; if (sn) lab('undS', offIn(CFG, sn) ? `Give ${sn} the underside` : `Take ${sn}'s underside off`); $('swpB').hidden = !ub; on('swpB', st.spr.startsWith('under_')); lab('swpB', st.spr.startsWith('under_') ? 'Edit part' : 'Edit under'); on('msk', st.mask); on('look', !st.look); $('look').textContent = st.look ? 'Channel' : 'Lit';
+  const pool = st.spr.startsWith('under_'), uo = st.spr && (pool ? activeOf(partOf(st.spr)) : useOf(st.spr));
+  $('undB').hidden = !st.spr; lab('undB', pool ? 'Delete underside ' + partOf(st.spr) : 'New underside'); $('undW').hidden = !st.spr || pool; if (st.spr && !pool) useList();
+  $('swpB').hidden = !uo || uo === st.spr || !META[uo]; on('swpB', pool); lab('swpB', pool ? 'Edit part' : 'Edit under'); on('msk', st.mask); on('look', !st.look); $('look').textContent = st.look ? 'Channel' : 'Lit';
   for (let k = 0; k < 2; k++) on('look' + k, st.look === k); for (let k = 0; k < 5; k++) on('sky' + k, st.sky === k);
   for (const k of ['sunAz', 'sunEl', 'reflK', 'bloomK']) $(k).value = st[k]; on('grid', st.grid); on('rdo', st.rdo); on('stk', st.stack); on('pAll', st.pickAll); on('buzz', st.buzz);
   for (let k = 0; k < 3; k++) on('lay' + k, st.lay === k); for (let k = 0; k < 4; k++) { on('hold' + k, st.hold === k); on('nr' + k, st.nr === k); }
@@ -1016,7 +1030,7 @@ for (const b of document.querySelectorAll('.dd')) b.onclick = e => {
 };
 addEventListener('pointerdown', e => { if (!e.target.closest('.menu, .dd')) closeMenus(); });
 for (const m of document.querySelectorAll('.menu')) m.addEventListener('click', e => { const b = e.target.closest('button'); if (b && !/^(ovl|msk|grid|rdo|stk|pAll|buzz|hold\d|nr\d|lay\d|look\d|sky\d)$/.test(b.id)) closeMenus(); });
-$('undB').onclick = toggleUnder; $('undS').onclick = toggleState; $('swpB').onclick = swapUnder;
+$('undB').onclick = toggleUnder; $('undU').onchange = () => setUse($('undU').value); $('swpB').onclick = swapUnder;
 $('ovl').onclick = $('ovlB').onclick = () => { st.ovl = !st.ovl; full2 = true; dirty3 = true; ui(); };
 $('look').onclick = () => { st.look = st.look ? 0 : 1; dirty3 = true; ui(); };
 for (let k = 0; k < 2; k++) $('look' + k).onclick = () => { st.look = k; dirty3 = true; ui(); };
@@ -1087,10 +1101,24 @@ $('aShare').onclick = async () => { const f = new File([await artPng()], 'atlas.
 $('mImp').onclick = () => { $('file').click(); };
 $('file').onchange = async () => {
   const f = $('file').files[0]; $('file').value = ''; if (!f) return;
-  const im = await exactPx(f); if (im.w !== W || im.h !== H) { toast(`Wrong size: ${im.w}×${im.h}, the atlas is ${W}×${H}`); return; }
+  const im = await exactPx(f); if (im.w !== W || im.h !== H) { chunk(im); return; }     // not the atlas's size: a piece, to place
   pasteEnd(false); const art = st.ch === ART, n = art ? artPlanes(im.d) : fromRGB(im.d), c0 = art ? 3 : 0;     // in Art: an atlas.png, else an atlas_m.png
   begin(); for (let c = 0; c < n.length; c++) for (let i = 0; i < W * H; i++) put(i, n[c][i], c0 + c); end(); syncCfg(); fitUnders(); full2 = true; ui(); toast(art ? 'Imported the art' : 'Imported');
 };
+/* a piece (any PNG not the atlas's size): floats on the current sprite to be placed. Art: its colours; heights: a grey
+   picture goes in the channel you're on (Height as atlas_m stores it, ×4), a coloured one is an atlas_m (all three) */
+function chunk(im) {
+  if (flt || stroke) pasteEnd(false); const w = im.w, h = im.h, d = im.d, c = blank(-1e6, -1e6, w, h), art = st.ch === ART;
+  let grey = true; for (let j = 0; j < w * h && grey; j++) grey = d[j * 4] === d[j * 4 + 1] && d[j * 4] === d[j * 4 + 2];
+  for (let j = 0; j < w * h; j++) {
+    const r = d[j * 4], g = d[j * 4 + 1], b = d[j * 4 + 2], a = d[j * 4 + 3]; if (!a) continue; c.on[j] = 1;
+    if (art) { c.v[3][j] = r; c.v[4][j] = g; c.v[5][j] = b; c.v[6][j] = a; }
+    else if (grey) c.v[st.ch][j] = st.ch ? r : Math.min(63, Math.round(r / 4));
+    else { c.v[0][j] = Math.min(63, Math.round(r / 4)); c.v[1][j] = g; c.v[2][j] = b; }
+  }
+  if (!art) st.pch = grey ? st.ch + 1 : 0;     // what it writes: that channel, or all three
+  clip = c; pasteStart(); toast(`Placing ${w}×${h}` + (art ? '' : grey ? ' into ' + ['Height', 'Refl', 'Glow'][st.ch] : ' (H/R/G)') + ': drag, then ✓');
+}
 function revert(all) {
   pasteEnd(false); const [rx, ry, rw, rh] = all ? [0, 0, W, H] : rect();
   begin(); for (let c = 0; c < CH.length; c++) for (let y = ry; y < ry + rh; y++) for (let x = rx; x < rx + rw; x++) { const i = y * W + x; put(i, FILE[c][i], c); } end(); syncCfg();
@@ -1100,9 +1128,11 @@ $('mRevS').onclick = () => revert(false);
 $('mRevA').onclick = () => { if (confirm('Throw away all painting (heights and art) and go back to the published atlas?')) revert(true); };
 new ResizeObserver(() => { need2 = need3 = true; }).observe($('views'));
 
+let frameErr = '';
 function frame() {
-  if (CH) { if (full2) rebuild2(); if (need2) { draw2(); info(); } if (need3 || dirty3) draw3(); }
-  requestAnimationFrame(frame);
+  requestAnimationFrame(frame);     // first: one bad frame never stops the loop
+  try { if (CH) { if (full2) rebuild2(); if (need2) { need2 = false; draw2(); info(); } if (need3 || dirty3) draw3(); } }
+  catch (e) { const m = e.message || String(e); if (m !== frameErr) { frameErr = m; toast('Draw error: ' + m); console.error(e); } }
 }
 try { initGL(); } catch (e) { toast('3D view failed: ' + e.message); }
 load().then(() => requestAnimationFrame(frame)).catch(e => { document.body.insertAdjacentHTML('beforeend', `<div style="position:fixed;inset:40% 10px auto;text-align:center">Could not load the atlas: ${e.message}</div>`); });

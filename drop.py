@@ -34,6 +34,8 @@ if 'atlas_m.png' in new:
     P = meta['_pool']
     for b, r in cfg.get('under', {}).items():
         if r[0] < 0 or r[1] < 0 or r[0] + r[2] > P[2] or r[1] + r[3] > P[3]: die(f'under_{b} {r} is outside the pool')
+    for n, u in cfg.get('use', {}).items():          # what each sprite stands on: a pool underside or a sprite
+        if u not in meta and u[6:] not in cfg.get('under', {}): die(f'{n} stands on {u}, which isn't there')
     print('settings', json.dumps(cfg))
 
 # what changed, by sprite (the art only where it's visible)
