@@ -627,13 +627,20 @@ function memRecall(S, vw, X, box) {
 }
 /* the sweep's passes (box: the height buffer's) from the heights on unit hu into the pair T (framebuffers FS), the last
    left on unit u for the light: enough doublings to reach the tallest thing's shadow (mxh / DH px; DH: how much lower a
-   blocker reads per buffer px it's sunward) */
-function sunSweep(S, K, mxh, box, reg, T, FS, u, hu) {
-  const { gl, SU } = S, DH = Math.tan(sunEl()) / K, len = mxh / DH;
-  gl.useProgram(S.SP); gl.uniform2f(SU.S, S.fw, S.fh); gl.uniform4f(SU.R, ...reg); gl.uniform2f(SU.D, Math.cos(SUN.az), Math.sin(SUN.az)); gl.uniform1f(SU.DH, DH); gl.uniform1i(SU.H, hu); gl.uniform1i(SU.B, u);
-  gl.bindBuffer(gl.ARRAY_BUFFER, S.tri); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.viewport(0, 0, S.fw, S.fh); gl.scissor(...box); gl.activeTexture(gl.TEXTURE0 + u);
-  let i = 0; gl.bindTexture(gl.TEXTURE_2D, T[1]); gl.bindFramebuffer(gl.FRAMEBUFFER, FS[0]); gl.uniform1f(SU.N, 0); gl.drawArrays(gl.TRIANGLES, 0, 3); pipe('gpu-sweep', { fb: FS[0], n: 0, st: u === 6 });
-  for (let n = 1; n < len; n *= 2, i ^= 1) { gl.bindTexture(gl.TEXTURE_2D, T[i]); gl.bindFramebuffer(gl.FRAMEBUFFER, FS[i ^ 1]); gl.uniform1f(SU.N, n); gl.drawArrays(gl.TRIANGLES, 0, 3); pipe('gpu-sweep', { fb: FS[i ^ 1], n, st: u === 6 }); }
+   blocker reads per buffer px it's sunward). Each pass only over what the passes after it read (vr: the view in the
+   buffer, reaching sunward by their steps still to come; the last: the view alone) */
+function sunSweep(S, K, mxh, box, reg, vr, T, FS, u, hu) {
+  const { gl, SU } = S, DH = Math.tan(sunEl()) / K, len = mxh / DH, dx = Math.cos(SUN.az), dy = Math.sin(SUN.az), st = u === 6;
+  gl.useProgram(S.SP); gl.uniform2f(SU.S, S.fw, S.fh); gl.uniform4f(SU.R, ...reg); gl.uniform2f(SU.D, dx, dy); gl.uniform1f(SU.DH, DH); gl.uniform1i(SU.H, hu); gl.uniform1i(SU.B, u);
+  gl.bindBuffer(gl.ARRAY_BUFFER, S.tri); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.viewport(0, 0, S.fw, S.fh); gl.activeTexture(gl.TEXTURE0 + u);
+  const N = [0]; for (let n = 1; n < len; n *= 2) N.push(n);
+  let left = N.reduce((a, n) => a + n, 0);     // the reach still to come after each pass (N 0 reads 1 px)
+  const pass = (n, t, f) => { const ex = dx * left, ey = dy * left, x0 = Math.max(box[0], Math.floor(vr[0] + Math.min(0, ex)) - 2), y0 = Math.max(box[1], Math.floor(vr[1] + Math.min(0, ey)) - 2);
+    gl.scissor(x0, y0, Math.min(box[0] + box[2], Math.ceil(vr[0] + vr[2] + Math.max(0, ex)) + 2) - x0, Math.min(box[1] + box[3], Math.ceil(vr[1] + vr[3] + Math.max(0, ey)) + 2) - y0);
+    gl.bindTexture(gl.TEXTURE_2D, t); gl.bindFramebuffer(gl.FRAMEBUFFER, f); if (gl.invalidateFramebuffer) gl.invalidateFramebuffer(gl.FRAMEBUFFER, [gl.COLOR_ATTACHMENT0]);     // nothing kept from before (a tiler: no load)
+    gl.uniform1f(SU.N, n); gl.drawArrays(gl.TRIANGLES, 0, 3); pipe('gpu-sweep', { fb: f, n, st }); };
+  let i = 0; pass(0, T[1], FS[0]);
+  for (const n of N.slice(1)) { left -= n; pass(n, T[i], FS[i ^ 1]); i ^= 1; }
   gl.bindFramebuffer(gl.FRAMEBUFFER, S.out); gl.bindTexture(gl.TEXTURE_2D, T[i]); gl.activeTexture(gl.TEXTURE0);
 }
 /* the sun down (sunTone day 0: sunlit = shade): nothing to sweep, the pair's first left as nothing blocking (skyline -64, no span) on unit u */
@@ -670,7 +677,7 @@ function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory
   if (fog) memOf(S, vw);     // a new memory: the map as it starts, before this frame's lists
   sunDrawHeights(S, [VZ * k, VOX * k + px, VOY * k + py], [rx, ry, bw, bh], fog, vw);
   const reg = [rx + 0.5, ry + 0.5, rx + bw - 0.5, ry + bh - 0.5], mxh = Math.min(64, HMAX + 1);
-  const up = sunTone().day > 0, sweep = (T, F, u, hu) => up ? sunSweep(S, K, mxh, [rx, ry, bw, bh], reg, T, F, u, hu) : sunNoSweep(S, [rx, ry, bw, bh], T, F, u);
+  const up = sunTone().day > 0, sweep = (T, F, u, hu) => up ? sunSweep(S, K, mxh, [rx, ry, bw, bh], reg, [rx + px, ry + py, rw, rh], T, F, u, hu) : sunNoSweep(S, [rx, ry, bw, bh], T, F, u);
   sweep(S.ST, S.FS, 4, 0);
   if (fog) sweep(S.SS, S.FSS, 6, 7);     // the remembered things' shadows, for out of sight
   // the light, once (into LT)

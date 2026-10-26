@@ -10,7 +10,7 @@ function drawWorld(vw) {
   const x0 = (vw.x - VOX) / VZ - 4, y0 = (vw.y - VOY) / VZ - 4, x1 = (vw.x + vw.w - VOX) / VZ + 4, y1 = (vw.y + vw.h - VOY) / VZ + 4;
   const vis = (x, y, r) => x + r > x0 && x - r < x1 && y + r > y0 && y - r < y1;
   screenT(); ctx.save(); ctx.beginPath(); ctx.rect(vw.x, vw.y, vw.w, vw.h); ctx.clip();
-  ctx.fillStyle = '#0c140a'; ctx.fillRect(vw.x, vw.y, vw.w, vw.h); pipe('clear');
+  pipe('clear');     // no fill: the ground and the skirt round the map cover the view
   worldT(); ctx.imageSmoothingEnabled = false;
   SUNNOW = sunOn();
   const rv = MAP.tiled ? roofView(vw, x0, y0, x1, y1) : null, fogPolys = applyFog(vw, vis, x0, y0, x1, y1, rv), fogged = !!fogPolys; pipe('memory', { fogged });

@@ -90,10 +90,11 @@ class GXGrad {
 }
 class GXPat { constructor(img, rep) { this.img = img; this.rep = rep; } setTransform() { gxWarn('pattern transform'); } }
 /* ---------------- the batch ---------------- */
-const GXB = { cap: 0, F: null, U: null, I: null, icap: 0, nv: 0, ni: 0, tgt: null, bl: 0, st: 0, sc: [0, 0, 1, 1], slots: [], ok: false, fbo: undefined, prog: null, bb: [0, 0, 0, 0], dst: null, mask: null };
+const GXB = { cap: 0, F: null, U: null, I: null, icap: 0, nv: 0, ni: 0, tgt: null, bl: 0, st: 0, sc: [0, 0, 1, 1], slots: [], ok: false, fbo: undefined, prog: null, bb: [0, 0, 0, 0], dst: null, mask: null, cm: null };
 const GXP = { k: 0, mode: 0, slot: 0, col: 0, gr: 0, r0: 0, ia: 1, ib: 0, ic: 0, id: 1, ie: 0, if: 0, x0: 0, y0: 0, dx: 0, dy: 0, ir: 1, pw: 1, ph: 1 };
 let GXR = null, GXK = 0, GXFR = 0;
-/* blend modes: [src rgb, dst rgb, src a, dst a]; u: unbounded (cleared outside the shape), m: multiply (two passes), x: a dst-read shader mode */
+/* blend modes: [src rgb, dst rgb, src a, dst a]; u: unbounded (cleared outside the shape), m: multiply (two passes; one onto
+   an opaque target: the screen, or a surface marked opq, as FOG_OUT), x: a dst-read shader mode */
 const GXBM = {};
 function gxModes() {
   const g = GL, O = g.ONE, Z = g.ZERO, SA = g.SRC_ALPHA, ISA = g.ONE_MINUS_SRC_ALPHA, DA = g.DST_ALPHA, IDA = g.ONE_MINUS_DST_ALPHA;
@@ -112,10 +113,11 @@ const GXFS = x => `#version 300 es
 precision highp float;
 uniform sampler2D T0, T1, T2, T3, T4, T5, GR${x ? ', D; uniform vec4 uD; uniform float uM' : ''};
 in vec2 vT; in vec4 vC; flat in vec4 vX; out vec4 o;
+vec4 tsl(float s, vec2 t) { if (s < 0.5) return texture(T0, t); if (s < 1.5) return texture(T1, t); if (s < 2.5) return texture(T2, t); if (s < 3.5) return texture(T3, t); if (s < 4.5) return texture(T4, t); return texture(T5, t); }     // slot s
 vec4 src() {
   float m = vX.x;
   if (m < 0.5) return vC;
-  if (m < 1.5) { float s = vX.y; vec4 c; if (s < 0.5) c = texture(T0, vT); else if (s < 1.5) c = texture(T1, vT); else if (s < 2.5) c = texture(T2, vT); else if (s < 3.5) c = texture(T3, vT); else if (s < 4.5) c = texture(T4, vT); else c = texture(T5, vT); return c * vC; }
+  if (m < 1.5) return tsl(vX.y, vT) * vC;
   float t = m < 2.5 ? vT.x : (length(vT) - vX.w) / max(1. - vX.w, 1e-4);
   return texture(GR, vec2(clamp(t, 0., 1.) * 0.99609375 + 0.001953125, vX.z)) * vC;
 }
@@ -146,7 +148,8 @@ void main() {
   vec3 cs = s.a > 0. ? s.rgb / s.a : vec3(0.), cd = d.a > 0. ? d.rgb / d.a : vec3(0.);
   o = vec4(s.a * (1. - d.a) * cs + s.a * d.a * bl(cd, cs) + (1. - s.a) * d.rgb, s.a + d.a * (1. - s.a));
 }` : `uniform sampler2D MK; uniform vec4 uMK; uniform float uMKo;     // maskedImage: times a mask's alpha, placed by gl_FragCoord
-void main() { o = src(); if (uMKo > 0.5) o *= texture(MK, gl_FragCoord.xy * uMK.xy + uMK.zw).a; }`}`;
+uniform mat3 uCM; uniform vec3 uCMb; uniform float uCMo, uSHs; uniform vec4 uSH;     // withMatrix: the colour (straight) through uCM plus uCMb, then times the shade (slot uSHs, placed as the mask)
+void main() { o = src(); if (uCMo > 0.5 && o.a > 0.) { o.rgb = clamp(uCM * (o.rgb / o.a) + uCMb, 0., 1.) * o.a; if (uSHs > -0.5) o.rgb *= tsl(uSHs, gl_FragCoord.xy * uSH.xy + uSH.zw).rgb; } if (uMKo > 0.5) o *= texture(MK, gl_FragCoord.xy * uMK.xy + uMK.zw).a; }`}`;
 const GXFADE = `#version 300 es
 precision highp float; uniform sampler2D D; uniform vec4 uD; uniform vec2 uF; out vec4 o;
 void main() { vec4 c = texture(D, (gl_FragCoord.xy - uD.xy) * uD.zw); float a = clamp(c.a * uF.x + uF.y, 0., 1.); o = c.a > 0. ? vec4(c.rgb * (a / c.a), a) : vec4(0.); }`;
@@ -172,7 +175,7 @@ function gxInit() {
   const sh = (t, s) => { const o = g.createShader(t); g.shaderSource(o, s); g.compileShader(o); if (!g.getShaderParameter(o, g.COMPILE_STATUS)) throw new Error(g.getShaderInfoLog(o)); return o; };
   const prog = (fs, us) => { const P = g.createProgram(); g.attachShader(P, sh(g.VERTEX_SHADER, GXVS)); g.attachShader(P, sh(g.FRAGMENT_SHADER, fs)); g.linkProgram(P); if (!g.getProgramParameter(P, g.LINK_STATUS)) throw new Error(g.getProgramInfoLog(P)); const U = { P }; for (const n of us) U[n] = g.getUniformLocation(P, n); g.useProgram(P); ['T0', 'T1', 'T2', 'T3', 'T4', 'T5'].forEach((n, i) => U[n] && g.uniform1i(U[n], 8 + i)); U.GR && g.uniform1i(U.GR, 14); U.D && g.uniform1i(U.D, 15); U.MK && g.uniform1i(U.MK, 15); return U; };
   const base = ['uS', 'T0', 'T1', 'T2', 'T3', 'T4', 'T5', 'GR'];
-  const P0 = prog(GXFS(false), [...base, 'MK', 'uMK', 'uMKo']), P1 = prog(GXFS(true), [...base, 'D', 'uD', 'uM']), PF = prog(GXFADE, ['uS', 'D', 'uD', 'uF']), PB = prog(GXBLUR, ['uS', 'D', 'uD', 'uR', 'uT']), PL = prog(GXLC, ['uS', 'D', 'G', 'uD', 'uM0', 'uM1', 'uM2', 'uOn']);
+  const P0 = prog(GXFS(false), [...base, 'MK', 'uMK', 'uMKo', 'uCM', 'uCMb', 'uCMo', 'uSHs', 'uSH']), P1 = prog(GXFS(true), [...base, 'D', 'uD', 'uM']), PF = prog(GXFADE, ['uS', 'D', 'uD', 'uF']), PB = prog(GXBLUR, ['uS', 'D', 'uD', 'uR', 'uT']), PL = prog(GXLC, ['uS', 'D', 'G', 'uD', 'uM0', 'uM1', 'uM2', 'uOn']);
   const vao = g.createVertexArray(), vb = g.createBuffer(), ib = g.createBuffer(); g.bindVertexArray(vao);
   g.bindBuffer(g.ARRAY_BUFFER, vb); g.bindBuffer(g.ELEMENT_ARRAY_BUFFER, ib);
   g.enableVertexAttribArray(0); g.vertexAttribPointer(0, 2, g.FLOAT, false, 36, 0);
@@ -232,14 +235,17 @@ function gxUpload() {
 /* the batch out: plain (its blend; multiply in two passes), or a plan of segments [first index, count, blend, stencil, colour on, program] */
 function gxFlush(plan) {
   const B = GXB; if (!B.ni || !B.tgt) { B.nv = B.ni = 0; B.slots.length = 0; return; }
-  const g = GL, s = B.tgt; gxBindTarget(s); gxUpload(); gxBindSlots();
+  const g = GL, s = B.tgt, cm = B.cm, shs = cm && cm.sh && B.slots.length < 6 ? B.slots.push({ t: cm.sh.t, s: GXR.S[1] }) - 1 : -1;     // withMatrix's shade: a slot of its own
+  gxBindTarget(s); gxUpload(); gxBindSlots();
   const sc = B.sc; g.scissor(sc[0], sc[1], sc[2], sc[3]);
   if (!plan) {
     gxUse(GXR.P0, s); gxSten(B.st ? GXCLIP() : null); const m = GXB.blm, k = B.mask;
     if (k) { g.activeTexture(g.TEXTURE15); g.bindTexture(g.TEXTURE_2D, k.t); g.bindSampler(15, GXR.S[1]); g.activeTexture(g.TEXTURE0); g.uniform4f(GXR.P0.uMK, k.a, k.c, k.b, k.d); g.uniform1f(GXR.P0.uMKo, 1); }
+    if (cm) { const P = GXR.P0, h = cm.sh; g.uniformMatrix3fv(P.uCM, false, cm.m); g.uniform3fv(P.uCMb, cm.b); g.uniform1f(P.uCMo, 1); g.uniform1f(P.uSHs, shs); if (h) g.uniform4f(P.uSH, h.a, h.c, h.b, h.d); }
     gxBlend(m.f); g.drawElements(g.TRIANGLES, B.ni, g.UNSIGNED_INT, 0);
-    if (m.m) { gxBlend(m.m); g.drawElements(g.TRIANGLES, B.ni, g.UNSIGNED_INT, 0); }
+    if (m.m && !s.scr && !s.opq) { gxBlend(m.m); g.drawElements(g.TRIANGLES, B.ni, g.UNSIGNED_INT, 0); }     // over an opaque target (the screen, opq) the second pass adds nothing
     if (k) { g.uniform1f(GXR.P0.uMKo, 0); GXB.dst = null; }
+    if (cm) g.uniform1f(GXR.P0.uCMo, 0);
   } else for (const p of plan) {
     gxUse(p[5] || GXR.P0, s); gxSten(p[3]); if (p[4] === false) g.colorMask(false, false, false, false);
     gxBlend(p[2]); if (p[1] > 0) g.drawElements(g.TRIANGLES, p[1], g.UNSIGNED_INT, p[0] * 4);
@@ -566,6 +572,15 @@ class GX {
     if (!GXR) gxInit(); gxFlush(); const S = gxSrc(mask); if (!S) return; const h = this.canvas.gh;
     const a = S.w * S.su / mw, c = -S.h * S.sv / mh; GXB.mask = { t: S.t, a, b: S.u0 - mx * a, c, d: S.v0 + (h - my) * S.h * S.sv / mh };
     try { this.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh); gxFlush(); } finally { GXB.mask = null; }
+  }
+  /* what fn draws, its colour through a matrix as it lands (m: a mat3, column by column, b: added after), then times sh's
+     colour ([image, sx, sy, sw, sh, dx, dy, dw, dh]: placed as drawImage would, device px; smoothed): a colour filter and
+     a multiply at no cost of their own (plain draws only: no dst-read modes) */
+  withMatrix(m, b, sh, fn) {
+    if (!GXR) gxInit(); gxFlush(); let p = null;
+    if (sh) { const S = gxSrc(sh[0]); if (S) { const [, sx, sy, sw, shh, dx, dy, dw, dh] = sh, h = this.canvas.gh, a = sw * S.su / dw, c = -shh * S.sv / dh; p = { t: S.t, a, b: S.u0 + sx * S.su - dx * a, c, d: S.v0 + (sy + (h - dy) * shh / dh) * S.sv }; } }
+    GXB.cm = { m, b, sh: p };
+    try { fn(); gxFlush(); } finally { GXB.cm = null; }
   }
   _clipBuild() {     // the clip's paths into the stencil's top bit (each one ANDed in)
     const sf = this.canvas, g = GL, cl = this._clip, B = GXB; gxFlush(); sf._stencil();

@@ -109,6 +109,7 @@ function fogMemory(vw) {
 /* screen-sized scratch canvases: the remembered world (OUT), the low-res soft mask (smoke + windows; a second one for a
    second eye) and a temp */
 const FOG_OUT = mkG(1, 1), FOG_TMP = mkG(1, 1), FOG_NOW = mkG(1, 1), FOG_MASK = document.createElement('canvas'), FOG_MASK2 = document.createElement('canvas'), FOG_MS = 10;
+FOG_OUT.opq = true;     // always filled whole first (applyFog): a multiply onto it is one pass
 function fogCanvases() {
   if (FOG_OUT.width !== cv.width || FOG_OUT.height !== cv.height) {
     FOG_OUT.width = FOG_TMP.width = cv.width; FOG_OUT.height = FOG_TMP.height = cv.height;
@@ -141,7 +142,7 @@ function applyFog(vw, vis, x0, y0, x1, y1, rv) {
   for (const A of MAP.arcs) if (vis(A.x, A.y, 40) && seen(A.x, A.y)) m.arc.set(A, A.lost);
   // the remembered world goes into an offscreen layer, so smoke can reuse it later
   fogCanvases();
-  const main = ctx; ctx = FOG_OUT.getContext('2d'); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR);
+  const main = ctx; ctx = FOG_OUT.getContext('2d'); ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = '#0c140a'; ctx.fillRect(vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR);
   worldT(); ctx.imageSmoothingEnabled = false; drawSkirt(x0, y0, x1, y1);
   if (bw > 0 && bh > 0) { ctx.imageSmoothingEnabled = FOGK < 1; ctx.drawImage(m.c, bx0 * FOGK, by0 * FOGK, bw * FOGK, bh * FOGK, bx0, by0, bw, bh); ctx.imageSmoothingEnabled = false; }
@@ -168,7 +169,7 @@ function applyFog(vw, vis, x0, y0, x1, y1, rv) {
 /* the remembered view (FOG_OUT) lit as now: the memory's shade map (drawSun, map 3: the sun or the night, from what the
    memory keeps) multiplied in, once a frame, before anything shows it (smoke and windows in sight, out of sight alike) */
 function fogShade(vw) {
-  const F = vw._fog, S = _sun; if (!F || F.lit || !SUNNOW || !S || !S.fog) return; F.lit = true;
+  const F = vw._fog, S = _sun; if (GL || !F || F.lit || !SUNNOW || !S || !S.fog) return; F.lit = true;     // GL: as it's drawn (fogLit)
   const g = FOG_OUT.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'multiply'; g.imageSmoothingEnabled = true; g.drawImage(S.GC, ...S.fog); g.globalCompositeOperation = 'source-over'; pipe('ov-shade');
 }
 /* the remembered world over everything out of sight, last: FOG_OUT, shaded as remembered, with a hole cut where you see
@@ -177,7 +178,7 @@ function fogShade(vw) {
    lights) */
 function fogOverlay(vw, H) {
   const g = FOG_TMP.getContext('2d'), X = vw.x * DPR, Y = vw.y * DPR, Wd = vw.w * DPR, Ht = vw.h * DPR;
-  if (ctx.clipOut) { fogShade(vw); ctx.save(); ctx.clipOut(H); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(FOG_OUT, X, Y, Wd, Ht, X, Y, Wd, Ht); ctx.restore(); worldT(); pipe('ov-draw'); return; }     // GL: straight on, outside the hole
+  if (ctx.clipOut) { ctx.save(); ctx.clipOut(H); ctx.setTransform(1, 0, 0, 1, 0, 0); fogLit(() => ctx.drawImage(FOG_OUT, X, Y, Wd, Ht, X, Y, Wd, Ht)); ctx.restore(); worldT(); pipe('ov-draw'); return; }     // GL: straight on, outside the hole
   fogShade(vw); g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-over'; g.clearRect(X, Y, Wd, Ht); g.drawImage(FOG_OUT, X, Y, Wd, Ht, X, Y, Wd, Ht); pipe('ov-copy');
   g.globalCompositeOperation = 'destination-out'; g.setTransform(ctx.getTransform()); g.fillStyle = '#000'; g.fill(H);
   g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-over'; pipe('ov-hole');
@@ -215,9 +216,21 @@ function sightNear(vw, o) {
    along the edge of sight (fogE %) fading out over fogW screen px (fogEdge). The region of g must be opaque (a blend mode
    paints on transparent pixels). Presets: FOG_PRESETS (1_core) */
 function fogLook(g, x, y, w, h) {
-  if (CFG.fogD > 0) { g.globalCompositeOperation = 'saturation'; g.globalAlpha = CFG.fogD / 100; g.fillStyle = '#808080'; g.fillRect(x, y, w, h); g.globalAlpha = 1; }
-  g.globalCompositeOperation = 'source-over'; if (CFG.fogK > 0) { g.fillStyle = `rgba(4,7,6,${(CFG.fogK / 100).toFixed(3)})`; g.fillRect(x, y, w, h); }
+  if (g.withMatrix) return;     // GL: laid on as FOG_OUT is drawn (fogMatrix), no passes of its own
+  if (CFG.fogD > 0) { g.globalCompositeOperation = 'saturation'; g.globalAlpha = CFG.fogD / 100; g.fillStyle = '#808080'; g.fillRect(x, y, w, h); g.globalAlpha = 1; pipe('look-sat'); }
+  g.globalCompositeOperation = 'source-over'; if (CFG.fogK > 0) { g.fillStyle = `rgba(4,7,6,${(CFG.fogK / 100).toFixed(3)})`; g.fillRect(x, y, w, h); pipe('look-dark'); }
 }
+/* fogLook as one colour matrix (GL: FOG_OUT drawn through it, withMatrix): greyed toward its luminance by fogD (the
+   saturation blend's weights), then toward the dark by fogK */
+let _fogCM = null, _fogCMk = '';
+function fogMatrix() {
+  const a = CFG.fogD > 0 ? CFG.fogD / 100 : 0, k = CFG.fogK > 0 ? CFG.fogK / 100 : 0, key = a + ',' + k; if (key === _fogCMk) return _fogCM;
+  const W = [0.3, 0.59, 0.11], m = new Float32Array(9);
+  for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) m[j * 3 + i] = (1 - k) * ((i === j ? 1 - a : 0) + a * W[j]);     // column j, row i
+  _fogCMk = key; return _fogCM = { m, b: [4, 7, 6].map(v => k * v / 255) };
+}
+/* FOG_OUT onto the screen as fogLook, then fogShade, would leave it (GL): fn's draws through the matrix and the memory's shade */
+function fogLit(fn) { const L = fogMatrix(), S = _sun; ctx.withMatrix(L.m, L.b, SUNNOW && S && S.fog ? [S.GC, ...S.fog] : null, fn); }
 /* the edge shadow: the sight polygons' outlines stroked in rings, widest first, each a little dark, so it's fogE at the
    edge and gone fogW px out (inside, it's in sight, where this layer never shows). g has the world transform */
 function fogEdge(g, polys) {
@@ -288,7 +301,7 @@ function drawSoftFog(vw) {
   }
   // remembered world, cut to the soft mask
   fogShade(vw); const tg = FOG_TMP.getContext('2d'), X = vw.x * DPR, Y = vw.y * DPR, Wd = vw.w * DPR, Ht = vw.h * DPR;
-  if (ctx.maskedImage) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.maskedImage(FOG_OUT, X, Y, Wd, Ht, X, Y, Wd, Ht, FOG_MASK, (ox - mx) * FOG_MS, (oy - my) * FOG_MS, FOG_MASK.width * FOG_MS, FOG_MASK.height * FOG_MS); worldT(); return; }     // GL: in one pass
+  if (ctx.maskedImage) { ctx.setTransform(1, 0, 0, 1, 0, 0); fogLit(() => ctx.maskedImage(FOG_OUT, X, Y, Wd, Ht, X, Y, Wd, Ht, FOG_MASK, (ox - mx) * FOG_MS, (oy - my) * FOG_MS, FOG_MASK.width * FOG_MS, FOG_MASK.height * FOG_MS)); worldT(); return; }     // GL: in one pass
   tg.setTransform(1, 0, 0, 1, 0, 0); tg.globalCompositeOperation = 'source-over'; tg.clearRect(X, Y, Wd, Ht);
   tg.drawImage(FOG_OUT, X, Y, Wd, Ht, X, Y, Wd, Ht);
   tg.globalCompositeOperation = 'destination-in'; tg.imageSmoothingEnabled = true; tg.imageSmoothingQuality = 'high';
