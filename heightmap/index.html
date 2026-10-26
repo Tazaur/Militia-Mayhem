@@ -225,7 +225,7 @@ addEventListener('pointerout', e => { if (e.pointerType !== 'touch' && tipE && !
 addEventListener('pointerdown', tipHide, true);
 for (const b of document.querySelectorAll('[data-i]')) b.insertAdjacentHTML('afterbegin', `<svg viewBox="0 0 24 24">${ICONS[b.dataset.i]}</svg>`);
 const ART = 3, ACH = [3, 4, 5, 6], GRIDS = [2, 3, 4, 5, 6, 8, 10, 12, 16], MAXV = [63, 255, 255, 255, 255, 255, 255], NRANGE = [[8, 32, 32], [16, 64, 64], [32, 128, 128], [63, 255, 255]], HOLDMS = [0, 300, 500, 800], SIZES = [1, 2, 3, 5, 8], TOLS = [[0, 1, 2, 4, 8], [0, 8, 16, 32, 64], [0, 8, 16, 32, 64], [0, 8, 16, 32, 64]];     // per channel (3: art, the largest colour difference)
-let POOL0 = 0, POOL1 = 0;     // the underside pool's pixel range (art isn't painted there)
+let POOL0 = 0, POOL1 = 0, CFG0 = 0;     // the underside pool's pixel range (art isn't painted there)
 let W = 0, H = 0, FMETA = {}, META = {}, NAMES = [], COL0 = null, COL = null, CH = null, FILE = null, CFG = {}, CFGS = null, GUIDE = null, GSRC = null;     /* GUIDE: a part's pixel -> its underside's guide pixel (or -1) */
      // FMETA atlas.json; META its sprites + the undersides; COL the art + their guides
 const DEF = { hold: 2, pickAll: false, buzz: true, nr: 1, grid: true, rdo: true, stack: true, alock: false, glock: false, gsz: 2, gdi: false, look: 0, sky: 0, sunAz: 135, sunEl: 40, reflK: 100, bloomK: 100 };
@@ -309,7 +309,7 @@ const ownerOf = b => FMETA[b + '0'] ? b + '0' : FMETA[b] ? b : null;
 function syncCfg() {
   CFG = cfgRead(); const k = JSON.stringify(CFG) + st.from; if (k === CFGS) return; CFGS = k;     // the settings, or the state worked on, changed
   META = {}; for (const n in FMETA) if (n[0] !== '_') META[n] = FMETA[n];
-  COL = COL0.slice(); GUIDE = new Int32Array(W * H).fill(-1); GSRC = new Map(); const P = FMETA._pool; if (P) { POOL0 = P[1] * W; POOL1 = (P[1] + P[3]) * W; }
+  COL = COL0.slice(); GUIDE = new Int32Array(W * H).fill(-1); GSRC = new Map(); const P = FMETA._pool; if (P) { POOL0 = P[1] * W; POOL1 = (P[1] + P[3]) * W; } CFG0 = FMETA._cfg ? FMETA._cfg[1] * W : W * H;
   for (const [b, r] of Object.entries(CFG.under || {})) {
     const u = META['under_' + b] = [r[0], P[1] + r[1], r[2], r[3], r[4], r[5]];
     { const f = META[activeOf(b)]; if (!f) continue; const D = shift(f, u);     // the state worked on, lined up as the game does (shift)
@@ -418,7 +418,11 @@ function selBounds() {
 let stroke = null; const UNDO = [], REDO = [];
 const NN = () => W * H;
 function begin() { stroke = new Map(); }
-function put(i, v, c = st.ch) { const a = CH[c]; v = clamp(v, 0, MAXV[c]); if (a[i] === v) return; const k = c * NN() + i; if (!stroke.has(k)) stroke.set(k, a[i]); a[i] = v; touch(i); }
+function put(i, v, c = st.ch) {
+  const a = CH[c]; v = clamp(v, 0, MAXV[c]); if (a[i] === v) return; const k = c * NN() + i; if (!stroke.has(k)) stroke.set(k, a[i]); a[i] = v;
+  if (c === 6 && !v && i < CFG0) for (let m = 0; m < 3; m++) put(i, 0, m);     // heights are bound to the art: art erased, its heights go too
+  touch(i);
+}
 const was = (i, c = st.ch) => { const k = c * NN() + i; return stroke.has(k) ? stroke.get(k) : CH[c][i]; };
 function end() {
   if (!stroke) return;
@@ -548,21 +552,21 @@ async function pngRGBA(w, h, px) {
 const artPng = () => { const px = new Uint8Array(W * H * 4); for (let i = 0; i < W * H; i++) for (let k = 0; k < 4; k++) px[i * 4 + k] = CH[3 + k][i]; return pngRGBA(W, H, px); };
 /* clips: the selection's pixels (all seven channels) with their place; turned copies; stamped down where they may land */
 let clip = null, flt = null, arr = null;
-const blank = (x, y, w, h) => ({ x, y, w, h, on: new Uint8Array(w * h), v: [0, 1, 2, 3, 4, 5, 6].map(() => new Uint8Array(w * h)) });
+const blank = (x, y, w, h, hts) => ({ x, y, w, h, hts, on: new Uint8Array(w * h), v: [0, 1, 2, 3, 4, 5, 6].map(() => new Uint8Array(w * h)) });     // hts: heights go with the art
 function grab() {
-  const [rx, ry, rw, rh] = rect(), [x0, y0, x1, y1] = sel || [rx, ry, rx + rw - 1, ry + rh - 1], c = blank(x0, y0, x1 - x0 + 1, y1 - y0 + 1);
+  const [rx, ry, rw, rh] = rect(), [x0, y0, x1, y1] = sel || [rx, ry, rx + rw - 1, ry + rh - 1], c = blank(x0, y0, x1 - x0 + 1, y1 - y0 + 1, true);
   for (let y = 0; y < c.h; y++) for (let x = 0; x < c.w; x++) { if (!can(x0 + x, y0 + y)) continue; const i = (y0 + y) * W + x0 + x, j = y * c.w + x; c.on[j] = 1; for (let k = 0; k < 7; k++) c.v[k][j] = CH[k][i]; }
   return c;
 }
 function flipped(c, fx, fy) {     // mirrored left-right / top-bottom in place
-  if (!fx && !fy) return c; const o = blank(c.x, c.y, c.w, c.h);
+  if (!fx && !fy) return c; const o = blank(c.x, c.y, c.w, c.h, c.hts);
   for (let y = 0; y < c.h; y++) for (let x = 0; x < c.w; x++) { const s = (fy ? c.h - 1 - y : y) * c.w + (fx ? c.w - 1 - x : x), j = y * c.w + x; o.on[j] = c.on[s]; for (let k = 0; k < 7; k++) o.v[k][j] = c.v[k][s]; }
   return o;
 }
 function rotated(c, deg) {        // turned about its centre, nearest pixel (quarter turns are exact)
   if (!(deg % 360)) return c;
   const a = deg * Math.PI / 180, cs = Math.round(Math.cos(a) * 1e6) / 1e6, sn = Math.round(Math.sin(a) * 1e6) / 1e6;
-  const w = Math.round(Math.abs(c.w * cs) + Math.abs(c.h * sn)), h = Math.round(Math.abs(c.w * sn) + Math.abs(c.h * cs)), o = blank(Math.round(c.x + (c.w - w) / 2), Math.round(c.y + (c.h - h) / 2), w, h);
+  const w = Math.round(Math.abs(c.w * cs) + Math.abs(c.h * sn)), h = Math.round(Math.abs(c.w * sn) + Math.abs(c.h * cs)), o = blank(Math.round(c.x + (c.w - w) / 2), Math.round(c.y + (c.h - h) / 2), w, h, c.hts);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const dx = x + 0.5 - w / 2, dy = y + 0.5 - h / 2, sx = Math.floor(c.w / 2 + dx * cs + dy * sn + 1e-6), sy = Math.floor(c.h / 2 - dx * sn + dy * cs + 1e-6);
     if (sx < 0 || sy < 0 || sx >= c.w || sy >= c.h) continue; const s = sy * c.w + sx, j = y * w + x; if (!c.on[s]) continue;
@@ -570,10 +574,11 @@ function rotated(c, deg) {        // turned about its centre, nearest pixel (qua
   }
   return o;
 }
+const ALL7 = [0, 1, 2, 3, 4, 5, 6];
 function stamp(c, ox, oy, mark, clear) {           // mark: grow the selection mask over it instead of writing
   for (let y = 0; y < c.h; y++) for (let x = 0; x < c.w; x++) {
     const tx = ox + x, ty = oy + y, j = y * c.w + x; if (!c.on[j] || !canP(tx, ty)) continue; const i = ty * W + tx;
-    if (mark) mark[i] = 1; else if (st.ch === ART) for (const k of ACH) put(i, clear ? 0 : c.v[k][j], k);     // art: the colours
+    if (mark) mark[i] = 1; else if (st.ch === ART) for (const k of c.hts ? ALL7 : ACH) put(i, clear ? 0 : c.v[k][j], k);     // art: the colours (and the heights bound to them, from the atlas)
     else for (let k = 0; k < 3; k++) if (!st.pch || st.pch === k + 1) put(i, clear ? 0 : c.v[k][j], k);     // heights: all channels, or just one; clear: zero instead
   }
 }
