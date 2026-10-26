@@ -636,6 +636,11 @@ function sunSweep(S, K, mxh, box, reg, T, FS, u, hu) {
   for (let n = 1; n < len; n *= 2, i ^= 1) { gl.bindTexture(gl.TEXTURE_2D, T[i]); gl.bindFramebuffer(gl.FRAMEBUFFER, FS[i ^ 1]); gl.uniform1f(SU.N, n); gl.drawArrays(gl.TRIANGLES, 0, 3); pipe('gpu-sweep', { fb: FS[i ^ 1], n, st: u === 6 }); }
   gl.bindFramebuffer(gl.FRAMEBUFFER, S.out); gl.bindTexture(gl.TEXTURE_2D, T[i]); gl.activeTexture(gl.TEXTURE0);
 }
+/* the sun down (sunTone day 0: sunlit = shade): nothing to sweep, the pair's first left as nothing blocking (skyline -64, no span) on unit u */
+function sunNoSweep(S, box, T, FS, u) {
+  const { gl } = S; gl.bindFramebuffer(gl.FRAMEBUFFER, FS[0]); gl.viewport(0, 0, S.fw, S.fh); gl.scissor(...box); gl.clearColor(0, 0, 1, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, S.out); gl.activeTexture(gl.TEXTURE0 + u); gl.bindTexture(gl.TEXTURE_2D, T[0]); gl.activeTexture(gl.TEXTURE0);
+}
 function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory's light too, map 3)
   HS = LIGHT_Q[CFG.lightQ] || 0.5; gxYield();
   const S = _sun, { gl, GC, U, CU } = S, w = Math.ceil(cv.width * HS), h = Math.ceil(cv.height * HS), dpr = DPR, K = VZ * dpr * HS, k = dpr * HS;
@@ -665,8 +670,9 @@ function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory
   if (fog) memOf(S, vw);     // a new memory: the map as it starts, before this frame's lists
   sunDrawHeights(S, [VZ * k, VOX * k + px, VOY * k + py], [rx, ry, bw, bh], fog, vw);
   const reg = [rx + 0.5, ry + 0.5, rx + bw - 0.5, ry + bh - 0.5], mxh = Math.min(64, HMAX + 1);
-  sunSweep(S, K, mxh, [rx, ry, bw, bh], reg, S.ST, S.FS, 4, 0);
-  if (fog) sunSweep(S, K, mxh, [rx, ry, bw, bh], reg, S.SS, S.FSS, 6, 7);     // the remembered things' shadows, for out of sight
+  const up = sunTone().day > 0, sweep = (T, F, u, hu) => up ? sunSweep(S, K, mxh, [rx, ry, bw, bh], reg, T, F, u, hu) : sunNoSweep(S, [rx, ry, bw, bh], T, F, u);
+  sweep(S.ST, S.FS, 4, 0);
+  if (fog) sweep(S.SS, S.FSS, 6, 7);     // the remembered things' shadows, for out of sight
   // the light, once (into LT)
   gl.bindFramebuffer(gl.FRAMEBUFFER, S.FL); gl.viewport(0, 0, w, h); gl.scissor(rx, h - ry - rh, rw, rh);
   gl.useProgram(S.P); gl.bindBuffer(gl.ARRAY_BUFFER, S.tri); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);

@@ -133,10 +133,10 @@ function applyFog(vw, vis, x0, y0, x1, y1, rv) {
     const n = FOG_NOW.getContext('2d'); n.setTransform(1, 0, 0, 1, 0, 0);
     n.drawImage(ground, bx0, by0, bw, bh, 0, 0, bw, bh); n.drawImage(decals, bx0, by0, bw, bh, 0, 0, bw, bh);
     if (MAP.tiled && MAP.tiled.roof) n.drawImage(ROOF_C, bx0, by0, bw, bh, 0, 0, bw, bh);
-    m.g.save(); m.g.setTransform(FOGK, 0, 0, FOGK, 0, 0); polyPath(m.g, polys); m.g.clip();
+    pipe('fog-now'); m.g.save(); m.g.setTransform(FOGK, 0, 0, FOGK, 0, 0); polyPath(m.g, polys); m.g.clip();
     m.g.drawImage(FOG_NOW, 0, 0, bw, bh, bx0, by0, bw, bh); m.g.restore();
   }
-  const seen = (x, y) => polys.some(P => inPoly(x, y, P)) && eyes.some(([ex, ey]) => 1 - softOcc(ex, ey, x, y) >= SIGHT_MIN);
+  pipe('fog-mem'); const seen = (x, y) => polys.some(P => inPoly(x, y, P)) && eyes.some(([ex, ey]) => 1 - softOcc(ex, ey, x, y) >= SIGHT_MIN);
   for (const s of MAP.statics) if (vis(s.x, s.y, 20) && (s.type === 'fence' || s.type === 'hay' || s.type === 'tree') && seen(s.x, s.y)) m.st.set(s, s.alive);
   for (const A of MAP.arcs) if (vis(A.x, A.y, 40) && seen(A.x, A.y)) m.arc.set(A, A.lost);
   // the remembered world goes into an offscreen layer, so smoke can reuse it later
@@ -150,7 +150,7 @@ function applyFog(vw, vis, x0, y0, x1, y1, rv) {
     if (rv) ctx.drawImage(rv.c, 0, 0, rv.w, rv.h, rv.x, rv.y, rv.w, rv.h);
     ctx.restore(); worldT();
   }
-  for (const A of MAP.arcs) { if (!vis(A.x, A.y, 50)) continue; const lost = m.arc.has(A) ? m.arc.get(A) : 0, f = lost / A.bags.length; spr(f < 0.25 ? 'bagarc0' : f < 0.75 ? 'bagarc1' : 'bagarc2', A.x, A.y, A.a); }
+  pipe('fog-out'); for (const A of MAP.arcs) { if (!vis(A.x, A.y, 50)) continue; const lost = m.arc.has(A) ? m.arc.get(A) : 0, f = lost / A.bags.length; spr(f < 0.25 ? 'bagarc0' : f < 0.75 ? 'bagarc1' : 'bagarc2', A.x, A.y, A.a); }
   for (const w of M.wrecks) if (vis(w.x, w.y, 70)) drawWreck(w);      // remembered like the statics
   worldT();
   for (const s of MAP.statics) {
@@ -160,7 +160,7 @@ function applyFog(vw, vis, x0, y0, x1, y1, rv) {
   }
   drawRoofs(roofsIn(vis));
   for (const s of MAP.statics) if (s.type === 'tree' && vis(s.x, s.y, 40) && (m.st.has(s) ? m.st.get(s) : true)) { img(s.pine ? SPR.pines[s.v] : SPR.trees[s.v], s.x, s.y, s.a, s.sc, 0.94); worldT(); }
-  ctx.setTransform(1, 0, 0, 1, 0, 0); fogLook(ctx, vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR); ctx.save(); ctx.beginPath(); ctx.rect(vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR); ctx.clip(); worldT(); fogEdge(ctx, polys); ctx.restore();
+  pipe('fog-things'); ctx.setTransform(1, 0, 0, 1, 0, 0); fogLook(ctx, vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR); ctx.save(); ctx.beginPath(); ctx.rect(vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR); ctx.clip(); worldT(); fogEdge(ctx, polys); ctx.restore();
   ctx = main; worldT();
   vw._fog = { polys, eyes, box };
   return polys;
