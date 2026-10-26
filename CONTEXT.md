@@ -596,3 +596,6 @@ Settings › FOG OF WAR: a preview under the sliders (`fogPreview`): the frame b
 - Smoke no longer lit by the ground shade map (it carried the relief of what is under it: vehicles showed through). smokeLight: 1/4-res canvas, daylight (sunTone li) with static shadows (walls, trees) cast down to SMK_Z 14 px, blurred; point lights per puff (smokeLamps: lightAir = the shader falloff + 3D spot cone, walls block; one flat colour a puff, stacked by puff alpha, added).
 - Fog of war settings preview removed.
 - Sprint latches: touch rim / pad LS-click start it, it holds until the stick returns to the middle.
+
+## Build 203
+- DAY_DIM 0.1: lights fall to 10% at noon.

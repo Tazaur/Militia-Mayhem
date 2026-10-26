@@ -83,7 +83,7 @@ function litAt(x, y) {
   lampsOn((lx, ly, h, a, o, fix) => { const dx = x - lx, dy = y - ly, d = Math.hypot(dx, dy) || 1, k = spotK(lampD(a, fix), dx / d, dy / d); if (d < LAMP.r * LSC && k > 0 && sees(lx, ly, x, y)) add(LAMP.k * k, LAMP.r * LSC, lx, ly); });
   return Math.min(1, L);
 }
-const DAY_DIM = 0.4;     // lights at noon (the highest sun) give this share of their night brightness
+const DAY_DIM = 0.1;     // lights at noon (the highest sun) give this share of their night brightness
 function dayDim() { return 1 - (1 - DAY_DIM) * clamp(Math.sin(SUN.el) / Math.sin(75 * Math.PI / 180), 0, 1); }
 function lightFx(x, y, r, h, T) { LFX.push({ x, y, r, h, t0: M.time, T }); }
 function lightsNow(vis) {          // this frame's strongest lights in view (and the queue emptied)
