@@ -164,7 +164,7 @@ const devOf = p => p ? p.dev.type : (anyPad() ? 'pad' : TOUCH.active ? 'touch' :
 /* ---------- tactical map (deploy screen + in-game map) ---------- */
 function drawTacMap(x, y, w, h, s, o) {
   const k = Math.min(w / WW, h / WH), mw = WW * k, mh = WH * k, mx = x + (w - mw) / 2, my = y + (h - mh) / 2, u = o.u || 1;
-  ctx.drawImage(ground, 0, 0, WW, WH, mx, my, mw, mh);
+  ctx.drawImage(groundMini(), 0, 0, groundMini().width, groundMini().height, mx, my, mw, mh);
   for (const b of MAP.buildings) if (b.roofC) ctx.drawImage(b.roofC, mx + b.x * k, my + b.y * k, b.w * k, b.h * k);
   ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fillRect(mx, my, mw, mh);
   ctx.strokeStyle = 'rgba(242,230,196,0.4)'; ctx.lineWidth = 1; ctx.strokeRect(mx + 0.5, my + 0.5, mw - 1, mh - 1);

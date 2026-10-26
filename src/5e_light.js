@@ -274,9 +274,10 @@ function sunInit() {
   if (typeof WebGLRenderingContext === 'undefined' || !MIMG || !MIMG.complete || !imgReady) return false;     // tried again once the art is in
   _sun = false;
   try {
-    const GC = mk(4, 4), gl = GC.getContext('webgl', { alpha: false, antialias: false, depth: false, preserveDrawingBuffer: true });
+    const GC = mkG(4, 4), gl = GL || GC.getContext('webgl', { alpha: false, antialias: false, depth: false, preserveDrawingBuffer: true });     // GL: the shared context, the maps a GL surface
     if (!gl) return false;
-    const IA = gl.getExtension('ANGLE_instanced_arrays'), MX = gl.getExtension('EXT_blend_minmax');
+    const IA = GL ? { vertexAttribDivisorANGLE: (i, d) => gl.vertexAttribDivisor(i, d), drawArraysInstancedANGLE: (m, f, c, n) => gl.drawArraysInstanced(m, f, c, n) } : gl.getExtension('ANGLE_instanced_arrays'), MX = GL ? { MAX_EXT: gl.MAX, MIN_EXT: gl.MIN } : gl.getExtension('EXT_blend_minmax');
+    if (GL) gxYield();
     if (!IA || !MX) throw new Error('no instancing / max blending');
     const sh = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
     const prog = (vs, fs, at) => { const P = gl.createProgram(); gl.attachShader(P, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(P, sh(gl.FRAGMENT_SHADER, fs)); at.forEach((n, i) => gl.bindAttribLocation(P, i, n)); gl.linkProgram(P); if (!gl.getProgramParameter(P, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(P)); return P; };
@@ -432,7 +433,7 @@ void main() { vec2 t = floor((gl_FragCoord.xy - X.yz) / X.x * Z); gl_FragColor =
     const uni = (P, ns) => { const U = {}; for (const n of ns) U[n] = gl.getUniformLocation(P, n); return U; };
     const U = uni(P, ['S', 'R', 'K', 'L', 'V', 'P', 'PL', 'PD', 'PK', 'PC', 'H', 'HZ']), SU = uni(SP, ['S', 'R', 'H', 'B', 'D', 'N', 'DH']), CU = uni(CP, ['S', 'R', 'K', 'L', 'C', 'W', 'O', 'Q', 'V', 'P', 'G', 'H', 'MT', 'LT', 'TM', 'BL', 'SKY', 'LI', 'WX', 'E', 'EN', 'RF', 'FG', 'SWT', 'SWS', 'HS', 'LB']), HU = uni(HP, ['X', 'F', 'A', 'MM']), PU = uni(PP, ['X', 'F']), RU = uni(RC, ['M', 'X', 'F', 'Z']);
     gl.useProgram(HP); gl.uniform1i(HU.A, 1); gl.useProgram(CP); gl.uniform1i(CU.H, 0); gl.uniform1i(CU.MT, 2); gl.uniform1i(CU.LT, 3); gl.uniform1i(CU.SWT, 4); gl.uniform1i(CU.SWS, 6); gl.uniform1i(CU.HS, 7); gl.useProgram(P); gl.uniform1i(U.H, 0); gl.useProgram(SP); gl.uniform1i(SU.H, 0); gl.uniform1i(SU.B, 4); gl.useProgram(RC); gl.uniform1i(RU.M, 5);
-    _sun = { gl, GC, IA, MX, P, CP, HP, SP, PP, RC, U, CU, HU, SU, PU, RU, pb: gl.createBuffer(), pv: new Float32Array(4096), mem: new Map(), ST, FS, SS, FSS, HTS, FBS, tri, quad, ib, AT, HT, MT, LT, FB, FM, FL, DB, fw: 0, fh: 0, lw: 0, lh: 0, aw: w, ah: h, pl: new Float32Array(LMAX * 4), pd: new Float32Array(LMAX * 4), pk: new Float32Array(LMAX), pc: new Float32Array(LMAX * 3), ev: new Float32Array(8) };
+    _sun = { out: GL ? GC.fb : null, gl, GC, IA, MX, P, CP, HP, SP, PP, RC, U, CU, HU, SU, PU, RU, pb: gl.createBuffer(), pv: new Float32Array(4096), mem: new Map(), ST, FS, SS, FSS, HTS, FBS, tri, quad, ib, AT, HT, MT, LT, FB, FM, FL, DB, fw: 0, fh: 0, lw: 0, lh: 0, aw: w, ah: h, pl: new Float32Array(LMAX * 4), pd: new Float32Array(LMAX * 4), pk: new Float32Array(LMAX), pc: new Float32Array(LMAX * 3), ev: new Float32Array(8) };
   } catch (e) { console.warn('sun off:', e.message); _sun = false; }
   return _sun;
 }
@@ -598,7 +599,7 @@ function memOf(S, vw) {
   // the whole map as it starts (its own lists, left empty for the frame's)
   const hm = HMAT, hx = HMAX; sunHeights(() => true, () => true, vw); hBegin(S, [FOGK, 0, 0], [W, H]); hUp(S, ['a', 'w', 't']);
   gl.viewport(0, 0, W, H); gl.scissor(0, 0, W, H); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); hKept(S); hInst(S, 0);
-  for (const n in HL) HL[n].n = 0; HMAT = hm; HMAX = hx; gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  for (const n in HL) HL[n].n = 0; HMAT = hm; HMAX = hx; gl.bindFramebuffer(gl.FRAMEBUFFER, S.out);
   return e;
 }
 /* where you see (the sight polygons: a fan from each one's eye, each wall strip from its first corner; marked in the
@@ -622,7 +623,7 @@ function memRecall(S, vw, X, box) {
   gl.useProgram(S.RC); gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_2D, e.t); gl.activeTexture(gl.TEXTURE0);
   gl.uniform3f(RU.X, ...X); gl.uniform2f(RU.F, e.W, e.H); gl.uniform1f(RU.Z, FOGK);
   gl.bindBuffer(gl.ARRAY_BUFFER, S.tri); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.drawArrays(gl.TRIANGLES, 0, 3);
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, S.out);
 }
 /* the sweep's passes (box: the height buffer's) from the heights on unit hu into the pair T (framebuffers FS), the last
    left on unit u for the light: enough doublings to reach the tallest thing's shadow (mxh / DH px; DH: how much lower a
@@ -633,12 +634,12 @@ function sunSweep(S, K, mxh, box, reg, T, FS, u, hu) {
   gl.bindBuffer(gl.ARRAY_BUFFER, S.tri); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.viewport(0, 0, S.fw, S.fh); gl.scissor(...box); gl.activeTexture(gl.TEXTURE0 + u);
   let i = 0; gl.bindTexture(gl.TEXTURE_2D, T[1]); gl.bindFramebuffer(gl.FRAMEBUFFER, FS[0]); gl.uniform1f(SU.N, 0); gl.drawArrays(gl.TRIANGLES, 0, 3); pipe('gpu-sweep', { fb: FS[0], n: 0, st: u === 6 });
   for (let n = 1; n < len; n *= 2, i ^= 1) { gl.bindTexture(gl.TEXTURE_2D, T[i]); gl.bindFramebuffer(gl.FRAMEBUFFER, FS[i ^ 1]); gl.uniform1f(SU.N, n); gl.drawArrays(gl.TRIANGLES, 0, 3); pipe('gpu-sweep', { fb: FS[i ^ 1], n, st: u === 6 }); }
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.bindTexture(gl.TEXTURE_2D, T[i]); gl.activeTexture(gl.TEXTURE0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, S.out); gl.bindTexture(gl.TEXTURE_2D, T[i]); gl.activeTexture(gl.TEXTURE0);
 }
 function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory's light too, map 3)
-  HS = LIGHT_Q[CFG.lightQ] || 0.5;
+  HS = LIGHT_Q[CFG.lightQ] || 0.5; gxYield();
   const S = _sun, { gl, GC, U, CU } = S, w = Math.ceil(cv.width * HS), h = Math.ceil(cv.height * HS), dpr = DPR, K = VZ * dpr * HS, k = dpr * HS;
-  if (GC.width !== w * 2 || GC.height !== h * 2) { GC.width = w * 2; GC.height = h * 2; }     // the maps 2 × 2 (4 in a row outgrew phone GPUs' 8192 px)
+  if (GC.width !== w * 2 || GC.height !== h * 2) { GC.width = w * 2; GC.height = h * 2; S.out = GL ? GC.fb : null; gxYield(); }     // the maps 2 × 2 (4 in a row outgrew phone GPUs' 8192 px)
   const rx = Math.floor(vw.x * dpr * HS), ry = Math.floor(vw.y * dpr * HS), rw = Math.min(w - rx, Math.ceil(vw.w * dpr * HS)), rh = Math.min(h - ry, Math.ceil(vw.h * dpr * HS));
   // the height buffer reaches past the view toward the sun by the longest shadow (64 px tall), so what's off screen
   // that side still throws its shadow in (no pop-in); the view sits at (px, py) in it
@@ -674,8 +675,8 @@ function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory
   gl.uniform3f(U.L, ...Ld); gl.uniform1f(U.HZ, M.rain ? 0.15 : 0);
   S.pk.fill(0); S.pd.fill(0); const LN = S.ln = lightsNow(vis); if (!devOff('add')) LN.forEach((l, i) => { S.pl.set([(VZ * l.x + VOX) * k + px, (VZ * l.y + VOY) * k + py, l.r, l.h], i * 4); if (l.d) S.pd.set(l.d.length > 3 ? l.d : [...l.d, 1], i * 4); S.pk[i] = l.k; S.pc.set(l.c || LCOL, i * 3); });
   gl.uniform4fv(U.PL, S.pl); gl.uniform4fv(U.PD, S.pd); gl.uniform1fv(U.PK, S.pk); gl.uniform3fv(U.PC, S.pc);
-  const light = () => { gl.bindFramebuffer(gl.FRAMEBUFFER, S.FL); gl.viewport(0, 0, w, h); gl.scissor(rx, h - ry - rh, rw, rh); gl.useProgram(S.P); gl.bindBuffer(gl.ARRAY_BUFFER, S.tri); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.drawArrays(gl.TRIANGLES, 0, 3); gl.bindFramebuffer(gl.FRAMEBUFFER, null); };
-  if (S.pk[0] > 0) light(); else { gl.bindFramebuffer(gl.FRAMEBUFFER, S.FL); gl.viewport(0, 0, w, h); gl.scissor(rx, h - ry - rh, rw, rh); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); gl.bindFramebuffer(gl.FRAMEBUFFER, null); }     // no point lights: none to march
+  const light = () => { gl.bindFramebuffer(gl.FRAMEBUFFER, S.FL); gl.viewport(0, 0, w, h); gl.scissor(rx, h - ry - rh, rw, rh); gl.useProgram(S.P); gl.bindBuffer(gl.ARRAY_BUFFER, S.tri); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.drawArrays(gl.TRIANGLES, 0, 3); gl.bindFramebuffer(gl.FRAMEBUFFER, S.out); };
+  if (S.pk[0] > 0) light(); else { gl.bindFramebuffer(gl.FRAMEBUFFER, S.FL); gl.viewport(0, 0, w, h); gl.scissor(rx, h - ry - rh, rw, rh); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); gl.bindFramebuffer(gl.FRAMEBUFFER, S.out); }     // no point lights: none to march
   pipe('gpu-light', { n: LN.length });
   // the maps
   gl.useProgram(S.CP);
@@ -688,7 +689,7 @@ function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory
   const map = (q, n) => { const o = (n & 1) * w, oy = (1 - (n >> 1)) * h; gl.viewport(o, oy, w, h); gl.scissor(o + rx, oy + h - ry - rh, rw, rh); gl.uniform2f(CU.O, o, oy); gl.uniform1f(CU.Q, q); gl.drawArrays(gl.TRIANGLES, 0, 3); pipe('gpu-map', { q, o }); };
   maps.forEach((q, n) => map(q, n));
   if (fog) { gl.uniform1f(CU.FG, 1); map(0, 3); }     // the memory's shade, map 3 (out of sight: fogOverlay): what it keeps, no point lights
-  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = true;
+  gxYield(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = true;
   const to = [vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR];
   if (SUNDBG) ctx.drawImage(GC, ...at(0), rw, rh, ...to);       // dev: 1 heights, 2 shade, 3 highlights, 4 glow, 5 materials, 6 sun shadow, 7 point lights
   else { ctx.globalCompositeOperation = 'multiply'; if (!devOff('shade')) ctx.drawImage(GC, ...at(0), rw, rh, ...to); pipe('comp', { m: 'multiply' }); ctx.globalCompositeOperation = 'color-dodge'; if (!devOff('hi')) ctx.drawImage(GC, ...at(1), rw, rh, ...to); pipe('comp', { m: 'color-dodge' }); if (add && !devOff('add')) { ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(GC, ...at(2), rw, rh, ...to); pipe('comp', { m: 'lighter' }); } }

@@ -173,7 +173,7 @@ function drawSmokes(vw) { if (M.gsf && M.gsf.act.length) { worldT(); drawSmokeFi
    it is (down to SMK_SMALL), so a little one squeezed against a wall doesn't stand out as a hot spot */
 const SMK_VIS = 3, SMK_PUFF = 1.5, SMK_GROW = 0.9, SMK_PAD = 5, SMK_IN = 2.5, SMK_SMALL = 0.5;     // SMK_PAD: tiles past the view whose puffs can reach in
 const SMK_SELF = [[6, 0.08], [14, 0.07], [24, 0.06]], SMK_DROP = 8;     // self-shade steps (px, opacity); the ground shadow's offset
-const SMK_C = document.createElement('canvas'), SMK_SH = document.createElement('canvas'), SMK_L = document.createElement('canvas');
+const SMK_C = mkG(1, 1), SMK_SH = mkG(1, 1), SMK_L = mkG(1, 1);
 /* each puff of the field in the tile box (null: all of them): f(x, y, radius, opacity, hash, brown part). The look eases in here (once a frame) */
 function smokePuffs(bx, eyes, cb) {
   const f = M.gsf, [n0, n1] = SIGHT_NEAR, { W, A, B, R, V: Vs } = f, T = M.time, ease = Math.min(1, clamp(T - f.vt, 0, 0.1) * SMK_IN); f.vt = T;
@@ -918,7 +918,7 @@ function feedIcon(how) {
 function drawMinimap() {
   const { many, mw, mh, mx, my } = miniRect(), k = mw / WW;
   ctx.fillStyle = 'rgba(8,20,8,0.82)'; ctx.fillRect(mx - 3, my - 3, mw + 6, mh + 6);
-  ctx.globalAlpha = 0.85; ctx.drawImage(ground, 0, 0, WW, WH, mx, my, mw, mh); ctx.globalAlpha = 1;
+  ctx.globalAlpha = 0.85; ctx.drawImage(groundMini(), 0, 0, groundMini().width, groundMini().height, mx, my, mw, mh); ctx.globalAlpha = 1;
   for (const f of M.flags) { ctx.fillStyle = f.owner < 0 ? '#ddd' : TEAMHEX[f.owner]; ctx.beginPath(); ctx.arc(mx + f.x * k, my + f.y * k, 5, 0, TAU); ctx.fill(); txt(f.name.length > 1 ? 'H' : f.name, mx + f.x * k, my + f.y * k + 1, 8, '#000', 'center', 'middle', FB); }
   const myTeams = humanTeams(), LS = LOCALS(), eyesM = LS.map(p => p.sol).filter(s => s && s.alive), fogOn = M.cfg.fog && M.cfg.fog !== 'off';
   const mine = o => LS.some(p => p.sol === o);

@@ -768,7 +768,7 @@ function drawMatchPanel(x, y, w, h, u) {
   const startH = Math.max(44, 46 * u), minRows = matchRows().length * Math.max(28, 32 * u), head = fpx(34, u, 28);
   const mw = w - pad * 2, mh0 = Math.min(mw * WH / WW, h - head - minRows - startH - pad * 2 - 12 * u), mh = mh0 < 46 ? 0 : mh0, mx = x + pad, my = y + head;
   const k = Math.min(mw / WW, mh / WH), dw = WW * k, dh = WH * k, dx = mx + (mw - dw) / 2;
-  if (mh) ctx.drawImage(ground, 0, 0, WW, WH, dx, my, dw, dh);
+  if (mh) ctx.drawImage(groundMini(), 0, 0, groundMini().width, groundMini().height, dx, my, dw, dh);
   if (mh) {
   for (const b of MAP.buildings) if (b.roofC) ctx.drawImage(b.roofC, dx + b.x * k, my + b.y * k, b.w * k, b.h * k);
   for (const f of M.flags) { ctx.fillStyle = '#f2e6c4'; ctx.beginPath(); ctx.arc(dx + f.x * k, my + f.y * k, Math.max(4, 6 * u), 0, TAU); ctx.fill(); txt(f.name.length > 1 ? 'H' : f.name, dx + f.x * k, my + f.y * k + 1, fpx(9, u, 8), '#141a10', 'center', 'middle', FD); }
@@ -939,11 +939,12 @@ function hudViews() {
 }
 function render() {
   screenT(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
-  ctx.fillStyle = '#0c140a'; ctx.fillRect(0, 0, W, H);
-  if (!M || !imgReady) { txt('LOADING…', W / 2, H / 2, 18, '#f2e6c4', 'center', 'middle', FD); return; }
+  if (GL) { gxFrame(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height); onGL(() => { ctx.fillStyle = '#0c140a'; ctx.fillRect(0, 0, W, H); }); screenT(); }     // GL: the world under, this canvas the HUD over it
+  else { ctx.fillStyle = '#0c140a'; ctx.fillRect(0, 0, W, H); }
+  if (!M || !imgReady) { txt('LOADING…', W / 2, H / 2, 18, '#f2e6c4', 'center', 'middle', FD); if (GL) gxFlush(); return; }
   DUI.length = 0; TB_ON = [];
   // 1) all gameplay for every view, 2) split dividers, 3) every HUD, 4) global HUD, 5) menus on top
-  for (const vw of M.views) drawWorld(vw);
+  for (const vw of M.views) onGL(() => drawWorld(vw));
   screenT();
   if (state === 'menu') uiScaled(drawMenu);
   else if (state === 'netmenu') uiScaled(drawNetMenu);
@@ -961,7 +962,10 @@ function render() {
   }
   if (CFG.fps && state !== 'menu' && !(M.dev && DEV.stats)) drawFps();
   if (SET.open) uiScaled(drawSettings);
+  if (GL) gxFlush();
 }
+/* f drawn on the GL screen (as ctx), when GL is on */
+function onGL(f) { if (!GL) return f(); const m = ctx; ctx = GLSCR.getContext('2d'); try { screenT(); f(); } finally { ctx = m; screenT(); } }
 /* settings › FPS COUNTER: top right, under the safe area */
 function drawFps() {
   screenT(); const u = uiU(), t = `${Math.round(DEV.fps)} FPS` + (CFG.fps > 1 ? ` · ${DEV.um.toFixed(1)} / ${DEV.rm.toFixed(1)} MS` : '');

@@ -99,7 +99,7 @@ function fogMemory(vw) {
   let m = M.fogMem[key];
   if (!m) {
     FOGK = MAP.tiled ? 1 : 0.5;
-    const c = mk(Math.ceil(WW * FOGK), Math.ceil(WH * FOGK)), g = c.getContext('2d');
+    const c = mkG(Math.ceil(WW * FOGK), Math.ceil(WH * FOGK)), g = c.getContext('2d');
     g.setTransform(FOGK, 0, 0, FOGK, 0, 0); g.drawImage(ground, 0, 0); g.drawImage(decals, 0, 0);
     if (MAP.tiled && MAP.tiled.roof) g.drawImage(ROOF_C, 0, 0);      // houses you've never looked into: roofed
     m = M.fogMem[key] = { key, c, g, st: new Map(), arc: new Map() };     // the heights as last seen: the light's (memOf)
@@ -108,7 +108,7 @@ function fogMemory(vw) {
 }
 /* screen-sized scratch canvases: the remembered world (OUT), the low-res soft mask (smoke + windows; a second one for a
    second eye) and a temp */
-const FOG_OUT = document.createElement('canvas'), FOG_TMP = document.createElement('canvas'), FOG_NOW = document.createElement('canvas'), FOG_MASK = document.createElement('canvas'), FOG_MASK2 = document.createElement('canvas'), FOG_MS = 10;
+const FOG_OUT = mkG(1, 1), FOG_TMP = mkG(1, 1), FOG_NOW = mkG(1, 1), FOG_MASK = document.createElement('canvas'), FOG_MASK2 = document.createElement('canvas'), FOG_MS = 10;
 function fogCanvases() {
   if (FOG_OUT.width !== cv.width || FOG_OUT.height !== cv.height) {
     FOG_OUT.width = FOG_TMP.width = cv.width; FOG_OUT.height = FOG_TMP.height = cv.height;
