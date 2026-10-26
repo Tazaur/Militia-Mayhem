@@ -12,9 +12,9 @@ const LH = { tank: 30, jeep: 20, nest: 12, bag: 12, hay: 16, tree: 255 };       
    none for all round); lightFx: one that fades over T s */
 function light(x, y, r, h, k, skip, d, c) { LIGHTS.push({ x, y, r: r * LSC, h, k, skip, d, c }); }     // c: its colour (none: LCOL, warm white)
 const LCOL = [1, 0.96, 0.86];
-/* a vehicle's tail lights (its lights on): two dim red point lights, 3 px over its hull's floor (the hull part's base), just
+/* a vehicle's tail lights (its lights on): two dim red point lights, 3 px over its hull's floor (the hull part's base), 3 px
    behind its art: a jeep's either side of the spare tire (TAIL.jeep: art px), a tank's at its back corners */
-const TAIL = { r: 14, k: 0.35, c: [1, 0.1, 0.05], jeep: [[5.5, 10], [5.5, 32]], brake: 1.8, dec: 20 };     // brake: how much brighter slowing / reversing; dec: the slowing (px/s²) that counts
+const TAIL = { r: 14, k: 0.35, c: [1, 0.1, 0.05], jeep: [[3.5, 10], [3.5, 32]], brake: 1.8, dec: 20 };     // brake: how much brighter slowing / reversing; dec: the slowing (px/s²) that counts
 /* how hard a vehicle's tail lights are lit up (0..1): on while it slows (by more than TAIL.dec) or backs up, fading in a
    quarter second after; from its speed alone, so a joiner's screen shows it too */
 function brakeK(v) {
@@ -24,7 +24,7 @@ function brakeK(v) {
 }
 function tailLights(v, f) {
   const q = partsOf(v).find(q => /^(jeep|hull)\d/.test(q.n)); if (!q) return;
-  const m = ATLAS[q.n], c = Math.cos(v.a), s = Math.sin(v.a), P = v.type === 'jeep' ? TAIL.jeep : [[-1, 6], [-1, m[3] - 6]];
+  const m = ATLAS[q.n], c = Math.cos(v.a), s = Math.sin(v.a), P = v.type === 'jeep' ? TAIL.jeep : [[-3, 6], [-3, m[3] - 6]];
   for (const [ax, ay] of P) { const lx = ax - m[4], ly = ay - m[5]; f(v.x + c * lx - s * ly, v.y + s * lx + c * ly, q.b + 3); }
 }
 const spotK = (d, ux, uy) => !d ? 1 : clamp((ux * d[0] + uy * d[1] - d[2]) / ((1 - d[2]) * 0.35), 0, 1);     // in the cone: 1, a soft rim
@@ -49,7 +49,7 @@ function lampsOn(f) {
    meets the ground in an oval, longer the lower the lamp (prone: grazing). Every beam splashes back (SPLASH): a dim point
    light just in front of what it shines on, dimmer the further off, so a jeep nosed up to a wall is lit by its own
    headlights. o keeps the eased pool and splash; returns the shader's spot w: 1 + the tilt of the beam's middle (height drop per px) */
-const POOL = { min: 60, max: 260, ease: 10 }, SPLASH = { r: 30, k: 0.3, back: 8 };
+const POOL = { min: 12, max: 260, ease: 10 }, SPLASH = { r: 30, k: 0.45, back: 13 }, SPOT_FAR = 0.5;     // SPOT_FAR: a beam's far side this much wider (its oval fans out)
 function midTilt(h, D, c) {     // the tilt whose ground oval's middle is D px out (a lamp h up, half-angle c)
   let lo = c + 0.001, hi = Math.PI / 2;
   for (let i = 0; i < 14; i++) { const t = (lo + hi) / 2, m = h / 2 * (1 / Math.tan(t - c) + 1 / Math.tan(t + c)); if (m > D) lo = t; else hi = t; }
@@ -282,7 +282,10 @@ void main() {
     vec2 v = PL[i].xy - p; float dl = length(v) / K, lh = PL[i].w - h0;
     if (dl >= PL[i].z) continue;
     float cn = 1.;
-    if (PD[i].w > 1.) { cn = clamp((dot(normalize(vec3(PD[i].xy, 1. - PD[i].w)), normalize(vec3(-v / K, -lh))) - PD[i].z) / ((1. - PD[i].z) * 0.35), 0., 1.); if (cn <= 0.) continue; }     // a spotlight (lampPool): the cone in 3D, its middle dropping w - 1 per px (on the ground: an oval)
+    if (PD[i].w > 1.) {     // a spotlight (lampPool): the cone in 3D, its middle dropping w - 1 per px (on the ground: an oval), its far side SW wider (the oval's far end fans out)
+      vec3 a = normalize(vec3(PD[i].xy, 1. - PD[i].w)), r = normalize(vec3(-v / K, -lh)), sd = vec3(-PD[i].y, PD[i].x, 0.), up = cross(a, sd);
+      float c = acos(PD[i].z), dv = asin(clamp(dot(r, up), -1., 1.)) / c, dh = asin(clamp(dot(r, sd), -1., 1.)) / (c * (1. + ${SPOT_FAR.toFixed(2)} * clamp(dv, 0., 1.)));
+      cn = dot(r, a) > 0. ? clamp((1. - length(vec2(dh, dv))) / 0.25, 0., 1.) : 0.; if (cn <= 0.) continue; }
     float s = 1., n = clamp(length(v) / 6., 8., 64.);     // 6 buffer px apart on average (up to 64), closer toward the light (what carries it: a barrel, a hull's edge, isn't stepped over), wider near here
     for (int k = 1; k < 64; k++) { if (float(k) >= n) break; float o, th, u = (float(k) - j) / n, t = mix(u, u * (2. - u), 0.6), d = blk(p + v * t, h0 + lh * t, o, th); if (d > 0.) s = min(s, 1. - clamp(d / min(3., th * 0.35), 0., 1.) * o); }
     s *= cn;

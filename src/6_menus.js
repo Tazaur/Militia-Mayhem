@@ -509,7 +509,27 @@ function updateSettings(ins) {
   hoverUpdate(v => SET.sel = v);
   runClicks();
 }
+/* settings › FOG OF WAR: what it looks like, under the sliders. The frame behind the menu (snapped before it's dimmed) with a
+   vision cone cut in it: inside as seen, outside drained / dimmed (fogLook) with the edge shadow (fogEdge), as in a match */
+const FOGPV = { snap: null, pv: null, fg: null };
+function fogSnap() { const S = FOGPV.snap = FOGPV.snap && FOGPV.snap.width === cv.width && FOGPV.snap.height === cv.height ? FOGPV.snap : mk(cv.width, cv.height); S.getContext('2d').drawImage(cv, 0, 0); }
+function fogPreview(x, y, w, h) {
+  const k = DPR * UIS, pw = Math.max(1, Math.round(w * k)), ph = Math.max(1, Math.round(h * k)), sz = c => c && c.width === pw && c.height === ph ? c : mk(pw, ph);
+  const pv = FOGPV.pv = sz(FOGPV.pv), fg = FOGPV.fg = sz(FOGPV.fg), g = pv.getContext('2d'), f = fg.getContext('2d');
+  g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-over'; g.fillStyle = '#20281c'; g.fillRect(0, 0, pw, ph);
+  if (FOGPV.snap) g.drawImage(FOGPV.snap, (cv.width - pw) / 2, (cv.height - ph) / 2, pw, ph, 0, 0, pw, ph);     // the middle of the screen, 1:1
+  f.setTransform(1, 0, 0, 1, 0, 0); f.globalCompositeOperation = 'source-over'; f.globalAlpha = 1; f.clearRect(0, 0, pw, ph); f.drawImage(pv, 0, 0); fogLook(f, 0, 0, pw, ph);
+  const z = VZ * DPR, ex = pw * 0.5, ey = ph * 0.5, R = pw * 0.5, cone = [[ex, ey]];     // the sight: a cone from the middle (you), looking right
+  for (let i = 0; i <= 16; i++) { const a = -0.6 + 1.2 * i / 16; cone.push([ex + Math.cos(a) * R, ey + Math.sin(a) * R]); }
+  const P = cone.map(([a, b]) => [a / z, b / z]);
+  f.setTransform(z, 0, 0, z, 0, 0); f.globalCompositeOperation = 'source-over'; fogEdge(f, [P]);
+  f.globalCompositeOperation = 'destination-out'; f.fillStyle = '#000'; f.beginPath(); P.forEach(([a, b], i) => i ? f.lineTo(a, b) : f.moveTo(a, b)); f.closePath(); f.fill();
+  f.globalCompositeOperation = 'source-over'; f.setTransform(1, 0, 0, 1, 0, 0);
+  g.drawImage(fg, 0, 0); ctx.drawImage(pv, x, y, w, h);
+  ctx.strokeStyle = 'rgba(242,230,196,0.35)'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+}
 function drawSettings() {
+  const fogPage = (setRows() || []).includes('fogD'); if (fogPage) fogSnap();     // before the menu dims it
   screenT(); UIB = [];
   const u = uiU();
   ctx.fillStyle = 'rgba(3,5,2,0.72)'; ctx.fillRect(0, 0, W, H);
@@ -531,7 +551,8 @@ function drawSettings() {
   keyTag('prev', dv, { x: tx, y: ty, w: tw - 6, h: cs }, 'left'); keyTag('next', dv, { x: tx + (nt - 1) * tw, y: ty, w: tw - 6, h: cs }, 'right');
   const bodyY = ty + cs + 12 * u, bodyH = py + ph - bodyY - Math.max(28, 30 * u), rows = setRows();
   if (rows) {
-    const rh = clamp(bodyH / rows.length, 34, 56 * u);
+    const rh = clamp(bodyH * (fogPage ? 0.56 : 1) / rows.length, fogPage ? 30 : 34, 56 * u);
+    if (fogPage) { const y0 = bodyY + rh * rows.length + 8 * u, h0 = bodyY + bodyH - y0; if (h0 > 40) fogPreview(px + pad, y0, pw - pad * 2, h0); }
     rows.forEach((k, i) => {
       const y = bodyY + i * rh, sel = SET.sel === i, [lab, val, fill] = setLabel(k), x = px + pad, w = pw - pad * 2;
       if (sel) { ctx.fillStyle = 'rgba(255,224,138,0.13)'; ctx.fillRect(x, y + 2, w, rh - 4); ctx.fillStyle = '#ffe08a'; ctx.fillRect(x, y + 2, 4, rh - 4); }
