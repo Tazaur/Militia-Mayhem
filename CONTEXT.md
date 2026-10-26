@@ -587,3 +587,7 @@ Tail lights brighten (k x 1 + 1.8 b, reach x 1 + 0.4 b) while slowing by more th
 ## Build 200
 Spotlights fan out: the shader's cone is measured as lateral / vertical angles off the beam's middle (sd: its side, up = a x sd), the lateral limit SPOT_FAR (0.5) wider on the far side (dv > 0: above the middle, landing further), soft rim (1 - |(dh, dv)|) / 0.25. POOL.min 60 -> 12 (a flashlight's pool pulls right in against a wall). Splash 13 px back from the hit, k 0.45. Tail lights 3 px behind the art (jeep 3.5, tank -3).
 Settings › FOG OF WAR: a preview under the sliders (`fogPreview`): the frame behind the menu (`fogSnap`, before the menu dims it), its middle 1:1, with a vision cone from the middle cut in; outside it fogLook + fogEdge exactly as in a match. The sliders take ~56% of the body there.
+
+## Build 201
+- All lights dim with daylight: x(1 - 0.6 * sin(sun el)/sin(75deg)), 40% at noon (DAY_DIM).
+- Fog preview snapshot taken right after the world draw, so pause menu / HUD no longer show inside it.

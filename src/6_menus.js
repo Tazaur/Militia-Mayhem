@@ -529,7 +529,7 @@ function fogPreview(x, y, w, h) {
   ctx.strokeStyle = 'rgba(242,230,196,0.35)'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
 }
 function drawSettings() {
-  const fogPage = (setRows() || []).includes('fogD'); if (fogPage) fogSnap();     // before the menu dims it
+  const fogPage = (setRows() || []).includes('fogD');
   screenT(); UIB = [];
   const u = uiU();
   ctx.fillStyle = 'rgba(3,5,2,0.72)'; ctx.fillRect(0, 0, W, H);
@@ -965,6 +965,7 @@ function render() {
   DUI.length = 0; TB_ON = [];
   // 1) all gameplay for every view, 2) split dividers, 3) every HUD, 4) global HUD, 5) menus on top
   for (const vw of M.views) drawWorld(vw);
+  if (SET.open && (setRows() || []).includes('fogD')) fogSnap();     // the fog preview: the world alone, before any HUD or menu
   screenT();
   if (state === 'menu') uiScaled(drawMenu);
   else if (state === 'netmenu') uiScaled(drawNetMenu);

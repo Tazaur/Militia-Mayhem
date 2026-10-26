@@ -83,12 +83,15 @@ function litAt(x, y) {
   lampsOn((lx, ly, h, a, o, fix) => { const dx = x - lx, dy = y - ly, d = Math.hypot(dx, dy) || 1, k = spotK(lampD(a, fix), dx / d, dy / d); if (d < LAMP.r * LSC && k > 0 && sees(lx, ly, x, y)) add(LAMP.k * k, LAMP.r * LSC, lx, ly); });
   return Math.min(1, L);
 }
+const DAY_DIM = 0.4;     // lights at noon (the highest sun) give this share of their night brightness
+function dayDim() { return 1 - (1 - DAY_DIM) * clamp(Math.sin(SUN.el) / Math.sin(75 * Math.PI / 180), 0, 1); }
 function lightFx(x, y, r, h, T) { LFX.push({ x, y, r, h, t0: M.time, T }); }
 function lightsNow(vis) {          // this frame's strongest lights in view (and the queue emptied)
   for (let i = LFX.length - 1; i >= 0; i--) { const f = LFX[i], u = (M.time - f.t0) / f.T; if (u >= 1 || u < 0) LFX.splice(i, 1); else light(f.x, f.y, f.r, f.h, (1 - u) ** 2); }
   for (const w of M.wrecks) if (w.burn > 0) light(w.x, w.y, 110, topOf(w) + 6, 0.4 + 0.15 * Math.sin(M.time * 23 + w.x) * Math.sin(M.time * 9.7), w);   // still burning
   lampsOn((x, y, h, a, o, fix) => light(x, y, LAMP.r, h, LAMP.k, null, [...lampD(a, fix), lampPool(o, a, x, y, h, fix)]));     // flashlights, headlights (from the state: one out of sight still throws its beam in)
   for (const v of M.vehicles) if (v.lights && v.active && !v.dead && v.type !== 'nest') { const b = brakeK(v); tailLights(v, (x, y, h) => light(x, y, TAIL.r * (1 + 0.4 * b), h, TAIL.k * (1 + TAIL.brake * b), v, null, TAIL.c)); }
+  const dk = dayDim(); if (dk < 1) for (const l of LIGHTS) l.k *= dk;
   const L = LIGHTS.filter(l => l.k > 0.02 && vis(l.x, l.y, l.r)).sort((a, b) => b.k * b.r - a.k * a.r).slice(0, LMAX); LIGHTS.length = 0; if (M.dev) DEV.lp = L;
   return L;
 }
