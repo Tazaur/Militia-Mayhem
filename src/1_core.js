@@ -26,6 +26,7 @@ let PIPE = null;
 const pipe = (k, o) => { if (PIPE) PIPE(k, o || {}); };
 function inRect(x, y, r, pad) { pad = pad || 0; return x > r.x - pad && x < r.x + r.w + pad && y > r.y - pad && y < r.y + r.h + pad; }
 function mk(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+function stackImg(g, imgs, ...a) { if (g.drawStack) g.drawStack(imgs, ...a); else for (const o of imgs) g.drawImage(o, ...a); }     // layers each over the last (GL: one pass)
 function rr(g, x, y, w, h, r) { g.beginPath(); if (g.roundRect) g.roundRect(x, y, w, h, r); else g.rect(x, y, w, h); }
 
 /* ---------------- game data ---------------- */

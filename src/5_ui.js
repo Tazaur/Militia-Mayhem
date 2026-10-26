@@ -17,7 +17,7 @@ function drawWorld(vw) {
   // ---- layer 0: ground + fading footprints
   drawSkirt(x0, y0, x1, y1);
   const gx0 = Math.max(0, Math.floor(x0)), gy0 = Math.max(0, Math.floor(y0)), gx1 = Math.min(WW, Math.ceil(x1)), gy1 = Math.min(WH, Math.ceil(y1));
-  if (gx1 > gx0 && gy1 > gy0) { ctx.drawImage(ground, gx0, gy0, gx1 - gx0, gy1 - gy0, gx0, gy0, gx1 - gx0, gy1 - gy0); ctx.drawImage(decals, gx0, gy0, gx1 - gx0, gy1 - gy0, gx0, gy0, gx1 - gx0, gy1 - gy0); ctx.drawImage(prints, gx0, gy0, gx1 - gx0, gy1 - gy0, gx0, gy0, gx1 - gx0, gy1 - gy0); }
+  if (gx1 > gx0 && gy1 > gy0) stackImg(ctx, [ground, decals, prints], gx0, gy0, gx1 - gx0, gy1 - gy0, gx0, gy0, gx1 - gx0, gy1 - gy0);
   pipe('ground');
   if (MAP.water.length) { ctx.globalAlpha = 0.18; ctx.fillStyle = CFG.style === 'grit' ? '#7a8a82' : '#9fd0f0'; for (const w of MAP.water) { if (!vis(w.x + w.w / 2, w.y + w.h / 2, Math.max(w.w, w.h))) continue; for (let i = 0; i < 26; i++) { const y = w.y + ((i * 97 + M.time * 14) % w.h), x = w.x + ((i * 53) % (w.w - 20)) + Math.sin(M.time + i) * 6; ctx.fillRect(x, y, 12, 1); } } ctx.globalAlpha = 1; }
   // flags

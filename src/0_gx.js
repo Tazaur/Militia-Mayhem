@@ -118,6 +118,7 @@ vec4 src() {
   float m = vX.x;
   if (m < 0.5) return vC;
   if (m < 1.5) return tsl(vX.y, vT) * vC;
+  if (m > 3.5) { vec4 c = tsl(vX.y, vT); for (int i = 1; i < 6; i++) { if (float(i) >= vX.z) break; vec4 d = tsl(vX.y + float(i), vT); c = d + c * (1. - d.a); } return c * vC; }     // drawStack: vX.z slots from vX.y, each over the last
   float t = m < 2.5 ? vT.x : (length(vT) - vX.w) / max(1. - vX.w, 1e-4);
   return texture(GR, vec2(clamp(t, 0., 1.) * 0.99609375 + 0.001953125, vX.z)) * vC;
 }
@@ -675,8 +676,17 @@ class GX {
     this._blit(S, sx, sy, sw, sh, dx, dy, dw, dh, gxPack(1, 1, 1, this.globalAlpha), this.imageSmoothingEnabled ? 1 : 0);
     this._post(m, 0);
   }
+  /* images of one size (GL surfaces) stacked, each over the last, drawn as one (args as drawImage's 9): one pass, not one each */
+  drawStack(imgs, sx, sy, sw, sh, dx, dy, dw, dh) {
+    if (imgs.some(o => !(o instanceof GSurf) || o._w !== imgs[0]._w || o._h !== imgs[0]._h || o === this.canvas)) { for (const o of imgs) this.drawImage(o, sx, sy, sw, sh, dx, dy, dw, dh); return; }
+    this._stk = imgs; try { this.drawImage(imgs[0], sx, sy, sw, sh, dx, dy, dw, dh); } finally { this._stk = null; }
+  }
   _blit(S, sx, sy, sw, sh, dx, dy, dw, dh, col, sm) {
-    const P = GXP; P.k = 0; P.mode = 1; P.col = col; P.slot = gxSlot(S.t, sm);
+    const P = GXP, K = this._stk; P.k = 0; P.mode = 1; P.col = col;
+    if (K) {     // drawStack: its slots in a row
+      const T = K.map(o => gxSrc(o).t), B = GXB; if (B.slots.length + T.length > 6) gxFlush();
+      P.mode = 4; P.gr = T.length; P.slot = B.slots.length; for (const t of T) B.slots.push({ t, s: GXR.S[sm] });
+    } else P.slot = gxSlot(S.t, sm);
     const M = this._m, u0 = S.u0 + sx * S.su, u1 = S.u0 + (sx + sw) * S.su, v0 = S.v0 + sy * S.sv, v1 = S.v0 + (sy + sh) * S.sv;
     const X = (u, v) => M[0] * u + M[2] * v + M[4], Y = (u, v) => M[1] * u + M[3] * v + M[5];
     const a = gxV(X(dx, dy), Y(dx, dy), u0, v0), b = gxV(X(dx + dw, dy), Y(dx + dw, dy), u1, v0), c = gxV(X(dx + dw, dy + dh), Y(dx + dw, dy + dh), u1, v1), d = gxV(X(dx, dy + dh), Y(dx, dy + dh), u0, v1);

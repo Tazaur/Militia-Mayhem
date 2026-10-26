@@ -109,7 +109,7 @@ function fogMemory(vw) {
 /* screen-sized scratch canvases: the remembered world (OUT), the low-res soft mask (smoke + windows; a second one for a
    second eye) and a temp */
 const FOG_OUT = mkG(1, 1), FOG_TMP = mkG(1, 1), FOG_NOW = mkG(1, 1), FOG_MASK = document.createElement('canvas'), FOG_MASK2 = document.createElement('canvas'), FOG_MS = 10;
-FOG_OUT.opq = true;     // always filled whole first (applyFog): a multiply onto it is one pass
+FOG_OUT.opq = true;     // always covered whole (applyFog: the memory and the skirt round the map): a multiply onto it is one pass
 function fogCanvases() {
   if (FOG_OUT.width !== cv.width || FOG_OUT.height !== cv.height) {
     FOG_OUT.width = FOG_TMP.width = cv.width; FOG_OUT.height = FOG_TMP.height = cv.height;
@@ -132,7 +132,7 @@ function applyFog(vw, vis, x0, y0, x1, y1, rv) {
     // (walls, floors) leak a little through the roof along every sight ray, and it built up as you moved
     if (FOG_NOW.width < bw || FOG_NOW.height < bh) { FOG_NOW.width = Math.max(FOG_NOW.width, bw); FOG_NOW.height = Math.max(FOG_NOW.height, bh); }
     const n = FOG_NOW.getContext('2d'); n.setTransform(1, 0, 0, 1, 0, 0);
-    n.drawImage(ground, bx0, by0, bw, bh, 0, 0, bw, bh); n.drawImage(decals, bx0, by0, bw, bh, 0, 0, bw, bh);
+    stackImg(n, [ground, decals], bx0, by0, bw, bh, 0, 0, bw, bh);
     if (MAP.tiled && MAP.tiled.roof) n.drawImage(ROOF_C, bx0, by0, bw, bh, 0, 0, bw, bh);
     pipe('fog-now'); m.g.save(); m.g.setTransform(FOGK, 0, 0, FOGK, 0, 0); polyPath(m.g, polys); m.g.clip();
     m.g.drawImage(FOG_NOW, 0, 0, bw, bh, bx0, by0, bw, bh); m.g.restore();
@@ -143,11 +143,10 @@ function applyFog(vw, vis, x0, y0, x1, y1, rv) {
   // the remembered world goes into an offscreen layer, so smoke can reuse it later
   fogCanvases();
   const main = ctx; ctx = FOG_OUT.getContext('2d'); ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.fillStyle = '#0c140a'; ctx.fillRect(vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR);
   worldT(); ctx.imageSmoothingEnabled = false; drawSkirt(x0, y0, x1, y1);
   if (bw > 0 && bh > 0) { ctx.imageSmoothingEnabled = FOGK < 1; ctx.drawImage(m.c, bx0 * FOGK, by0 * FOGK, bw * FOGK, bh * FOGK, bx0, by0, bw, bh); ctx.imageSmoothingEnabled = false; }
   if (bw > 0 && bh > 0 && MAP.tiled && MAP.tiled.roof) {
-    ctx.save(); polyPath(ctx, polys); ctx.clip(); ctx.drawImage(ground, bx0, by0, bw, bh, bx0, by0, bw, bh); ctx.drawImage(decals, bx0, by0, bw, bh, bx0, by0, bw, bh);
+    ctx.save(); polyPath(ctx, polys); ctx.clip(); stackImg(ctx, [ground, decals], bx0, by0, bw, bh, bx0, by0, bw, bh);
     if (rv) ctx.drawImage(rv.c, 0, 0, rv.w, rv.h, rv.x, rv.y, rv.w, rv.h);
     ctx.restore(); worldT();
   }
