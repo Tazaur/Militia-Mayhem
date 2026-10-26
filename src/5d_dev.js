@@ -33,7 +33,29 @@ function dayCycle(dt) {
 }
 /* the cycle's time of day: DEV.ph 0 is 6:00 (the sun rising through 22.5°), π / 2 noon */
 const dayClock = () => { const h = ((6 + DEV.ph / TAU * 24) % 24 + 24) % 24; return `${h | 0}:${String(Math.floor(h % 1 * 60)).padStart(2, '0')}`; };
-function devTime(dt, um, rm) { if (M && M.dev && state === 'play') dayCycle(dt); const e = 0.08; DEV.fps += ((dt > 0 ? 1 / dt : 60) - DEV.fps) * e; DEV.um += (um - DEV.um) * e; DEV.rm += (rm - DEV.rm) * e; }
+function devTime(dt, um, rm) {
+  if (M && M.dev && state === 'play') dayCycle(dt); const e = 0.08; DEV.fps += ((dt > 0 ? 1 / dt : 60) - DEV.fps) * e; DEV.um += (um - DEV.um) * e; DEV.rm += (rm - DEV.rm) * e;
+  const P = GPUP, now = performance.now(); P.wk = Math.max(P.wk, dt * 1000); if (now - P.wt > 1000) { P.worst = P.wk; P.wk = 0; P.wt = now; }     // the slowest frame of the last second
+}
+/* settings › FPS COUNTER › GPU STAGES (GL): every pipe() hook in the frame closes a GPU timer named for the work just done
+   (grouped: GPUG), read back a few frames late; averaged a frame over each second (GPUP.out: [label, ms] slowest first) */
+const GPUP = { X: undefined, q: null, pend: [], A: {}, n: 0, t: 0, out: [], worst: 0, wk: 0, wt: 0 };
+const GPUG = [[/^(memory|fog-)/, 'FOG MEMORY'], [/^(ground|flags|q|lights2d)/, 'SPRITES'], [/^(cpu-heights|gpu-h|gpu-mat)/, 'HEIGHTS'], [/^gpu-sweep/, 'SUN SHADOWS'],
+  [/^gpu-light/, 'POINT LIGHTS'], [/^gpu-map/, 'LIGHT MAPS'], [/^comp/, 'LIGHT COMPOSITE'], [/^(softfog|ov-|overlay-done)/, 'FOG OVERLAY'], [/^(smk-|smokes)/, 'SMOKE'],
+  [/^(lasers|tags|reticle)/, 'MARKS'], [/^grade/, 'WEATHER + GRADE']];
+const gpuOn = () => GL && CFG.fps === 3;
+function gpuOpen() { const g = GL; GPUP.q = g.createQuery(); g.beginQuery(GPUP.X.TIME_ELAPSED_EXT, GPUP.q); }
+function gpuClose(k) { const g = GL, P = GPUP; if (!P.q) return; g.endQuery(P.X.TIME_ELAPSED_EXT); const G = GPUG.find(([r]) => r.test(k)); P.pend.push([P.q, G ? G[1] : k.toUpperCase()]); P.q = null; }
+function gpuHook(k) { gxFlush(); gpuClose(k); gpuOpen(); }
+function gpuBegin() {
+  const P = GPUP; if (!gpuOn()) return; if (P.X === undefined) P.X = GL.getExtension('EXT_disjoint_timer_query_webgl2'); if (!P.X) return;
+  const g = GL, dj = g.getParameter(P.X.GPU_DISJOINT_EXT);
+  for (let i = 0; i < P.pend.length; i++) { const [q, k] = P.pend[i]; if (!g.getQueryParameter(q, g.QUERY_RESULT_AVAILABLE)) break; if (!dj) P.A[k] = (P.A[k] || 0) + g.getQueryParameter(q, g.QUERY_RESULT) / 1e6; g.deleteQuery(q); P.pend.splice(i--, 1); }
+  const now = performance.now(); if (now - P.t > 1000 && P.n) { P.out = Object.entries(P.A).map(([k, v]) => [k, v / P.n]).sort((a, b) => b[1] - a[1]); P.A = {}; P.n = 0; P.t = now; }
+  if (P.pend.length > 400) return;     // results stopped coming back: don't pile up more
+  gxFlush(); gpuOpen(); PIPE = gpuHook; P.n++;
+}
+function gpuEnd() { if (PIPE !== gpuHook) return; gxFlush(); gpuClose('rest'); PIPE = null; }
 /* structural damage per blast, keyed by blast radius: rocket 62, tank shell 78, frag 88; anything else x1 */
 const STRUCT_K = { 62: 1.6, 78: 2, 88: 0.35 };
 const tileC = t => (t + 0.5) * TILE;

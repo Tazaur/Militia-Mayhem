@@ -90,7 +90,7 @@ class GXGrad {
 }
 class GXPat { constructor(img, rep) { this.img = img; this.rep = rep; } setTransform() { gxWarn('pattern transform'); } }
 /* ---------------- the batch ---------------- */
-const GXB = { cap: 0, F: null, U: null, I: null, icap: 0, nv: 0, ni: 0, tgt: null, bl: 0, st: 0, sc: [0, 0, 1, 1], slots: [], ok: false, fbo: undefined, prog: null, bb: [0, 0, 0, 0], dst: null };
+const GXB = { cap: 0, F: null, U: null, I: null, icap: 0, nv: 0, ni: 0, tgt: null, bl: 0, st: 0, sc: [0, 0, 1, 1], slots: [], ok: false, fbo: undefined, prog: null, bb: [0, 0, 0, 0], dst: null, mask: null };
 const GXP = { k: 0, mode: 0, slot: 0, col: 0, gr: 0, r0: 0, ia: 1, ib: 0, ic: 0, id: 1, ie: 0, if: 0, x0: 0, y0: 0, dx: 0, dy: 0, ir: 1, pw: 1, ph: 1 };
 let GXR = null, GXK = 0, GXFR = 0;
 /* blend modes: [src rgb, dst rgb, src a, dst a]; u: unbounded (cleared outside the shape), m: multiply (two passes), x: a dst-read shader mode */
@@ -145,10 +145,24 @@ void main() {
   vec4 s = src(), d = texture(D, (gl_FragCoord.xy - uD.xy) * uD.zw);
   vec3 cs = s.a > 0. ? s.rgb / s.a : vec3(0.), cd = d.a > 0. ? d.rgb / d.a : vec3(0.);
   o = vec4(s.a * (1. - d.a) * cs + s.a * d.a * bl(cd, cs) + (1. - s.a) * d.rgb, s.a + d.a * (1. - s.a));
-}` : 'void main() { o = src(); }'}`;
+}` : `uniform sampler2D MK; uniform vec4 uMK; uniform float uMKo;     // maskedImage: times a mask's alpha, placed by gl_FragCoord
+void main() { o = src(); if (uMKo > 0.5) o *= texture(MK, gl_FragCoord.xy * uMK.xy + uMK.zw).a; }`}`;
 const GXFADE = `#version 300 es
 precision highp float; uniform sampler2D D; uniform vec4 uD; uniform vec2 uF; out vec4 o;
 void main() { vec4 c = texture(D, (gl_FragCoord.xy - uD.xy) * uD.zw); float a = clamp(c.a * uF.x + uF.y, 0., 1.); o = c.a > 0. ? vec4(c.rgb * (a / c.a), a) : vec4(0.); }`;
+/* the light's three maps on the view in one pass (5e_light drawSun): what's there x shade, colour-dodged by the highlights,
+   plus the glow; each map placed by gl_FragCoord (uM*: u = x a + b, v = y c + d), uOn: which of the three */
+const GXLC = `#version 300 es
+precision highp float; uniform sampler2D D, G; uniform vec4 uD, uM0, uM1, uM2; uniform vec3 uOn; out vec4 o;
+vec3 m(vec4 M) { return texture(G, gl_FragCoord.xy * M.xy + M.zw).rgb; }
+float dg(float b, float s) { return b <= 0. ? 0. : s >= 1. ? 1. : min(1., b / (1. - s)); }
+void main() {
+  vec3 c = texture(D, (gl_FragCoord.xy - uD.xy) * uD.zw).rgb;
+  if (uOn.x > 0.5) c *= m(uM0);
+  if (uOn.y > 0.5) { vec3 h = m(uM1); c = vec3(dg(c.r, h.r), dg(c.g, h.g), dg(c.b, h.b)); }
+  if (uOn.z > 0.5) c = min(c + m(uM2), 1.);
+  o = vec4(c, 1.);
+}`;
 /* a gaussian blur along uR.xy (sigma uR.z GL px), read from the copy D (1 / its size: uT) clamped to the rect uD (GL px) */
 const GXBLUR = `#version 300 es
 precision highp float; uniform sampler2D D; uniform vec4 uD; uniform vec3 uR; uniform vec2 uT; out vec4 o;
@@ -156,9 +170,9 @@ void main() { vec4 a = vec4(0.); float W = 0.; for (int i = -6; i <= 6; i++) { f
 function gxInit() {
   if (GXR) return GXR; const g = GL; gxModes();
   const sh = (t, s) => { const o = g.createShader(t); g.shaderSource(o, s); g.compileShader(o); if (!g.getShaderParameter(o, g.COMPILE_STATUS)) throw new Error(g.getShaderInfoLog(o)); return o; };
-  const prog = (fs, us) => { const P = g.createProgram(); g.attachShader(P, sh(g.VERTEX_SHADER, GXVS)); g.attachShader(P, sh(g.FRAGMENT_SHADER, fs)); g.linkProgram(P); if (!g.getProgramParameter(P, g.LINK_STATUS)) throw new Error(g.getProgramInfoLog(P)); const U = { P }; for (const n of us) U[n] = g.getUniformLocation(P, n); g.useProgram(P); ['T0', 'T1', 'T2', 'T3', 'T4', 'T5'].forEach((n, i) => U[n] && g.uniform1i(U[n], 8 + i)); U.GR && g.uniform1i(U.GR, 14); U.D && g.uniform1i(U.D, 15); return U; };
+  const prog = (fs, us) => { const P = g.createProgram(); g.attachShader(P, sh(g.VERTEX_SHADER, GXVS)); g.attachShader(P, sh(g.FRAGMENT_SHADER, fs)); g.linkProgram(P); if (!g.getProgramParameter(P, g.LINK_STATUS)) throw new Error(g.getProgramInfoLog(P)); const U = { P }; for (const n of us) U[n] = g.getUniformLocation(P, n); g.useProgram(P); ['T0', 'T1', 'T2', 'T3', 'T4', 'T5'].forEach((n, i) => U[n] && g.uniform1i(U[n], 8 + i)); U.GR && g.uniform1i(U.GR, 14); U.D && g.uniform1i(U.D, 15); U.MK && g.uniform1i(U.MK, 15); return U; };
   const base = ['uS', 'T0', 'T1', 'T2', 'T3', 'T4', 'T5', 'GR'];
-  const P0 = prog(GXFS(false), base), P1 = prog(GXFS(true), [...base, 'D', 'uD', 'uM']), PF = prog(GXFADE, ['uS', 'D', 'uD', 'uF']), PB = prog(GXBLUR, ['uS', 'D', 'uD', 'uR', 'uT']);
+  const P0 = prog(GXFS(false), [...base, 'MK', 'uMK', 'uMKo']), P1 = prog(GXFS(true), [...base, 'D', 'uD', 'uM']), PF = prog(GXFADE, ['uS', 'D', 'uD', 'uF']), PB = prog(GXBLUR, ['uS', 'D', 'uD', 'uR', 'uT']), PL = prog(GXLC, ['uS', 'D', 'G', 'uD', 'uM0', 'uM1', 'uM2', 'uOn']);
   const vao = g.createVertexArray(), vb = g.createBuffer(), ib = g.createBuffer(); g.bindVertexArray(vao);
   g.bindBuffer(g.ARRAY_BUFFER, vb); g.bindBuffer(g.ELEMENT_ARRAY_BUFFER, ib);
   g.enableVertexAttribArray(0); g.vertexAttribPointer(0, 2, g.FLOAT, false, 36, 0);
@@ -170,7 +184,7 @@ function gxInit() {
   const S = [smp(g.NEAREST, g.CLAMP_TO_EDGE), smp(g.LINEAR, g.CLAMP_TO_EDGE), smp(g.NEAREST, g.REPEAT), smp(g.LINEAR, g.REPEAT)];
   const tex = (w, h, f) => { const t = g.createTexture(); g.activeTexture(g.TEXTURE15); g.bindTexture(g.TEXTURE_2D, t); g.texImage2D(g.TEXTURE_2D, 0, f || g.RGBA8, w, h, 0, f === g.RGB8 ? g.RGB : g.RGBA, g.UNSIGNED_BYTE, null); g.activeTexture(g.TEXTURE0); return t; };
   const AS = Math.min(2048, g.getParameter(g.MAX_TEXTURE_SIZE));
-  GXR = { P0, P1, PF, PB, vao, vb, ib, S, AT: tex(AS, AS), AS, GRT: tex(256, 256), tex, dstA: null, dstC: null, own: new WeakMap(), pat: new WeakMap(), at: new WeakMap(), sh: [], ep: 1, gr: new Map(), grN: 0, grE: 1, txt: new Map(), up: 0, resets: 0 };
+  GXR = { P0, P1, PF, PB, PL, vao, vb, ib, S, AT: tex(AS, AS), AS, GRT: tex(256, 256), tex, dstA: null, dstC: null, own: new WeakMap(), pat: new WeakMap(), at: new WeakMap(), sh: [], ep: 1, gr: new Map(), grN: 0, grE: 1, txt: new Map(), up: 0, resets: 0 };
   gxGrow(16384, 32768);
   return GXR;
 }
@@ -207,6 +221,7 @@ function gxBindSlots() {
   const g = GL, S = GXB.slots;
   for (let i = 0; i < 6; i++) { g.activeTexture(g.TEXTURE8 + i); g.bindTexture(g.TEXTURE_2D, i < S.length ? S[i].t : null); g.bindSampler(8 + i, i < S.length ? S[i].s : null); }     // the unused emptied: a target still bound on one is a feedback loop
   g.activeTexture(g.TEXTURE14); g.bindTexture(g.TEXTURE_2D, GXR.GRT); g.bindSampler(14, GXR.S[1]);
+  if (!GXB.u15) { g.activeTexture(g.TEXTURE15); g.bindTexture(g.TEXTURE_2D, null); }     // uploads leave theirs there: a target's own is a feedback loop (MK, D read it)
   g.activeTexture(g.TEXTURE0);
 }
 function gxUpload() {
@@ -220,16 +235,18 @@ function gxFlush(plan) {
   const g = GL, s = B.tgt; gxBindTarget(s); gxUpload(); gxBindSlots();
   const sc = B.sc; g.scissor(sc[0], sc[1], sc[2], sc[3]);
   if (!plan) {
-    gxUse(GXR.P0, s); gxSten(B.st ? GXCLIP() : null); const m = GXB.blm;
+    gxUse(GXR.P0, s); gxSten(B.st ? GXCLIP() : null); const m = GXB.blm, k = B.mask;
+    if (k) { g.activeTexture(g.TEXTURE15); g.bindTexture(g.TEXTURE_2D, k.t); g.bindSampler(15, GXR.S[1]); g.activeTexture(g.TEXTURE0); g.uniform4f(GXR.P0.uMK, k.a, k.c, k.b, k.d); g.uniform1f(GXR.P0.uMKo, 1); }
     gxBlend(m.f); g.drawElements(g.TRIANGLES, B.ni, g.UNSIGNED_INT, 0);
     if (m.m) { gxBlend(m.m); g.drawElements(g.TRIANGLES, B.ni, g.UNSIGNED_INT, 0); }
+    if (k) { g.uniform1f(GXR.P0.uMKo, 0); GXB.dst = null; }
   } else for (const p of plan) {
     gxUse(p[5] || GXR.P0, s); gxSten(p[3]); if (p[4] === false) g.colorMask(false, false, false, false);
     gxBlend(p[2]); if (p[1] > 0) g.drawElements(g.TRIANGLES, p[1], g.UNSIGNED_INT, p[0] * 4);
     if (p[4] === false) g.colorMask(true, true, true, true);
   }
   GXR.dc = (GXR.dc || 0) + 1;
-  B.nv = B.ni = B.i0 = 0; B.slots.length = 0;
+  B.nv = B.ni = B.i0 = 0; B.slots.length = 0; B.u15 = false;
 }
 function gxV(x, y, u, v) {
   const B = GXB; if (B.nv >= B.cap) gxGrow(B.nv + 1, 0);
@@ -345,11 +362,16 @@ function gxDst(s, b) {
   const gy = h - y1; g.copyTexSubImage2D(g.TEXTURE_2D, 0, 0, 0, x0, gy, cw, ch); g.activeTexture(g.TEXTURE0);
   return [x0, gy, 1 / D.w, 1 / D.h];
 }
-/* a GL surface read back small into a 2D canvas (the HUD's maps), at most every 2 s while it changes; a 2D canvas: itself */
+/* a GL surface read back small into a 2D canvas (the HUD's maps): once it's settled (unchanged 100 ms), or every 2 s while
+   it keeps changing; a 2D canvas: itself */
 function surf2D(s, maxW) {
   if (!(s instanceof GSurf)) return s;
   const now = performance.now(); let T = s._2d;
-  if (T && T.w0 === s._w && T.h0 === s._h && (T.gv === s._gv || now - T.t < 2000)) return T.c;
+  if (T && T.w0 === s._w && T.h0 === s._h) {
+    if (T.gv === s._gv) return T.c;
+    if (T.pg !== s._gv) { T.pg = s._gv; T.tc = now; }
+    if (now - T.t < 2000 && now - T.tc < 100) return T.c;
+  }
   const k = Math.min(1, maxW / s._w), w = Math.max(1, Math.round(s._w * k)), h = Math.max(1, Math.round(s._h * k)), g = GL;
   if (!T || T.c.width !== w || T.c.height !== h) T = s._2d = { c: mk(w, h), tmp: new GSurf(w, h) };
   const x = T.tmp.getContext('2d'); x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'copy'; x.imageSmoothingEnabled = true; x.drawImage(s, 0, 0, s._w, s._h, 0, 0, w, h); gxFlush();
@@ -508,7 +530,7 @@ class GX {
       const q = this._coverQuad(true); plan.push([q, 6, GXBM.clear.f, cl ? [g.EQUAL, 0x80, 0xff, 0x7f, Z, Z] : [g.EQUAL, 0, 0x7f, 0x7f, Z, Z], true]);
     }
     if (kind || m.u) { const q = this._coverQuad(kind !== 1 || m.u); plan.push([q, 6, GXBM.none.f, [AL, 0, 0xff, 0x7f, Z, Z], false]); }     // the low bits zeroed again
-    if (xu) { gxBindTarget(sf); gxUse(GXR.P1, sf); g.uniform4f(GXR.P1.uD, xu[0], xu[1], xu[2], xu[3]); g.uniform1f(GXR.P1.uM, m.x); g.activeTexture(g.TEXTURE15); g.bindTexture(g.TEXTURE_2D, GXR[sf.scr ? 'dstC' : 'dstA'].t); g.bindSampler(15, GXR.S[0]); g.activeTexture(g.TEXTURE0); }
+    if (xu) { gxBindTarget(sf); gxUse(GXR.P1, sf); g.uniform4f(GXR.P1.uD, xu[0], xu[1], xu[2], xu[3]); g.uniform1f(GXR.P1.uM, m.x); g.activeTexture(g.TEXTURE15); g.bindTexture(g.TEXTURE_2D, GXR[sf.scr ? 'dstC' : 'dstA'].t); g.bindSampler(15, GXR.S[0]); g.activeTexture(g.TEXTURE0); B.u15 = true; }
     gxFlush(plan);
   }
   _coverQuad(whole) {     // a quad over the shape's box (whole: the clip's box), solid; its first index
@@ -532,6 +554,19 @@ class GX {
     const ps = (old && old.ps ? old.ps.slice() : []); ps.push({ s: S.map(s => ({ p: s.p.slice(), c: s.c, cv: s.cv })), rule });
     this._clip = { r, ps, k: ++GXK };
   }
+  /* only outside the path (an extension: the stencil's top bit cleared inside it), ANDed with the clip as clip() is */
+  clipOut(a, b) {
+    const subs = this._subs(a), rule = typeof a === 'string' ? a : b || 'nonzero', old = this._clip, S = subs.filter(s => s.p.length >= 6);
+    if (!S.length) return;
+    const ps = (old && old.ps ? old.ps.slice() : []); ps.push({ s: S.map(s => ({ p: s.p.slice(), c: s.c, cv: s.cv })), rule, out: true });
+    this._clip = { r: old && old.r ? old.r.slice() : null, ps, k: ++GXK };
+  }
+  /* drawImage, times the alpha of mask (any image source) laid over the device rect (mx, my, mw, mh): a soft cut in one pass */
+  maskedImage(img, sx, sy, sw, sh, dx, dy, dw, dh, mask, mx, my, mw, mh) {
+    if (!GXR) gxInit(); gxFlush(); const S = gxSrc(mask); if (!S) return; const h = this.canvas.gh;
+    const a = S.w * S.su / mw, c = -S.h * S.sv / mh; GXB.mask = { t: S.t, a, b: S.u0 - mx * a, c, d: S.v0 + (h - my) * S.h * S.sv / mh };
+    try { this.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh); gxFlush(); } finally { GXB.mask = null; }
+  }
   _clipBuild() {     // the clip's paths into the stencil's top bit (each one ANDed in)
     const sf = this.canvas, g = GL, cl = this._clip, B = GXB; gxFlush(); sf._stencil();
     const sc = this._scissor(); if (sc[2] <= 0 || sc[3] <= 0) return;
@@ -543,7 +578,7 @@ class GX {
       for (const s of path.s) this._fan(s.p);
       const q = this._coverQuad(true);
       gxFlush([[i0, q - i0, GXBM.none.f, path.rule === 'evenodd' ? [AL, 0, 0xff, 0x7f, K, g.INVERT] : [AL, 0, 0xff, 0x7f, K, g.INCR_WRAP, g.DECR_WRAP], false],
-        [q, 6, GXBM.none.f, [g.EQUAL, 0, 0x7f, 0xff, K, Z], false], [q, 6, GXBM.none.f, [AL, 0, 0xff, 0x7f, Z, Z], false]]);
+        [q, 6, GXBM.none.f, [path.out ? g.NOTEQUAL : g.EQUAL, 0, 0x7f, 0xff, K, Z], false], [q, 6, GXBM.none.f, [AL, 0, 0xff, 0x7f, Z, Z], false]]);
     }
     sf.stK = cl.k;
   }
@@ -670,6 +705,21 @@ class GX {
       g.bufferData(g.ARRAY_BUFFER, F, g.STREAM_DRAW); g.drawArrays(g.TRIANGLES, 0, 6);
     }
     g.enable(g.BLEND); GXB.prog = null; GXB.blk = null; const s = GXB.sc; g.scissor(s[0], s[1], s[2], s[3]);
+  }
+  /* the light's maps composited (drawSun): src a GL surface, at: each map's corner in it (canvas px), sw x sh of it onto
+     the device rect to (an opaque target: the screen); on: [shade, highlights, glow] */
+  lightComp(src, at, sw, sh, to, on) {
+    if (!GXR) gxInit(); gxFlush(); const sf = this.canvas, g = GL, R = GXR, P = R.PL, H = sf.gh, [dx, dy, dw, dh] = to;
+    const xu = gxDst(sf, [dx, dy, dx + dw, dy + dh]); if (!xu) return;
+    gxBindTarget(sf); g.disable(g.BLEND); gxSten(null); gxUse(P, sf); g.uniform1i(P.G, 8); g.uniform4f(P.uD, xu[0], xu[1], xu[2], xu[3]); g.uniform3f(P.uOn, on[0] ? 1 : 0, on[1] ? 1 : 0, on[2] ? 1 : 0);
+    const Gw = src._w, Gh = src._h, kx = sw / dw, ky = sh / dh;
+    at.forEach(([sx, sy], i) => g.uniform4f(P['uM' + i], kx / Gw, ky / Gh, (sx - dx * kx) / Gw, 1 - (sy + (H - dy) * ky) / Gh));
+    g.activeTexture(g.TEXTURE8); g.bindTexture(g.TEXTURE_2D, src.tex); g.bindSampler(8, R.S[1]); g.activeTexture(g.TEXTURE0);
+    const x0 = Math.max(0, Math.floor(dx)), x1 = Math.min(sf.gw, Math.ceil(dx + dw)), y0 = Math.max(0, Math.floor(dy)), y1 = Math.min(H, Math.ceil(dy + dh));
+    g.scissor(x0, H - y1, x1 - x0, y1 - y0); g.bindBuffer(g.ARRAY_BUFFER, R.vb);
+    const F = new Float32Array(54); [[x0, y0], [x1, y0], [x1, y1], [x0, y0], [x1, y1], [x0, y1]].forEach(([a, b], i) => { F[i * 9] = a; F[i * 9 + 1] = b; });
+    g.bufferData(g.ARRAY_BUFFER, F, g.STREAM_DRAW); g.drawArrays(g.TRIANGLES, 0, 6);
+    g.enable(g.BLEND); GXB.prog = null; GXB.blk = null; GXB.dst = null; const s = GXB.sc; g.scissor(s[0], s[1], s[2], s[3]); sf._gv = (sf._gv || 0) + 1; R.dc = (R.dc || 0) + 1;
   }
   /* a gaussian blur (sigma r px) of the rect (canvas px) in place, as filter blur(r) would have drawn it there: two passes
      through a copy the surface's size, the rect's edge pixels held past it (the rest of the surface left alone) */

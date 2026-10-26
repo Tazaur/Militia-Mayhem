@@ -454,7 +454,7 @@ const SETS = {
   fogW: slider('EDGE WIDTH', 'fogW', 8, 64, 4, ' PX'),
   res: slider('RENDER RESOLUTION', 'res', 50, 100, 5, '%', () => resize()),
   lightQ: choice('LIGHTING QUALITY', 'lightQ', [[0, 'LOW'], [1, 'MEDIUM'], [2, 'HIGH']]),
-  fps: choice('FPS COUNTER', 'fps', [[0, 'OFF'], [1, 'FPS'], [2, 'FPS + FRAME TIMES']]),
+  fps: choice('FPS COUNTER', 'fps', [[0, 'OFF'], [1, 'FPS'], [2, 'FPS + FRAME TIMES'], ...(GL ? [[3, 'FPS + GPU STAGES']] : [])]),
   minimap: choice('MINIMAP', 'minimap', [[true, 'ON'], [false, 'OFF']]),
   teams: { ...choice('TEAM COLORS', 'teamColors', [['player', 'PLAYER COLOR'], ['classic', 'BLUE VS RED']]), note: () => inMatch() ? '  (NEXT MATCH)' : '' },
   volMaster: slider('MASTER VOLUME', 'volMaster', 0, 100, 10, '%', applyMute),
@@ -944,7 +944,7 @@ function render() {
   if (!M || !imgReady) { txt('LOADING…', W / 2, H / 2, 18, '#f2e6c4', 'center', 'middle', FD); if (GL) gxFlush(); return; }
   DUI.length = 0; TB_ON = [];
   // 1) all gameplay for every view, 2) split dividers, 3) every HUD, 4) global HUD, 5) menus on top
-  for (const vw of M.views) onGL(() => drawWorld(vw));
+  gpuBegin(); for (const vw of M.views) onGL(() => drawWorld(vw)); gpuEnd();
   screenT();
   if (state === 'menu') uiScaled(drawMenu);
   else if (state === 'netmenu') uiScaled(drawNetMenu);
@@ -970,6 +970,10 @@ function onGL(f) { if (!GL) return f(); const m = ctx; ctx = GLSCR.getContext('2
 function drawFps() {
   screenT(); const u = uiU(), t = `${Math.round(DEV.fps)} FPS` + (CFG.fps > 1 ? ` · ${DEV.um.toFixed(1)} / ${DEV.rm.toFixed(1)} MS` : '');
   txt(t, W - SAFE.r - 10 * u, SAFE.t + 10 * u, fpx(11, u, 10), DEV.fps < 45 ? '#ff9a6a' : '#9fe07a', 'right', 'top', FD);
+  if (CFG.fps < 2) return;
+  const fs = fpx(10, u, 9), x = W - SAFE.r - 10 * u, L = [`WORST ${GPUP.worst.toFixed(1)} MS`];
+  if (gpuOn()) { if (!GPUP.X) L.push('GPU TIMERS: N/A HERE'); else { L.push(`GPU ${GPUP.out.reduce((a, e) => a + e[1], 0).toFixed(1)} MS`); for (const [k, v] of GPUP.out.slice(0, 10)) L.push(`${k} ${v.toFixed(2)}`); } }
+  L.forEach((s, i) => txt(s, x, SAFE.t + 10 * u + (i + 1) * fs * 1.35, fs, i ? '#f2e6c4' : GPUP.worst > 25 ? '#ff9a6a' : '#9fe07a', 'right', 'top', FD));
 }
 let last = performance.now();
 function frame(now) {

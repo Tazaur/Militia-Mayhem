@@ -698,6 +698,7 @@ function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory
   gxYield(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = true;
   const to = [vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR];
   if (SUNDBG) ctx.drawImage(GC, ...at(0), rw, rh, ...to);       // dev: 1 heights, 2 shade, 3 highlights, 4 glow, 5 materials, 6 sun shadow, 7 point lights
+  else if (ctx.lightComp) { ctx.lightComp(GC, [at(0), at(1), at(2)], rw, rh, to, [!devOff('shade'), !devOff('hi'), add && !devOff('add')]); pipe('comp', { m: 'all' }); }     // GL: the three in one pass
   else { ctx.globalCompositeOperation = 'multiply'; if (!devOff('shade')) ctx.drawImage(GC, ...at(0), rw, rh, ...to); pipe('comp', { m: 'multiply' }); ctx.globalCompositeOperation = 'color-dodge'; if (!devOff('hi')) ctx.drawImage(GC, ...at(1), rw, rh, ...to); pipe('comp', { m: 'color-dodge' }); if (add && !devOff('add')) { ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(GC, ...at(2), rw, rh, ...to); pipe('comp', { m: 'lighter' }); } }
   ctx.globalCompositeOperation = 'source-over'; ctx.imageSmoothingEnabled = false; worldT();
   S.fog = fog && !devOff('shade') ? [...at(3), rw, rh, ...to] : null;     // the memory's shade map (fogOverlay)

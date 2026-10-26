@@ -177,6 +177,7 @@ function fogShade(vw) {
    lights) */
 function fogOverlay(vw, H) {
   const g = FOG_TMP.getContext('2d'), X = vw.x * DPR, Y = vw.y * DPR, Wd = vw.w * DPR, Ht = vw.h * DPR;
+  if (ctx.clipOut) { fogShade(vw); ctx.save(); ctx.clipOut(H); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(FOG_OUT, X, Y, Wd, Ht, X, Y, Wd, Ht); ctx.restore(); worldT(); pipe('ov-draw'); return; }     // GL: straight on, outside the hole
   fogShade(vw); g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-over'; g.clearRect(X, Y, Wd, Ht); g.drawImage(FOG_OUT, X, Y, Wd, Ht, X, Y, Wd, Ht); pipe('ov-copy');
   g.globalCompositeOperation = 'destination-out'; g.setTransform(ctx.getTransform()); g.fillStyle = '#000'; g.fill(H);
   g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-over'; pipe('ov-hole');
@@ -287,6 +288,7 @@ function drawSoftFog(vw) {
   }
   // remembered world, cut to the soft mask
   fogShade(vw); const tg = FOG_TMP.getContext('2d'), X = vw.x * DPR, Y = vw.y * DPR, Wd = vw.w * DPR, Ht = vw.h * DPR;
+  if (ctx.maskedImage) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.maskedImage(FOG_OUT, X, Y, Wd, Ht, X, Y, Wd, Ht, FOG_MASK, (ox - mx) * FOG_MS, (oy - my) * FOG_MS, FOG_MASK.width * FOG_MS, FOG_MASK.height * FOG_MS); worldT(); return; }     // GL: in one pass
   tg.setTransform(1, 0, 0, 1, 0, 0); tg.globalCompositeOperation = 'source-over'; tg.clearRect(X, Y, Wd, Ht);
   tg.drawImage(FOG_OUT, X, Y, Wd, Ht, X, Y, Wd, Ht);
   tg.globalCompositeOperation = 'destination-in'; tg.imageSmoothingEnabled = true; tg.imageSmoothingQuality = 'high';
