@@ -149,12 +149,16 @@ void main() {
 const GXFADE = `#version 300 es
 precision highp float; uniform sampler2D D; uniform vec4 uD; uniform vec2 uF; out vec4 o;
 void main() { vec4 c = texture(D, (gl_FragCoord.xy - uD.xy) * uD.zw); float a = clamp(c.a * uF.x + uF.y, 0., 1.); o = c.a > 0. ? vec4(c.rgb * (a / c.a), a) : vec4(0.); }`;
+/* a gaussian blur along uR.xy (sigma uR.z GL px), read from the copy D (1 / its size: uT) clamped to the rect uD (GL px) */
+const GXBLUR = `#version 300 es
+precision highp float; uniform sampler2D D; uniform vec4 uD; uniform vec3 uR; uniform vec2 uT; out vec4 o;
+void main() { vec4 a = vec4(0.); float W = 0.; for (int i = -6; i <= 6; i++) { float t = float(i), w = exp(-t * t / (2. * uR.z * uR.z)); a += w * texture(D, clamp(gl_FragCoord.xy + uR.xy * t, uD.xy, uD.zw) * uT); W += w; } o = a / W; }`;
 function gxInit() {
   if (GXR) return GXR; const g = GL; gxModes();
   const sh = (t, s) => { const o = g.createShader(t); g.shaderSource(o, s); g.compileShader(o); if (!g.getShaderParameter(o, g.COMPILE_STATUS)) throw new Error(g.getShaderInfoLog(o)); return o; };
   const prog = (fs, us) => { const P = g.createProgram(); g.attachShader(P, sh(g.VERTEX_SHADER, GXVS)); g.attachShader(P, sh(g.FRAGMENT_SHADER, fs)); g.linkProgram(P); if (!g.getProgramParameter(P, g.LINK_STATUS)) throw new Error(g.getProgramInfoLog(P)); const U = { P }; for (const n of us) U[n] = g.getUniformLocation(P, n); g.useProgram(P); ['T0', 'T1', 'T2', 'T3', 'T4', 'T5'].forEach((n, i) => U[n] && g.uniform1i(U[n], 8 + i)); U.GR && g.uniform1i(U.GR, 14); U.D && g.uniform1i(U.D, 15); return U; };
   const base = ['uS', 'T0', 'T1', 'T2', 'T3', 'T4', 'T5', 'GR'];
-  const P0 = prog(GXFS(false), base), P1 = prog(GXFS(true), [...base, 'D', 'uD', 'uM']), PF = prog(GXFADE, ['uS', 'D', 'uD', 'uF']);
+  const P0 = prog(GXFS(false), base), P1 = prog(GXFS(true), [...base, 'D', 'uD', 'uM']), PF = prog(GXFADE, ['uS', 'D', 'uD', 'uF']), PB = prog(GXBLUR, ['uS', 'D', 'uD', 'uR', 'uT']);
   const vao = g.createVertexArray(), vb = g.createBuffer(), ib = g.createBuffer(); g.bindVertexArray(vao);
   g.bindBuffer(g.ARRAY_BUFFER, vb); g.bindBuffer(g.ELEMENT_ARRAY_BUFFER, ib);
   g.enableVertexAttribArray(0); g.vertexAttribPointer(0, 2, g.FLOAT, false, 36, 0);
@@ -166,7 +170,7 @@ function gxInit() {
   const S = [smp(g.NEAREST, g.CLAMP_TO_EDGE), smp(g.LINEAR, g.CLAMP_TO_EDGE), smp(g.NEAREST, g.REPEAT), smp(g.LINEAR, g.REPEAT)];
   const tex = (w, h, f) => { const t = g.createTexture(); g.activeTexture(g.TEXTURE15); g.bindTexture(g.TEXTURE_2D, t); g.texImage2D(g.TEXTURE_2D, 0, f || g.RGBA8, w, h, 0, f === g.RGB8 ? g.RGB : g.RGBA, g.UNSIGNED_BYTE, null); g.activeTexture(g.TEXTURE0); return t; };
   const AS = Math.min(2048, g.getParameter(g.MAX_TEXTURE_SIZE));
-  GXR = { P0, P1, PF, vao, vb, ib, S, AT: tex(AS, AS), AS, GRT: tex(256, 256), tex, dstA: null, dstC: null, own: new WeakMap(), pat: new WeakMap(), at: new WeakMap(), sh: [], ep: 1, gr: new Map(), grN: 0, grE: 1, txt: new Map(), up: 0, resets: 0 };
+  GXR = { P0, P1, PF, PB, vao, vb, ib, S, AT: tex(AS, AS), AS, GRT: tex(256, 256), tex, dstA: null, dstC: null, own: new WeakMap(), pat: new WeakMap(), at: new WeakMap(), sh: [], ep: 1, gr: new Map(), grN: 0, grE: 1, txt: new Map(), up: 0, resets: 0 };
   gxGrow(16384, 32768);
   return GXR;
 }
@@ -387,12 +391,12 @@ class GX {
   putImageData() { gxWarn('putImageData'); }
   isPointInPath() { return false; }
   // ---- paths (device px, as the canvas keeps them)
-  beginPath() { const P = this._sub; for (const s of P) { s.p.length = 0; this._pool.push(s); } P.length = 0; this._cur = null; }
+  beginPath() { const P = this._sub; for (const s of P) { s.p.length = 0; this._pool.push(s); } P.length = 0; this._cur = null; this._reopen = false; }
   _new(x, y) { const s = this._pool.pop() || { p: [], c: false, cv: 0 }; s.c = false; s.cv = 0; s.p.length = 0; s.p.push(x, y); this._sub.push(s); this._cur = s; this._px = x; this._py = y; this._reopen = false; return s; }
   _tx(x, y) { const m = this._m; return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]; }
   _pt(x, y) { const m = this._m, X = m[0] * x + m[2] * y + m[4], Y = m[1] * x + m[3] * y + m[5]; let s = this._cur; if (!s) { if (!this._reopen) { this._new(X, Y); return; } s = this._new(this._px, this._py); } const p = s.p; if (p[p.length - 2] !== X || p[p.length - 1] !== Y) p.push(X, Y); s.cv = 0; }
-  moveTo(x, y) { const m = this._m; this._new(m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]); }
-  lineTo(x, y) { this._pt(x, y); }
+  moveTo(x, y) { if (!isFinite(x) || !isFinite(y)) return; const m = this._m; this._new(m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]); }
+  lineTo(x, y) { if (isFinite(x) && isFinite(y)) this._pt(x, y); }
   closePath() { const s = this._cur; if (!s) return; s.c = true; this._end(s.p[0], s.p[1]); }
   _end(x, y) { this._cur = null; this._px = x; this._py = y; this._reopen = true; }     // the next point starts a new subpath at (x, y) (device px)
   _open() { if (!this._cur && this._reopen) this._new(this._px, this._py); }
@@ -405,6 +409,7 @@ class GX {
   }
   arc(x, y, r, a0, a1, ccw) { this.ellipse(x, y, r, r, 0, a0, a1, ccw); }
   ellipse(x, y, rx, ry, rot, a0, a1, ccw) {
+    if (!isFinite(x + y + rx + ry + rot + a0 + a1)) return;
     if (rx < 0 || ry < 0) return; this._open();
     const d = this._sweep(a0, a1, ccw), st = this._seg(Math.max(rx, ry)), n = Math.max(1, Math.min(512, Math.ceil(Math.abs(d) / st))), cr = Math.cos(rot), sr = Math.sin(rot);
     const fresh = !this._cur || this._cur.p.length === 0;
@@ -665,6 +670,22 @@ class GX {
       g.bufferData(g.ARRAY_BUFFER, F, g.STREAM_DRAW); g.drawArrays(g.TRIANGLES, 0, 6);
     }
     g.enable(g.BLEND); GXB.prog = null; GXB.blk = null; const s = GXB.sc; g.scissor(s[0], s[1], s[2], s[3]);
+  }
+  /* a gaussian blur (sigma r px) of the rect (canvas px) in place, as filter blur(r) would have drawn it there: two passes
+     through a copy the surface's size, the rect's edge pixels held past it (the rest of the surface left alone) */
+  blur(r, x = 0, y = 0, w = this.canvas.gw, h = this.canvas.gh) {
+    if (!GXR) gxInit(); gxFlush(); const sf = this.canvas, g = GL, R = GXR, W = sf.gw, H = sf.gh;
+    x = Math.max(0, Math.floor(x)); y = Math.max(0, Math.floor(y)); w = Math.min(W - x, Math.ceil(w)); h = Math.min(H - y, Math.ceil(h)); const gy = H - y - h; if (w <= 0 || h <= 0 || r <= 0) return;
+    if (!R.bt || R.bw < W || R.bh < H) { if (R.bt) g.deleteTexture(R.bt); R.bw = Math.max(W, R.bw || 0); R.bh = Math.max(H, R.bh || 0); R.bt = R.tex(R.bw, R.bh); }
+    gxBindTarget(sf); g.disable(g.BLEND); gxSten(null); gxUse(R.PB, sf); g.uniform4f(R.PB.uD, x + 0.5, gy + 0.5, x + w - 0.5, gy + h - 0.5); g.uniform2f(R.PB.uT, 1 / R.bw, 1 / R.bh);
+    g.scissor(x, gy, w, h); g.bindBuffer(g.ARRAY_BUFFER, R.vb);
+    const F = new Float32Array(54), c = [[x, H - gy], [x + w, H - gy], [x + w, H - gy - h], [x, H - gy], [x + w, H - gy - h], [x, H - gy - h]];
+    c.forEach(([a, b], i) => { F[i * 9] = a; F[i * 9 + 1] = b; }); g.bufferData(g.ARRAY_BUFFER, F, g.STREAM_DRAW);
+    for (const [dx, dy] of [[1, 0], [0, 1]]) {
+      g.activeTexture(g.TEXTURE15); g.bindTexture(g.TEXTURE_2D, R.bt); g.bindSampler(15, R.S[1]); g.copyTexSubImage2D(g.TEXTURE_2D, 0, x, gy, x, gy, w, h); g.activeTexture(g.TEXTURE0);
+      g.uniform3f(R.PB.uR, dx, dy, r); g.drawArrays(g.TRIANGLES, 0, 6);
+    }
+    g.enable(g.BLEND); GXB.prog = null; GXB.blk = null; GXB.dst = null; const s = GXB.sc; g.scissor(s[0], s[1], s[2], s[3]); sf._gv = (sf._gv || 0) + 1;
   }
 }
 /* +1 / -1: a convex outline wound that way (0: not convex, or it turns more than once round) */
