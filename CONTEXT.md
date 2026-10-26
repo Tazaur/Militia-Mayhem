@@ -599,3 +599,6 @@ Settings › FOG OF WAR: a preview under the sliders (`fogPreview`): the frame b
 
 ## Build 203
 - DAY_DIM 0.1: lights fall to 10% at noon.
+
+## Build 204
+- Lasers drawn under the smoke (were over it: a bot in smoke showed its laser).
