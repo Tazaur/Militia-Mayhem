@@ -73,8 +73,8 @@ function drawWorld(vw) {
   for (const d of Q) if (d.post) { d.f(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; pipe('q', d); }
   // the soft layers (smoke, windows) over everything in sight alike: units, vehicles, roofs, trees, fire
   if (fogged && !devOff('fog')) drawSoftFog(vw); pipe('softfog');
+  drawLasers(vis); pipe('lasers');     // under the smoke: a man in it doesn't give himself away
   if (!devOff('smoke')) drawSmokes(vw); pipe('smokes');
-  drawLasers(vis); pipe('lasers');
   // the remembered world over what's out of sight (everything above was drawn whole; dev views: the whole screen)
   if (fogged && !(SUNNOW && SUNDBG)) { const H = new Path2D(); polyPath(H, fogPolys); for (const b of roofs) H.rect(b.x, b.y, b.w, b.h); worldT(); fogOverlay(vw, H); }
   // tags, reticles
