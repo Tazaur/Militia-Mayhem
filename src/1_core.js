@@ -610,6 +610,7 @@ function padState(i) {
   const dpX = pr(15) ? 1 : pr(14) ? -1 : 0, dpY = pr(13) ? 1 : pr(12) ? -1 : 0, stX = sx && sx !== P.sx ? sx : 0, stY = sy && sy !== P.sy ? sy : 0;
   let navX = dpX || stX, navY = dpY || stY; P.sx = sx; P.sy = sy;
   let crouch = false, proneT = false; const now = performance.now();
+  if (pr(10)) P.run = true; if (!(lx || ly)) P.run = false;     // LS-click: sprint latches on until the stick comes back to the middle
   if (pr(1)) P.bT = now;
   if (pr(12)) P.uT = now; let lamp = false; if (cur[12] && P.uT > 0 && now - P.uT > 400) { lamp = true; P.uT = -1; }     // hold D-pad up: flashlight
   if (cur[1] && P.bT > 0 && now - P.bT > 300) { proneT = true; P.bT = -1; }
@@ -617,7 +618,7 @@ function padState(i) {
   return {
     pad: gp, mx: lx, my: ly, aim: rm > 0.25 ? Math.atan2(ry, rx) : null, aimMag: rm,
     fire: b(7), ads: b(6), alt: pr(5), gadget: b(4), gadgetP: pr(4), interact: pr(3), swapW: false, reload: pr(2), crouch, proneT,
-    jump: pr(0), melee: pr(11), spot: pr(12), lamp, sprint: b(10),
+    jump: pr(0), melee: pr(11), spot: pr(12), lamp, sprint: !!P.run,
     seatNext: pr(1), seatDir: pr(12) ? 0 : pr(15) ? 1 : pr(13) ? 2 : pr(14) ? 3 : -1, seatIdx: -1,
     pause: pr(9), score: b(8), navX, navY, confirm: pr(0), back: pr(1), join: pr(0) || pr(9), deploy: pr(0),
     tabL: pr(4), tabR: pr(5), opt: pr(8), dpX, dpY, stX, stY, mapT: pr(13), nadeCyc: dpX
@@ -661,7 +662,8 @@ function touchState() {
       let dx = t.x - t.ox, dy = t.y - t.oy; const L = Math.hypot(dx, dy), R = TSTICK;
       if (L > R * 1.25) { t.ox = t.x - dx / L * R * 1.25; t.oy = t.y - dy / L * R * 1.25; }
       const k = Math.min(1, L / R); if (L > 1) { mx = dx / L * k; my = dy / L * k; } if (k < 0.15) mx = my = 0;
-      if (L >= R * 0.92 && !(me && me.stance)) { t.full = t.full || now; if (now - t.full > 260) t.auto = true; } else { t.full = 0; t.auto = false; }     // crawling: the rim never stands you up
+      if (L >= R * 0.92 && !(me && me.stance)) { t.full = t.full || now; if (now - t.full > 260) t.auto = true; } else t.full = 0;     // the rim held a moment: sprint latches on
+      if (k < 0.15 || (me && me.stance)) t.auto = false;     // until you stop (or get down: crawling never stands you up)
       sprint = (t.auto || T.sprintLock) && k > 0.3; t.sprint = sprint;
     } else if (t.role === 'fire') {
       // a tap fires straight ahead; only a deliberate drag (24px) turns it into aim-and-fire, and then it stays a drag.

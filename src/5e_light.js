@@ -95,6 +95,25 @@ function lightsNow(vis) {          // this frame's strongest lights in view (and
   const L = LIGHTS.filter(l => l.k > 0.02 && vis(l.x, l.y, l.r)).sort((a, b) => b.k * b.r - a.k * a.r).slice(0, LMAX); LIGHTS.length = 0; if (M.dev) DEV.lp = L;
   return L;
 }
+/* a point light's colour at (x, y, z) in the open air (as the light pass has it on flat ground: its falloff, a spotlight's
+   3D cone; walls block it): what a smoke puff there takes */
+function lightAir(L, x, y, z) {
+  let r = 0, g = 0, b = 0;
+  for (const l of L) {
+    const vx = l.x - x, vy = l.y - y, dl = Math.hypot(vx, vy); if (dl >= l.r || l.k <= 0) continue;
+    let cn = 1; const d = l.d;
+    if (d && d.length > 3 && d[3] > 1) {
+      const lh = l.h - z, n = (x, y, z) => { const m = Math.hypot(x, y, z) || 1; return [x / m, y / m, z / m]; }, dot = (p, q) => p[0] * q[0] + p[1] * q[1] + p[2] * q[2];
+      const a = n(d[0], d[1], 1 - d[3]), R = n(-vx, -vy, -lh), sd = [-d[1], d[0], 0], up = [a[1] * sd[2] - a[2] * sd[1], a[2] * sd[0] - a[0] * sd[2], a[0] * sd[1] - a[1] * sd[0]];
+      const c = Math.acos(d[2]), dv = Math.asin(clamp(dot(R, up), -1, 1)) / c, dh = Math.asin(clamp(dot(R, sd), -1, 1)) / (c * (1 + SPOT_FAR * clamp(dv, 0, 1)));
+      cn = dot(R, a) > 0 ? clamp((1 - Math.hypot(dh, dv)) / 0.25, 0, 1) : 0; if (cn <= 0) continue;
+    }
+    if (sightBlocked(l.x, l.y, x, y)) continue;
+    const f = l.k * cn * (0.5 * Math.pow(1 - dl / l.r, 1.3) + 0.5 * Math.max(0, 1 - dl / 40) ** 2), C = l.c || LCOL;
+    r += C[0] * f; g += C[1] * f; b += C[2] * f;
+  }
+  return [r, g, b];
+}
 function drawLights(vis) { for (const l of lightsNow(vis)) drawLight(l); }
 let _lhp = new Uint8Array(0), _lq = new Float32Array(0), _lc = null, _lg = null;
 const _lid = new Map();
@@ -653,7 +672,7 @@ function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory
   const el = sunEl(), ce = Math.cos(el), Ld = [Math.cos(SUN.az) * ce, Math.sin(SUN.az) * ce, Math.sin(el)];
   gl.uniform2f(U.S, S.fw, S.fh); gl.uniform2f(U.P, px, py); gl.uniform1f(U.V, h); gl.uniform4f(U.R, ...reg); gl.uniform1f(U.K, K);
   gl.uniform3f(U.L, ...Ld); gl.uniform1f(U.HZ, M.rain ? 0.15 : 0);
-  S.pk.fill(0); S.pd.fill(0); const LN = lightsNow(vis); if (!devOff('add')) LN.forEach((l, i) => { S.pl.set([(VZ * l.x + VOX) * k + px, (VZ * l.y + VOY) * k + py, l.r, l.h], i * 4); if (l.d) S.pd.set(l.d.length > 3 ? l.d : [...l.d, 1], i * 4); S.pk[i] = l.k; S.pc.set(l.c || LCOL, i * 3); });
+  S.pk.fill(0); S.pd.fill(0); const LN = S.ln = lightsNow(vis); if (!devOff('add')) LN.forEach((l, i) => { S.pl.set([(VZ * l.x + VOX) * k + px, (VZ * l.y + VOY) * k + py, l.r, l.h], i * 4); if (l.d) S.pd.set(l.d.length > 3 ? l.d : [...l.d, 1], i * 4); S.pk[i] = l.k; S.pc.set(l.c || LCOL, i * 3); });
   gl.uniform4fv(U.PL, S.pl); gl.uniform4fv(U.PD, S.pd); gl.uniform1fv(U.PK, S.pk); gl.uniform3fv(U.PC, S.pc);
   const light = () => { gl.bindFramebuffer(gl.FRAMEBUFFER, S.FL); gl.viewport(0, 0, w, h); gl.scissor(rx, h - ry - rh, rw, rh); gl.useProgram(S.P); gl.bindBuffer(gl.ARRAY_BUFFER, S.tri); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.drawArrays(gl.TRIANGLES, 0, 3); gl.bindFramebuffer(gl.FRAMEBUFFER, null); };
   if (S.pk[0] > 0) light(); else { gl.bindFramebuffer(gl.FRAMEBUFFER, S.FL); gl.viewport(0, 0, w, h); gl.scissor(rx, h - ry - rh, rw, rh); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); gl.bindFramebuffer(gl.FRAMEBUFFER, null); }     // no point lights: none to march

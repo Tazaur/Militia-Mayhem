@@ -187,6 +187,52 @@ function smokePuffs(bx, eyes, cb) {
     cb(x, y, r, al, h, B[k] / a);
   }
 }
+/* the light smoke takes, at 1 / SMK_LQ the size: the day (or night) as it falls at the smoke's height (SMK_Z), shaded only by
+   what stands still and taller (walls, trees: their shadows cast down to it), never by the vehicles and men in it; and the
+   point lights, flat a puff (smokeLamps) */
+const SMK_LO = document.createElement('canvas'), SMK_LP = document.createElement('canvas'), SMK_LQ = 4, SMK_Z = 14, SMK_PF = [];
+function smokeLight(X0, Y0, pw, ph) {
+  const c = SMK_LO, q = SMK_LQ, w = Math.ceil(pw / q), h = Math.ceil(ph / q), T = sunTone(), col = a => `rgb(${a.map(v => clamp(v, 0, 1) * 255 | 0)})`;
+  if (c.width < w || c.height < h) { c.width = Math.max(c.width, w); c.height = Math.max(c.height, h); }
+  const g = c.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-over'; g.fillStyle = col(T.li); g.fillRect(0, 0, w, h);
+  const el = sunEl(); if (el >= 0.03) smokeShadows(g, X0, Y0, pw, ph, el, T, col);
+  smokeLamps(g, X0, Y0, w, h);
+  return c;
+}
+/* the static shadows at the smoke's height, into its light */
+function smokeShadows(g, X0, Y0, pw, ph, el, T, col) {
+  const q = SMK_LQ;
+  const t = 1 / Math.tan(el), ux = -Math.cos(SUN.az) * t, uy = -Math.sin(SUN.az) * t, far = Math.min(720, (SUNH.tree[0] - SMK_Z) * t);     // a height h's shadow: (h - SMK_Z) x (ux, uy) away
+  const near = (x0, y0, x1, y1) => x1 + far > X0 && x0 - far < X0 + pw && y1 + far > Y0 && y0 - far < Y0 + ph;
+  g.setTransform(1 / q, 0, 0, 1 / q, -X0 / q, -Y0 / q); g.fillStyle = g.strokeStyle = col(T.sh); g.lineCap = 'round'; g.filter = 'blur(1.5px)';     // soft: a shadow through haze (no filter: the upscale's own blur)
+  const quad = P => { g.beginPath(); P.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.fill(); };
+  const d = SUNH.wall - SMK_Z, vx = ux * d, vy = uy * d;
+  for (const b of MAP.buildings) {     // the box swept down its shadow: its far end and the four sides between
+    if (b.glass || !near(b.x, b.y, b.x + b.w, b.y + b.h)) continue;
+    const C = [[b.x, b.y], [b.x + b.w, b.y], [b.x + b.w, b.y + b.h], [b.x, b.y + b.h]];
+    g.fillRect(b.x + vx, b.y + vy, b.w, b.h); for (let k = 0; k < 4; k++) { const a = C[k], e = C[(k + 1) % 4]; quad([a, e, [e[0] + vx, e[1] + vy], [a[0] + vx, a[1] + vy]]); }
+  }
+  for (const s of MAP.statics) {     // a crown: from its underside's shadow to its top's
+    if (!s.alive || s.type !== 'tree' || !near(s.x - 40, s.y - 40, s.x + 40, s.y + 40)) continue;
+    const r = (s.pine ? SPR.pines : SPR.trees)[s.v].width / 2 * s.sc * 0.85, d0 = Math.max(0, SUNH.tree[1] - SMK_Z), d1 = SUNH.tree[0] - SMK_Z;
+    g.lineWidth = r * 2; g.beginPath(); g.moveTo(s.x + ux * d0, s.y + uy * d0); g.lineTo(s.x + ux * d1 + 0.01, s.y + uy * d1); g.stroke();
+  }
+  g.filter = 'none';
+}
+/* the point lights, one flat colour a puff (SMK_PF: what drawSmokeField laid, x y r alpha): each puff's light at its middle,
+   stacked as the puffs are (source-over by their alpha), added on */
+function smokeLamps(g, X0, Y0, w, h) {
+  const L = _sun.ln, P = SMK_PF; if (!L || !L.length || !P.length) return;
+  const c = SMK_LP, q = SMK_LQ; if (c.width < w || c.height < h) { c.width = Math.max(c.width, w); c.height = Math.max(c.height, h); }
+  const p = c.getContext('2d'); p.setTransform(1, 0, 0, 1, 0, 0); p.globalAlpha = 1; p.fillStyle = '#000'; p.fillRect(0, 0, w, h); p.setTransform(1 / q, 0, 0, 1 / q, -X0 / q, -Y0 / q);
+  let any = false;
+  for (let i = 0; i < P.length; i += 4) {
+    const [r, gg, b] = lightAir(L, P[i], P[i + 1], SMK_Z); if (r + gg + b < 0.01) { p.globalAlpha = P[i + 3]; p.fillStyle = '#000'; } else { any = true; p.globalAlpha = P[i + 3]; p.fillStyle = `rgb(${Math.min(255, r * 255) | 0},${Math.min(255, gg * 255) | 0},${Math.min(255, b * 255) | 0})`; }
+    p.beginPath(); p.arc(P[i], P[i + 1], P[i + 2] * 0.75, 0, TAU); p.fill();
+  }
+  p.globalAlpha = 1; if (!any) return;
+  g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'lighter'; g.drawImage(c, 0, 0, w, h, 0, 0, w, h); g.globalCompositeOperation = 'source-over';
+}
 function drawSmokeField(vw, eyes) {
   const f = M.gsf, V = vw ? [(vw.x - VOX) / VZ, (vw.y - VOY) / VZ, (vw.x + vw.w - VOX) / VZ, (vw.y + vw.h - VOY) / VZ].map(v => v / GS + SMK_OUT) : [-1e9, -1e9, 1e9, 1e9];
   if (f.dirty) smokeSolid(f);
@@ -196,7 +242,9 @@ function drawSmokeField(vw, eyes) {
   if (SMK_C.width < pw || SMK_C.height < ph) { SMK_C.width = SMK_SH.width = SMK_L.width = Math.max(pw, SMK_C.width); SMK_C.height = SMK_SH.height = SMK_L.height = Math.max(ph, SMK_C.height); }
   const g = SMK_C.getContext('2d'), gs = SMK_SH.getContext('2d');
   g.setTransform(1, 0, 0, 1, -X0, -Y0); g.globalCompositeOperation = 'source-over'; g.clearRect(X0, Y0, pw, ph);
+  SMK_PF.length = 0;
   smokePuffs([i0, j0, i1, j1], eyes, (x, y, r, al, h, fb) => {
+    SMK_PF.push(x, y, r, al);
     const s = (h * 16 | 0) % 4, v = (h * 64 | 0) & 1, k2 = v ? 0.7 : 1;
     if (fb < 0.98) { g.globalAlpha = al * k2 * (1 - fb); g.drawImage(SPR.puffs.grey[s][v], x - r, y - r, r * 2, r * 2); }
     if (fb > 0.02) { g.globalAlpha = al * k2 * fb; g.drawImage(SPR.puffs.brown[s][v], x - r, y - r, r * 2, r * 2); }
@@ -211,11 +259,11 @@ function drawSmokeField(vw, eyes) {
   ctx.globalAlpha = 0.28; ctx.drawImage(SMK_SH, 0, 0, pw, ph, X0 + ux * SMK_DROP, Y0 + uy * SMK_DROP, pw, ph);
   ctx.globalAlpha = 1;
   const S = SUNNOW && vw && _sun && _sun.lit; if (!S) { ctx.drawImage(SMK_C, 0, 0, pw, ph, X0, Y0, pw, ph); return; }
-  // lit as the world under it (the sun or the night, point lights): the smoke over black, times the frame's shade map,
+  // lit as the air it's in (smokeLight: not the ground's shade under it, which carries all that's in it): the smoke over black, times that,
   // then in place of what it covers (cut out, added): exact where it's thin too
   const l = SMK_L.getContext('2d'), wx = (vw.x - VOX) / VZ, wy = (vw.y - VOY) / VZ, ww = vw.w / VZ, wh = vw.h / VZ;
   l.setTransform(1, 0, 0, 1, 0, 0); l.globalCompositeOperation = 'source-over'; l.fillStyle = '#000'; l.fillRect(0, 0, pw, ph); l.drawImage(SMK_C, 0, 0, pw, ph, 0, 0, pw, ph);
-  l.globalCompositeOperation = 'multiply'; l.imageSmoothingEnabled = true; l.drawImage(_sun.GC, ...S, wx - X0, wy - Y0, ww, wh); l.globalCompositeOperation = 'source-over';
+  l.globalCompositeOperation = 'multiply'; l.imageSmoothingEnabled = true; l.drawImage(smokeLight(X0, Y0, pw, ph), 0, 0, Math.ceil(pw / SMK_LQ), Math.ceil(ph / SMK_LQ), 0, 0, Math.ceil(pw / SMK_LQ) * SMK_LQ, Math.ceil(ph / SMK_LQ) * SMK_LQ); l.globalCompositeOperation = 'source-over';
   ctx.save(); ctx.beginPath(); ctx.rect(wx, wy, ww, wh); ctx.clip();
   ctx.globalCompositeOperation = 'destination-out'; ctx.drawImage(SMK_C, 0, 0, pw, ph, X0, Y0, pw, ph);
   ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(SMK_L, 0, 0, pw, ph, X0, Y0, pw, ph); ctx.restore();
