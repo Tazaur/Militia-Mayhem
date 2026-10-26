@@ -203,7 +203,7 @@ const SUNB = { mgNest: SUNH.nest, stand: 18, jump: 4 };     // px: the nest MG r
    on, add = px taller than painted. A part's start is the top of what's under it (+ lift); its pixels stand on that.
    A part with an underside (the atlas's settings: under_<part>, a rect in its pool; heights only, painted as depth down) stands on it: as high as its
    deepest pixel, so the tracks / wheels reach the ground and the clearance is whatever is painted */
-const SUNP = { tur_gun: { lift: 4 } };
+const SUNP = { tur_gun: { lift: 4 }, tur_gun1: { lift: 4 } };
 /* draw order: each thing's height (px, its top as the sun pass has it); drawWorld draws low to high */
 const ZH = { body: 1, item: 2, shot: 12 };     // fallbacks; the rest comes from the art (topOf, artMax, shotZ)
 const solZ = s => s.down ? ZH.body : solLift(s) + solAdd(s) + artMax('sol_' + bodyPose(s));
@@ -258,7 +258,7 @@ function gunH(s) {
 }
 /* a vehicle's mounted MG and cannon at their muzzles */
 function mgH(v) { const q = partsOf(v).find(q => /^mg/.test(q.n)), [mx, my] = mgPos(v); return q ? partH(q, mx + Math.cos(v.mgA) * 31, my + Math.sin(v.mgA) * 31) : ZH.shot; }
-function canH(v) { const q = partsOf(v).find(q => q.n === 'tur_gun'), [px, py] = turretPivot(v); return q ? partH(q, px + Math.cos(v.ta) * BARREL, py + Math.sin(v.ta) * BARREL) : ZH.shot; }
+function canH(v) { const q = partsOf(v).find(q => q.n.startsWith('tur_gun')), [px, py] = turretPivot(v); return q ? partH(q, px + Math.cos(v.ta) * BARREL, py + Math.sin(v.ta) * BARREL) : ZH.shot; }
 /* a projectile's height: where it left the gun (worked out once) */
 function shotZ(p) {
   if (p.k === 'nade') return p.h + 3; if (p.z !== undefined) return p.z;
@@ -501,7 +501,7 @@ function solParts(s) {
   else hpart(body, s.x, s.y, s.a, { min: up, add: solAdd(s) });     // standing: his legs under him, solid
 }
 function wreckParts(w) {
-  if (w.type === 'tank') { const tx = w.x - 4 * Math.cos(w.a), ty = w.y - 4 * Math.sin(w.a); hpart('hull5', w.x, w.y, w.a, { keep: 1 }); hpart('tur_dead', tx, ty, w.ta); }
+  if (w.type === 'tank') { const tx = w.x - 4 * Math.cos(w.a), ty = w.y - 4 * Math.sin(w.a); hpart('hull4', w.x, w.y, w.a, { keep: 1 }); hpart('tur_dead', tx, ty, w.ta); }
   else { if (w.bx !== undefined) hpart(w.bf ? 'jeep_flat' : 'jeep_wheel', w.bx, w.by, w.ba); hpart('jeep4', w.x, w.y, w.a); }
 }
 function vehParts(v) {
@@ -509,9 +509,9 @@ function vehParts(v) {
   const mount = { rx: mx - Math.cos(v.mgA) * 4, ry: my - Math.sin(v.mgA) * 4 };     // mgPos is 4 px out from the mount
   if (v.type === 'nest') { hpart(mg, mx, my, v.mgA, { ...mount, min: SUNB.mgNest }); crew(0); return; }
   if (v.type === 'tank') {
-    const [px, py] = turretPivot(v), kick = clamp(v.recoil, 0, 1) * 33;
+    const [px, py] = turretPivot(v), kick = clamp(v.recoil, 0, 1) * KICK, tf = turFrame(v);
     hpart('hull' + hullFrame(v), v.x, v.y, v.a, { keep: 1 }); crew(2); crew(3);
-    hpart('tur_gun', px - Math.cos(v.ta) * kick, py - Math.sin(v.ta) * kick, v.ta, { rx: px, ry: py }); hpart('tur', px, py, v.ta, { keep: 1 });     // the gun rests on the hull under the turret
+    hpart('tur_gun' + tf, px - Math.cos(v.ta) * kick, py - Math.sin(v.ta) * kick, v.ta, { rx: px, ry: py }); hpart('tur' + tf, px, py, v.ta, { keep: 1 });     // the gun rests on the hull under the turret
     hpart(mg, mx, my, v.mgA, mount); crew(1);
   } else {
     const c = Math.cos(v.a), s = Math.sin(v.a), [wx, wy] = EXTRA.jeepWells[0], st = jeepSteer(v), f = v.hp / v.T.hp;

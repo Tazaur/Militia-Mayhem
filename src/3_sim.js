@@ -536,7 +536,7 @@ function toWorld(v, lx, ly) { const c = Math.cos(v.a), s = Math.sin(v.a); return
 function seatLocal(v, i) {
   const sd = v.T.seats[i];
   if (v.type === 'nest' && sd.role === 'mg') { const r = v.mgA - v.a; return [2 - 7 * Math.cos(r), -7 * Math.sin(r)]; }
-  if (sd.pos === 'turret') { const r = v.ta - v.a, c = Math.cos(r), s = Math.sin(r); return [-4 + (-6) * c - (-9) * s, (-6) * s + (-9) * c]; }
+  if (sd.pos === 'turret') { const r = v.ta - v.a, c = Math.cos(r), s = Math.sin(r); return [-4 + (-8) * c - 5 * s, (-8) * s + 5 * c]; }     // in the cupola
   return sd.pos;
 }
 function enterCandidate(s) {
@@ -797,7 +797,8 @@ function sightBlocked(x0, y0, x1, y1) {
 /* (x1, y1) is seen from (x0, y0): no wall between, and the soft layers leave at least SIGHT_MIN */
 function sees(x0, y0, x1, y1) { return 1 - softOcc(x0, y0, x1, y1) >= SIGHT_MIN && !sightBlocked(x0, y0, x1, y1); }
 /* the cannon barrel, turret pivot to muzzle (where shells leave) */
-const BARREL = 96;
+const BARREL = 88, KICK = 20;     // pivot to muzzle; how far the gun slides back firing
+const turFrame = v => v.hp > v.T.hp * 0.5 ? '' : '1';     // the turret and gun's art: whole, or battered under half
 function turretPivot(v) { return [v.x - 4 * Math.cos(v.a), v.y - 4 * Math.sin(v.a)]; }
 function barrelHits(v, a) {
   const [px, py] = turretPivot(v), x = px + Math.cos(a) * BARREL, y = py + Math.sin(a) * BARREL;

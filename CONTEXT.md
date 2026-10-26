@@ -602,3 +602,6 @@ Settings › FOG OF WAR: a preview under the sliders (`fogPreview`): the frame b
 
 ## Build 204
 - Lasers drawn under the smoke (were over it: a bot in smoke showed its laser).
+
+## Build 205
+New tank art (art/art4/tank.png, imported once by atlas_pack.py, extra.tankV 2): hulls hull0..3 (100 / 75 / 50 / 25 %, hullFrame) and the wreck hull4 (was hull5); turret + barrel whole (tur / tur_gun) and battered under half HP (tur1 / tur_gun1, turFrame), tur_dead now the dead turret with its bent barrel. Pivots: hull 4 px ahead of the turret ring, turret on its ring, other frames laid on the first by outline; barrel 3 px under the mantlet. BARREL 96 → 88 (the new muzzle), recoil KICK 33 → 20, gunner seat moved to the cupola (-8, 5). Materials first-pass (atlas_pack FRESH; hull / turret reflectivity 40, was 90): to be painted in the editor. The turret's team stripe (bar) is off until the tank's decals come.

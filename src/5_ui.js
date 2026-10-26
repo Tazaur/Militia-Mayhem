@@ -274,7 +274,7 @@ function drawWreck(w) {
   worldT(); ctx.globalAlpha = SUNNOW ? 0 : 0.3 * al; ctx.fillStyle = '#000'; const T = VT[w.type]; ctx.save(); ctx.translate(w.x + 4, w.y + 6); ctx.rotate(w.a); rr(ctx, -T.hl, -T.hw, T.hl * 2, T.hw * 2, 8); ctx.fill(); ctx.restore(); ctx.globalAlpha = 1;     // the live vehicle's shadow
   if (w.type === 'tank') {
     const tx = w.x - 4 * Math.cos(w.a), ty = w.y - 4 * Math.sin(w.a), c = Math.cos(w.ta), s = Math.sin(w.ta);
-    spr('hull5', w.x, w.y, w.a, 1, 1, al); spr('tur_dead', tx, ty, w.ta, 1, 1, al);
+    spr('hull4', w.x, w.y, w.a, 1, 1, al); spr('tur_dead', tx, ty, w.ta, 1, 1, al);
     spr('mg_dead', tx - 6 * c + 9 * s, ty - 6 * s - 9 * c, w.ta + 0.9, 1, 1, al);
   } else { if (w.bx !== undefined) spr(w.bf ? 'jeep_flat' : 'jeep_wheel', w.bx, w.by, w.ba, 1, 1, al); drawJeepWheels(w.x, w.y, w.a, 0, al, w.bw); spr('jeep4', w.x, w.y, w.a, 1, 1, al); spr('mg_dead', w.x - 22 * Math.cos(w.a), w.y - 22 * Math.sin(w.a), w.a + 2.4, 1, 1, al); }
 }
@@ -436,7 +436,7 @@ function solDraw(s, n, x, y, a, sx, sy, al) {
 function flashAt(x, y, r, soft) {
   worldT();
   ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = soft ? 0.75 : 0.9; ctx.drawImage(soft ? SPR.flashSoft : SPR.flash, x - r, y - r, r * 2, r * 2); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
-function hullFrame(v) { const f = v.hp / v.T.hp; return f > 0.82 ? 0 : f > 0.66 ? 1 : f > 0.5 ? 2 : f > 0.34 ? 3 : f > 0.18 ? 4 : 5; }
+function hullFrame(v) { const f = v.hp / v.T.hp; return f > 0.75 ? 0 : f > 0.5 ? 1 : f > 0.25 ? 2 : 3; }     // the wreck: hull4
 function drawVehicle(v) {
   worldT(); FLASH = v.hitFlash > 0 ? 0.45 : 0;
   if (v.type !== 'nest' && v.hp < v.T.hp * 0.25) light(v.x, v.y, 100, topOf(v) + 6, 0.3 + 0.12 * Math.sin(M.time * 23 + v.x) * Math.sin(M.time * 9.7), v);     // on fire (as a burning wreck flickers)
@@ -455,13 +455,13 @@ function drawVehicle(v) {
   if (v.type === 'tank') {
     const hn = 'hull' + hullFrame(v), hm = ATLAS[hn]; sprC(vehSkin(hn, col), hm[4], hm[5], v.x, v.y, v.a);
     for (const i of [2, 3]) { const s = v.seats[i]; if (s) drawSeated(s); }
-    const [px, py] = turretPivot(v), kick = clamp(v.recoil, 0, 1) * 33, tm = ATLAS.tur;
-    spr('tur_gun', px - Math.cos(v.ta) * kick, py - Math.sin(v.ta) * kick, v.ta);
-    sprC(vehSkin('tur', col), tm[4], tm[5], px, py, v.ta);
+    const [px, py] = turretPivot(v), kick = clamp(v.recoil, 0, 1) * KICK, tf = turFrame(v), tm = ATLAS['tur' + tf];
+    spr('tur_gun' + tf, px - Math.cos(v.ta) * kick, py - Math.sin(v.ta) * kick, v.ta);
+    sprC(vehSkin('tur' + tf, col), tm[4], tm[5], px, py, v.ta);
     const [mx, my] = mgPos(v);
     drawMG(v, mx, my);
     const g = v.seats[1]; if (g) drawSeated(g, true);
-    if (v.recoil > 0.85) { const fx = px + Math.cos(v.ta) * 100, fy = py + Math.sin(v.ta) * 100; flashAt(fx, fy, 26); light(fx, fy, 220, canH(v), (v.recoil - 0.85) / 0.15, v); }
+    if (v.recoil > 0.85) { const fx = px + Math.cos(v.ta) * (BARREL + 4), fy = py + Math.sin(v.ta) * (BARREL + 4); flashAt(fx, fy, 26); light(fx, fy, 220, canH(v), (v.recoil - 0.85) / 0.15, v); }
   } else {
     const f = v.hp / v.T.hp, jn = 'jeep' + (f > 0.75 ? 0 : f > 0.5 ? 1 : f > 0.25 ? 2 : 3), jm = ATLAS[jn];
     drawJeepWheels(v.x, v.y, v.a, jeepSteer(v), 1, -1);
