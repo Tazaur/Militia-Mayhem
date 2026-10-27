@@ -631,3 +631,6 @@ Art drop (drop.py): new sprites: track0, track1, track2; rect / pivot: mg_dead; 
 - They stand on under_hull (the atlas's `use`): `hpart` takes `at` (the part's pivot off its underside's) and `fy` (drawn mirrored); `hund` lines the underside up on the hull, not the track's pivot, and a mirrored frame reads the (unmirrored) underside back the right way round (shader: kind 4 with p2 past 2). One underside shared costs one small quad per part, clipped to that part's art; no recompute.
 - Wrecks: no tracks; at most one torn track2 at a rear corner (`w.tr` -1 left / 1 right / 0 none, sent online in the wreck's type byte).
 - Editor: Sprite menu "Pivot to its centre".
+
+## Build 213
+Art drop (drop.py): atlas.png: no paint change; atlas_m.png: tur, tur1, tur_dead, tur_gun, tur_gun1.
