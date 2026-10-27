@@ -625,3 +625,9 @@ Editor: art edits touch only the art again (build 207's binding undone: erasing 
 
 ## Build 211
 Art drop (drop.py): new sprites: track0, track1, track2; rect / pivot: mg_dead; atlas.png: hull0, hull1, hull2, hull3, hull4; atlas_m.png: hull0, hull1, hull2, hull3, hull4, jeep_tire, pool.
+
+## Build 212
+- Tank tracks are their own parts (track0 / track1, the right one; the left is it mirrored), centred off the hull's pivot by `TRACK` (5_ui.js, measured from the art they were cut from), drawn under the hull. Each side rolls by how far it moved (turning moves the sides opposite ways), a frame every 2 px (links 4 px apart; track1 is track0 rolled 2): `tracks(v)`.
+- They stand on under_hull (the atlas's `use`): `hpart` takes `at` (the part's pivot off its underside's) and `fy` (drawn mirrored); `hund` lines the underside up on the hull, not the track's pivot, and a mirrored frame reads the (unmirrored) underside back the right way round (shader: kind 4 with p2 past 2). One underside shared costs one small quad per part, clipped to that part's art; no recompute.
+- Wrecks: no tracks; at most one torn track2 at a rear corner (`w.tr` -1 left / 1 right / 0 none, sent online in the wreck's type byte).
+- Editor: Sprite menu "Pivot to its centre".
