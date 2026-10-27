@@ -602,3 +602,38 @@ Settings › FOG OF WAR: a preview under the sliders (`fogPreview`): the frame b
 
 ## Build 204
 - Lasers drawn under the smoke (were over it: a bot in smoke showed its laser).
+
+## Build 205
+New tank art (art/art4/tank.png, imported once by atlas_pack.py, extra.tankV 2): hulls hull0..3 (100 / 75 / 50 / 25 %, hullFrame) and the wreck hull4 (was hull5); turret + barrel whole (tur / tur_gun) and battered under half HP (tur1 / tur_gun1, turFrame), tur_dead now the dead turret with its bent barrel. Pivots: hull 4 px ahead of the turret ring, turret on its ring, other frames laid on the first by outline; barrel 3 px under the mantlet. BARREL 96 → 88 (the new muzzle), recoil KICK 33 → 20, gunner seat moved to the cupola (-8, 5). Materials first-pass (atlas_pack FRESH; hull / turret reflectivity 40, was 90): to be painted in the editor. The turret's team stripe (bar) is off until the tank's decals come.
+
+## Build 206
+Editor (heightmap): the draw loop survives errors (reschedules first, toasts once); the readout hides off the atlas (Art mode threw on a cursor above the canvas → frozen). Import PNG at any other size = a piece floating on the sprite (move, flip, turn, ✓): Art its RGBA; heights a grey PNG into the channel you're on (Height /4), a coloured one as atlas_m H/R/G. Undersides data driven: settings `use: { sprite: what it stands on }` (under_<name> in the pool, any sprite, itself; none = the ground), older under + off read as the same; menu "Stands on", "New underside" (named part, part2...; the part's states on nothing take it too), "Delete underside". Pool rects fit every sprite on them. Game: USE from the settings (old format derived), underOf reads it, a stood-on sprite's depth counts all its pixels (artMax(n, true)). drop.py checks use targets exist.
+
+## Build 207
+Editor: heights are bound to the art. A pixel's art going fully clear (erase, clear, lift, revert, import) zeroes its H/R/G in the same stroke (put; not in the settings strip; the pool has no art), so no orphan heights (magenta) are left. Clips grabbed from the atlas carry their heights in Art mode too (blank hts; flip / turn keep it): moving / arraying art moves its heights. Imported pieces (art only) leave the heights under them.
+
+## Build 208
+The atlas carries its own table (atlas_table.py): atlas_m's last 16 rows, G / B bytes, the bottom row first (so it's found at any size): { v: 2, rows, pool: [y, h], spr: { name: [x, y, w, h, px, py] }, under, use }. build.py makes atlas.json from it (and refuses a bad one); drop.py takes a resized atlas (both PNGs), checks the table, reports new / removed / moved sprites; atlas_pack.py writes it (64 free rows above the pool; sprites it doesn't know carried in a row of their own). Migrated: 384x800, every sprite pixel-identical. Game: atlasCfg reads it bottom-up.
+Editor: the table loads from atlas_m (atlas.json no longer read). Sprite button / menu: the atlas pops up, tap a sprite to open it; "Stands on" the same (plus The ground / Itself). Sprite menu: New sprite from PNG (trimmed to its art, into free space; the atlas grows above the pool when full, not undoable), Rename, Set the pivot (tap; crosshair shown), Fit to its art, Delete (undoable). Saved work remembers the file it's based on (base): a grown atlas restores; a changed file carries sprites by name, the editor's own into free space. The table's rows can't be painted.
+Fix: drop.py had a quoting error since build 206 (wouldn't run).
+
+## Build 209
+Editor: work saved on the older atlas (722 rows) crashed the load (the carry-over wrote pixels before COL existed: "Cannot set properties of null"). COL made with COL0 at load; tested with a real pre-208 save (paint carried, undersides kept).
+
+## Build 210
+Editor: art edits touch only the art again (build 207's binding undone: erasing art leaves its heights). Moving / arraying art carries its heights only when asked (float bar, Art: "Art only" / "Art + heights", st.artAll). Stray heights (no art over them; not the pool, the table, or a sprite something stands on): View "Show stray heights" toggles the magenta; File "Remove stray heights" (one undo step); exporting atlas_m offers it when there are any. Lift and an imported piece float on their own (pasteStart(lift, c)): the copied clip stays.
+
+## Build 211
+Art drop (drop.py): new sprites: track0, track1, track2; rect / pivot: mg_dead; atlas.png: hull0, hull1, hull2, hull3, hull4; atlas_m.png: hull0, hull1, hull2, hull3, hull4, jeep_tire, pool.
+
+## Build 212
+- Tank tracks are their own parts (track0 / track1, the right one; the left is it mirrored), centred off the hull's pivot by `TRACK` (5_ui.js, measured from the art they were cut from), drawn under the hull. Each side rolls by how far it moved (turning moves the sides opposite ways), a frame every 2 px (links 4 px apart; track1 is track0 rolled 2): `tracks(v)`.
+- They stand on under_hull (the atlas's `use`): `hpart` takes `at` (the part's pivot off its underside's) and `fy` (drawn mirrored); `hund` lines the underside up on the hull, not the track's pivot, and a mirrored frame reads the (unmirrored) underside back the right way round (shader: kind 4 with p2 past 2). One underside shared costs one small quad per part, clipped to that part's art; no recompute.
+- Wrecks: no tracks; at most one torn track2 at a rear corner (`w.tr` -1 left / 1 right / 0 none, sent online in the wreck's type byte).
+- Editor: Sprite menu "Pivot to its centre".
+
+## Build 213
+Art drop (drop.py): atlas.png: no paint change; atlas_m.png: tur, tur1, tur_dead, tur_gun, tur_gun1.
+
+## Build 214 (GL)
+GL merged with main up to build 213 (atlas table, editor, tank tracks, art) and now numbered with it: GL builds continue main's build numbers (the old GL-only 1-7 are retired). Next: GL replaces the original at the site root once confirmed.

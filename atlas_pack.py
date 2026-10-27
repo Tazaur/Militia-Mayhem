@@ -12,31 +12,29 @@ base, 4 per px (0..63 px), G = reflectivity, B = glow. Painted in heightmap/ (th
 material along with it, and a sprite that has none gets a first pass from its outline (rounded edges, flat top, a little
 relief from the art's shading). `--remat` regenerates them all.
 
-Under the sprites: the underside pool (atlas_m only, never drawn: heights painted as depth down, hung under a part) and, in
-the last rows, the settings strip: a JSON string in atlas_m's G / B bytes, written by the editor (its Underside toggle) so the
-game takes settings straight from the atlas. {"under": {part: [x, y, w, h, px, py]}}: x, y inside the pool. Both are carried
-over row for row; atlas.json has their rects as _pool / _cfg."""
+Under the sprites: free rows (the editor's new sprites go there), the underside pool (atlas_m only, never drawn: heights
+painted as depth down, hung under a part) and, in the last rows, the atlas's table (atlas_table.py: every sprite's rect and
+pivot, the undersides, what stands on what), which the editor edits; atlas.json is made from it at build. Sprites the
+packer doesn't know (made in the editor) are carried as they are, in a row of their own."""
 from PIL import Image
 import numpy as np, json, os, sys
 SYNC = '--sync' in sys.argv; REMAT = '--remat' in sys.argv
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 from mounts import mount_sprites, bag_frames
+import atlas_table
 
 meta = json.load(open('atlas.json')); meta.pop('_strip', None); pool_old = meta.pop('_pool', None); cfg_old = meta.pop('_cfg', None)
 A = np.array(Image.open('atlas.png').convert('RGBA'))
 extra = json.load(open('atlas_extra.json'))
 def old(n): x, y, w, h, px, py = meta[n]; return (A[y:y + h, x:x + w].copy(), px, py)
 AM = np.array(Image.open('atlas_m.png').convert('RGB')) if os.path.exists('atlas_m.png') and not REMAT else None
-POOL_H, CFG_H = 128, 4                            # the underside pool's rows; the settings strip's rows
-def cfg_read(M, y0):                              # 2 bytes of length, then UTF-8 JSON, over the strip's G / B bytes row by row
-    b = M[y0:y0 + CFG_H, :, 1:3].reshape(-1); n = int(b[0]) << 8 | int(b[1])
-    try: return json.loads(bytes(b[2:2 + n]).decode()) if n else {}
-    except ValueError: return {}
-def cfg_write(M, y0, c):
-    t = json.dumps(c, separators=(',', ':')).encode(); b = np.zeros(CFG_H * M.shape[1] * 2, np.uint8); assert len(t) + 2 <= len(b), 'settings too long'
-    b[0], b[1] = len(t) >> 8, len(t) & 255; b[2:2 + len(t)] = np.frombuffer(t, np.uint8); M[y0:y0 + CFG_H, :, 1:3] = b.reshape(CFG_H, -1, 2)
+POOL_H, CFG_H, FREE = 128, atlas_table.ROWS, 64     # the underside pool's rows; the table's rows; free rows for new sprites
 AM0 = AM if AM is not None else np.zeros((1, 384, 3), np.uint8)
-CFG = cfg_read(AM0, cfg_old[1]) if cfg_old and AM is not None else {}
+CFG = (atlas_table.read(AM0) or (atlas_table.read_old(AM0, cfg_old) if cfg_old else {})) if AM is not None else {}
+CFG = {k: CFG[k] for k in ('under', 'use', 'off') if k in CFG}     # the table's sprites / pool / rows: made anew below
+if 'use' not in CFG:          # older settings: a part's states on its underside, but the ones off
+    CFG['use'] = {n: 'under_' + n.rstrip('0123456789') for n in meta if n[0] != '_' and n.rstrip('0123456789') in CFG.get('under', {}) and n not in CFG.get('off', [])}
+CFG.pop('off', None)
 POOL = AM0[pool_old[1]:pool_old[1] + POOL_H].copy() if pool_old and AM is not None else np.zeros((POOL_H, 384, 3), np.uint8)
 ox = 0
 for n, b in (('under_hull', 'hull'), ('under_jeep', 'jeep')):   # once: the old under_ atlas slots move into the pool
@@ -46,7 +44,45 @@ for n, b in (('under_hull', 'hull'), ('under_jeep', 'jeep')):   # once: the old 
 
 S = {}                                            # name -> (arr, px, py)
 # ---- vehicles: hulls, jeeps, turret (body + separate cannon), wreck parts, mounted MG, white paint pieces
-for n in ['hull%d' % i for i in range(6)] + ['jeep%d' % i for i in range(5)]: S[n] = old(n)
+for n in ['jeep%d' % i for i in range(5)]: S[n] = old(n)
+# ---- tank v2 (art/art4/tank.png, front to the right): hulls 100 / 75 / 50 / 25 % and the wreck (hull0..3, hull4), turret
+# and barrel at 100 / 50 % and dead (tur / tur_gun, tur1 / tur_gun1; tur_dead: both in one). The hull's pivot sits 4 px
+# ahead of its turret ring (turretPivot), the turret's on its ring (the body's middle, past the mantlet and stowage), the
+# other frames laid on the first by their outlines; the barrel butts 3 px under the mantlet. Imported once (extra.tankV)
+TANK_N = ['hull%d' % i for i in range(5)] + ['tur', 'tur1', 'tur_gun', 'tur_gun1', 'tur_dead']; FRESH = set()     # FRESH: new art, a first-pass material whatever the old one
+if extra.get('tankV') != 2:
+    FRESH.update(TANK_N)
+    T = np.array(Image.open('art/art4/tank.png').convert('RGBA'))
+    def box(x, y, w, h):
+        c = T[y:y + h, x:x + w]; ys, xs = np.where(c[:, :, 3] > 0); return c[ys.min():ys.max() + 1, xs.min():xs.max() + 1].copy()
+    def lay(a, ref, rx, ry):          # ref's pivot (rx, ry) into a: the shift that best overlaps their outlines
+        A, R = a[:, :, 3] > 0, ref[:, :, 3] > 0; best = (-1, 0, 0)
+        for dy in range(-12, 13):
+            for dx in range(-16, 17):
+                y0, x0 = max(0, dy), max(0, dx); y1, x1 = min(A.shape[0], R.shape[0] + dy), min(A.shape[1], R.shape[1] + dx)
+                if y1 <= y0 or x1 <= x0: continue
+                n = (A[y0:y1, x0:x1] & R[y0 - dy:y1 - dy, x0 - dx:x1 - dx]).sum()
+                if n > best[0]: best = (n, dx, dy)
+        return rx + best[1], ry + best[2]
+    H = [box(9, 8, 126, 67), box(153, 8, 126, 67), box(9, 83, 126, 67), box(153, 82, 126, 68), box(302, 83, 138, 68)]
+    h0 = H[0]; L = h0[:, :, :3].astype(int) @ [30, 59, 11] // 100; dk = (L < 40) & (h0[:, :, 3] > 0)
+    dk[:, :h0.shape[1] // 4] = False; dk[:, h0.shape[1] * 3 // 4:] = False; ys, xs = np.where(dk)     # the ring: the dark hole mid-hull
+    hp = (xs.mean() + 0.5 + 4, ys.mean() + 0.5)
+    for i, a in enumerate(H): S['hull%d' % i] = (a,) + ((hp) if i == 0 else lay(a, h0, *hp))
+    TU = [(20, 170, 79, 47, 104, 189, 47, 9), (20, 234, 79, 47, 104, 253, 47, 9), (25, 299, 74, 45, 104, 310, 44, 17)]
+    t0 = box(*TU[0][:4]); al = t0[:, :, 3] > 0; col = al.sum(0); body = np.where(col >= col.max() * 0.75)[0]
+    tp = ((body.min() + body.max() + 1) / 2, (np.where(al.any(1))[0].min() + np.where(al.any(1))[0].max() + 1) / 2)
+    for i, (x, y, w, h, gx, gy, gw, gh) in enumerate(TU):
+        t = box(x, y, w, h); px, py = tp if i == 0 else lay(t, t0, *tp); g = box(gx, gy, gw, gh)
+        ox, oy = t.shape[1] - 3, gy - y                 # the barrel's corner in the turret's frame: 3 px under the mantlet, as high as on the sheet
+        if i < 2: S[['tur', 'tur1'][i]] = (t, px, py); S[['tur_gun', 'tur_gun1'][i]] = (g, px - ox, py - oy)
+        else:                                                                         # dead: one sprite, barrel under the turret
+            W2, H2 = ox + g.shape[1], max(t.shape[0], oy + g.shape[0]) - min(0, oy); y0 = -min(0, oy); c = np.zeros((H2, W2, 4), np.uint8)
+            c[y0 + oy:y0 + oy + g.shape[0], ox:ox + g.shape[1]] = g; m = t[:, :, 3:] > 0; r = c[y0:y0 + t.shape[0], :t.shape[1]]; r[:] = np.where(m, t, r)
+            S['tur_dead'] = (c, px, py + y0)
+    extra['tankV'] = 2
+else:
+    for n in TANK_N: S[n] = old(n)
 # ---- jeep v3 (art/art4/jeep.png, front to the right): five frames (100 / 75 / 50 / 25 % / wreck, pivots found by overlaying
 # them on the v2 frame 0), the hood decal, a front tyre seen from above, a broken-off wheel and a flattened one, and the
 # mounted MG (idle / firing, drawn 2 px kicked back / destroyed). Imported once (extra.jeepV), then the atlas copies are the
@@ -67,10 +103,6 @@ if extra.get('jeepV') != 3:
     extra['jeepStar'] = [24, 0]                        # hood centre, from the pivot
     extra['jeepWells'] = [[24, 16], [-22, 16]]         # front / rear wheel well centres (and mirrored to -y)
     extra['jeepV'] = 3
-if 'tur11' in meta:                               # first run: split the full-length turret frame into body + cannon
-    t, px, py = old('tur11'); CUT = 51            # columns 0..50 = turret + mantlet (identical in every recoil frame)
-    S['tur'] = (t[:, :CUT].copy(), px, py); S['tur_gun'] = (t[:, CUT:].copy(), px - CUT, py)
-else: S['tur'] = old('tur'); S['tur_gun'] = old('tur_gun')
 S['bar'] = old('bar' if 'bar' in meta else 'bar_white')
 if 'decal' not in S: S['decal'] = old('decal' if 'decal' in meta else 'decal_white')
 for n in ['jeep_tire', 'jeep_wheel', 'jeep_flat']:
@@ -79,7 +111,7 @@ for n, v in mount_sprites(np.array(Image.open('art/art4/mounts.png').convert('RG
     if n not in S: S[n] = old(n) if n in meta else v
 if SYNC:
     MT = np.array(Image.open('art/art4/mounts.png').convert('RGBA'))
-    for n, (y, x, h, w) in {'tur_dead': (0, 128, 42, 128)}.items():
+    for n, (y, x, h, w) in {}.items():     # (tur_dead now comes from tank.png)
         box = MT[y:y + h, x:x + w]; ys, xs = np.where(box[:, :, 3] > 0); a = old(n)[0]
         assert a.shape[:2] == (ys.max() + 1 - ys.min(), xs.max() + 1 - xs.min()), n
         box[ys.min():ys.max() + 1, xs.min():xs.max() + 1] = a
@@ -125,11 +157,12 @@ bags, bagPts = bag_frames(np.array(Image.open('art/orig/4948b42c-image.png').con
 for n, v in bags.items(): S[n] = old(n) if n in meta else v
 if 'bagPts' not in extra: extra['bagPts'] = bagPts
 
-GROUPS = [['hull', 'jeep', 'tur', 'mg', 'bar', 'decal'], ['smoke', 'boom', 'dust', 'fire'], ['sol_', 'nsh_'], ['wi_'], ['ic_'], ['bagarc']]
+for n in meta:                                    # the editor's own sprites: as they are
+    if n[0] != '_' and n not in S: S[n] = old(n)
+GROUPS = [['hull', 'jeep', 'tur', 'mg', 'bar', 'decal'], ['smoke', 'boom', 'dust', 'fire'], ['sol_', 'nsh_'], ['wi_'], ['ic_'], ['bagarc'], ['']]
 def group(n):
     for i, G in enumerate(GROUPS):
         if any(n.startswith(p) for p in G): return i
-    raise KeyError(n)
 W = 384; x = y = rowh = 0; out = {}; places = []
 for gi in range(len(GROUPS)):
     names = [n for n in S if group(n) == gi]
@@ -139,7 +172,7 @@ for gi in range(len(GROUPS)):
         a, px, py = S[n]; h, w = a.shape[:2]
         if x + w > W: x = 0; y += rowh + 1; rowh = 0
         places.append((n, x, y)); out[n] = [x, y, w, h, round(float(px), 1), round(float(py), 1)]; x += w + 1; rowh = max(rowh, h)
-PY = y + rowh + 2; H = PY + POOL_H + 1 + CFG_H; CY = H - CFG_H     # then the pool and the settings strip
+PY = y + rowh + 2 + FREE; H = PY + POOL_H + 1 + CFG_H; CY = H - CFG_H     # then the pool and the settings strip
 out['_pool'] = [0, PY, W, POOL_H, 0, 0]; out['_cfg'] = [0, CY, W, CFG_H, 0, 0]
 atlas = np.zeros((H, W, 4), np.uint8)
 for n, x, y in places: a = S[n][0]; atlas[y:y + a.shape[0], x:x + a.shape[1]] = a
@@ -147,7 +180,7 @@ Image.fromarray(atlas).save('atlas.png', optimize=True)
 json.dump(out, open('atlas.json', 'w'))
 # ---- material atlas: carried over per sprite (same size as before), else the first pass
 MAT = {  # prefix: (height px, bevel px or 0 = a dome over the whole shape, reflectivity, relief px from shading)
-    'hull': (12, 4, 90, 1.5), 'tur_gun': (3, 0, 110, 0), 'tur_dead': (8, 4, 50, 1.5), 'tur': (10, 4, 90, 1.5), 'jeep_': (4, 0, 25, 0),
+    'hull': (12, 4, 40, 1.5), 'tur_gun': (3, 0, 70, 0), 'tur_dead': (8, 4, 30, 1.5), 'tur': (10, 4, 40, 1.5), 'jeep_': (4, 0, 25, 0),
     'jeep': (14, 5, 70, 1.5), 'mg': (3, 0, 110, 0), 'bagarc': (10, 5, 15, 1), 'sol_': (8, 0, 30, 1), 'smoke': (14, 0, 0, 0),
     'dust': (6, 0, 0, 0), 'boom': (16, 0, 0, 0), 'fire': (10, 0, 0, 0)}
 def matgen(a, n):
@@ -169,9 +202,9 @@ def matgen(a, n):
 AMn = np.zeros((H, W, 3), np.uint8); gen = 0
 for n, x, y in places:
     a = S[n][0]; h, w = a.shape[:2]
-    if AM is not None and n in meta and meta[n][2:4] == [w, h]: ox, oy = meta[n][:2]; AMn[y:y + h, x:x + w] = AM[oy:oy + h, ox:ox + w]
+    if AM is not None and n in meta and n not in FRESH and meta[n][2:4] == [w, h]: ox, oy = meta[n][:2]; AMn[y:y + h, x:x + w] = AM[oy:oy + h, ox:ox + w]
     else: AMn[y:y + h, x:x + w] = matgen(a, n); gen += 1
-AMn[PY:PY + POOL_H] = POOL; cfg_write(AMn, CY, CFG)
+AMn[PY:PY + POOL_H] = POOL; atlas_table.write(AMn, {**CFG, 'rows': CFG_H, 'pool': [PY, POOL_H], 'spr': {n: out[n] for n, _, _ in places}})
 Image.fromarray(AMn).save('atlas_m.png', optimize=True)
 extra['tips'] = {k: v for k, v in extra.get('tips', {}).items() if k.startswith('n_')}
 json.dump(extra, open('atlas_extra.json', 'w'))

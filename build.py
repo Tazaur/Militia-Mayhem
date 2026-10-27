@@ -1,5 +1,13 @@
 import base64,json
 atlas=base64.b64encode(open('atlas.png','rb').read()).decode()
+# atlas.json comes from the atlas's own table (atlas_m's last rows, atlas_table.py): the two PNGs are the whole atlas
+import numpy as np, atlas_table
+from PIL import Image
+_M=np.array(Image.open('atlas_m.png').convert('RGB')); _T=atlas_table.read(_M)
+if _T:
+    _bad=atlas_table.check(_T,_M.shape[1],_M.shape[0])
+    if _bad: raise SystemExit('atlas table: '+'; '.join(_bad))
+    json.dump(atlas_table.meta(_T,_M.shape[1],_M.shape[0]),open('atlas.json','w'))
 meta=open('atlas.json',encoding='utf-8').read()
 walls=base64.b64encode(open('art/walls16.png','rb').read()).decode()
 mat=base64.b64encode(open('atlas_m.png','rb').read()).decode()

@@ -344,7 +344,7 @@ function destroyVehicle(v, src) {
   explosion(v.x, v.y, v.type === 'tank' ? 110 : 80, 120, 150, src, -2, true);
   if (src && occupied && isEnemy(src.team, vt)) { src.vk++; addPts(src, v.type === 'tank' ? 300 : 200, (v.type === 'nest' ? 'NEST' : v.type.toUpperCase()) + ' DESTROYED'); }
   for (const s of crew) if (s.alive) { s.protect = 0; kill(s, src, 'explosion', rnd(-1, 1), rnd(-1, 1)); }
-  if (v.type !== 'nest') M.wrecks.push({ type: v.type, x: v.x, y: v.y, a: v.a, ta: v.ta, t: 180, T: 180, burn: 14, hl: v.T.hl * 0.92, hw: v.T.hw * 0.9, vx: 0, vy: 0, bw: v.type === 'jeep' && Math.random() < JEEP_BW ? rint(0, 3) : -1, bf: Math.random() < 0.5 }) && (navDirty = 1, wreckWheel(M.wrecks[M.wrecks.length - 1]));
+  if (v.type !== 'nest') M.wrecks.push({ type: v.type, x: v.x, y: v.y, a: v.a, ta: v.ta, t: 180, T: 180, burn: 14, hl: v.T.hl * 0.92, hw: v.T.hw * 0.9, vx: 0, vy: 0, bw: v.type === 'jeep' && Math.random() < JEEP_BW ? rint(0, 3) : -1, bf: Math.random() < 0.5, tr: v.type === 'tank' ? rint(-1, 1) : 0 }) && (navDirty = 1, wreckWheel(M.wrecks[M.wrecks.length - 1]));
   else for (let i = 0; i < 10; i++) part({ k: 'dirt', x: v.x, y: v.y, vx: rnd(-90, 90), vy: rnd(-90, 90), life: 0.8, max: 0.8, sz: 3, drag: 3 });
   if (src && src.player && !occupied) src.msg = { t: 1.4, txt: 'EMPTY ' + v.type.toUpperCase() + ' DESTROYED' };
   feed(src, 'DESTROYED', { name: v.type === 'nest' ? 'MG NEST' : v.type.toUpperCase(), color: 'white' });
@@ -536,7 +536,7 @@ function toWorld(v, lx, ly) { const c = Math.cos(v.a), s = Math.sin(v.a); return
 function seatLocal(v, i) {
   const sd = v.T.seats[i];
   if (v.type === 'nest' && sd.role === 'mg') { const r = v.mgA - v.a; return [2 - 7 * Math.cos(r), -7 * Math.sin(r)]; }
-  if (sd.pos === 'turret') { const r = v.ta - v.a, c = Math.cos(r), s = Math.sin(r); return [-4 + (-6) * c - (-9) * s, (-6) * s + (-9) * c]; }
+  if (sd.pos === 'turret') { const r = v.ta - v.a, c = Math.cos(r), s = Math.sin(r); return [-4 + (-8) * c - 5 * s, (-8) * s + 5 * c]; }     // in the cupola
   return sd.pos;
 }
 function enterCandidate(s) {
@@ -797,7 +797,8 @@ function sightBlocked(x0, y0, x1, y1) {
 /* (x1, y1) is seen from (x0, y0): no wall between, and the soft layers leave at least SIGHT_MIN */
 function sees(x0, y0, x1, y1) { return 1 - softOcc(x0, y0, x1, y1) >= SIGHT_MIN && !sightBlocked(x0, y0, x1, y1); }
 /* the cannon barrel, turret pivot to muzzle (where shells leave) */
-const BARREL = 96;
+const BARREL = 88, KICK = 20;     // pivot to muzzle; how far the gun slides back firing
+const turFrame = v => v.hp > v.T.hp * 0.5 ? '' : '1';     // the turret and gun's art: whole, or battered under half
 function turretPivot(v) { return [v.x - 4 * Math.cos(v.a), v.y - 4 * Math.sin(v.a)]; }
 function barrelHits(v, a) {
   const [px, py] = turretPivot(v), x = px + Math.cos(a) * BARREL, y = py + Math.sin(a) * BARREL;
