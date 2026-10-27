@@ -14,9 +14,16 @@ mat=base64.b64encode(open('atlas_m.png','rb').read()).decode()
 import glob
 js='\n'.join(open(f,encoding='utf-8').read() for f in sorted(glob.glob('src/*.js')))
 extra=open('atlas_extra.json',encoding='utf-8').read()
+# every sprite's art (its opaque px) off its pivot: [x0, x1, y0, y1], so what's sized by the art (vehicles' hit boxes) follows it
+_A=np.array(Image.open('atlas.png').convert('RGBA'))[...,3]; _B={}
+for _n,_r in json.loads(meta).items():
+    if _n[0]=='_': continue
+    _ys,_xs=np.nonzero(_A[_r[1]:_r[1]+_r[3],_r[0]:_r[0]+_r[2]])
+    if len(_xs): _B[_n]=[round(float(v),2) for v in (_xs.min()-_r[4],_xs.max()+1-_r[4],_ys.min()-_r[5],_ys.max()+1-_r[5])]
+bounds=json.dumps(_B,separators=(',',':'))
 # automatic version stamp: the build number goes up by one whenever the game's source or art actually changes
 import hashlib,os,datetime
-h=hashlib.sha1((js+meta+extra+atlas+walls+mat).encode()).hexdigest()
+h=hashlib.sha1((js+meta+extra+atlas+walls+mat).encode()).hexdigest()     # bounds: made from atlas
 st=json.load(open('version.json')) if os.path.exists('version.json') else {'build':14,'hash':''}
 if st['hash']!=h: st['build']+=1; st['hash']=h; st['date']=datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).strftime('%Y-%m-%d %H:%M')
 json.dump(st,open('version.json','w'))
@@ -28,7 +35,7 @@ html=f'''<!doctype html>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Militia Mayhem GL</title>
+<title>Militia Mayhem</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -44,6 +51,7 @@ html,body{{height:100%;margin:0;background:var(--field);overflow:hidden;overscro
 <script>
 const ATLAS={meta};
 const EXTRA={extra};
+const BOUNDS={bounds};
 const ATLAS_SRC="data:image/png;base64,{atlas}";
 const WALLS_SRC="data:image/png;base64,{walls}";
 const MAT_SRC="data:image/png;base64,{mat}";

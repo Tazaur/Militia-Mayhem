@@ -4,8 +4,7 @@
    ===================================================================== */
 const VT = {
   tank: {
-    drive: true, hl: 52, hw: 28, maxF: 82, maxR: 50, acc: 90, brake: 160, drag: 70, turn: 1.3, mass: 5, hp: 1350, respawn: 24,
-    circles: [[-34, 0, 27], [0, 0, 28], [34, 0, 27]],
+    drive: true, art: 'hull0', maxF: 82, maxR: 50, acc: 90, brake: 160, drag: 70, turn: 1.3, mass: 5, hp: 1350, respawn: 24,
     seats: [
       { n: 'DRIVER', anchor: [-76, 0], pos: [20, 0], exposed: false, role: 'drive' },
       { n: 'GUNNER', anchor: [0, -50], alts: [[0, 50]], pos: 'turret', exposed: true, role: 'mg' },
@@ -14,8 +13,7 @@ const VT = {
     dpad: [0, 3, 1, 2]
   },
   jeep: {
-    drive: true, hl: 41, hw: 19, maxF: 205, maxR: 85, acc: 210, brake: 380, drag: 120, turn: 2.6, mass: 1.4, hp: 390, respawn: 18,
-    circles: [[-25, 0, 19], [0, 0, 20], [25, 0, 19]],
+    drive: true, art: 'jeep0', maxF: 205, maxR: 85, acc: 210, brake: 380, drag: 120, turn: 2.6, mass: 1.4, hp: 390, respawn: 18,
     seats: [
       { n: 'DRIVER', anchor: [2, -36], pos: [-1, -8], exposed: true, role: 'drive' },
       { n: 'PASSENGER', anchor: [2, 36], pos: [-1, 8], exposed: true, role: 'rifle' },
@@ -29,6 +27,10 @@ const VT = {
     dpad: [0, 0, 0, 0]
   }
 };
+/* a vehicle's hit box (half length hl, half width hw) is its art's; its push circles (vehicle on vehicle) fill the box's
+   length: one each end, one mid. A wreck's box is its wreck art's */
+for (const T of Object.values(VT)) if (T.art) { const [hl, hw] = artHalf(T.art); Object.assign(T, { hl, hw, circles: [[hw - hl, 0, hw], [0, 0, hw], [hl - hw, 0, hw]] }); }
+const wreckBox = type => artHalf(type === 'tank' ? 'hull4' : 'jeep4');
 
 function newMatch(cfg, demo) {
   engineKillAll();
@@ -344,7 +346,7 @@ function destroyVehicle(v, src) {
   explosion(v.x, v.y, v.type === 'tank' ? 110 : 80, 120, 150, src, -2, true);
   if (src && occupied && isEnemy(src.team, vt)) { src.vk++; addPts(src, v.type === 'tank' ? 300 : 200, (v.type === 'nest' ? 'NEST' : v.type.toUpperCase()) + ' DESTROYED'); }
   for (const s of crew) if (s.alive) { s.protect = 0; kill(s, src, 'explosion', rnd(-1, 1), rnd(-1, 1)); }
-  if (v.type !== 'nest') M.wrecks.push({ type: v.type, x: v.x, y: v.y, a: v.a, ta: v.ta, t: 180, T: 180, burn: 14, hl: v.T.hl * 0.92, hw: v.T.hw * 0.9, vx: 0, vy: 0, bw: v.type === 'jeep' && Math.random() < JEEP_BW ? rint(0, 3) : -1, bf: Math.random() < 0.5, tr: v.type === 'tank' ? rint(-1, 1) : 0 }) && (navDirty = 1, wreckWheel(M.wrecks[M.wrecks.length - 1]));
+  if (v.type !== 'nest') M.wrecks.push({ type: v.type, x: v.x, y: v.y, a: v.a, ta: v.ta, t: 180, T: 180, burn: 14, ...(([hl, hw]) => ({ hl, hw }))(wreckBox(v.type)), vx: 0, vy: 0, bw: v.type === 'jeep' && Math.random() < JEEP_BW ? rint(0, 3) : -1, bf: Math.random() < 0.5, tr: v.type === 'tank' ? rint(-1, 1) : 0 }) && (navDirty = 1, wreckWheel(M.wrecks[M.wrecks.length - 1]));
   else for (let i = 0; i < 10; i++) part({ k: 'dirt', x: v.x, y: v.y, vx: rnd(-90, 90), vy: rnd(-90, 90), life: 0.8, max: 0.8, sz: 3, drag: 3 });
   if (src && src.player && !occupied) src.msg = { t: 1.4, txt: 'EMPTY ' + v.type.toUpperCase() + ' DESTROYED' };
   feed(src, 'DESTROYED', { name: v.type === 'nest' ? 'MG NEST' : v.type.toUpperCase(), color: 'white' });
@@ -1187,7 +1189,7 @@ function updateSeatedPos(s) {
   let lx = to[0], ly = to[1];
   if (s.seatT > 0 && s.seatFrom) { const k = 1 - s.seatT / s.seatMax, e = k * k * (3 - 2 * k); lx = lerp(s.seatFrom[0], to[0], e); ly = lerp(s.seatFrom[1], to[1], e); }
   [s.x, s.y] = toWorld(v, lx, ly); s.moving = false;
-  if (v.T.seats[s.seat].role === 'drive') s.a = v.a;      // drivers face where they're driving
+  if (v.T.seats[s.seat].role === 'drive') s.a = v.type === 'tank' ? v.ta : v.a;      // drivers face where they're driving; the tank's, where its turret points (they aim it: the camera's look-ahead and sight follow)
 }
 
 /* ---------------- vehicles ---------------- */
@@ -1275,7 +1277,7 @@ function vehTrackFx(v, d) {
   const T = v.T; v.trackAcc += d;
   if (v.trackAcc > (v.type === 'tank' ? 5 : 6)) {
     v.trackAcc = 0;
-    if (v.type === 'tank') for (const sd of [-1, 1]) { const [tx, ty] = toWorld(v, -10, sd * 21); tread(tx, ty, v.a, 13, 4, M.rain ? 0.3 : 0.22); }
+    if (v.type === 'tank') for (const sd of [-1, 1]) { const [tx, ty] = toWorld(v, -10, TRACK.y[sd > 0 ? 1 : 0]); tread(tx, ty, v.a, 13, 4, M.rain ? 0.3 : 0.22); }
     else for (const sd of [-1, 1]) { const [tx, ty] = toWorld(v, -25, sd * 15); tread(tx, ty, v.a, 3, 6, M.rain ? 0.18 : 0.1); }
     if (Math.abs(v.spd) > 60 && Math.random() < 0.3 && !M.rain) { const [dx, dy] = toWorld(v, -T.hl, rnd(-T.hw, T.hw)); part({ k: 'dust', x: dx, y: dy, vx: -v.vx * 0.2 + rnd(-10, 10), vy: -v.vy * 0.2 + rnd(-10, 10), life: 0.9, max: 0.9, sz: rnd(8, 14), drag: 2 }); }
   }

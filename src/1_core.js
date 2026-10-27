@@ -309,6 +309,8 @@ let FLASH = 0;                                   // > 0: sprites drawn now are b
 function worldT() { ctx.setTransform(VZ * DPR, 0, 0, VZ * DPR, VOX * DPR, VOY * DPR); }
 let UIS = 1;                                     // extra scale while menus are drawn on the shrunken virtual screen (see uiScaled)
 function screenT() { ctx.setTransform(DPR * UIS, 0, 0, DPR * UIS, 0, 0); }
+/* half a sprite's art, along and across (BOUNDS: its opaque px, measured by the build) */
+const artHalf = n => { const b = BOUNDS[n]; return [(b[1] - b[0]) / 2, (b[3] - b[2]) / 2]; };
 function spr(n, x, y, a, sx, sy, al) {
   const m = ATLAS[n]; if (!m) return;
   const c = Math.cos(a), s = Math.sin(a), k = VZ * DPR; sx = sx || 1; sy = sy || 1;

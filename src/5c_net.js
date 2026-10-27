@@ -698,7 +698,7 @@ function netSlowApply() {
   const I = [], ri = new Rd(gs.I);
   while (!ri.end) { const k = ri.u(1), x = ri.u(2), y = ri.u(2), t = ri.u(2); I.push({ k: ['med', 'ammo', 'mine', 'pouch'][k] || 'pouch', x, y, team: t === 4095 ? -1 : t, t: 9 }); }
   const W2 = [], rw = new Rd(gs.W);
-  while (!rw.end) { const k = rw.u(1), x = rw.u(2), y = rw.u(2), a = angD(rw.u(2)), ta = angD(rw.u(2)), t = rw.u(2) / 10, T = VT[k & 1 ? 'jeep' : 'tank']; W2.push({ type: k & 1 ? 'jeep' : 'tank', tr: k & 1 ? 0 : (k >> 1) - 1, x, y, a, ta, t, T: 180, burn: t - 166, hl: T.hl * 0.92, hw: T.hw * 0.9, bw: k & 1 ? (k >> 1) % 5 - 1 : -1, bf: k >> 1 >= 5 }); }
+  while (!rw.end) { const k = rw.u(1), x = rw.u(2), y = rw.u(2), a = angD(rw.u(2)), ta = angD(rw.u(2)), t = rw.u(2) / 10, T = wreckBox(k & 1 ? 'jeep' : 'tank'); W2.push({ type: k & 1 ? 'jeep' : 'tank', tr: k & 1 ? 0 : (k >> 1) - 1, x, y, a, ta, t, T: 180, burn: t - 166, hl: T[0], hw: T[1], bw: k & 1 ? (k >> 1) % 5 - 1 : -1, bf: k >> 1 >= 5 }); }
   return NET.slow = { I, W: W2, C: String(gs.C || ''), R: String(gs.R || ''), A: gs.A };
 }
 /* joiner: someone joined or left mid-match: soldiers change hands (or a new one appears) to match the host's roster */

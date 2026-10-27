@@ -640,3 +640,8 @@ GL merged with main up to build 213 (atlas table, editor, tank tracks, art) and 
 
 ## Build 214: GL is the game
 The webgl branch merged into main: the site root is the GL renderer (GX, src/0_gx.js: Canvas2D on WebGL2, falling back to plain 2D without WebGL2). gl/ and gldeploy.sh are gone; one build-number sequence (GL's own 1-7 retired, 214 is the first root GL build).
+
+## Build 215
+- Vehicle hit boxes come from the art: the build measures every sprite's opaque bounds off its pivot (`BOUNDS`, `artHalf(n)`); VT.tank / jeep take hl / hw from hull0 / jeep0 and their push circles fill that box; wrecks from hull4 / jeep4 (`wreckBox`, also used by the net unpack). Tank 126 x 67 (was 104 x 56), jeep 85 x 43. Tread marks under the tracks (TRACK.y).
+- The tank's driver faces where the turret points (updateSeatedPos: s.a = v.ta, as the MG gunner faces v.mgA), so the camera's look-ahead and their sight follow the turret; the speed lead still adds the driving direction.
+- Page title: Militia Mayhem (no "GL").
