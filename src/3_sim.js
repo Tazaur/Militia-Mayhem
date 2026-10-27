@@ -630,7 +630,7 @@ function fireWeapon(s) {
   for (let i = 0; i < n; i++) {
     const a = s.a + rnd(-W_.spread, W_.spread) * sm;
     const sp = W_.spd * (W_.pel ? rnd(0.85, 1.1) : 1);
-    M.proj.push({ k: 'bullet', x, y, ox: x, oy: y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: W_.life * (W_.pel ? rnd(0.8, 1.1) : 1), src: s, team: s.team, dmg: W_.dmg, vdmg: W_.vdmg, low: s.stance >= 1, heavy: W_.dmg >= 40, wname: W_.s, whiz: false });
+    M.proj.push({ k: 'bullet', x, y, ox: x, oy: y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: W_.life * (W_.pel ? rnd(0.8, 1.1) : 1), src: s, team: s.team, dmg: W_.dmg, vdmg: W_.vdmg, low: s.stance >= 1, heavy: W_.dmg >= 40, wname: W_.s, whiz: false, aa: s.a });
   }
   st.mag--; s.flash = 0.05; s.fireCd = W_.rate; s.firedT = 1.2; s.shotN = (s.shotN || 0) + 1;
   shotFx(s, W_, x, y);
@@ -858,7 +858,7 @@ function mgPos(v) {
 function fireMG(v, s) {
   if (v.over > 0) return;
   const [px, py] = mgPos(v), a = v.mgA + rnd(-0.05, 0.05), x = px + Math.cos(v.mgA) * 22, y = py + Math.sin(v.mgA) * 22;
-  M.proj.push({ k: 'bullet', mg: true, x, y, ox: x, oy: y, vx: Math.cos(a) * 1150, vy: Math.sin(a) * 1150, life: 0.6, src: s, team: s.team, dmg: v.type === 'nest' ? 20 : 15, vdmg: 6, low: false, wname: 'MG' });
+  M.proj.push({ k: 'bullet', mg: true, x, y, ox: x, oy: y, vx: Math.cos(a) * 1150, vy: Math.sin(a) * 1150, life: 0.6, src: s, team: s.team, dmg: v.type === 'nest' ? 20 : 15, vdmg: 6, low: false, wname: 'MG', aa: v.mgA });
   v.mgCd = v.type === 'nest' ? 0.07 : 0.075; v.heat += v.type === 'nest' ? 0.035 : 0.05; v.mgFlash = 0.04; s.firedT = 1.2; v.mN = (v.mN || 0) + 1;
   if (v.heat >= 1) { v.over = 1.6; sfx('heat', x, y); if (s.player) s.msg = { t: 1.2, txt: 'MG OVERHEATED' }; }
   mgFx(v, px, py, x, y);
@@ -1016,8 +1016,14 @@ function updateProjectiles(dt) {
       else if (hit.k === 'veh') {
         const v = hit.v; let victim = null;
         const sp = Math.hypot(p.vx, p.vy) || 1, L = v.T.hl * 2 + 10, ex = hx + p.vx / sp * L, ey = hy + p.vy / sp * L; let vt = 2;     // exposed crew on the shot's line on through the vehicle (a nest gunner behind the bags)
-        for (const o of v.seats) { if (!o || !v.T.seats[o.seat].exposed || !canHurt(p.src, o)) continue; const oo = p.rew ? lagAt(o, netNow() - p.rew) : o, t = Math.hypot(oo.x - hx, oo.y - hy) < 13 ? 0 : segCirc(hx, hy, ex, ey, oo.x, oo.y, 9); if (t >= 0 && t < vt) { vt = t; victim = o; } }
-        if (victim && Math.random() < 0.6) hurtSoldier(victim, p.dmg, p.src, p.mg ? 'mg' : 'bullet', p.vx, p.vy, p.wname);
+        // one aimed at (the aim line, before spread, through his hit circle) gets it for sure: the shot is angled over the hull
+        // to him; else a chance. A shot whose spread takes it off him still hits the hull
+        const ac = Math.cos(p.aa), as = Math.sin(p.aa); let aimed = false;
+        for (const o of v.seats) {
+          if (!o || !v.T.seats[o.seat].exposed || !canHurt(p.src, o)) continue; const oo = p.rew ? lagAt(o, netNow() - p.rew) : o, t = Math.hypot(oo.x - hx, oo.y - hy) < 13 ? 0 : segCirc(hx, hy, ex, ey, oo.x, oo.y, 9);
+          if (t >= 0 && t < vt) { vt = t; victim = o; const dx = oo.x - p.ox, dy = oo.y - p.oy; aimed = p.aa !== undefined && dx * ac + dy * as > 0 && Math.abs(dx * as - dy * ac) < solHitR(o) + 4; }
+        }
+        if (victim && (aimed || Math.random() < 0.6)) hurtSoldier(victim, p.dmg, p.src, p.mg ? 'mg' : 'bullet', p.vx, p.vy, p.wname);
         else { hurtVehicle(v, v.type === 'tank' ? p.vdmg * 0.2 : p.vdmg, p.src); sfx('ting', hx, hy); sparks(hx, hy, 3); }
       } else if (hit.k === 'ground') part({ k: 'dirt', x: hx, y: hy, vx: p.vx * 0.04 + rnd(-15, 15), vy: p.vy * 0.04 + rnd(-15, 15), life: 0.3, max: 0.3, sz: 2, drag: 4 });
       else { sparks(hx, hy, 2); if (hit.k === 'static' && hit.s.type === 'bag') part({ k: 'dirt', x: hx, y: hy, vx: -p.vx * 0.05 + rnd(-20, 20), vy: -p.vy * 0.05 + rnd(-20, 20), life: 0.3, max: 0.3, sz: 2, drag: 4 }); }

@@ -134,6 +134,7 @@ function applyFog(vw, vis, x0, y0, x1, y1, rv) {
     const n = FOG_NOW.getContext('2d'); n.setTransform(1, 0, 0, 1, 0, 0);
     stackImg(n, [ground, decals], bx0, by0, bw, bh, 0, 0, bw, bh);
     if (MAP.tiled && MAP.tiled.roof) n.drawImage(ROOF_C, bx0, by0, bw, bh, 0, 0, bw, bh);
+    if (smokeAny() || MAP.glass.length) fogCut(n, eyes, box, bx0, by0, bw, bh);
     pipe('fog-now'); m.g.save(); m.g.setTransform(FOGK, 0, 0, FOGK, 0, 0); polyPath(m.g, polys); m.g.clip();
     m.g.drawImage(FOG_NOW, 0, 0, bw, bh, bx0, by0, bw, bh); m.g.restore();
   }
@@ -164,6 +165,17 @@ function applyFog(vw, vis, x0, y0, x1, y1, rv) {
   ctx = main; worldT();
   vw._fog = { polys, eyes, box };
   return polys;
+}
+/* what smoke and windows hide (softMask, every eye: seen by either counts) taken out of the world as it is now (n: world
+   px from bx0, by0), so the memory keeps what it had there: tread marks laid in smoke aren't remembered till seen */
+const MEM_MASK = document.createElement('canvas'), MEM_MASK2 = document.createElement('canvas');
+function fogCut(n, eyes, box, bx0, by0, bw, bh) {
+  const w = Math.ceil(bw / FOG_MS) + 2, h = Math.ceil(bh / FOG_MS) + 2, k = 1 / FOG_MS;
+  const prep = c => { if (c.width < w || c.height < h) { c.width = Math.max(c.width, w); c.height = Math.max(c.height, h); } const g = c.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, c.width, c.height); g.setTransform(k, 0, 0, k, 1 - bx0 * k, 1 - by0 * k); return g; };
+  const mg = prep(MEM_MASK); if (!softMask(mg, eyes[0][0], eyes[0][1], box)) return;
+  for (let i = 1; i < eyes.length; i++) { softMask(prep(MEM_MASK2), eyes[i][0], eyes[i][1], box); mg.setTransform(1, 0, 0, 1, 0, 0); mg.globalCompositeOperation = 'destination-in'; mg.drawImage(MEM_MASK2, 0, 0); mg.globalCompositeOperation = 'source-over'; }
+  n.globalCompositeOperation = 'destination-out'; n.imageSmoothingEnabled = true; n.drawImage(MEM_MASK, 0, 0, w, h, -FOG_MS, -FOG_MS, w * FOG_MS, h * FOG_MS);
+  n.globalCompositeOperation = 'source-over'; n.imageSmoothingEnabled = false; pipe('fog-cut');
 }
 /* the remembered view (FOG_OUT) lit as now: the memory's shade map (drawSun, map 3: the sun or the night, from what the
    memory keeps) multiplied in, once a frame, before anything shows it (smoke and windows in sight, out of sight alike) */
