@@ -657,3 +657,6 @@ The webgl branch merged into main: the site root is the GL renderer (GX, src/0_g
 
 ## Build 217
 - Dev: a dummy spawned on a vehicle gets in (the free seat whose door is nearest, instantly, any team's vehicle; "VEHICLE FULL" when none) and respawns back into it while it stands (devSpawnDummy / devReviveDummy, dummySeat).
+
+## Build 218
+- Sight from off screen: the box the sight polygons are worked out in (`sightBox`) always takes in every eye, so a player whose aim look-ahead pushes them off screen still sees into the view (before, every ray from outside the box met its near edge first: the whole view was occluded). Used by applyFog and the dev sight-line debug.

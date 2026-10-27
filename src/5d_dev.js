@@ -567,8 +567,8 @@ function devTick(dt) {
 /* SIGHT LINES: how the sight polygon is built, per eye - the faces it tests (orange), a ray to every vertex (faint), the
    outline (cyan), the wall strips (cyan fill), points past a corner (white) and corners (yellow), and the counts */
 function devSightDbg(vw, x0, y0, x1, y1) {
-  const box = [x0 - 16, y0 - 16, x1 + 16, y1 + 16], k = 1 / VZ;
-  for (const o of viewSols(vw).map(posOf)) {
+  const eyes = viewSols(vw).map(posOf), box = sightBox(x0, y0, x1, y1, eyes), k = 1 / VZ;
+  for (const o of eyes) {
     const P = visPoly(o.x, o.y, box, null, MAP.tiled ? SUB / 2 : 5);
     ctx.lineWidth = 2 * k; ctx.beginPath();
     for (const q of P.faces) if (q[4]) { ctx.moveTo(q[0], q[1]); ctx.lineTo(q[2], q[3]); }

@@ -90,6 +90,13 @@ function visPoly(ex, ey, box, walls, pad) {
   const out = P.map(v => v[2] ? [v[0], v[1], 1] : [v[0], v[1]]); out.strips = strips; out.faces = segs;   // [x, y, 1] = a corner
   return out;
 }
+/* the box sight is worked out in: the view and every eye (an eye off screen, aiming far, still sees in: from outside the
+   box every ray met its near edge first, and nothing showed) */
+function sightBox(x0, y0, x1, y1, eyes) {
+  const B = [x0 - 16, y0 - 16, x1 + 16, y1 + 16];
+  for (const e of eyes) { const x = e.x !== undefined ? e.x : e[0], y = e.y !== undefined ? e.y : e[1]; B[0] = Math.min(B[0], x - 16); B[1] = Math.min(B[1], y - 16); B[2] = Math.max(B[2], x + 16); B[3] = Math.max(B[3], y + 16); }
+  return B;
+}
 function inPoly(x, y, P) { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; }
 /* the sight polygons and their wall strips as one path, all wound the same way, so a nonzero fill / clip is their union */
 function polyPath(g, polys) { if (g.beginPath) g.beginPath(); for (const P of polys) { pathPos(g, P); if (P.strips) for (const S of P.strips) pathPos(g, S); } }
@@ -124,7 +131,7 @@ function fogCanvases() {
 function applyFog(vw, vis, x0, y0, x1, y1, rv) {
   vw._fog = null;
   const eyes = fogEyes(vw); if (!eyes.length) return null;
-  const box = [x0 - 16, y0 - 16, x1 + 16, y1 + 16], polys = eyes.map(([x, y]) => visPoly(x, y, box, null, MAP.tiled ? SUB / 2 : 5)), m = fogMemory(vw);   // dev yard: strips half a wall deep, so the wall you look at shows
+  const box = sightBox(x0, y0, x1, y1, eyes), polys = eyes.map(([x, y]) => visPoly(x, y, box, null, MAP.tiled ? SUB / 2 : 5)), m = fogMemory(vw);   // dev yard: strips half a wall deep, so the wall you look at shows
   // remember what is in sight now, roofs and all
   const bx0 = Math.max(0, Math.floor(x0)), by0 = Math.max(0, Math.floor(y0)), bx1 = Math.min(WW, Math.ceil(x1)), by1 = Math.min(WH, Math.ceil(y1)), bw = bx1 - bx0, bh = by1 - by0;
   if (bw > 0 && bh > 0) {
