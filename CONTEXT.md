@@ -663,3 +663,6 @@ The webgl branch merged into main: the site root is the GL renderer (GX, src/0_g
 
 ## Build 220
 - Dev: a dummy boards the first vehicle on the line from you to where it would spawn (devVehOnLine), looking at least 6 tiles out (as far as vehicles spawn), so spawning a vehicle and then a dummy without moving always boards it, whatever the dummy range.
+
+## Build 221
+- Dev: build 220's dummy line-boarding reverted; vehicles now spawn at the selected range (DEV.range), same as dummies, so a dummy spawned after a vehicle lands on it and boards.

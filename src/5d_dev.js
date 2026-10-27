@@ -492,8 +492,8 @@ function devAhead(tiles) {
   return [tileC(Math.floor(x / TILE)), tileC(Math.floor(y / TILE)), a];
 }
 function devSpawnDummy() {
-  let q = devAhead(DEV.range); if (!q) return;
-  const hit = devVehOnLine(DEV.range < 6 ? devAhead(6) : q), v = hit && hit[0]; if (v) q = [hit[1], hit[2], q[2]];     // a vehicle on the way there: it gets in that
+  const q = devAhead(DEV.range); if (!q) return;
+  const v = M.vehicles.find(v => { if (!v.active || v.dead) return false; const [lx, ly] = toLocal(v, q[0], q[1]); return Math.abs(lx) < v.T.hl + TILE / 2 && Math.abs(ly) < v.T.hw + TILE / 2; });     // on a vehicle: it gets in
   if (v && dummySeat(v, q[0], q[1]) < 0) { devLog('VEHICLE FULL', '#ff7a60'); return; }
   if (!v && solidAt(q[0], q[1], 6)) { devLog('NO ROOM THERE', '#ff7a60'); return; }
   const s = makeSoldier({ team: 1, color: M.teamColor[1], name: 'DUMMY ' + (M.sol.filter(o => o.dummy).length + 1), bot: true });
@@ -504,20 +504,6 @@ function devReviveDummy(s) {
   giveLoadout(s); const d = s.dummy;
   Object.assign(s, { x: d.x, y: d.y, a: d.a, hp: s.mhp, alive: true, down: false, protect: 0, respawnT: 1e9, veh: null, seat: -1, seatT: 0, stance: 0, stanceT: 0, swim: false, vx: 0, vy: 0, reloadT: 0, fireCd: 0, lastHurt: -9, ttk: null });
   const v = d.v, i = v && !v.dead && v.active ? dummySeat(v, d.x, d.y) : -1; if (i >= 0) enterVehicle(s, { v, seat: i }, true);     // spawned on a vehicle: back in it (any team's, any free seat)
-}
-/* the first vehicle (its box + half a tile) on the line from you to q (the dummy looks at least as far out as vehicles
-   spawn, so one spawned in front of you always takes it); [vehicle, x, y]: where the line meets it */
-function devVehOnLine(q) {
-  const p = devPlayer(), o = p && (p.sol.veh || p.sol); if (!o) return null;
-  const L = Math.hypot(q[0] - o.x, q[1] - o.y), n = Math.max(1, Math.ceil(L / 4));
-  for (let k = 0; k <= n; k++) {
-    const x = o.x + (q[0] - o.x) * k / n, y = o.y + (q[1] - o.y) * k / n;
-    for (const v of M.vehicles) {
-      if (!v.active || v.dead || v === o) continue; const [lx, ly] = toLocal(v, x, y);
-      if (Math.abs(lx) < v.T.hl + TILE / 2 && Math.abs(ly) < v.T.hw + TILE / 2) return [v, x, y];
-    }
-  }
-  return null;
 }
 /* the free seat whose door is nearest (x, y), or -1 */
 function dummySeat(v, x, y) {
@@ -541,7 +527,7 @@ function devLog(text, c) { DEV.log.unshift({ text, c }); if (DEV.log.length > 9)
 
 /* ---------------- vehicles / world ---------------- */
 function devSpawnVeh(type) {
-  const q = devAhead(type === 'tank' ? 6 : 4); if (!q) return;
+  const q = devAhead(DEV.range); if (!q) return;     // at the range set, like a dummy
   if (solidAt(q[0], q[1], VT[type].hw || 14)) { devLog('NO ROOM THERE', '#ff7a60'); return; }
   M.vehicles.push(makeVehicle({ type, x: q[0], y: q[1], a: q[2], team: -1, dev: true }));
 }
