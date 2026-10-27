@@ -26,23 +26,35 @@ select { flex: 1; min-width: 64px; padding: 0 10px; }
 .lab { color: var(--dim); font-size: 12px; padding: 0 2px; flex: none; white-space: nowrap; }
 #views { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 #views canvas { display: block; width: 100%; min-height: 0; touch-action: none; }
+#w2 { position: relative; flex: 1; min-height: 0; min-width: 0; display: flex; }
+#w2 canvas { flex: 1; height: 100%; }
 #w3 { position: relative; flex: 0 0 40%; min-height: 0; display: flex; background: #0b0c0f; border-bottom: 1px solid var(--line); }
 #w3 canvas { flex: 1; height: 100%; }
-#w3 .ov { position: absolute; right: 6px; top: 6px; display: flex; gap: 4px; }
-#w3 .ov button { height: 32px; min-width: 32px; padding: 0 8px; background: #000a; font-size: 12px; }
-#w3 .ov button.on { background: var(--on); }
-#v2 { flex: 1; }
-#views.only2 #w3, #views.only3 #v2 { display: none; }
+#views .ov { position: absolute; right: 6px; top: 6px; display: flex; gap: 4px; }
+#views .ov button { height: 32px; min-width: 32px; padding: 0 8px; background: #000a; font-size: 12px; }
+#views .ov button.on { background: var(--on); }
+#views.only2 #w3, #views.only3 #w2 { display: none; }
 #views.only3 #w3 { flex: 1; }
 #cbar, #vbar { flex: none; height: 49px; }
+#cbar { gap: 4px; }
+#cbar button { padding: 0 7px; min-width: 36px; }
+#vbar.off > * { opacity: .35; pointer-events: none; }
+.hint { flex: 1; min-width: 0; color: var(--dim); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 4px; }
+.bgsw { width: 16px; height: 16px; border-radius: 4px; box-shadow: 0 0 0 1px #fff8; }
+.lrow { display: flex; align-items: center; gap: 2px; }
+.lrow button { min-width: 36px; padding: 0 8px; }
+.menu .lrow .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu .lrow.act .nm { background: var(--btn2); box-shadow: inset 3px 0 0 var(--on); }
+.lrow .off { opacity: .4; }
+@media (max-width: 480px) { #chSeg button { padding: 0 7px; font-size: 12px; } .bar { gap: 4px; } .bar button.dd { padding: 0 8px; } #swpB { font-size: 0; gap: 0; } #tools { gap: 2px; } }
 .menu .rng { display: flex; align-items: center; gap: 8px; padding: 4px 10px; color: var(--dim); font-size: 12px; }
 .menu .rng input { flex: 1; accent-color: var(--on); }
 @media (orientation: landscape) { #views { flex-direction: row; } #w3 { flex: 0 0 45%; border-bottom: 0; border-right: 1px solid var(--line); } #views canvas { height: 100%; } }
 #val { flex: 1; min-width: 80px; accent-color: var(--on); }
 .num { min-width: 40px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
-#status { color: var(--dim); font-size: 12px; flex: none; white-space: nowrap; }
+#status { color: var(--dim); font-size: 12px; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #tools { justify-content: space-around; padding: 6px; }
-#tools button { flex: 1; max-width: 76px; height: 48px; flex-direction: column; gap: 2px; font-size: 10px; color: var(--dim); background: transparent; }
+#tools button { flex: 1; min-width: 0; max-width: 76px; height: 48px; flex-direction: column; gap: 2px; font-size: 10px; color: var(--dim); background: transparent; }
 #tools button svg { width: 22px; height: 22px; }
 #tools button.on { background: var(--btn2); color: var(--tx); box-shadow: inset 0 -2px 0 var(--on); }
 button.dd { background: transparent; padding: 0 10px; font-size: 14px; }
@@ -74,6 +86,7 @@ button.hov { outline: 2px solid #ff4fd8; outline-offset: -2px; }
 #tip { position: fixed; z-index: 9; pointer-events: none; max-width: 240px; padding: 5px 9px; border-radius: 7px; background: #000e; color: var(--tx); font-size: 12px; line-height: 1.3; opacity: 0; transition: opacity .12s; }
 #tip.on { opacity: 1; }
 #pbar { flex: none; height: 49px; }
+#layB { max-width: 96px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; justify-content: flex-start; }
 .sw { width: 38px; padding: 0; border: 2px solid var(--line); }
 .sw.act { border-color: #fff; }
 #pal { display: flex; gap: 6px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; align-items: center; }
@@ -87,14 +100,14 @@ button.hov { outline: 2px solid #ff4fd8; outline-offset: -2px; }
 <div id="app">
   <div class="bar">
     <button class="dd" data-menu="mFile">File</button><button class="dd" data-menu="mEdit">Edit</button><button class="dd" data-menu="mSpr">Sprite</button><button class="dd" data-menu="mView">View</button><button class="dd" data-menu="mSet" data-i="gear" title="Settings"></button>
-    <span class="sp"></span><span id="status"></span>
+    <span class="sp"></span><span id="status" title="● unsaved changes (saved in a moment), ✓ saved in this browser"></span>
     <button id="fs" data-i="full" title="Fullscreen"></button><button id="undo" data-i="undo" title="Undo"></button><button id="redo" data-i="redo" title="Redo"></button>
   </div>
   <div class="bar">
     <button id="prev" data-i="left" title="Previous sprite"></button><button id="sprB" data-tip="Pick a sprite on the atlas"></button><button id="next" data-i="right" title="Next sprite"></button>
-    <div class="seg"><button id="chH" class="on">Height</button><button id="chR">Refl</button><button id="chE">Glow</button><button id="chA">Art</button></div><button id="ovlB" data-i="color" data-tip="Show the art (color overlay)"></button><button id="swpB" data-i="down" data-tip="Switch between the part and its underside">Under</button>
+    <div class="seg" id="chSeg"><button id="chH" class="on">Height</button><button id="chR">Refl</button><button id="chE">Glow</button><button id="chA">Art</button></div><button id="swpB" data-i="down" data-tip="Switch between the part and its underside">Under</button>
   </div>
-  <div id="views"><div id="w3"><canvas id="v3"></canvas><div class="ov"><button id="look" data-tip="3D: as in game (lit) / the channel alone">Lit</button><button class="dd" data-menu="mScene" data-i="sun" data-tip="Sky, sun, bloom"></button></div></div><canvas id="v2"></canvas></div>
+  <div id="views"><div id="w3"><canvas id="v3"></canvas><div class="ov"><button id="look" data-tip="3D: as in game (lit) / the channel alone">Lit</button><button class="dd" data-menu="mScene" data-i="sun" data-tip="Sky, sun, bloom"></button></div></div><div id="w2"><canvas id="v2"></canvas><div class="ov"><button id="ovlB" data-i="color" data-tip="Show the art over the heights"></button><button id="bgB" data-tip="Background: dark grid, light grid, white, black"><span class="bgsw"></span></button></div></div></div>
   <div class="bar" id="cbar">
     <span id="opts" style="display:contents">
       <button id="size" data-i="square" title="Brush size"></button>
@@ -102,6 +115,7 @@ button.hov { outline: 2px solid #ff4fd8; outline-offset: -2px; }
       <div class="seg sm" id="smode"><button data-m="0" title="New selection">New</button><button data-m="1" title="Add to selection">+</button><button data-m="2" title="Take from selection">−</button></div>
       <button id="gap" title="Gap between copies"></button><button id="alock" data-i="alock" title="Alpha lock: paint only on pixels that already have art">α lock</button><button id="glock" data-i="gridI" title="Grid lock: each dab fills a whole grid cell">Grid</button><button id="gsz" title="Grid cell size"></button><button id="shd" title="Shade direction: along the colour's palette row"></button><button id="gdi" title="Dither the gradient (ordered 4×4)">Dither</button><button id="pch" title="Channels the paste / array writes"></button>
     </span>
+    <span class="hint" id="hint"></span>
     <span class="div" id="optDiv"></span>
     <span id="selb" style="display:contents">
       <span class="lab" id="selLab"></span>
@@ -109,8 +123,8 @@ button.hov { outline: 2px solid #ff4fd8; outline-offset: -2px; }
       <button id="sFill" data-i="bucket" title="Apply to selection (set / nudge)"></button><button id="sNone" data-i="x" title="Deselect"></button>
     </span>
     <span id="fbar" style="display:contents">
-      <span class="lab" id="fLab"></span><button id="fx" data-i="flipx" title="Flip left-right"></button><button id="fy" data-i="flipy" title="Flip top-bottom"></button><button id="r45" data-i="rot">45°</button><button id="r90" data-i="rot">90°</button>
-      <button id="fOk" data-i="check" class="on">Place</button><button id="fNo" data-i="x" title="Cancel"></button>
+      <span class="lab" id="fLab"></span><button id="fx" data-i="flipx" title="Flip left-right"></button><button id="fy" data-i="flipy" title="Flip top-bottom"></button><button id="r45" title="Turn 45°">45°</button><button id="r90" title="Turn 90°">90°</button>
+      <button id="fOk" data-i="check" class="on" title="Place"></button><button id="fNo" data-i="x" title="Cancel"></button>
     </span>
   </div>
   <div class="bar" id="vbar">
@@ -119,7 +133,7 @@ button.hov { outline: 2px solid #ff4fd8; outline-offset: -2px; }
   </div>
   <div class="bar" id="pbar" hidden>
     <button id="sw1" class="sw" title="Main colour (tap again to change it)"></button><button id="sw2" class="sw" title="Second colour, the gradient's end (tap it, then a palette colour)"></button><button id="swX" data-i="swap" title="Swap the two colours"></button>
-    <div id="pal"></div><button class="dd" data-menu="mPal" data-i="palette" title="Palette"></button>
+    <div id="pal"></div><button class="dd" data-menu="mPal" data-i="palette" title="Palette"></button><button class="dd" id="layB" data-menu="mLay" data-i="layers" title="Layers (the editor's own: the atlas gets them stacked)"></button>
   </div>
   <div class="bar" id="tools">
     <button data-t="pen" data-i="pen" class="on">Pen</button><button data-t="erase" data-i="eraser">Erase</button><button data-t="fill" data-i="bucket">Fill</button>
@@ -134,6 +148,11 @@ button.hov { outline: 2px solid #ff4fd8; outline-offset: -2px; }
 <div class="menu" id="mPal">
   <button id="pEx" data-i="pipette">From this sprite</button><button id="pAdd" data-i="plus">Add the main colour to its row</button><button id="pRow" data-i="layers">New row with the main colour</button>
   <button id="pDel" data-i="minus">Remove the main colour</button><button id="pSort" data-i="up">Sort its row dark → light</button><hr><button id="pClr" data-i="trash">Clear the palette</button>
+</div>
+<div class="menu" id="mLay">
+  <div class="h">Layers (top first)</div><div id="layL"></div><hr>
+  <button id="lAdd" data-i="plus" data-keep="1">New layer</button><button id="lDup" data-i="copy" data-keep="1">Duplicate</button><button id="lMrg" data-i="down" data-keep="1">Merge down</button>
+  <button id="lRen" data-i="pen">Rename…</button><button id="lDel" data-i="trash" data-keep="1">Delete layer</button>
 </div>
 <div class="menu" id="mEdit">
   <button id="eUndo" data-i="undo">Undo<span class="k">Ctrl Z</span></button><button id="eRedo" data-i="redo">Redo<span class="k">Ctrl ⇧ Z</span></button><hr>
@@ -152,6 +171,8 @@ button.hov { outline: 2px solid #ff4fd8; outline-offset: -2px; }
 <input type="file" id="sprFile" accept="image/png" hidden>
 <div class="menu" id="mView">
   <button id="ovl" data-i="color">Show the art</button><button id="msk" data-i="mask">Paint only on the art</button><button id="stray" data-i="mask">Show stray heights (magenta)</button><button id="grid" data-i="gridI">Pixel grid</button><button id="rdo" data-i="info">Pixel readout</button><button id="stk" data-i="layers">Stack the underside (3D)</button><hr>
+  <div class="h">Background</div>
+  <button id="bg0">Dark grid</button><button id="bg1">Light grid</button><button id="bg2">White</button><button id="bg3">Black</button><hr>
   <div class="h">Layout</div>
   <button id="lay0" data-i="layout">2D + 3D</button><button id="lay1" data-i="square">2D only</button><button id="lay2" data-i="cube">3D only</button><hr>
   <button id="vFit" data-i="fit">Fit to screen</button>
@@ -212,6 +233,7 @@ const ICONS = {
   shade: '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18Z" fill="currentColor"/>',
   blur: '<circle cx="12" cy="12" r="2"/><circle cx="6" cy="12" r="1.3"/><circle cx="18" cy="12" r="1.3"/><circle cx="12" cy="6" r="1.3"/><circle cx="12" cy="18" r="1.3"/><circle cx="7" cy="7" r=".8"/><circle cx="17" cy="7" r=".8"/><circle cx="7" cy="17" r=".8"/><circle cx="17" cy="17" r=".8"/>',
   grad: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M11 3v18"/><path d="M15 3v18" opacity=".5"/><path d="M19 3v18" opacity=".25"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>', eyeOff: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" opacity=".35"/><path d="M3 3l18 18"/>',
   alock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
 };
 /* tooltips: a hovering pen (or mouse) outlines the button under it and, held there a moment, says what it does */
@@ -220,6 +242,7 @@ const TIPS = { pen: 'Pen: paint (Set writes the value, Nudge adds to it)', erase
   set: 'Set: pen and fill write this value', nudge: 'Nudge: pen and fill add this (− lowers), once per pixel per stroke', vDn: 'One less', vUp: 'One more', val: 'Value / nudge step', tol: 'Fill tolerance: how close a pixel must be to join',
   chA: 'Art: paint the colours (atlas.png)', shade: 'Shade: moves colours along their palette row (lighter / darker), once per pixel per stroke', blur: 'Blur: softens what it passes over, once per pixel per stroke',
   grad: 'Gradient: drag across the selection (or the area you start in), main colour to second', gap: 'Gap between the array copies', pch: 'Which channels the paste / array writes', sel0: 'New selection', sel1: 'Add to the selection', sel2: 'Take from the selection' };
+const ico = k => `<svg viewBox="0 0 24 24">${ICONS[k]}</svg>`;
 const tipOf = e => TIPS[e.dataset.t] || TIPS[e.id] || TIPS[e.dataset.m] || (e.closest('#smode') && TIPS['sel' + e.dataset.m]) || e.dataset.tip || '';
 for (const e of document.querySelectorAll('[title]')) { e.dataset.tip = e.title; e.removeAttribute('title'); }     // ours, not the browser's
 let tipT = 0, tipE = null;
@@ -236,21 +259,38 @@ addEventListener('pointerover', e => {
 addEventListener('pointerout', e => { if (e.pointerType !== 'touch' && tipE && !tipE.contains(e.relatedTarget)) tipHide(); });
 addEventListener('pointerdown', tipHide, true);
 for (const b of document.querySelectorAll('[data-i]')) b.insertAdjacentHTML('afterbegin', `<svg viewBox="0 0 24 24">${ICONS[b.dataset.i]}</svg>`);
-const ART = 3, ACH = [3, 4, 5, 6], GRIDS = [2, 3, 4, 5, 6, 8, 10, 12, 16], MAXV = [63, 255, 255, 255, 255, 255, 255], NRANGE = [[8, 32, 32], [16, 64, 64], [32, 128, 128], [63, 255, 255]], HOLDMS = [0, 300, 500, 800], SIZES = [1, 2, 3, 5, 8], TOLS = [[0, 1, 2, 4, 8], [0, 8, 16, 32, 64], [0, 8, 16, 32, 64], [0, 8, 16, 32, 64]];     // per channel (3: art, the largest colour difference)
+const ART = 3, LMAX = 16, GRIDS = [2, 3, 4, 5, 6, 8, 10, 12, 16], MAXV = Array.from({ length: 3 + 4 * LMAX }, (_, c) => c ? 255 : 63), NRANGE = [[8, 32, 32], [16, 64, 64], [32, 128, 128], [63, 255, 255]], HOLDMS = [0, 300, 500, 800], SIZES = [1, 2, 3, 5, 8], TOLS = [[0, 1, 2, 4, 8], [0, 8, 16, 32, 64], [0, 8, 16, 32, 64], [0, 8, 16, 32, 64]];     // per channel (3: art, the largest colour difference)
 let POOL0 = 0, POOL1 = 0, CFG0 = 0;     // the underside pool's pixel range (art isn't painted there)
 let FBASE = '', W = 0, H = 0, FMETA = {}, META = {}, NAMES = [], COL0 = null, COL = null, CH = null, FILE = null, CFG = {}, CFGS = null, GUIDE = null, GSRC = null;     /* GUIDE: a part's pixel -> its underside's guide pixel (or -1) */
      // FMETA the table as atlas.json (FBASE: the file's); META its sprites + the undersides; COL the art + their guides
-const DEF = { stray: true, artAll: false, hold: 2, pickAll: false, buzz: true, nr: 1, grid: true, rdo: true, stack: true, alock: false, glock: false, gsz: 2, gdi: false, look: 0, sky: 0, sunAz: 135, sunEl: 40, reflK: 100, bloomK: 100 };
+const DEF = { stray: true, artAll: false, hold: 2, pickAll: false, buzz: true, nr: 1, grid: true, rdo: true, stack: true, alock: false, glock: false, gsz: 2, gdi: false, bg: 0, look: 0, sky: 0, sunAz: 135, sunEl: 40, reflK: 100, bloomK: 100 };
 const st = { ...DEF, spr: '', from: '', ch: 0, tool: 'pen', prev: 'pen', mode: 'set', val: [8, 100, 0], nud: [1, 8, 8], size: 0, tol: [1, 1, 1, 0], c1: [200, 70, 60], c2: [40, 44, 60], act: 0, pal: [], prow: -1, shd: 1, ovl: true, mask: true, lay: 0, smode: 0, gap: 0, pch: 0 };
 const GAPS = [0, 1, 2, 3, 4, 6, 8, 12];
 try { Object.assign(st, JSON.parse(localStorage.getItem('hp-prefs') || '{}')); } catch (e) {}
 if (st.tool === 'piv') st.tool = 'pen';
-for (const k of ['look', 'sky', 'sunAz', 'sunEl', 'reflK', 'bloomK']) if (st[k] === undefined) st[k] = DEF[k];
+for (const k of ['look', 'sky', 'sunAz', 'sunEl', 'reflK', 'bloomK', 'bg']) if (st[k] === undefined) st[k] = DEF[k];
 if (st.tol.length < 4) st.tol[3] = 0;
 if (st.tool === 'up' || st.tool === 'down') { st.tool = 'pen'; st.mode = 'nudge'; }     // the old +1 / -1 tools
 const savePrefs = () => { try { localStorage.setItem('hp-prefs', JSON.stringify(st)); } catch (e) {} };
 const toast = (t) => { const e = $('toast'); e.textContent = t; e.style.opacity = 1; clearTimeout(toast.t); toast.t = setTimeout(() => e.style.opacity = 0, 1600); };
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+/* art layers, the editor's own: each a slot of four planes, CH[3 + 4s .. 6 + 4s] (slot 0: the file's art). What's shown,
+   saved to the atlas and stood on by the heights is the visible ones stacked (COL0). Adding, deleting, merging, moving and
+   renaming are undoable steps (order and names go with the step); showing / hiding and the layer worked on aren't */
+let LAY = { order: [0], name: { 0: 'Art' }, hid: [], act: 0 }, VIS = [0], ACH = [3, 4, 5, 6];
+const lbase = s => 3 + 4 * s, layKey = () => JSON.stringify({ order: LAY.order, name: LAY.name });
+function layUse() {
+  for (const s of LAY.order) while (CH.length < lbase(s) + 4) CH.push(new Uint8Array(W * H));
+  if (!LAY.order.includes(LAY.act)) LAY.act = LAY.order[LAY.order.length - 1];
+  VIS = LAY.order.filter(s => !LAY.hid.includes(s)); const b = lbase(LAY.act); ACH = [b, b + 1, b + 2, b + 3];
+}
+/* p (r g b a) with a colour over it (straight alpha) */
+function blend(p, R, G, B, A) {
+  if (!A) return; if (A === 255 || !p[3]) { p[0] = R; p[1] = G; p[2] = B; p[3] = A; return; }
+  const t = p[3] * (255 - A) / 255, n = A + t; p[0] = (R * A + p[0] * t) / n; p[1] = (G * A + p[1] * t) / n; p[2] = (B * A + p[2] * t) / n; p[3] = n;
+}
+const P4 = [0, 0, 0, 0];
+function comp(i) { P4.fill(0); for (const s of VIS) { const c = lbase(s); blend(P4, CH[c][i], CH[c + 1][i], CH[c + 2][i], CH[c + 3][i]); } COL0.set(P4, i * 4); }
 
 /* ---------------- storage: IndexedDB, saved shortly after every change */
 function db() { return new Promise((res, rej) => { const r = indexedDB.open('heightpainter', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
@@ -261,8 +301,8 @@ async function kv(k, v) {
   } catch (e) { return null; }
 }
 let saveT = 0;
-function changed() { $('status').textContent = '● unsaved'; clearTimeout(saveT); saveT = setTimeout(saveNow, 400); }
-async function saveNow() { clearTimeout(saveT); const ok = await kv('work', { meta: FMETA, base: FBASE, w: W, h: H, ch: CH.map(a => a.slice()), t: Date.now() }); $('status').textContent = ok === null ? '⚠ not saved' : 'saved ✓'; }
+function changed() { $('status').textContent = '●'; clearTimeout(saveT); saveT = setTimeout(saveNow, 400); }
+async function saveNow() { clearTimeout(saveT); const ok = await kv('work', { meta: FMETA, base: FBASE, w: W, h: H, ch: CH.map(a => a.slice()), lay: LAY, t: Date.now() }); $('status').textContent = ok === null ? '⚠ not saved' : '✓'; }
 addEventListener('visibilitychange', () => { if (document.hidden && $('status').textContent.startsWith('●')) saveNow(); });
 
 /* ---------------- loading */
@@ -285,14 +325,15 @@ async function load() {
   const at = await exactPx('../atlas.png'); W = at.w; H = at.h; COL0 = at.d;
   const m = await exactPx('../atlas_m.png'); if (m.w !== W || m.h !== H) throw new Error(`atlas_m.png is ${m.w}×${m.h}, the art ${W}×${H}`);
   FILE = fromRGB(m.d); FILE.push(...artPlanes(COL0));     // channels 3..6: the art's R G B A
-  CH = FILE.map(a => a.slice()); COL = COL0.slice(); CFG = cfgRead(); if (!CFG) throw new Error('atlas_m.png has no table (atlas_table.py)'); FMETA = metaOf(CFG); FBASE = JSON.stringify(FMETA);
+  CH = FILE.map(a => a.slice()); layUse(); COL = COL0.slice(); CFG = cfgRead(); if (!CFG) throw new Error('atlas_m.png has no table (atlas_table.py)'); FMETA = metaOf(CFG); FBASE = JSON.stringify(FMETA);
   const s = await kv('work');
   if (s && s.ch) {
     if (s.w === W && s.h >= H && (s.base ? s.base === FBASE : s.h === H && JSON.stringify(s.meta) === FBASE)) {     // the same file under it (grown here, maybe)
-      if (s.h > H) growFile(s.h - H); CH = s.ch; COL0 = new Uint8ClampedArray(W * H * 4); COL = COL0.slice(); toast('Restored your work');
+      if (s.h > H) growFile(s.h - H); CH = s.ch; if (s.lay) LAY = s.lay; COL0 = new Uint8ClampedArray(W * H * 4); COL = COL0.slice(); toast('Restored your work');
     }
     else {     // the atlas changed under the work: each sprite (and the pool) carried over by name where its size is the same, the
                // sprites made here into free space, and the undersides / what stands on what
+      if (s.lay) { LAY = s.lay; while (CH.length < s.ch.length) CH.push(new Uint8Array(W * H)); } layUse();
       let n = 0; for (const k in FMETA) { const a = s.meta[k], b = FMETA[k]; if (k !== '_cfg' && a && a[2] === b[2] && a[3] === b[3]) { copyRect(CH, s.ch, s.w, a, b); n++; } }
       const o = savedCfg(s), c = { ...CFG, spr: { ...CFG.spr } };
       if (o) { c.under = o.under || {}; c.use = o.use || {}; } begin(); cfgWrite(c); stroke = null;
@@ -304,7 +345,7 @@ async function load() {
       toast('Atlas changed: carried ' + n + ' sprites over'); saveNow();
     }
   }
-  for (let i = 0; i < W * H; i++) for (let k = 0; k < 4; k++) COL0[i * 4 + k] = CH[3 + k][i];     // the art as restored
+  layUse(); for (let i = 0; i < W * H; i++) comp(i);     // the art as restored
   syncCfg(); fitUnders(); ui(); fit();
 }
 
@@ -411,7 +452,7 @@ function freeSpot(w, h) {
   const R = Object.keys(FMETA).filter(n => n[0] !== '_').map(n => FMETA[n]), top = FMETA._pool[1] - 1;
   for (let y = 0; y + h <= top; y++) for (let x = 0; x + w <= W; x++) {
     const r = R.find(r => x < r[0] + r[2] + 1 && r[0] < x + w + 1 && y < r[1] + r[3] + 1 && r[1] < y + h + 1); if (r) { x = r[0] + r[2]; continue; }
-    let ok = true; for (let j = y; j < y + h && ok; j++) for (let i = x; i < x + w; i++) if (CH[6][j * W + i]) { ok = false; break; }
+    let ok = true; for (let j = y; j < y + h && ok; j++) for (let i = x; i < x + w; i++) if (COL0[(j * W + i) * 4 + 3]) { ok = false; break; }
     if (ok) return [x, y];
   }
   return null;
@@ -424,7 +465,7 @@ function growFile(dh) {      // the file's copy grown as the work was, its table
 }
 function growAtlas(dh, quiet) {
   pasteEnd(false); const c = cfgRead() || CFG, P = c.pool[0]; CH = CH.map(a => growRows(a, P, dh)); growFile(dh); GUIDE = null; full2 = true;
-  COL0 = new Uint8ClampedArray(W * H * 4); for (let i = 0; i < W * H; i++) for (let k = 0; k < 4; k++) COL0[i * 4 + k] = CH[3 + k][i]; COL = COL0.slice();
+  COL0 = new Uint8ClampedArray(W * H * 4); for (let i = 0; i < W * H; i++) comp(i); COL = COL0.slice();
   begin(); cfgWrite({ ...c, pool: [P + dh, c.pool[1]] }); stroke = null; FMETA = metaOf(cfgRead());
   UNDO.length = REDO.length = 0; sel = selM = null; CFGS = null; if (quiet) return; syncCfg(); changed(); toast(`The atlas grew ${dh} rows: ${W}×${H}`);
 }
@@ -440,7 +481,7 @@ async function newSprite(f) {
   const name = askName(f.name.replace(/\.png$/i, '')); if (!name) return;
   let at = freeSpot(w, h); if (!at) { growAtlas(Math.ceil((h + 2) / 16) * 16); at = freeSpot(w, h); } if (!at) { toast('No room for it'); return; }
   const ok = tableEdit(c => { c.spr[name] = [at[0], at[1], w, h, w / 2, h / 2]; }, `New sprite ${name}: ${w}×${h}`, () => {
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const s = ((y0 + y) * im.w + x0 + x) * 4; if (!im.d[s + 3]) continue; const i = (at[1] + y) * W + at[0] + x; for (let k = 0; k < 4; k++) put(i, im.d[s + k], 3 + k); }
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const s = ((y0 + y) * im.w + x0 + x) * 4; if (!im.d[s + 3]) continue; const i = (at[1] + y) * W + at[0] + x; for (let k = 0; k < 4; k++) put(i, im.d[s + k], ACH[k]); }
   });
   if (ok) pickSpr(name);
 }
@@ -451,11 +492,11 @@ function renameSpr() {
 function deleteSpr() {
   const n = st.spr, m = FMETA[n]; if (!m || n.startsWith('under_') || !confirm(`Delete ${n}, its pixels and its place in the atlas? (Undo brings it back)`)) return;
   if (tableEdit(c => { delete c.spr[n]; delete c.use[n]; for (const k in c.use) if (c.use[k] === n) delete c.use[k]; }, 'Deleted ' + n,
-    () => { for (let y = m[1]; y < m[1] + m[3]; y++) for (let x = m[0]; x < m[0] + m[2]; x++) for (let k = 0; k < 7; k++) put(y * W + x, 0, k); })) pickSpr('');
+    () => { for (let y = m[1]; y < m[1] + m[3]; y++) for (let x = m[0]; x < m[0] + m[2]; x++) for (let k = 0; k < CH.length; k++) put(y * W + x, 0, k); })) pickSpr('');
 }
 function fitSpr() {     // the rect down to the art's bounds (the pivot stays put); heights past them go
   const n = st.spr, m = FMETA[n]; if (!m || n.startsWith('under_')) return; let x0 = m[2], y0 = m[3], x1 = -1, y1 = -1;
-  for (let y = 0; y < m[3]; y++) for (let x = 0; x < m[2]; x++) if (CH[6][(m[1] + y) * W + m[0] + x]) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  for (let y = 0; y < m[3]; y++) for (let x = 0; x < m[2]; x++) if (COL0[((m[1] + y) * W + m[0] + x) * 4 + 3]) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
   if (x1 < 0) { toast('No art in it'); return; } const w = x1 - x0 + 1, h = y1 - y0 + 1; if (w === m[2] && h === m[3]) { toast('It already fits its art'); return; }
   if (tableEdit(c => { c.spr[n] = [m[0] + x0, m[1] + y0, w, h, m[4] - x0, m[5] - y0]; }, `${n}: ${m[2]}×${m[3]} → ${w}×${h}`,
     () => { for (let y = 0; y < m[3]; y++) for (let x = 0; x < m[2]; x++) if (x < x0 || x > x1 || y < y0 || y > y1) for (let k = 0; k < 3; k++) put((m[1] + y) * W + m[0] + x, 0, k); })) fit();
@@ -523,7 +564,7 @@ const rect = () => st.spr ? META[st.spr].slice(0, 4) : [0, 0, W, H];
 let sel = null, selM = null;     // the selection: a mask (marquees added and taken away) and its bounds [x0, y0, x1, y1]
 const inRect = (x, y) => { const [rx, ry, rw, rh] = rect(); return x >= rx && y >= ry && x < rx + rw && y < ry + rh; };
 const canP = (x, y) => { if (!inRect(x, y)) return false; const i = y * W + x; if (i >= CFG0) return false;     // where a paste / array may land (never the table)
-  return st.ch === ART ? (i < POOL0 || i >= POOL1) && (!st.alock || COL0[i * 4 + 3] > 0) : !st.mask || COL[i * 4 + 3] > 0; };     // art: alpha lock; heights: on the art
+  return st.ch === ART ? (i < POOL0 || i >= POOL1) && (!st.alock || CH[ACH[3]][i] > 0) : !st.mask || COL[i * 4 + 3] > 0; };     // art: alpha lock; heights: on the art
 const can = (x, y) => canP(x, y) && (!selM || selM[y * W + x] === 1);
 function selBounds() {
   let x0 = W, y0 = H, x1 = -1, y1 = -1;
@@ -533,7 +574,7 @@ function selBounds() {
 /* undo: a stroke remembers each pixel's first value, keyed channel x W x H + index, so one step can span channels */
 let stroke = null; const UNDO = [], REDO = [];
 const NN = () => W * H;
-function begin() { stroke = new Map(); }
+function begin() { stroke = new Map(); stroke.lay = layKey(); }
 function put(i, v, c = st.ch) {
   const a = CH[c]; v = clamp(v, 0, MAXV[c]); if (a[i] === v) return; const k = c * NN() + i; if (!stroke.has(k)) stroke.set(k, a[i]); a[i] = v;
   touch(i);
@@ -541,14 +582,15 @@ function put(i, v, c = st.ch) {
 const was = (i, c = st.ch) => { const k = c * NN() + i; return stroke.has(k) ? stroke.get(k) : CH[c][i]; };
 function end() {
   if (!stroke) return;
-  if (stroke.size) { const idx = Int32Array.from(stroke.keys()), old = Uint8Array.from(stroke.values()), nw = new Uint8Array(idx.length); idx.forEach((k, j) => { nw[j] = CH[k / NN() | 0][k % NN()]; }); UNDO.push({ idx, old, nw }); if (UNDO.length > 200) UNDO.shift(); REDO.length = 0; changed(); }
+  const lk = layKey(), ly = lk !== stroke.lay ? [stroke.lay, lk] : null;
+  if (stroke.size || ly) { const idx = Int32Array.from(stroke.keys()), old = Uint8Array.from(stroke.values()), nw = new Uint8Array(idx.length); idx.forEach((k, j) => { nw[j] = CH[k / NN() | 0][k % NN()]; }); UNDO.push({ idx, old, nw, ly }); if (UNDO.length > 200) UNDO.shift(); REDO.length = 0; changed(); }
   stroke = null;
 }
-function unput() { for (const [k, v] of stroke) { CH[k / NN() | 0][k % NN()] = v; touch(k % NN()); } stroke.clear(); }     // back to how it was, stroke still open
+function unput() { for (const [k, v] of stroke) { CH[k / NN() | 0][k % NN()] = v; touch(k % NN()); } stroke.clear(); if (layKey() !== stroke.lay) layTo(stroke.lay); }     // back to how it was, stroke still open
 function cancel() { if (!stroke) return; unput(); stroke = null; }
-function history(from, to, key) { if (flt || stroke) return; const e = from.pop(); if (!e) return; e.idx.forEach((k, j) => { CH[k / NN() | 0][k % NN()] = e[key][j]; touch(k % NN()); }); to.push(e); changed(); syncCfg(); ui(); }     // the settings may have changed
+function history(from, to, key) { if (flt || stroke) return; const e = from.pop(); if (!e) return; e.idx.forEach((k, j) => { CH[k / NN() | 0][k % NN()] = e[key][j]; touch(k % NN()); }); if (e.ly) layTo(e.ly[key === 'old' ? 0 : 1]); to.push(e); changed(); syncCfg(); ui(); }     // the settings may have changed
 function touch(i) {
-  const o = i * 4, g = i >= POOL0 && i < POOL1; for (let k = 0; k < 4; k++) { COL0[o + k] = CH[3 + k][i]; if (!g) COL[o + k] = CH[3 + k][i]; }     // the art as shown (the pool keeps its guides)
+  const o = i * 4; comp(i); if (i < POOL0 || i >= POOL1) for (let k = 0; k < 4; k++) COL[o + k] = COL0[o + k];     // the art as shown (the pool keeps its guides)
   const d = GUIDE ? GUIDE[i] : -1; if (d >= 0) guide(d);     // the art under an underside: its guide follows
   if (!full2) { paint2(i); if (d >= 0) paint2(d); } dirty3 = true;
 }
@@ -579,8 +621,9 @@ function bulk(f) {        // the selection, else the sprite (else the atlas)
 /* ---------------- art: the colour planes (channels 3..6), the palette (rows of colours, dark to light) */
 const hx = c => '#' + c.slice(0, 3).map(v => v.toString(16).padStart(2, '0')).join(''), rgb = h => [1, 3, 5].map(k => parseInt(h.slice(k, k + 2), 16)), lum = c => c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11;
 const C1 = () => [...st.c1, 255];
-const putC = (i, c) => { for (let k = 0; k < 4; k++) put(i, c[k], 3 + k); };
-const colAt = (i, before) => ACH.map(c => before ? was(i, c) : CH[c][i]);     // before: as it was when this stroke began
+const putC = (i, c) => { for (let k = 0; k < 4; k++) put(i, c[k], ACH[k]); };     // on the layer worked on
+const colAt = (i, before) => ACH.map(c => before ? was(i, c) : CH[c][i]);     // the layer worked on (before: as it was when this stroke began)
+const seen = i => Array.from(COL0.subarray(i * 4, i * 4 + 4));     // the layers as shown
 const DONE = new Set();     // the pixels shade / blur already did this stroke
 function artApply(x, y) {
   const t = st.tool;
@@ -601,10 +644,10 @@ function shadeOf(c, d) {
 function blurAt(i) {
   const x = i % W, y = (i - x) / W; let r = 0, g = 0, b = 0, a = 0, n = 0;
   for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-    const X = x + dx, Y = y + dy; if (!inRect(X, Y)) continue; const j = Y * W + X, w = dx && dy ? 1 : dx || dy ? 2 : 4, A = was(j, 6) * w;
-    r += was(j, 3) * A; g += was(j, 4) * A; b += was(j, 5) * A; a += A; n += w * 255;
+    const X = x + dx, Y = y + dy; if (!inRect(X, Y)) continue; const j = Y * W + X, w = dx && dy ? 1 : dx || dy ? 2 : 4, A = was(j, ACH[3]) * w;
+    r += was(j, ACH[0]) * A; g += was(j, ACH[1]) * A; b += was(j, ACH[2]) * A; a += A; n += w * 255;
   }
-  return a ? [r / a, g / a, b / a, st.alock ? was(i, 6) : a / n * 255].map(Math.round) : [0, 0, 0, 0];
+  return a ? [r / a, g / a, b / a, st.alock ? was(i, ACH[3]) : a / n * 255].map(Math.round) : [0, 0, 0, 0];
 }
 /* the area a fill / gradient covers: alike pixels joined to (x, y) (Tol: the largest channel difference; clear joins clear) */
 function regionArt(x, y) {
@@ -664,13 +707,13 @@ async function pngRGBA(w, h, px) {
   const hd = new Uint8Array(13), hv = new DataView(hd.buffer); hv.setUint32(0, w); hv.setUint32(4, h); hd[8] = 8; hd[9] = 6;
   return new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', hd), chunk('IDAT', z), chunk('IEND', new Uint8Array(0))], { type: 'image/png' });
 }
-const artPng = () => { const px = new Uint8Array(W * H * 4); for (let i = 0; i < W * H; i++) for (let k = 0; k < 4; k++) px[i * 4 + k] = CH[3 + k][i]; return pngRGBA(W, H, px); };
+const artPng = () => { const h = LAY.order.length - VIS.length; if (h) toast(h + ' hidden layer' + (h > 1 ? 's' : '') + ' left out'); return pngRGBA(W, H, new Uint8Array(COL0)); };     // the layers as shown
 /* clips: the selection's pixels (all seven channels) with their place; turned copies; stamped down where they may land */
 let clip = null, flt = null, arr = null;
 const blank = (x, y, w, h, hts) => ({ x, y, w, h, hts, on: new Uint8Array(w * h), v: [0, 1, 2, 3, 4, 5, 6].map(() => new Uint8Array(w * h)) });     // hts: heights go with the art
 function grab() {
   const [rx, ry, rw, rh] = rect(), [x0, y0, x1, y1] = sel || [rx, ry, rx + rw - 1, ry + rh - 1], c = blank(x0, y0, x1 - x0 + 1, y1 - y0 + 1, true);
-  for (let y = 0; y < c.h; y++) for (let x = 0; x < c.w; x++) { if (!can(x0 + x, y0 + y)) continue; const i = (y0 + y) * W + x0 + x, j = y * c.w + x; c.on[j] = 1; for (let k = 0; k < 7; k++) c.v[k][j] = CH[k][i]; }
+  for (let y = 0; y < c.h; y++) for (let x = 0; x < c.w; x++) { if (!can(x0 + x, y0 + y)) continue; const i = (y0 + y) * W + x0 + x, j = y * c.w + x; c.on[j] = 1; for (let k = 0; k < 7; k++) c.v[k][j] = CH[k < 3 ? k : ACH[k - 3]][i]; }     // the art: the layer worked on
   return c;
 }
 function flipped(c, fx, fy) {     // mirrored left-right / top-bottom in place
@@ -689,11 +732,11 @@ function rotated(c, deg) {        // turned about its centre, nearest pixel (qua
   }
   return o;
 }
-const ALL7 = [0, 1, 2, 3, 4, 5, 6];
+const ALL7 = [0, 1, 2, 3, 4, 5, 6], ART4 = [3, 4, 5, 6], plane = k => k < 3 ? k : ACH[k - 3];     // a clip's channel k: its plane now
 function stamp(c, ox, oy, mark, clear) {           // mark: grow the selection mask over it instead of writing
   for (let y = 0; y < c.h; y++) for (let x = 0; x < c.w; x++) {
     const tx = ox + x, ty = oy + y, j = y * c.w + x; if (!c.on[j] || !canP(tx, ty)) continue; const i = ty * W + tx;
-    if (mark) mark[i] = 1; else if (st.ch === ART) for (const k of c.hts && st.artAll ? ALL7 : ACH) put(i, clear ? 0 : c.v[k][j], k);     // art: the colours (and, if asked, the heights under them)
+    if (mark) mark[i] = 1; else if (st.ch === ART) for (const k of c.hts && st.artAll ? ALL7 : ART4) put(i, clear ? 0 : c.v[k][j], plane(k));     // art: the colours (and, if asked, the heights under them)
     else for (let k = 0; k < 3; k++) if (!st.pch || st.pch === k + 1) put(i, clear ? 0 : c.v[k][j], k);     // heights: all channels, or just one; clear: zero instead
   }
 }
@@ -723,14 +766,23 @@ const v2 = $('v2'), g2 = v2.getContext('2d'), buf = document.createElement('canv
 let bd = null, full2 = true, z2 = 8, ox2 = 0, oy2 = 0, cur = null, need2 = true;
 const TINT = [null, [90, 230, 255], [255, 150, 40]];
 function paint2(i) {
-  const v = CH[st.ch][i] / MAXV[st.ch], o = i * 4, al = COL[o + 3], d = bd.data; let r, g, b;
-  if (st.ch === ART) { const a = al / 255, ck = (i % W + (i / W | 0)) & 1 ? 34 : 26; d[o] = ck + (COL[o] - ck) * a; d[o + 1] = ck + (COL[o + 1] - ck) * a; d[o + 2] = ck + (COL[o + 2] - ck) * a; d[o + 3] = 255; need2 = true; return; }     // the art over a checker
+  const v = CH[st.ch][i] / MAXV[st.ch], o = i * 4, al = COL[o + 3], d = bd.data; let r, g, b, a = 255;
+  if (st.ch === ART) { d[o] = COL[o]; d[o + 1] = COL[o + 1]; d[o + 2] = COL[o + 2]; d[o + 3] = al; need2 = true; return; }     // the art as it is, alpha and all, over the background
   if (st.ch && v > 0) { const t = TINT[st.ch]; r = 40 + t[0] * v * 0.85; g = 44 + t[1] * v * 0.85; b = 52 + t[2] * v * 0.85; }
   else [r, g, b] = ramp(CH[0][i]);
-  if (!al) { if (v > 0 && st.stray) { r = 200 * v + 40; g = 30; b = 160 * v + 40; } else { r = 21; g = 23; b = 27; } }      // painted outside the art: magenta
+  if (!al) { if (v > 0 && st.stray) { r = 200 * v + 40; g = 30; b = 160 * v + 40; } else a = 0; }      // painted outside the art: magenta
   else if (st.ovl) { const k = 0.5; r = r * (1 - k) + COL[o] * k; g = g * (1 - k) + COL[o + 1] * k; b = b * (1 - k) + COL[o + 2] * k; }
-  d[o] = r; d[o + 1] = g; d[o + 2] = b; d[o + 3] = 255; need2 = true;
+  d[o] = r; d[o + 1] = g; d[o + 2] = b; d[o + 3] = a; need2 = true;
 }
+/* behind the art: a grid (8 px squares, fixed to the screen) or a flat colour */
+const BGS = [['#3b3e45', '#2b2d33'], ['#ffffff', '#cfd1d6'], ['#ffffff'], ['#000000']], BGN = ['Dark grid', 'Light grid', 'White', 'Black'];
+let bgPat = null, bgK = -1;
+function bgFill() {
+  if (bgK === st.bg) return bgPat; bgK = st.bg; const c = BGS[st.bg] || BGS[0]; if (c.length === 1) return bgPat = c[0];
+  const t = document.createElement('canvas'); t.width = t.height = 16; const g = t.getContext('2d'); g.fillStyle = c[0]; g.fillRect(0, 0, 16, 16); g.fillStyle = c[1]; g.fillRect(0, 0, 8, 8); g.fillRect(8, 8, 8, 8);
+  return bgPat = g2.createPattern(t, 'repeat');
+}
+const bgCss = k => { const c = BGS[k]; return c.length === 1 ? c[0] : `repeating-conic-gradient(${c[1]} 0 25%, ${c[0]} 0 50%) 0 0 / 8px 8px`; };
 function ramp(h) { if (h <= 24) { const t = h / 24; return [48 + 207 * t, 52 + 203 * t, 64 + 191 * t]; } const t = (h - 24) / 39; return [255, 255 - 105 * t, 255 - 215 * t]; }   // greys to 24 voxels, then to orange
 function rebuild2() { if (buf.width !== W || buf.height !== H) { buf.width = W; buf.height = H; bd = bg.createImageData(W, H); } for (let i = 0; i < W * H; i++) paint2(i); full2 = false; }
 function fit() {
@@ -744,11 +796,12 @@ function draw2() {
   if (bd) bg.putImageData(bd, 0, 0);
   g2.setTransform(1, 0, 0, 1, 0, 0); g2.fillStyle = '#0d0e11'; g2.fillRect(0, 0, v2.width, v2.height); g2.setTransform(dpr, 0, 0, dpr, 0, 0);
   const [rx, ry, rw, rh] = rect(); g2.imageSmoothingEnabled = false;
+  g2.fillStyle = bgFill(); g2.fillRect(ox2 + rx * z2, oy2 + ry * z2, rw * z2, rh * z2);
   g2.drawImage(buf, rx, ry, rw, rh, ox2 + rx * z2, oy2 + ry * z2, rw * z2, rh * z2);
   if (z2 >= 10 && st.grid) {          // pixel grid on what's on screen
     const x0 = Math.max(rx, Math.floor(-ox2 / z2)), x1 = Math.min(rx + rw, Math.ceil((cw - ox2) / z2)), y0 = Math.max(ry, Math.floor(-oy2 / z2)), y1 = Math.min(ry + rh, Math.ceil((chh - oy2) / z2));
     g2.beginPath(); for (let x = x0; x <= x1; x++) { g2.moveTo(ox2 + x * z2 + 0.5, oy2 + y0 * z2); g2.lineTo(ox2 + x * z2 + 0.5, oy2 + y1 * z2); } for (let y = y0; y <= y1; y++) { g2.moveTo(ox2 + x0 * z2, oy2 + y * z2 + 0.5); g2.lineTo(ox2 + x1 * z2, oy2 + y * z2 + 0.5); }
-    g2.strokeStyle = 'rgba(255,255,255,0.07)'; g2.lineWidth = 1; g2.stroke();
+    g2.strokeStyle = 'rgba(128,128,128,0.22)'; g2.lineWidth = 1; g2.stroke();
   }
   if (st.ch === ART && st.glock && z2 * GRIDS[st.gsz] >= 4) {          // grid lock's cells
     const g = GRIDS[st.gsz], x0 = Math.max(rx, Math.floor(-ox2 / z2)), x1 = Math.min(rx + rw, Math.ceil((cw - ox2) / z2)), y0 = Math.max(ry, Math.floor(-oy2 / z2)), y1 = Math.min(ry + rh, Math.ceil((chh - oy2) / z2));
@@ -786,7 +839,7 @@ const foot = () => ({ fill: 1, pick: 1, sel: 1, arr: 1, grad: 1, piv: 1 })[st.to
 function info() {
   const e = $('info'); if (!cur || !CH || cur[0] < 0 || cur[1] < 0 || cur[0] >= W || cur[1] >= H) { e.style.display = 'none'; return; }     // off the atlas: nothing to read
   const i = cur[1] * W + cur[0], b = v2.getBoundingClientRect(); e.style.display = 'block'; e.style.left = (b.left + 6) + 'px'; e.style.top = (b.top + 6) + 'px';
-  e.textContent = `${cur[0] - rect()[0]}, ${cur[1] - rect()[1]}   H ${CH[0][i]}  Refl ${CH[1][i]}  Glow ${CH[2][i]}` + (st.ch === ART ? `   ${hx(colAt(i))} α${CH[6][i]}` : '');
+  e.textContent = `${cur[0] - rect()[0]}, ${cur[1] - rect()[1]}   H ${CH[0][i]}  Refl ${CH[1][i]}  Glow ${CH[2][i]}` + (st.ch === ART ? `   ${hx(seen(i))} α${COL0[i * 4 + 3]}` : '');
 }
 /* fingers: one paints, two pan / zoom (and take back what the first one started); mouse: wheel zooms, right / middle drag
    pans. A hovering pen or mouse moves the outline, so you see the pixel before you touch */
@@ -795,14 +848,14 @@ let holdT = 0, holdAt = null;
 const holdOff = () => { clearTimeout(holdT); holdT = 0; };
 function pickAt(q) {
   if (q[0] < 0 || q[1] < 0 || q[0] >= W || q[1] >= H) return false; const i = q[1] * W + q[0];
-  if (st.ch === ART) { const c = colAt(i); if (!c[3]) return false; setColor(c); return true; }     // art: the colour (to the active swatch)
+  if (st.ch === ART) { const c = seen(i); if (!c[3]) return false; setColor(c); return true; }     // art: the colour shown (to the active swatch)
   for (let c = 0; c < 3; c++) if (c === st.ch || st.pickAll) st.val[c] = CH[c][i];
   st.mode = 'set'; ui(); return true;
 }
 function held(q) {
   holdT = 0; if (!painting || P2.size !== 1) return;
   abort(); if (!pickAt(q)) return; hold = true;     // the rest of this touch does nothing
-  const i = q[1] * W + q[0]; toast(st.ch === ART ? 'Picked ' + hx(colAt(i)) : st.pickAll ? `Picked H ${CH[0][i]} · Refl ${CH[1][i]} · Glow ${CH[2][i]}` : `Picked ${['Height', 'Refl', 'Glow'][st.ch]} ${CH[st.ch][i]}`);
+  const i = q[1] * W + q[0]; toast(st.ch === ART ? 'Picked ' + hx(seen(i)) : st.pickAll ? `Picked H ${CH[0][i]} · Refl ${CH[1][i]} · Glow ${CH[2][i]}` : `Picked ${['Height', 'Refl', 'Glow'][st.ch]} ${CH[st.ch][i]}`);
   if (st.buzz && navigator.vibrate) navigator.vibrate(18);
 }
 const atPx = (x, y) => [Math.floor((x - ox2) / z2), Math.floor((y - oy2) / z2)];
@@ -1088,18 +1141,63 @@ const up3 = e => { P3.delete(e.pointerId); g3 = { ...cam, pts: new Map([...P3].m
 v3.addEventListener('pointerup', up3); v3.addEventListener('pointercancel', up3);
 v3.addEventListener('wheel', e => { e.preventDefault(); cam.dist = clamp(cam.dist * Math.exp(e.deltaY * 0.0015), 5, 3000); need3 = true; }, { passive: false });
 
+/* ---------------- layers */
+function layTo(k) { const o = JSON.parse(k); LAY.order = o.order; LAY.name = o.name; layUse(); recomp(); }
+function recomp() { for (let i = 0; i < W * H; i++) comp(i); CFGS = null; syncCfg(); full2 = dirty3 = true; }
+/* one undoable step: f changes LAY (and paints through put) */
+function layOp(f, msg) { pasteEnd(false); begin(); if (f() === false) { cancel(); return; } layUse(); end(); recomp(); ui(); if (msg) toast(msg); }
+function layNew(from) {     // a new layer over the one worked on (from: a copy of it)
+  const s = [...Array(LMAX).keys()].find(s => !LAY.order.includes(s)); if (s === undefined) { toast(LMAX + ' layers at most'); return; }
+  layOp(() => {
+    while (CH.length < lbase(s) + 4) CH.push(new Uint8Array(W * H)); const b = lbase(s), f = lbase(LAY.act);
+    for (let k = 0; k < 4; k++) { const a = CH[b + k], src = CH[f + k]; for (let i = 0; i < W * H; i++) { const v = from ? src[i] : 0; if (a[i] !== v) put(i, v, b + k); } }
+    const n = from ? LAY.name[LAY.act] + ' copy' : 'Layer ' + (LAY.order.length + 1);
+    LAY.order = [...LAY.order]; LAY.order.splice(LAY.order.indexOf(LAY.act) + 1, 0, s); LAY.name = { ...LAY.name, [s]: n }; LAY.hid = LAY.hid.filter(h => h !== s); LAY.act = s;
+  }, from ? 'Duplicated' : 'New layer');
+}
+function layDel() {
+  if (LAY.order.length < 2) { toast('The last layer stays'); return; } const j = LAY.order.indexOf(LAY.act);
+  layOp(() => { LAY.order = LAY.order.filter(s => s !== LAY.act); LAY.act = LAY.order[Math.max(0, j - 1)]; }, 'Layer deleted (undo brings it back)');
+}
+function layMerge() {     // the one worked on into the one under it
+  const j = LAY.order.indexOf(LAY.act); if (j < 1) { toast('Nothing under it'); return; } const lo = LAY.order[j - 1], a = lbase(LAY.act), b = lbase(lo), p = [0, 0, 0, 0];
+  layOp(() => {
+    for (let i = 0; i < W * H; i++) { if (!CH[a + 3][i]) continue; for (let k = 0; k < 4; k++) p[k] = CH[b + k][i]; blend(p, CH[a][i], CH[a + 1][i], CH[a + 2][i], CH[a + 3][i]); for (let k = 0; k < 4; k++) put(i, Math.round(p[k]), b + k); }
+    LAY.order = LAY.order.filter(s => s !== LAY.act); LAY.act = lo;
+  }, 'Merged down');
+}
+function layMove(s, d) { const o = [...LAY.order], j = o.indexOf(s), k = j + d; if (k < 0 || k >= o.length) return; [o[j], o[k]] = [o[k], o[j]]; layOp(() => { LAY.order = o; }); }
+function layRen() { const n = prompt('Layer name', LAY.name[LAY.act]); if (n === null || !n.trim()) return; layOp(() => { LAY.name = { ...LAY.name, [LAY.act]: n.trim().slice(0, 40) }; }); }
+function layVis(s) { LAY.hid = LAY.hid.includes(s) ? LAY.hid.filter(h => h !== s) : [...LAY.hid, s]; layUse(); recomp(); ui(); changed(); }
+const esc = t => String(t).replace(/[&<>"]/g, c => '&#' + c.charCodeAt(0) + ';');
+function renderLay() {
+  const L = LAY.order, top = L.length - 1;
+  $('layL').innerHTML = [...L].reverse().map((s, r) => `<div class="lrow${s === LAY.act ? ' act' : ''}"><button data-keep="1" data-lv="${s}">${ico(LAY.hid.includes(s) ? 'eyeOff' : 'eye')}</button>`
+    + `<button class="nm${LAY.hid.includes(s) ? ' off' : ''}" data-keep="1" data-la="${s}">${esc(LAY.name[s] || 'Layer')}</button>`
+    + `<button data-keep="1" data-lu="${s}"${r === 0 ? ' disabled' : ''}>${ico('up')}</button><button data-keep="1" data-ld="${s}"${r === top ? ' disabled' : ''}>${ico('down')}</button></div>`).join('');
+  $('lMrg').disabled = L.indexOf(LAY.act) < 1; $('lDel').disabled = L.length < 2; $('lAdd').disabled = $('lDup').disabled = L.length >= LMAX;
+  const b = $('layB'); b.innerHTML = ico('layers') + (L.length > 1 ? esc(LAY.name[LAY.act]) : '');
+}
+$('layL').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return; const d = b.dataset;
+  if (d.lv) layVis(+d.lv); else if (d.la) { LAY.act = +d.la; layUse(); ui(); changed(); } else if (d.lu) layMove(+d.lu, 1); else if (d.ld) layMove(+d.ld, -1);
+};
+$('lAdd').onclick = () => layNew(false); $('lDup').onclick = () => layNew(true); $('lMrg').onclick = layMerge; $('lDel').onclick = layDel; $('lRen').onclick = layRen;
+$('bgB').onclick = () => { st.bg = (st.bg + 1) % BGS.length; ui(); toast('Background: ' + BGN[st.bg]); };
+for (let k = 0; k < 4; k++) $('bg' + k).onclick = () => { st.bg = k; ui(); };
+
 /* ---------------- UI */
 function ui() {
   const ch = st.ch, t = st.tool, nud = st.mode === 'nudge', lab = (id, html) => { const e = $(id), v = e.querySelector('svg'); e.innerHTML = (v ? v.outerHTML : '') + html; };
   $('chH').classList.toggle('on', ch === 0); $('chR').classList.toggle('on', ch === 1); $('chE').classList.toggle('on', ch === 2); $('chA').classList.toggle('on', ch === ART);
-  const art = ch === ART; $('pbar').hidden = !art; $('vbar').hidden = art; for (const b of document.querySelectorAll('#tools .art')) b.hidden = !art; if (art) renderPal();
+  const art = ch === ART; $('pbar').hidden = !art; $('vbar').hidden = art; for (const b of document.querySelectorAll('#tools .art')) b.hidden = !art; if (art) { renderPal(); renderLay(); }
   const on = (id, v) => $(id).classList.toggle('on', !!v);
   on('ovl', st.ovl); on('ovlB', st.ovl); const ub = st.spr && META['under_' + partOf(st.spr)];
   const pool = st.spr.startsWith('under_'), uo = st.spr && (pool ? activeOf(partOf(st.spr)) : useOf(st.spr)), un = st.spr && !pool && useOf(st.spr);
   $('undB').hidden = !st.spr; lab('undB', pool ? 'Delete underside ' + partOf(st.spr) : 'New underside'); $('undU').hidden = !st.spr || pool;
   lab('undU', 'Stands on: ' + (!un ? 'the ground' : un === st.spr ? 'itself' : un.replace(/^under_/, 'underside '))); $('sprB').textContent = st.spr || 'Whole atlas';
   for (const id of ['sRen', 'sPiv', 'sMid', 'sFit', 'sDel']) $(id).hidden = !st.spr || pool;
-  $('swpB').hidden = !uo || uo === st.spr || !META[uo]; on('swpB', pool); lab('swpB', pool ? 'Edit part' : 'Edit under'); on('msk', st.mask); on('stray', st.stray); on('look', !st.look); $('look').textContent = st.look ? 'Channel' : 'Lit';
+  $('swpB').hidden = !uo || uo === st.spr || !META[uo]; on('swpB', pool); lab('swpB', pool ? 'Part' : 'Under'); on('msk', st.mask); on('stray', st.stray); on('look', !st.look); $('look').textContent = st.look ? 'Channel' : 'Lit';
   for (let k = 0; k < 2; k++) on('look' + k, st.look === k); for (let k = 0; k < 5; k++) on('sky' + k, st.sky === k);
   for (const k of ['sunAz', 'sunEl', 'reflK', 'bloomK']) $(k).value = st[k]; on('grid', st.grid); on('rdo', st.rdo); on('stk', st.stack); on('pAll', st.pickAll); on('buzz', st.buzz);
   for (let k = 0; k < 3; k++) on('lay' + k, st.lay === k); for (let k = 0; k < 4; k++) { on('hold' + k, st.hold === k); on('nr' + k, st.nr === k); }
@@ -1109,24 +1207,27 @@ function ui() {
   for (const b of document.querySelectorAll('#mode button')) b.classList.toggle('on', b.dataset.m === st.mode);
   const val = $('val'), v = nud ? st.nud[ch] : st.val[ch]; val.min = nud ? -NRANGE[st.nr][ch] : 0; val.max = nud ? NRANGE[st.nr][ch] : MAXV[ch]; val.value = v;
   $('vNum').textContent = nud && v > 0 ? '+' + v : v;
-  $('vbar').style.visibility = !(t === 'pen' || t === 'fill' || sel) || flt ? 'hidden' : '';     // hidden, not gone: the views keep their place
+  $('vbar').classList.toggle('off', !(t === 'pen' || t === 'fill' || sel) || !!flt);     // dimmed, never hidden: the rows stay put
   // the context row: this tool's options, then the selection / clipboard, or the floating paste
   $('size').hidden = !(t === 'pen' || t === 'erase' || t === 'shade' || t === 'blur') || art && st.glock; lab('size', SIZES[st.size]);
-  $('alock').hidden = $('glock').hidden = !art || !!flt; $('gsz').hidden = !art || !st.glock || !!flt; $('gsz').textContent = GRIDS[st.gsz] + ' px'; on('alock', st.alock); on('glock', st.glock);
+  const brushT = /^(pen|erase|shade|blur)$/.test(t); $('alock').hidden = !art || !!flt || t === 'sel' || t === 'pick'; $('glock').hidden = !art || !!flt || !brushT; $('gsz').hidden = $('glock').hidden || !st.glock; $('gsz').textContent = GRIDS[st.gsz] + ' px'; on('alock', st.alock); on('glock', st.glock);
   $('shd').hidden = !art || t !== 'shade'; $('shd').textContent = st.shd > 0 ? 'Lighter' : 'Darker'; $('gdi').hidden = !art || t !== 'grad'; on('gdi', st.gdi);
   $('tol').hidden = t !== 'fill'; $('tol').textContent = 'Tol ' + TOLS[ch][st.tol[ch]];
   $('smode').hidden = t !== 'sel' || !!flt; for (const b of document.querySelectorAll('#smode button')) b.classList.toggle('on', +b.dataset.m === st.smode);
   $('gap').hidden = t !== 'arr'; $('gap').textContent = 'Gap ' + GAPS[st.gap];
   $('pch').hidden = !(flt || t === 'arr'); $('pch').textContent = art ? (st.artAll ? 'Art + heights' : 'Art only') : ['All ch', 'Height', 'Refl', 'Glow'][st.pch];
-  const showSel = !flt && (sel || clip || t === 'sel'); $('selb').hidden = !showSel;
-  for (const id of ['cpy', 'lift', 'sFill', 'sNone']) $(id).hidden = !sel; $('pst').hidden = !clip;
-  $('selLab').textContent = sel ? (sel[2] - sel[0] + 1) + '×' + (sel[3] - sel[1] + 1) : clip ? 'Clip' : 'Drag to select';
+  // the selection: its actions on the Select tool (and in Edit); with another tool just its size and deselect
+  const selT = t === 'sel', showSel = !flt && (sel || selT && clip); $('selb').hidden = !showSel;
+  for (const id of ['cpy', 'lift', 'sFill']) $(id).hidden = !sel || !selT; $('sNone').hidden = !sel; $('pst').hidden = !clip || !selT;
+  $('selLab').textContent = sel ? (sel[2] - sel[0] + 1) + '×' + (sel[3] - sel[1] + 1) : clip ? 'Clip' : '';
   const nn = Math.abs(st.nud[ch]) || 1, setL = (id, t) => { const e = $(id); e.lastChild.textContent = t; };
   if (art) { setL('sUp', 'Shade lighter'); setL('sDn', 'Shade darker'); setL('sFill2', 'Fill with the main colour'); setL('sClr', 'Clear (transparent)'); }
   else { setL('sUp', 'Nudge up ' + nn); setL('sDn', 'Nudge down ' + nn); setL('sFill2', st.mode === 'nudge' ? 'Apply nudge ' + (st.nud[ch] > 0 ? '+' : '') + st.nud[ch] : 'Apply set ' + st.val[ch]); setL('sClr', 'Clear to 0'); }
   $('fbar').hidden = !flt; if (flt) { $('fLab').textContent = (flt.ang % 360) + '°'; $('fx').classList.toggle('on', flt.fx); $('fy').classList.toggle('on', flt.fy); }
+  if (flt) for (const e of $('opts').children) if (e.id !== 'pch') e.hidden = true;     // placing: only what it writes
   const anyOpt = [...$('opts').children].some(e => !e.hidden); $('optDiv').hidden = !(anyOpt && (showSel || flt));
-  $('cbar').style.visibility = !anyOpt && !showSel && !flt ? 'hidden' : '';
+  $('hint').textContent = flt ? '' : t === 'pick' ? (art ? 'Tap a colour to take it' : 'Tap a pixel to take its value') : t === 'piv' ? 'Tap the pixel it turns on' : t === 'sel' && !sel ? 'Drag a box to select' : t === 'arr' && !sel ? 'Select a piece first' : t === 'grad' ? 'Drag across, main colour to second' : ''; $('hint').hidden = !$('hint').textContent;
+  $('bgB').querySelector('.bgsw').style.background = bgCss(st.bg); for (let k = 0; k < 4; k++) on('bg' + k, st.bg === k);
   $('views').className = ['', 'only2', 'only3'][st.lay]; $('mShare').hidden = !navigator.canShare; $('info').hidden = !st.rdo;
   need2 = need3 = true; savePrefs(); requestAnimationFrame(() => { need2 = need3 = true; });
 }
@@ -1154,10 +1255,10 @@ const closeMenus = () => { for (const m of document.querySelectorAll('.menu.open
 for (const b of document.querySelectorAll('.dd')) b.onclick = e => {
   e.stopPropagation(); const m = $(b.dataset.menu), was = m.classList.contains('open'); closeMenus(); if (was) return;
   ui(); m.classList.add('open'); b.classList.add('open'); const r = b.getBoundingClientRect();
-  m.style.top = (r.bottom + 4) + 'px'; m.style.left = clamp(r.left, 6, innerWidth - m.offsetWidth - 6) + 'px';
+  const mh = m.offsetHeight; m.style.top = (r.bottom + 4 + mh > innerHeight - 6 ? Math.max(6, r.top - 4 - mh) : r.bottom + 4) + 'px';     // a low bar's menu opens above it m.style.left = clamp(r.left, 6, innerWidth - m.offsetWidth - 6) + 'px';
 };
 addEventListener('pointerdown', e => { if (!e.target.closest('.menu, .dd')) closeMenus(); });
-for (const m of document.querySelectorAll('.menu')) m.addEventListener('click', e => { const b = e.target.closest('button'); if (b && !/^(ovl|msk|stray|grid|rdo|stk|pAll|buzz|hold\d|nr\d|lay\d|look\d|sky\d)$/.test(b.id)) closeMenus(); });
+for (const m of document.querySelectorAll('.menu')) m.addEventListener('click', e => { const b = e.target.closest('button'); if (b && !b.dataset.keep && !/^(ovl|msk|stray|grid|rdo|stk|pAll|buzz|hold\d|nr\d|lay\d|look\d|sky\d|bg\d)$/.test(b.id)) closeMenus(); });
 $('undB').onclick = toggleUnder; $('undU').onclick = () => picker('use');
 $('sprB').onclick = $('sOpen').onclick = () => picker('open'); $('sNew').onclick = () => $('sprFile').click();
 $('sprFile').onchange = () => { const f = $('sprFile').files[0]; $('sprFile').value = ''; if (f) newSprite(f); };
@@ -1240,8 +1341,8 @@ $('mImp').onclick = () => { $('file').click(); };
 $('file').onchange = async () => {
   const f = $('file').files[0]; $('file').value = ''; if (!f) return;
   const im = await exactPx(f); if (im.w !== W || im.h !== H) { chunk(im); return; }     // not the atlas's size: a piece, to place
-  pasteEnd(false); const art = st.ch === ART, n = art ? artPlanes(im.d) : fromRGB(im.d), c0 = art ? 3 : 0;     // in Art: an atlas.png, else an atlas_m.png
-  begin(); for (let c = 0; c < n.length; c++) for (let i = 0; i < W * H; i++) put(i, n[c][i], c0 + c); end(); syncCfg(); fitUnders(); full2 = true; ui(); toast(art ? 'Imported the art' : 'Imported');
+  pasteEnd(false); const art = st.ch === ART, n = art ? artPlanes(im.d) : fromRGB(im.d);     // in Art: an atlas.png, else an atlas_m.png
+  begin(); for (let c = 0; c < n.length; c++) for (let i = 0; i < W * H; i++) put(i, n[c][i], art ? ACH[c] : c); end(); syncCfg(); fitUnders(); full2 = true; ui(); toast(art ? 'Imported the art' : 'Imported');
 };
 /* a piece (any PNG not the atlas's size): floats on the current sprite to be placed. Art: its colours; heights: a grey
    picture goes in the channel you're on (Height as atlas_m stores it, ×4), a coloured one is an atlas_m (all three) */
@@ -1262,7 +1363,7 @@ function chunk(im) {
 function strays() {
   const keep = new Uint8Array(POOL0), out = [];
   for (const u of new Set(Object.values(CFG.use || {}))) { const m = FMETA[u]; if (m) for (let y = m[1]; y < m[1] + m[3]; y++) keep.fill(1, y * W + m[0], y * W + m[0] + m[2]); }
-  for (let i = 0; i < POOL0; i++) if (!CH[6][i] && !keep[i] && (CH[0][i] || CH[1][i] || CH[2][i])) out.push(i);
+  for (let i = 0; i < POOL0; i++) if (!COL0[i * 4 + 3] && !keep[i] && (CH[0][i] || CH[1][i] || CH[2][i])) out.push(i);
   return out;
 }
 function cleanStrays() {
@@ -1272,7 +1373,8 @@ function cleanStrays() {
 const preExport = () => { const n = strays().length; if (n && confirm(`${n} height pixels have no art over them (magenta). Remove them first? (Cancel: export them as they are)`)) cleanStrays(); };
 function revert(all) {
   pasteEnd(false); const [rx, ry, rw, rh] = all ? [0, 0, W, H] : rect();
-  begin(); for (let c = 0; c < CH.length; c++) for (let y = ry; y < ry + rh; y++) for (let x = rx; x < rx + rw; x++) { const i = y * W + x; put(i, FILE[c][i], c); } end(); syncCfg();
+  const b = lbase(LAY.order[0]), up = LAY.order.slice(1).map(lbase);     // the file's art on the bottom layer, the ones over it cleared
+  begin(); for (let y = ry; y < ry + rh; y++) for (let x = rx; x < rx + rw; x++) { const i = y * W + x; for (let c = 0; c < 3; c++) put(i, FILE[c][i], c); for (let k = 0; k < 4; k++) { put(i, FILE[3 + k][i], b + k); for (const u of up) put(i, 0, u + k); } } end(); syncCfg();
   full2 = true; dirty3 = true; ui(); toast(all ? 'Reverted everything' : 'Reverted ' + (st.spr || 'atlas'));
 }
 $('mRevS').onclick = () => revert(false);

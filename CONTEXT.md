@@ -645,3 +645,8 @@ The webgl branch merged into main: the site root is the GL renderer (GX, src/0_g
 - Vehicle hit boxes come from the art: the build measures every sprite's opaque bounds off its pivot (`BOUNDS`, `artHalf(n)`); VT.tank / jeep take hl / hw from hull0 / jeep0 and their push circles fill that box; wrecks from hull4 / jeep4 (`wreckBox`, also used by the net unpack). Tank 126 x 67 (was 104 x 56), jeep 85 x 43. Tread marks under the tracks (TRACK.y).
 - The tank's driver faces where the turret points (updateSeatedPos: s.a = v.ta, as the MG gunner faces v.mgA), so the camera's look-ahead and their sight follow the turret; the speed lead still adds the driving direction.
 - Page title: Militia Mayhem (no "GL").
+
+## Editor (after build 215)
+- heightmap/: the 2D view draws the art with its real alpha over a background (st.bg: dark grid, light grid, white, black; View menu or the swatch button on the 2D view). Height modes are clear where there's no art.
+- Art layers, the editor's own: slot s = CH[3 + 4s .. 6 + 4s] (slot 0 the file's art); LAY { order, name, hid, act } saved with the work. COL0 = the visible layers stacked (comp / blend); export, strays, fit and free space read COL0; tools, alpha lock and clips use the active layer (ACH). Add / duplicate / merge down / move / rename / delete are undo steps (an undo entry carries the order and names, `ly`); hide and the active layer aren't.
+- Bars: fixed rows, no horizontal scroll down to ~375 px. The options row always shows (a hint when a tool has none); selection actions sit on the Select tool (others show its size and deselect); the value row dims instead of hiding; menus on low bars open upward.
