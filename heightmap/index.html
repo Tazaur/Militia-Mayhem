@@ -285,11 +285,11 @@ async function load() {
   const at = await exactPx('../atlas.png'); W = at.w; H = at.h; COL0 = at.d;
   const m = await exactPx('../atlas_m.png'); if (m.w !== W || m.h !== H) throw new Error(`atlas_m.png is ${m.w}×${m.h}, the art ${W}×${H}`);
   FILE = fromRGB(m.d); FILE.push(...artPlanes(COL0));     // channels 3..6: the art's R G B A
-  CH = FILE.map(a => a.slice()); CFG = cfgRead(); if (!CFG) throw new Error('atlas_m.png has no table (atlas_table.py)'); FMETA = metaOf(CFG); FBASE = JSON.stringify(FMETA);
+  CH = FILE.map(a => a.slice()); COL = COL0.slice(); CFG = cfgRead(); if (!CFG) throw new Error('atlas_m.png has no table (atlas_table.py)'); FMETA = metaOf(CFG); FBASE = JSON.stringify(FMETA);
   const s = await kv('work');
   if (s && s.ch) {
     if (s.w === W && s.h >= H && (s.base ? s.base === FBASE : s.h === H && JSON.stringify(s.meta) === FBASE)) {     // the same file under it (grown here, maybe)
-      if (s.h > H) growFile(s.h - H); CH = s.ch; COL0 = new Uint8ClampedArray(W * H * 4); toast('Restored your work');
+      if (s.h > H) growFile(s.h - H); CH = s.ch; COL0 = new Uint8ClampedArray(W * H * 4); COL = COL0.slice(); toast('Restored your work');
     }
     else {     // the atlas changed under the work: each sprite (and the pool) carried over by name where its size is the same, the
                // sprites made here into free space, and the undersides / what stands on what
