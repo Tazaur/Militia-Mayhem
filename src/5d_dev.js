@@ -493,14 +493,23 @@ function devAhead(tiles) {
 }
 function devSpawnDummy() {
   const q = devAhead(DEV.range); if (!q) return;
-  if (solidAt(q[0], q[1], 6)) { devLog('NO ROOM THERE', '#ff7a60'); return; }
+  const v = M.vehicles.find(v => { if (!v.active || v.dead) return false; const [lx, ly] = toLocal(v, q[0], q[1]); return Math.abs(lx) < v.T.hl + TILE / 2 && Math.abs(ly) < v.T.hw + TILE / 2; });     // on a vehicle: it gets in
+  if (v && dummySeat(v, q[0], q[1]) < 0) { devLog('VEHICLE FULL', '#ff7a60'); return; }
+  if (!v && solidAt(q[0], q[1], 6)) { devLog('NO ROOM THERE', '#ff7a60'); return; }
   const s = makeSoldier({ team: 1, color: M.teamColor[1], name: 'DUMMY ' + (M.sol.filter(o => o.dummy).length + 1), bot: true });
-  s.dark = true; s.kit = 0; s.dummy = { x: q[0], y: q[1], a: q[2] + Math.PI };
+  s.dark = true; s.kit = 0; s.dummy = { x: q[0], y: q[1], a: q[2] + Math.PI, v };
   M.sol.push(s); devReviveDummy(s);
 }
 function devReviveDummy(s) {
   giveLoadout(s); const d = s.dummy;
   Object.assign(s, { x: d.x, y: d.y, a: d.a, hp: s.mhp, alive: true, down: false, protect: 0, respawnT: 1e9, veh: null, seat: -1, seatT: 0, stance: 0, stanceT: 0, swim: false, vx: 0, vy: 0, reloadT: 0, fireCd: 0, lastHurt: -9, ttk: null });
+  const v = d.v, i = v && !v.dead && v.active ? dummySeat(v, d.x, d.y) : -1; if (i >= 0) enterVehicle(s, { v, seat: i }, true);     // spawned on a vehicle: back in it (any team's, any free seat)
+}
+/* the free seat whose door is nearest (x, y), or -1 */
+function dummySeat(v, x, y) {
+  let best = -1, bd = 1e9; const [lx, ly] = toLocal(v, x, y);
+  v.T.seats.forEach((sd, i) => { if (v.seats[i]) return; const an = nearAnchor(sd, lx, ly), d = Math.hypot(lx - an[0], ly - an[1]); if (d < bd) { bd = d; best = i; } });
+  return best;
 }
 function devClearDummies() { M.sol = M.sol.filter(s => !s.dummy); }
 function devHit(s, dmg) {

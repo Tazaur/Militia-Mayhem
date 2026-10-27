@@ -654,3 +654,6 @@ The webgl branch merged into main: the site root is the GL renderer (GX, src/0_g
 ## Build 216
 - Vision memory only takes what's actually seen: before the sight polygons stamp the world-as-now into the memory, `fogCut` removes what smoke and windows hide (softMask per eye, world-space, low res), so tread marks / decals laid in smoke aren't remembered (and so not shown through the smoke) until seen.
 - Aimed shots at exposed crew: bullets carry their aim angle (`aa`, before spread). A shot stopped by a vehicle whose line runs through an exposed crewman hits him for sure if the aim line went through his hit circle (+4 px; lag-compensated position), else the old 60 % chance. Spread that takes the shot off him still hits the hull.
+
+## Build 217
+- Dev: a dummy spawned on a vehicle gets in (the free seat whose door is nearest, instantly, any team's vehicle; "VEHICLE FULL" when none) and respawns back into it while it stands (devSpawnDummy / devReviveDummy, dummySeat).
