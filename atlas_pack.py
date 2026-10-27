@@ -12,31 +12,29 @@ base, 4 per px (0..63 px), G = reflectivity, B = glow. Painted in heightmap/ (th
 material along with it, and a sprite that has none gets a first pass from its outline (rounded edges, flat top, a little
 relief from the art's shading). `--remat` regenerates them all.
 
-Under the sprites: the underside pool (atlas_m only, never drawn: heights painted as depth down, hung under a part) and, in
-the last rows, the settings strip: a JSON string in atlas_m's G / B bytes, written by the editor (its Underside toggle) so the
-game takes settings straight from the atlas. {"under": {part: [x, y, w, h, px, py]}}: x, y inside the pool. Both are carried
-over row for row; atlas.json has their rects as _pool / _cfg."""
+Under the sprites: free rows (the editor's new sprites go there), the underside pool (atlas_m only, never drawn: heights
+painted as depth down, hung under a part) and, in the last rows, the atlas's table (atlas_table.py: every sprite's rect and
+pivot, the undersides, what stands on what), which the editor edits; atlas.json is made from it at build. Sprites the
+packer doesn't know (made in the editor) are carried as they are, in a row of their own."""
 from PIL import Image
 import numpy as np, json, os, sys
 SYNC = '--sync' in sys.argv; REMAT = '--remat' in sys.argv
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 from mounts import mount_sprites, bag_frames
+import atlas_table
 
 meta = json.load(open('atlas.json')); meta.pop('_strip', None); pool_old = meta.pop('_pool', None); cfg_old = meta.pop('_cfg', None)
 A = np.array(Image.open('atlas.png').convert('RGBA'))
 extra = json.load(open('atlas_extra.json'))
 def old(n): x, y, w, h, px, py = meta[n]; return (A[y:y + h, x:x + w].copy(), px, py)
 AM = np.array(Image.open('atlas_m.png').convert('RGB')) if os.path.exists('atlas_m.png') and not REMAT else None
-POOL_H, CFG_H = 128, 4                            # the underside pool's rows; the settings strip's rows
-def cfg_read(M, y0):                              # 2 bytes of length, then UTF-8 JSON, over the strip's G / B bytes row by row
-    b = M[y0:y0 + CFG_H, :, 1:3].reshape(-1); n = int(b[0]) << 8 | int(b[1])
-    try: return json.loads(bytes(b[2:2 + n]).decode()) if n else {}
-    except ValueError: return {}
-def cfg_write(M, y0, c):
-    t = json.dumps(c, separators=(',', ':')).encode(); b = np.zeros(CFG_H * M.shape[1] * 2, np.uint8); assert len(t) + 2 <= len(b), 'settings too long'
-    b[0], b[1] = len(t) >> 8, len(t) & 255; b[2:2 + len(t)] = np.frombuffer(t, np.uint8); M[y0:y0 + CFG_H, :, 1:3] = b.reshape(CFG_H, -1, 2)
+POOL_H, CFG_H, FREE = 128, atlas_table.ROWS, 64     # the underside pool's rows; the table's rows; free rows for new sprites
 AM0 = AM if AM is not None else np.zeros((1, 384, 3), np.uint8)
-CFG = cfg_read(AM0, cfg_old[1]) if cfg_old and AM is not None else {}
+CFG = (atlas_table.read(AM0) or (atlas_table.read_old(AM0, cfg_old) if cfg_old else {})) if AM is not None else {}
+CFG = {k: CFG[k] for k in ('under', 'use', 'off') if k in CFG}     # the table's sprites / pool / rows: made anew below
+if 'use' not in CFG:          # older settings: a part's states on its underside, but the ones off
+    CFG['use'] = {n: 'under_' + n.rstrip('0123456789') for n in meta if n[0] != '_' and n.rstrip('0123456789') in CFG.get('under', {}) and n not in CFG.get('off', [])}
+CFG.pop('off', None)
 POOL = AM0[pool_old[1]:pool_old[1] + POOL_H].copy() if pool_old and AM is not None else np.zeros((POOL_H, 384, 3), np.uint8)
 ox = 0
 for n, b in (('under_hull', 'hull'), ('under_jeep', 'jeep')):   # once: the old under_ atlas slots move into the pool
@@ -159,11 +157,12 @@ bags, bagPts = bag_frames(np.array(Image.open('art/orig/4948b42c-image.png').con
 for n, v in bags.items(): S[n] = old(n) if n in meta else v
 if 'bagPts' not in extra: extra['bagPts'] = bagPts
 
-GROUPS = [['hull', 'jeep', 'tur', 'mg', 'bar', 'decal'], ['smoke', 'boom', 'dust', 'fire'], ['sol_', 'nsh_'], ['wi_'], ['ic_'], ['bagarc']]
+for n in meta:                                    # the editor's own sprites: as they are
+    if n[0] != '_' and n not in S: S[n] = old(n)
+GROUPS = [['hull', 'jeep', 'tur', 'mg', 'bar', 'decal'], ['smoke', 'boom', 'dust', 'fire'], ['sol_', 'nsh_'], ['wi_'], ['ic_'], ['bagarc'], ['']]
 def group(n):
     for i, G in enumerate(GROUPS):
         if any(n.startswith(p) for p in G): return i
-    raise KeyError(n)
 W = 384; x = y = rowh = 0; out = {}; places = []
 for gi in range(len(GROUPS)):
     names = [n for n in S if group(n) == gi]
@@ -173,7 +172,7 @@ for gi in range(len(GROUPS)):
         a, px, py = S[n]; h, w = a.shape[:2]
         if x + w > W: x = 0; y += rowh + 1; rowh = 0
         places.append((n, x, y)); out[n] = [x, y, w, h, round(float(px), 1), round(float(py), 1)]; x += w + 1; rowh = max(rowh, h)
-PY = y + rowh + 2; H = PY + POOL_H + 1 + CFG_H; CY = H - CFG_H     # then the pool and the settings strip
+PY = y + rowh + 2 + FREE; H = PY + POOL_H + 1 + CFG_H; CY = H - CFG_H     # then the pool and the settings strip
 out['_pool'] = [0, PY, W, POOL_H, 0, 0]; out['_cfg'] = [0, CY, W, CFG_H, 0, 0]
 atlas = np.zeros((H, W, 4), np.uint8)
 for n, x, y in places: a = S[n][0]; atlas[y:y + a.shape[0], x:x + a.shape[1]] = a
@@ -205,7 +204,7 @@ for n, x, y in places:
     a = S[n][0]; h, w = a.shape[:2]
     if AM is not None and n in meta and n not in FRESH and meta[n][2:4] == [w, h]: ox, oy = meta[n][:2]; AMn[y:y + h, x:x + w] = AM[oy:oy + h, ox:ox + w]
     else: AMn[y:y + h, x:x + w] = matgen(a, n); gen += 1
-AMn[PY:PY + POOL_H] = POOL; cfg_write(AMn, CY, CFG)
+AMn[PY:PY + POOL_H] = POOL; atlas_table.write(AMn, {**CFG, 'rows': CFG_H, 'pool': [PY, POOL_H], 'spr': {n: out[n] for n, _, _ in places}})
 Image.fromarray(AMn).save('atlas_m.png', optimize=True)
 extra['tips'] = {k: v for k, v in extra.get('tips', {}).items() if k.startswith('n_')}
 json.dump(extra, open('atlas_extra.json', 'w'))

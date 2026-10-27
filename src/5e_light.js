@@ -217,19 +217,21 @@ function matData() {
   if (MAT || !MIMG || !MIMG.complete || !MIMG.width || !imgReady) return MAT;
   const w = MIMG.width, h = MIMG.height, g2 = mk(w, h).getContext('2d', { willReadFrequently: true });
   g2.drawImage(MIMG, 0, 0); const mp = g2.getImageData(0, 0, w, h).data; g2.clearRect(0, 0, w, h); g2.drawImage(IMG, 0, 0); const ap = g2.getImageData(0, 0, w, h).data;
-  MAT = { mp, ap, w, h }; ATLAS_CFG = atlasCfg(mp, w);
+  MAT = { mp, ap, w, h }; ATLAS_CFG = atlasCfg(mp, w, h);
   const P = ATLAS._pool, C = ATLAS_CFG; for (const [n, r] of Object.entries(C.under || {})) ATLAS['under_' + n] = [r[0], P[1] + r[1], r[2], r[3], r[4], r[5]];     // undersides: where in the pool
   USE = C.use || {}; if (!C.use) for (const n in ATLAS) { const u = 'under_' + n.replace(/\d+$/, ''); if (n[0] !== '_' && !n.startsWith('under_') && C.under && ATLAS[u] && !(C.off || []).includes(n)) USE[n] = u; }     // older settings: a part's states on its underside, but the ones off
   return MAT;
 }
-/* the settings the atlas carries (the heightmap editor writes them): a JSON string in atlas_m's settings strip (ATLAS._cfg),
-   2 bytes of length then UTF-8, over its pixels' G / B bytes row by row. { under: { part: [x, y, w, h, px, py] in the pool },
-   off: [states without their part's underside] } */
+/* the atlas's table (atlas_table.py; the heightmap editor writes it): a JSON string in atlas_m's last rows, 2 bytes of length
+   then UTF-8, over its pixels' G / B bytes, the bottom row first. Its sprites are atlas.json (made from it at build); here
+   the undersides { under: { name: [x, y, w, h, px, py] in the pool } } and what stands on what { use: { sprite: under_<name>
+   or a sprite } } (older ones: off, the states without their part's underside) */
 let ATLAS_CFG = {}, USE = {};     // USE: what each sprite stands on (a pool underside, another sprite, itself)
-function atlasCfg(mp, w) {
-  const C = ATLAS._cfg; if (!C) return {}; const b = [];
-  for (let y = C[1]; y < C[1] + C[3]; y++) for (let x = 0; x < C[2]; x++) { const i = (y * w + x) * 4; b.push(mp[i + 1], mp[i + 2]); }
-  const n = b[0] << 8 | b[1]; try { return n ? JSON.parse(new TextDecoder().decode(new Uint8Array(b.slice(2, 2 + n)))) : {}; } catch (e) { return {}; }
+function atlasCfg(mp, w, h) {
+  const at = k => { const y = h - 1 - (k / w | 0), i = (y * w + k % w) * 4; return mp.subarray(i + 1, i + 3); };     // the k-th byte pair, bottom row first
+  const n = at(0)[0] << 8 | at(0)[1], b = new Uint8Array(n + 3); if (!n || n + 2 > w * h * 2) return {};
+  for (let k = 0; k < (n + 2) / 2; k++) b.set(at(k), k * 2);
+  try { const c = JSON.parse(new TextDecoder().decode(b.subarray(2, 2 + n))); return c && c.v === 2 ? c : {}; } catch (e) { return {}; }
 }
 /* a sprite's painted height (px) at a point (from its pivot, unrotated); past its edge, the nearest pixel back toward the pivot */
 function artH(n, lx, ly) {
