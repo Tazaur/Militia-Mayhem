@@ -129,7 +129,7 @@ button.hov { outline: 2px solid #ff4fd8; outline-offset: -2px; }
 </div>
 <div class="menu" id="mFile">
   <button id="mDl" data-i="download">Download atlas_m.png</button><button id="mShare" data-i="share">Share atlas_m.png</button><button id="mImp" data-i="upload">Import PNG…</button><hr><button id="aDl" data-i="download">Download atlas.png (art)</button><button id="aShare" data-i="share">Share atlas.png (art)</button>
-  <hr><button id="mRevS" data-i="revert">Revert sprite to file</button><button id="mRevA" data-i="revert">Revert everything to file</button>
+  <hr><button id="fClean" data-i="trash">Remove stray heights</button><button id="mRevS" data-i="revert">Revert sprite to file</button><button id="mRevA" data-i="revert">Revert everything to file</button>
 </div>
 <div class="menu" id="mPal">
   <button id="pEx" data-i="pipette">From this sprite</button><button id="pAdd" data-i="plus">Add the main colour to its row</button><button id="pRow" data-i="layers">New row with the main colour</button>
@@ -151,7 +151,7 @@ button.hov { outline: 2px solid #ff4fd8; outline-offset: -2px; }
   <div id="pkS"><canvas id="pkC"></canvas></div><div class="bar"><span class="lab" id="pkN"></span></div></div>
 <input type="file" id="sprFile" accept="image/png" hidden>
 <div class="menu" id="mView">
-  <button id="ovl" data-i="color">Show the art</button><button id="msk" data-i="mask">Paint only on the art</button><button id="grid" data-i="gridI">Pixel grid</button><button id="rdo" data-i="info">Pixel readout</button><button id="stk" data-i="layers">Stack the underside (3D)</button><hr>
+  <button id="ovl" data-i="color">Show the art</button><button id="msk" data-i="mask">Paint only on the art</button><button id="stray" data-i="mask">Show stray heights (magenta)</button><button id="grid" data-i="gridI">Pixel grid</button><button id="rdo" data-i="info">Pixel readout</button><button id="stk" data-i="layers">Stack the underside (3D)</button><hr>
   <div class="h">Layout</div>
   <button id="lay0" data-i="layout">2D + 3D</button><button id="lay1" data-i="square">2D only</button><button id="lay2" data-i="cube">3D only</button><hr>
   <button id="vFit" data-i="fit">Fit to screen</button>
@@ -240,7 +240,7 @@ const ART = 3, ACH = [3, 4, 5, 6], GRIDS = [2, 3, 4, 5, 6, 8, 10, 12, 16], MAXV 
 let POOL0 = 0, POOL1 = 0, CFG0 = 0;     // the underside pool's pixel range (art isn't painted there)
 let FBASE = '', W = 0, H = 0, FMETA = {}, META = {}, NAMES = [], COL0 = null, COL = null, CH = null, FILE = null, CFG = {}, CFGS = null, GUIDE = null, GSRC = null;     /* GUIDE: a part's pixel -> its underside's guide pixel (or -1) */
      // FMETA the table as atlas.json (FBASE: the file's); META its sprites + the undersides; COL the art + their guides
-const DEF = { hold: 2, pickAll: false, buzz: true, nr: 1, grid: true, rdo: true, stack: true, alock: false, glock: false, gsz: 2, gdi: false, look: 0, sky: 0, sunAz: 135, sunEl: 40, reflK: 100, bloomK: 100 };
+const DEF = { stray: true, artAll: false, hold: 2, pickAll: false, buzz: true, nr: 1, grid: true, rdo: true, stack: true, alock: false, glock: false, gsz: 2, gdi: false, look: 0, sky: 0, sunAz: 135, sunEl: 40, reflK: 100, bloomK: 100 };
 const st = { ...DEF, spr: '', from: '', ch: 0, tool: 'pen', prev: 'pen', mode: 'set', val: [8, 100, 0], nud: [1, 8, 8], size: 0, tol: [1, 1, 1, 0], c1: [200, 70, 60], c2: [40, 44, 60], act: 0, pal: [], prow: -1, shd: 1, ovl: true, mask: true, lay: 0, smode: 0, gap: 0, pch: 0 };
 const GAPS = [0, 1, 2, 3, 4, 6, 8, 12];
 try { Object.assign(st, JSON.parse(localStorage.getItem('hp-prefs') || '{}')); } catch (e) {}
@@ -536,7 +536,6 @@ const NN = () => W * H;
 function begin() { stroke = new Map(); }
 function put(i, v, c = st.ch) {
   const a = CH[c]; v = clamp(v, 0, MAXV[c]); if (a[i] === v) return; const k = c * NN() + i; if (!stroke.has(k)) stroke.set(k, a[i]); a[i] = v;
-  if (c === 6 && !v && i < CFG0) for (let m = 0; m < 3; m++) put(i, 0, m);     // heights are bound to the art: art erased, its heights go too
   touch(i);
 }
 const was = (i, c = st.ch) => { const k = c * NN() + i; return stroke.has(k) ? stroke.get(k) : CH[c][i]; };
@@ -694,14 +693,14 @@ const ALL7 = [0, 1, 2, 3, 4, 5, 6];
 function stamp(c, ox, oy, mark, clear) {           // mark: grow the selection mask over it instead of writing
   for (let y = 0; y < c.h; y++) for (let x = 0; x < c.w; x++) {
     const tx = ox + x, ty = oy + y, j = y * c.w + x; if (!c.on[j] || !canP(tx, ty)) continue; const i = ty * W + tx;
-    if (mark) mark[i] = 1; else if (st.ch === ART) for (const k of c.hts ? ALL7 : ACH) put(i, clear ? 0 : c.v[k][j], k);     // art: the colours (and the heights bound to them, from the atlas)
+    if (mark) mark[i] = 1; else if (st.ch === ART) for (const k of c.hts && st.artAll ? ALL7 : ACH) put(i, clear ? 0 : c.v[k][j], k);     // art: the colours (and, if asked, the heights under them)
     else for (let k = 0; k < 3; k++) if (!st.pch || st.pch === k + 1) put(i, clear ? 0 : c.v[k][j], k);     // heights: all channels, or just one; clear: zero instead
   }
 }
 /* paste: the clip floats (drag it about, flip it, turn it) until placed; shown for real, as an open stroke */
 function floatShow() { unput(); if (flt.lift) stamp(flt.c, flt.c.x, flt.c.y, null, true); const r = rotated(flipped(flt.c, flt.fx, flt.fy), flt.ang); flt.r = r; flt.rx = flt.x + r.x - flt.c.x; flt.ry = flt.y + r.y - flt.c.y; stamp(r, flt.rx, flt.ry); need2 = true; }
-function pasteStart(lift) {
-  if (!clip) { toast('Copy something first'); return; } if (flt || stroke) return;
+function pasteStart(lift, c = clip) {     // c: what floats (a lift or an imported piece: not the clip copied)
+  if (!c) { toast('Copy something first'); return; } if (flt || stroke) return; const clip = c;
   const [rx, ry, rw, rh] = rect(); let x = clip.x, y = clip.y;
   if (!inRect(x, y) || !inRect(x + clip.w - 1, y + clip.h - 1)) { x = rx + Math.max(0, (rw - clip.w) >> 1); y = ry + Math.max(0, (rh - clip.h) >> 1); }   // from another sprite: centred
   flt = { c: clip, ang: 0, fx: false, fy: false, x, y, lift: lift === true };     // lift: its old place cleared under the float
@@ -728,7 +727,7 @@ function paint2(i) {
   if (st.ch === ART) { const a = al / 255, ck = (i % W + (i / W | 0)) & 1 ? 34 : 26; d[o] = ck + (COL[o] - ck) * a; d[o + 1] = ck + (COL[o + 1] - ck) * a; d[o + 2] = ck + (COL[o + 2] - ck) * a; d[o + 3] = 255; need2 = true; return; }     // the art over a checker
   if (st.ch && v > 0) { const t = TINT[st.ch]; r = 40 + t[0] * v * 0.85; g = 44 + t[1] * v * 0.85; b = 52 + t[2] * v * 0.85; }
   else [r, g, b] = ramp(CH[0][i]);
-  if (!al) { if (v > 0) { r = 200 * v + 40; g = 30; b = 160 * v + 40; } else { r = 21; g = 23; b = 27; } }      // painted outside the art: magenta
+  if (!al) { if (v > 0 && st.stray) { r = 200 * v + 40; g = 30; b = 160 * v + 40; } else { r = 21; g = 23; b = 27; } }      // painted outside the art: magenta
   else if (st.ovl) { const k = 0.5; r = r * (1 - k) + COL[o] * k; g = g * (1 - k) + COL[o + 1] * k; b = b * (1 - k) + COL[o + 2] * k; }
   d[o] = r; d[o + 1] = g; d[o + 2] = b; d[o + 3] = 255; need2 = true;
 }
@@ -1100,7 +1099,7 @@ function ui() {
   $('undB').hidden = !st.spr; lab('undB', pool ? 'Delete underside ' + partOf(st.spr) : 'New underside'); $('undU').hidden = !st.spr || pool;
   lab('undU', 'Stands on: ' + (!un ? 'the ground' : un === st.spr ? 'itself' : un.replace(/^under_/, 'underside '))); $('sprB').textContent = st.spr || 'Whole atlas';
   for (const id of ['sRen', 'sPiv', 'sFit', 'sDel']) $(id).hidden = !st.spr || pool;
-  $('swpB').hidden = !uo || uo === st.spr || !META[uo]; on('swpB', pool); lab('swpB', pool ? 'Edit part' : 'Edit under'); on('msk', st.mask); on('look', !st.look); $('look').textContent = st.look ? 'Channel' : 'Lit';
+  $('swpB').hidden = !uo || uo === st.spr || !META[uo]; on('swpB', pool); lab('swpB', pool ? 'Edit part' : 'Edit under'); on('msk', st.mask); on('stray', st.stray); on('look', !st.look); $('look').textContent = st.look ? 'Channel' : 'Lit';
   for (let k = 0; k < 2; k++) on('look' + k, st.look === k); for (let k = 0; k < 5; k++) on('sky' + k, st.sky === k);
   for (const k of ['sunAz', 'sunEl', 'reflK', 'bloomK']) $(k).value = st[k]; on('grid', st.grid); on('rdo', st.rdo); on('stk', st.stack); on('pAll', st.pickAll); on('buzz', st.buzz);
   for (let k = 0; k < 3; k++) on('lay' + k, st.lay === k); for (let k = 0; k < 4; k++) { on('hold' + k, st.hold === k); on('nr' + k, st.nr === k); }
@@ -1118,7 +1117,7 @@ function ui() {
   $('tol').hidden = t !== 'fill'; $('tol').textContent = 'Tol ' + TOLS[ch][st.tol[ch]];
   $('smode').hidden = t !== 'sel' || !!flt; for (const b of document.querySelectorAll('#smode button')) b.classList.toggle('on', +b.dataset.m === st.smode);
   $('gap').hidden = t !== 'arr'; $('gap').textContent = 'Gap ' + GAPS[st.gap];
-  $('pch').hidden = art || !(flt || t === 'arr'); $('pch').textContent = ['All ch', 'Height', 'Refl', 'Glow'][st.pch];
+  $('pch').hidden = !(flt || t === 'arr'); $('pch').textContent = art ? (st.artAll ? 'Art + heights' : 'Art only') : ['All ch', 'Height', 'Refl', 'Glow'][st.pch];
   const showSel = !flt && (sel || clip || t === 'sel'); $('selb').hidden = !showSel;
   for (const id of ['cpy', 'lift', 'sFill', 'sNone']) $(id).hidden = !sel; $('pst').hidden = !clip;
   $('selLab').textContent = sel ? (sel[2] - sel[0] + 1) + '×' + (sel[3] - sel[1] + 1) : clip ? 'Clip' : 'Drag to select';
@@ -1158,7 +1157,7 @@ for (const b of document.querySelectorAll('.dd')) b.onclick = e => {
   m.style.top = (r.bottom + 4) + 'px'; m.style.left = clamp(r.left, 6, innerWidth - m.offsetWidth - 6) + 'px';
 };
 addEventListener('pointerdown', e => { if (!e.target.closest('.menu, .dd')) closeMenus(); });
-for (const m of document.querySelectorAll('.menu')) m.addEventListener('click', e => { const b = e.target.closest('button'); if (b && !/^(ovl|msk|grid|rdo|stk|pAll|buzz|hold\d|nr\d|lay\d|look\d|sky\d)$/.test(b.id)) closeMenus(); });
+for (const m of document.querySelectorAll('.menu')) m.addEventListener('click', e => { const b = e.target.closest('button'); if (b && !/^(ovl|msk|stray|grid|rdo|stk|pAll|buzz|hold\d|nr\d|lay\d|look\d|sky\d)$/.test(b.id)) closeMenus(); });
 $('undB').onclick = toggleUnder; $('undU').onclick = () => picker('use');
 $('sprB').onclick = $('sOpen').onclick = () => picker('open'); $('sNew').onclick = () => $('sprFile').click();
 $('sprFile').onchange = () => { const f = $('sprFile').files[0]; $('sprFile').value = ''; if (f) newSprite(f); };
@@ -1175,7 +1174,7 @@ $('look').onclick = () => { st.look = st.look ? 0 : 1; dirty3 = true; ui(); };
 for (let k = 0; k < 2; k++) $('look' + k).onclick = () => { st.look = k; dirty3 = true; ui(); };
 for (let k = 0; k < 5; k++) $('sky' + k).onclick = () => { st.sky = k; if (SKIES[k].az !== undefined) { st.sunAz = SKIES[k].az; st.sunEl = SKIES[k].el; } ui(); };
 for (const k of ['sunAz', 'sunEl', 'reflK', 'bloomK']) $(k).oninput = () => { st[k] = +$(k).value; need3 = true; savePrefs(); };
-$('msk').onclick = () => { st.mask = !st.mask; ui(); };
+$('msk').onclick = () => { st.mask = !st.mask; ui(); }; $('stray').onclick = () => { st.stray = !st.stray; full2 = true; ui(); };
 $('grid').onclick = () => { st.grid = !st.grid; ui(); }; $('rdo').onclick = () => { st.rdo = !st.rdo; ui(); }; $('stk').onclick = () => { st.stack = !st.stack; dirty3 = true; ui(); };
 $('pAll').onclick = () => { st.pickAll = !st.pickAll; ui(); }; $('buzz').onclick = () => { st.buzz = !st.buzz; ui(); };
 for (let k = 0; k < 3; k++) $('lay' + k).onclick = () => { st.lay = k; ui(); requestAnimationFrame(fit); };
@@ -1219,8 +1218,8 @@ for (const b of document.querySelectorAll('#smode button')) b.onclick = () => { 
 $('gap').onclick = () => { st.gap = (st.gap + 1) % GAPS.length; ui(); };
 $('cpy').onclick = () => { if (flt) return; clip = grab(); let n = 0; for (const v of clip.on) n += v; toast('Copied ' + n + ' px (all channels)'); ui(); };
 $('pst').onclick = pasteStart;
-$('lift').onclick = () => { if (flt || stroke || !sel) { if (!sel) toast('Select something first'); return; } clip = grab(); pasteStart(true); };
-$('pch').onclick = () => { st.pch = (st.pch + 1) % 4; if (flt) floatShow(); ui(); };
+$('lift').onclick = () => { if (flt || stroke || !sel) { if (!sel) toast('Select something first'); return; } pasteStart(true, grab()); };
+$('pch').onclick = () => { if (st.ch === ART) st.artAll = !st.artAll; else st.pch = (st.pch + 1) % 4; if (flt) floatShow(); ui(); };
 $('fx').onclick = () => { flt.fx = !flt.fx; floatShow(); ui(); }; $('fy').onclick = () => { flt.fy = !flt.fy; floatShow(); ui(); };
 $('r45').onclick = () => { flt.ang += 45; floatShow(); ui(); }; $('r90').onclick = () => { flt.ang += 90; floatShow(); ui(); };
 $('fOk').onclick = () => pasteEnd(true); $('fNo').onclick = () => pasteEnd(false);
@@ -1231,8 +1230,9 @@ function png() {
   for (let i = 0; i < W * H; i++) { d.data[i * 4] = CH[0][i] * 4; d.data[i * 4 + 1] = CH[1][i]; d.data[i * 4 + 2] = CH[2][i]; d.data[i * 4 + 3] = 255; }   // opaque: no premultiplying
   g.putImageData(d, 0, 0); return new Promise(r => c.toBlob(r, 'image/png'));
 }
-$('mDl').onclick = async () => { const b = await png(), a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'atlas_m.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); };
-$('mShare').onclick = async () => { const f = new File([await png()], 'atlas_m.png', { type: 'image/png' }); try { await navigator.share({ files: [f] }); } catch (e) { if (e.name !== 'AbortError') toast('Share failed: ' + e.message); } };
+$('fClean').onclick = cleanStrays;
+$('mDl').onclick = async () => { preExport(); const b = await png(), a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'atlas_m.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); };
+$('mShare').onclick = async () => { preExport(); const f = new File([await png()], 'atlas_m.png', { type: 'image/png' }); try { await navigator.share({ files: [f] }); } catch (e) { if (e.name !== 'AbortError') toast('Share failed: ' + e.message); } };
 const saveAs = (b, n) => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = n; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); };
 $('aDl').onclick = async () => saveAs(await artPng(), 'atlas.png');
 $('aShare').onclick = async () => { const f = new File([await artPng()], 'atlas.png', { type: 'image/png' }); try { await navigator.share({ files: [f] }); } catch (e) { if (e.name !== 'AbortError') toast('Share failed: ' + e.message); } };
@@ -1255,8 +1255,21 @@ function chunk(im) {
     else { c.v[0][j] = Math.min(63, Math.round(r / 4)); c.v[1][j] = g; c.v[2][j] = b; }
   }
   if (!art) st.pch = grey ? st.ch + 1 : 0;     // what it writes: that channel, or all three
-  clip = c; pasteStart(); toast(`Placing ${w}×${h}` + (art ? '' : grey ? ' into ' + ['Height', 'Refl', 'Glow'][st.ch] : ' (H/R/G)') + ': drag, then ✓');
+  pasteStart(false, c); toast(`Placing ${w}×${h}` + (art ? '' : grey ? ' into ' + ['Height', 'Refl', 'Glow'][st.ch] : ' (H/R/G)') + ': drag, then ✓');
 }
+/* stray heights: painted where there's no art (shown magenta). Not the pool's undersides, the table, or a sprite something
+   stands on (all its paint counts) */
+function strays() {
+  const keep = new Uint8Array(POOL0), out = [];
+  for (const u of new Set(Object.values(CFG.use || {}))) { const m = FMETA[u]; if (m) for (let y = m[1]; y < m[1] + m[3]; y++) keep.fill(1, y * W + m[0], y * W + m[0] + m[2]); }
+  for (let i = 0; i < POOL0; i++) if (!CH[6][i] && !keep[i] && (CH[0][i] || CH[1][i] || CH[2][i])) out.push(i);
+  return out;
+}
+function cleanStrays() {
+  const S = strays(); if (!S.length) { toast('No stray heights'); return; } pasteEnd(false);
+  begin(); for (const i of S) for (let k = 0; k < 3; k++) put(i, 0, k); end(); full2 = true; ui(); toast(`Removed ${S.length} stray height pixels`);
+}
+const preExport = () => { const n = strays().length; if (n && confirm(`${n} height pixels have no art over them (magenta). Remove them first? (Cancel: export them as they are)`)) cleanStrays(); };
 function revert(all) {
   pasteEnd(false); const [rx, ry, rw, rh] = all ? [0, 0, W, H] : rect();
   begin(); for (let c = 0; c < CH.length; c++) for (let y = ry; y < ry + rh; y++) for (let x = rx; x < rx + rw; x++) { const i = y * W + x; put(i, FILE[c][i], c); } end(); syncCfg();

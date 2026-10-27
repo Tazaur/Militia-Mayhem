@@ -619,3 +619,6 @@ Fix: drop.py had a quoting error since build 206 (wouldn't run).
 
 ## Build 209
 Editor: work saved on the older atlas (722 rows) crashed the load (the carry-over wrote pixels before COL existed: "Cannot set properties of null"). COL made with COL0 at load; tested with a real pre-208 save (paint carried, undersides kept).
+
+## Build 210
+Editor: art edits touch only the art again (build 207's binding undone: erasing art leaves its heights). Moving / arraying art carries its heights only when asked (float bar, Art: "Art only" / "Art + heights", st.artAll). Stray heights (no art over them; not the pool, the table, or a sprite something stands on): View "Show stray heights" toggles the magenta; File "Remove stray heights" (one undo step); exporting atlas_m offers it when there are any. Lift and an imported piece float on their own (pasteStart(lift, c)): the copied clip stays.
