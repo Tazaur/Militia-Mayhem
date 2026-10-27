@@ -28,7 +28,7 @@ html=f'''<!doctype html>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Militia Mayhem</title>
+<title>Militia Mayhem GL</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -37,6 +37,7 @@ html=f'''<!doctype html>
 /* Single look by design: a sunlit battlefield in the original game's cartoon palette. */
 :root{{--field:#0c140a;--sand:#f2e6c4;color-scheme:dark}}
 html,body{{height:100%;margin:0;background:var(--field);overflow:hidden;overscroll-behavior:none;-webkit-user-select:none;user-select:none}}
+#g{{position:fixed;inset:0;width:100%;height:100%;display:block;pointer-events:none;image-rendering:pixelated}}
 #c{{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none;cursor:crosshair;image-rendering:pixelated}}
 </style>
 <canvas id="c" tabindex="0" aria-label="Militia Mayhem, a top-down battle game for 1 to 4 local players"></canvas>

@@ -634,3 +634,9 @@ Art drop (drop.py): new sprites: track0, track1, track2; rect / pivot: mg_dead; 
 
 ## Build 213
 Art drop (drop.py): atlas.png: no paint change; atlas_m.png: tur, tur1, tur_dead, tur_gun, tur_gun1.
+
+## Build 214 (GL)
+GL merged with main up to build 213 (atlas table, editor, tank tracks, art) and now numbered with it: GL builds continue main's build numbers (the old GL-only 1-7 are retired). Next: GL replaces the original at the site root once confirmed.
+
+## Build 214: GL is the game
+The webgl branch merged into main: the site root is the GL renderer (GX, src/0_gx.js: Canvas2D on WebGL2, falling back to plain 2D without WebGL2). gl/ and gldeploy.sh are gone; one build-number sequence (GL's own 1-7 retired, 214 is the first root GL build).

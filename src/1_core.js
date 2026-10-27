@@ -17,8 +17,8 @@ function angDiff(a, b) { let d = (b - a) % TAU; if (d > Math.PI) d -= TAU; else 
 function prune(arr, f) { let j = 0; for (let i = 0; i < arr.length; i++) { const o = arr[i]; if (f(o)) arr[j++] = o; } arr.length = j; }
 function mulberry(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 const store = {
-  get(k, d) { try { const v = localStorage.getItem('combinedarms.' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
-  set(k, v) { try { localStorage.setItem('combinedarms.' + k, JSON.stringify(v)); } catch (e) { } }
+  get(k, d) { try { let v = localStorage.getItem('mmgl.' + k); if (v === null) v = localStorage.getItem('combinedarms.' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },     // the GL build's own (the live game's read until it saves)
+  set(k, v) { try { localStorage.setItem('mmgl.' + k, JSON.stringify(v)); } catch (e) { } }
 };
 let UID = 0;
 /* the pipeline viewer (pipeline/): when set, called at every step of drawing a frame (step name, details) */
@@ -26,6 +26,7 @@ let PIPE = null;
 const pipe = (k, o) => { if (PIPE) PIPE(k, o || {}); };
 function inRect(x, y, r, pad) { pad = pad || 0; return x > r.x - pad && x < r.x + r.w + pad && y > r.y - pad && y < r.y + r.h + pad; }
 function mk(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+function stackImg(g, imgs, ...a) { if (g.drawStack) g.drawStack(imgs, ...a); else for (const o of imgs) g.drawImage(o, ...a); }     // layers each over the last (GL: one pass)
 function rr(g, x, y, w, h, r) { g.beginPath(); if (g.roundRect) g.roundRect(x, y, w, h, r); else g.rect(x, y, w, h); }
 
 /* ---------------- game data ---------------- */
@@ -105,6 +106,7 @@ function resize() {
   cv.style.width = ROT ? W + 'px' : ''; cv.style.height = ROT ? H + 'px' : ''; cv.style.right = cv.style.bottom = ROT ? 'auto' : '';
   cv.style.transformOrigin = ROT ? '0 0' : ''; cv.style.transform = ROT ? `translateX(${innerWidth}px) rotate(90deg)` : '';
   cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  if (GLC) { for (const k of ['width', 'height', 'right', 'bottom', 'transformOrigin', 'transform']) GLC.style[k] = cv.style[k]; GLC.width = cv.width; GLC.height = cv.height; }     // the GL canvas under it, the same
   const cs = getComputedStyle(probe), st = parseFloat(cs.paddingTop) || 0, sr = parseFloat(cs.paddingRight) || 0, sb = parseFloat(cs.paddingBottom) || 0, sl = parseFloat(cs.paddingLeft) || 0;
   if (ROT) { SAFE.t = sr; SAFE.r = sb; SAFE.b = sl; SAFE.l = st; } else { SAFE.t = st; SAFE.r = sr; SAFE.b = sb; SAFE.l = sl; }
   if (typeof M !== 'undefined' && M) layoutViews();

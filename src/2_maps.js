@@ -4,7 +4,7 @@
    produces the east half.
    ===================================================================== */
 let MAP = null;
-const ground = mk(WW, WH); const gx = ground.getContext('2d');
+const ground = mkG(WW, WH); const gx = ground.getContext('2d');
 const mirrorPt = (x, y) => [WW - x, WH - y];
 const mirrorRect = r => ({ ...r, x: WW - r.x - r.w, y: WH - r.y - r.h });
 
@@ -17,9 +17,9 @@ function inWater(x, y) { for (const w of MAP.water) if (inRect(x, y, w)) return 
 function onIce(x, y) { for (const w of MAP.ice) if (inRect(x, y, w)) return true; return false; }
 const SNOWY = () => MAP && MAP.id === 'snowfield';
 /* footprints live on their own layer that slowly fades (about two minutes) */
-const prints = mk(WW, WH); const px_ = prints.getContext('2d');
+const prints = mkG(WW, WH); const px_ = prints.getContext('2d');
 /* everything left behind (bodies, blood, tread marks) lives on a decal layer that fades over ~3 minutes (craters don't: scorch) */
-const decals = mk(WW, WH); const dgx = decals.getContext('2d');
+const decals = mkG(WW, WH); const dgx = decals.getContext('2d');
 /* every 3 s both layers lose a step: footprints 7.5 %, decals 5 %, and a little more (FADE_CUT), so the faintest reach zero:
    erasing a share alone sticks at a faint alpha (8-bit: 5 % of 10 rounds to nothing) and leaves a ghost. As an alpha
    filter where the canvas has them; else the old erase */
@@ -33,6 +33,7 @@ function fadeLayers(dt) {
   layerFadeT += dt; if (layerFadeT < 3) return; layerFadeT = 0;
   [[px_, 0.075], [dgx, 0.05]].forEach(([g, a], i) => {
     g.setTransform(1, 0, 0, 1, 0, 0);
+    if (g.fadeAlpha) { g.fadeAlpha(1 - a, -FADE_CUT); return; }     // GL: a shader pass
     if (FADE_F) { g.globalCompositeOperation = 'copy'; g.filter = `url(#fade${i})`; g.drawImage(g.canvas, 0, 0); g.filter = 'none'; }
     else { g.globalCompositeOperation = 'destination-out'; g.fillStyle = `rgba(0,0,0,${a})`; g.fillRect(0, 0, WW, WH); }
     g.globalCompositeOperation = 'source-over';

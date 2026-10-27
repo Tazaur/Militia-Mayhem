@@ -10,14 +10,14 @@ function drawWorld(vw) {
   const x0 = (vw.x - VOX) / VZ - 4, y0 = (vw.y - VOY) / VZ - 4, x1 = (vw.x + vw.w - VOX) / VZ + 4, y1 = (vw.y + vw.h - VOY) / VZ + 4;
   const vis = (x, y, r) => x + r > x0 && x - r < x1 && y + r > y0 && y - r < y1;
   screenT(); ctx.save(); ctx.beginPath(); ctx.rect(vw.x, vw.y, vw.w, vw.h); ctx.clip();
-  ctx.fillStyle = '#0c140a'; ctx.fillRect(vw.x, vw.y, vw.w, vw.h); pipe('clear');
+  pipe('clear');     // no fill: the ground and the skirt round the map cover the view
   worldT(); ctx.imageSmoothingEnabled = false;
   SUNNOW = sunOn();
   const rv = MAP.tiled ? roofView(vw, x0, y0, x1, y1) : null, fogPolys = applyFog(vw, vis, x0, y0, x1, y1, rv), fogged = !!fogPolys; pipe('memory', { fogged });
   // ---- layer 0: ground + fading footprints
   drawSkirt(x0, y0, x1, y1);
   const gx0 = Math.max(0, Math.floor(x0)), gy0 = Math.max(0, Math.floor(y0)), gx1 = Math.min(WW, Math.ceil(x1)), gy1 = Math.min(WH, Math.ceil(y1));
-  if (gx1 > gx0 && gy1 > gy0) { ctx.drawImage(ground, gx0, gy0, gx1 - gx0, gy1 - gy0, gx0, gy0, gx1 - gx0, gy1 - gy0); ctx.drawImage(decals, gx0, gy0, gx1 - gx0, gy1 - gy0, gx0, gy0, gx1 - gx0, gy1 - gy0); ctx.drawImage(prints, gx0, gy0, gx1 - gx0, gy1 - gy0, gx0, gy0, gx1 - gx0, gy1 - gy0); }
+  if (gx1 > gx0 && gy1 > gy0) stackImg(ctx, [ground, decals, prints], gx0, gy0, gx1 - gx0, gy1 - gy0, gx0, gy0, gx1 - gx0, gy1 - gy0);
   pipe('ground');
   if (MAP.water.length) { ctx.globalAlpha = 0.18; ctx.fillStyle = CFG.style === 'grit' ? '#7a8a82' : '#9fd0f0'; for (const w of MAP.water) { if (!vis(w.x + w.w / 2, w.y + w.h / 2, Math.max(w.w, w.h))) continue; for (let i = 0; i < 26; i++) { const y = w.y + ((i * 97 + M.time * 14) % w.h), x = w.x + ((i * 53) % (w.w - 20)) + Math.sin(M.time + i) * 6; ctx.fillRect(x, y, 12, 1); } } ctx.globalAlpha = 1; }
   // flags
@@ -173,7 +173,7 @@ function drawSmokes(vw) { if (M.gsf && M.gsf.act.length) { worldT(); drawSmokeFi
    it is (down to SMK_SMALL), so a little one squeezed against a wall doesn't stand out as a hot spot */
 const SMK_VIS = 3, SMK_PUFF = 1.5, SMK_GROW = 0.9, SMK_PAD = 5, SMK_IN = 2.5, SMK_SMALL = 0.5;     // SMK_PAD: tiles past the view whose puffs can reach in
 const SMK_SELF = [[6, 0.08], [14, 0.07], [24, 0.06]], SMK_DROP = 8;     // self-shade steps (px, opacity); the ground shadow's offset
-const SMK_C = document.createElement('canvas'), SMK_SH = document.createElement('canvas'), SMK_L = document.createElement('canvas');
+const SMK_C = mkG(1, 1), SMK_SH = mkG(1, 1), SMK_L = mkG(1, 1);
 /* each puff of the field in the tile box (null: all of them): f(x, y, radius, opacity, hash, brown part). The look eases in here (once a frame) */
 function smokePuffs(bx, eyes, cb) {
   const f = M.gsf, [n0, n1] = SIGHT_NEAR, { W, A, B, R, V: Vs } = f, T = M.time, ease = Math.min(1, clamp(T - f.vt, 0, 0.1) * SMK_IN); f.vt = T;
@@ -190,13 +190,13 @@ function smokePuffs(bx, eyes, cb) {
 /* the light smoke takes, at 1 / SMK_LQ the size: the day (or night) as it falls at the smoke's height (SMK_Z), shaded only by
    what stands still and taller (walls, trees: their shadows cast down to it), never by the vehicles and men in it; and the
    point lights, flat a puff (smokeLamps) */
-const SMK_LO = document.createElement('canvas'), SMK_LP = document.createElement('canvas'), SMK_LQ = 4, SMK_Z = 14, SMK_PF = [];
+const SMK_LO = mkG(1, 1), SMK_LP = mkG(1, 1), SMK_LQ = 4, SMK_Z = 14, SMK_PF = [];
 function smokeLight(X0, Y0, pw, ph) {
   const c = SMK_LO, q = SMK_LQ, w = Math.ceil(pw / q), h = Math.ceil(ph / q), T = sunTone(), col = a => `rgb(${a.map(v => clamp(v, 0, 1) * 255 | 0)})`;
   if (c.width < w || c.height < h) { c.width = Math.max(c.width, w); c.height = Math.max(c.height, h); }
   const g = c.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-over'; g.fillStyle = col(T.li); g.fillRect(0, 0, w, h);
   const el = sunEl(); if (el >= 0.03) smokeShadows(g, X0, Y0, pw, ph, el, T, col);
-  smokeLamps(g, X0, Y0, w, h);
+  pipe('smk-shadows'); smokeLamps(g, X0, Y0, w, h); pipe('smk-lamps');
   return c;
 }
 /* the static shadows at the smoke's height, into its light */
@@ -204,7 +204,7 @@ function smokeShadows(g, X0, Y0, pw, ph, el, T, col) {
   const q = SMK_LQ;
   const t = 1 / Math.tan(el), ux = -Math.cos(SUN.az) * t, uy = -Math.sin(SUN.az) * t, far = Math.min(720, (SUNH.tree[0] - SMK_Z) * t);     // a height h's shadow: (h - SMK_Z) x (ux, uy) away
   const near = (x0, y0, x1, y1) => x1 + far > X0 && x0 - far < X0 + pw && y1 + far > Y0 && y0 - far < Y0 + ph;
-  g.setTransform(1 / q, 0, 0, 1 / q, -X0 / q, -Y0 / q); g.fillStyle = g.strokeStyle = col(T.sh); g.lineCap = 'round'; g.filter = 'blur(1.5px)';     // soft: a shadow through haze (no filter: the upscale's own blur)
+  g.setTransform(1 / q, 0, 0, 1 / q, -X0 / q, -Y0 / q); g.fillStyle = g.strokeStyle = col(T.sh); g.lineCap = 'round'; if (!g.blur) g.filter = 'blur(1.5px)';     // soft: a shadow through haze (GL: blurred after, the same; no filter: the upscale's own blur)
   const quad = P => { g.beginPath(); P.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.fill(); };
   const d = SUNH.wall - SMK_Z, vx = ux * d, vy = uy * d;
   for (const b of MAP.buildings) {     // the box swept down its shadow: its far end and the four sides between
@@ -217,7 +217,7 @@ function smokeShadows(g, X0, Y0, pw, ph, el, T, col) {
     const r = (s.pine ? SPR.pines : SPR.trees)[s.v].width / 2 * s.sc * 0.85, d0 = Math.max(0, SUNH.tree[1] - SMK_Z), d1 = SUNH.tree[0] - SMK_Z;
     g.lineWidth = r * 2; g.beginPath(); g.moveTo(s.x + ux * d0, s.y + uy * d0); g.lineTo(s.x + ux * d1 + 0.01, s.y + uy * d1); g.stroke();
   }
-  g.filter = 'none';
+  if (g.blur) { g.setTransform(1, 0, 0, 1, 0, 0); g.blur(1.5, 0, 0, Math.ceil(pw / q), Math.ceil(ph / q)); } else g.filter = 'none';
 }
 /* the point lights, one flat colour a puff (SMK_PF: what drawSmokeField laid, x y r alpha): each puff's light at its middle,
    stacked as the puffs are (source-over by their alpha), added on */
@@ -249,22 +249,22 @@ function drawSmokeField(vw, eyes) {
     if (fb < 0.98) { g.globalAlpha = al * k2 * (1 - fb); g.drawImage(SPR.puffs.grey[s][v], x - r, y - r, r * 2, r * 2); }
     if (fb > 0.02) { g.globalAlpha = al * k2 * fb; g.drawImage(SPR.puffs.brown[s][v], x - r, y - r, r * 2, r * 2); }
   });
-  g.globalAlpha = 1; g.globalCompositeOperation = 'destination-out'; g.beginPath();     // the walls and intact windows: smoke stays out of them, and what's beyond
+  pipe('smk-puffs'); g.globalAlpha = 1; g.globalCompositeOperation = 'destination-out'; g.beginPath();     // the walls and intact windows: smoke stays out of them, and what's beyond
   for (const b of MAP.buildings) if (b.x < X0 + pw && b.x + b.w > X0 && b.y < Y0 + ph && b.y + b.h > Y0 && !(b.glass && b.sec && b.sec.hp < b.sec.mhp)) g.rect(b.x, b.y, b.w, b.h);
   g.fill(); g.globalCompositeOperation = 'source-over';
-  gs.globalCompositeOperation = 'copy'; gs.drawImage(SMK_C, 0, 0, pw, ph, 0, 0, pw, ph); gs.globalCompositeOperation = 'source-in'; gs.fillStyle = '#000'; gs.fillRect(0, 0, pw, ph); gs.globalCompositeOperation = 'source-over';
+  pipe('smk-cut'); gs.globalCompositeOperation = 'copy'; gs.drawImage(SMK_C, 0, 0, pw, ph, 0, 0, pw, ph); gs.globalCompositeOperation = 'source-in'; gs.fillStyle = '#000'; gs.fillRect(0, 0, pw, ph); gs.globalCompositeOperation = 'source-over';
   const ux = -Math.cos(SUN.az), uy = -Math.sin(SUN.az);     // away from the sun
-  g.globalCompositeOperation = 'source-atop'; for (const [d, o] of SMK_SELF) { g.globalAlpha = o; g.drawImage(SMK_SH, 0, 0, pw, ph, X0 + ux * d, Y0 + uy * d, pw, ph); }
+  pipe('smk-sh'); g.globalCompositeOperation = 'source-atop'; for (const [d, o] of SMK_SELF) { g.globalAlpha = o; g.drawImage(SMK_SH, 0, 0, pw, ph, X0 + ux * d, Y0 + uy * d, pw, ph); }
   g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
-  ctx.globalAlpha = 0.28; ctx.drawImage(SMK_SH, 0, 0, pw, ph, X0 + ux * SMK_DROP, Y0 + uy * SMK_DROP, pw, ph);
+  pipe('smk-self'); ctx.globalAlpha = 0.28; ctx.drawImage(SMK_SH, 0, 0, pw, ph, X0 + ux * SMK_DROP, Y0 + uy * SMK_DROP, pw, ph);
   ctx.globalAlpha = 1;
   const S = SUNNOW && vw && _sun && _sun.lit; if (!S) { ctx.drawImage(SMK_C, 0, 0, pw, ph, X0, Y0, pw, ph); return; }
   // lit as the air it's in (smokeLight: not the ground's shade under it, which carries all that's in it): the smoke over black, times that,
   // then in place of what it covers (cut out, added): exact where it's thin too
-  const l = SMK_L.getContext('2d'), wx = (vw.x - VOX) / VZ, wy = (vw.y - VOY) / VZ, ww = vw.w / VZ, wh = vw.h / VZ;
+  pipe('smk-drop'); const l = SMK_L.getContext('2d'), wx = (vw.x - VOX) / VZ, wy = (vw.y - VOY) / VZ, ww = vw.w / VZ, wh = vw.h / VZ;
   l.setTransform(1, 0, 0, 1, 0, 0); l.globalCompositeOperation = 'source-over'; l.fillStyle = '#000'; l.fillRect(0, 0, pw, ph); l.drawImage(SMK_C, 0, 0, pw, ph, 0, 0, pw, ph);
   l.globalCompositeOperation = 'multiply'; l.imageSmoothingEnabled = true; l.drawImage(smokeLight(X0, Y0, pw, ph), 0, 0, Math.ceil(pw / SMK_LQ), Math.ceil(ph / SMK_LQ), 0, 0, Math.ceil(pw / SMK_LQ) * SMK_LQ, Math.ceil(ph / SMK_LQ) * SMK_LQ); l.globalCompositeOperation = 'source-over';
-  ctx.save(); ctx.beginPath(); ctx.rect(wx, wy, ww, wh); ctx.clip();
+  pipe('smk-lit'); ctx.save(); ctx.beginPath(); ctx.rect(wx, wy, ww, wh); ctx.clip();
   ctx.globalCompositeOperation = 'destination-out'; ctx.drawImage(SMK_C, 0, 0, pw, ph, X0, Y0, pw, ph);
   ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(SMK_L, 0, 0, pw, ph, X0, Y0, pw, ph); ctx.restore();
 }
@@ -939,7 +939,7 @@ function feedIcon(how) {
 function drawMinimap() {
   const { many, mw, mh, mx, my } = miniRect(), k = mw / WW;
   ctx.fillStyle = 'rgba(8,20,8,0.82)'; ctx.fillRect(mx - 3, my - 3, mw + 6, mh + 6);
-  ctx.globalAlpha = 0.85; ctx.drawImage(ground, 0, 0, WW, WH, mx, my, mw, mh); ctx.globalAlpha = 1;
+  ctx.globalAlpha = 0.85; ctx.drawImage(groundMini(), 0, 0, groundMini().width, groundMini().height, mx, my, mw, mh); ctx.globalAlpha = 1;
   for (const f of M.flags) { ctx.fillStyle = f.owner < 0 ? '#ddd' : TEAMHEX[f.owner]; ctx.beginPath(); ctx.arc(mx + f.x * k, my + f.y * k, 5, 0, TAU); ctx.fill(); txt(f.name.length > 1 ? 'H' : f.name, mx + f.x * k, my + f.y * k + 1, 8, '#000', 'center', 'middle', FB); }
   const myTeams = humanTeams(), LS = LOCALS(), eyesM = LS.map(p => p.sol).filter(s => s && s.alive), fogOn = M.cfg.fog && M.cfg.fog !== 'off';
   const mine = o => LS.some(p => p.sol === o);
