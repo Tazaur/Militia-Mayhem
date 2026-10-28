@@ -49,21 +49,23 @@ for n in ['jeep%d' % i for i in range(5)]: S[n] = old(n)
 # and barrel at 100 / 50 % and dead (tur / tur_gun, tur1 / tur_gun1; tur_dead: both in one). The hull's pivot sits 4 px
 # ahead of its turret ring (turretPivot), the turret's on its ring (the body's middle, past the mantlet and stowage), the
 # other frames laid on the first by their outlines; the barrel butts 3 px under the mantlet. Imported once (extra.tankV)
+def tight(c): ys, xs = np.where(c[:, :, 3] > 0); return c[ys.min():ys.max() + 1, xs.min():xs.max() + 1].copy()
+def lay(a, ref, rx, ry):          # ref's pivot (rx, ry) into a: the shift that best overlaps their outlines
+    A, R = a[:, :, 3] > 0, ref[:, :, 3] > 0; best = (-1, 0, 0)
+    for dy in range(-12, 13):
+        for dx in range(-16, 17):
+            y0, x0 = max(0, dy), max(0, dx); y1, x1 = min(A.shape[0], R.shape[0] + dy), min(A.shape[1], R.shape[1] + dx)
+            if y1 <= y0 or x1 <= x0: continue
+            n = (A[y0:y1, x0:x1] & R[y0 - dy:y1 - dy, x0 - dx:x1 - dx]).sum()
+            if n > best[0]: best = (n, dx, dy)
+    return rx + best[1], ry + best[2]
+def bands(a):                     # a white decal's greys onto the tint's bands (tinted, 1_core): paint, shade, dark
+    L = a[:, :, 0].astype(int); a[:, :, 0] = a[:, :, 1] = a[:, :, 2] = np.where(L >= 185, 245, np.where(L >= 120, 200, L)); return a
 TANK_N = ['hull%d' % i for i in range(5)] + ['tur', 'tur1', 'tur_gun', 'tur_gun1', 'tur_dead']; FRESH = set()     # FRESH: new art, a first-pass material whatever the old one
 if extra.get('tankV') != 2:
     FRESH.update(TANK_N)
     T = np.array(Image.open('art/art4/tank.png').convert('RGBA'))
-    def box(x, y, w, h):
-        c = T[y:y + h, x:x + w]; ys, xs = np.where(c[:, :, 3] > 0); return c[ys.min():ys.max() + 1, xs.min():xs.max() + 1].copy()
-    def lay(a, ref, rx, ry):          # ref's pivot (rx, ry) into a: the shift that best overlaps their outlines
-        A, R = a[:, :, 3] > 0, ref[:, :, 3] > 0; best = (-1, 0, 0)
-        for dy in range(-12, 13):
-            for dx in range(-16, 17):
-                y0, x0 = max(0, dy), max(0, dx); y1, x1 = min(A.shape[0], R.shape[0] + dy), min(A.shape[1], R.shape[1] + dx)
-                if y1 <= y0 or x1 <= x0: continue
-                n = (A[y0:y1, x0:x1] & R[y0 - dy:y1 - dy, x0 - dx:x1 - dx]).sum()
-                if n > best[0]: best = (n, dx, dy)
-        return rx + best[1], ry + best[2]
+    def box(x, y, w, h): return tight(T[y:y + h, x:x + w])
     H = [box(9, 8, 126, 67), box(153, 8, 126, 67), box(9, 83, 126, 67), box(153, 82, 126, 68), box(302, 83, 138, 68)]
     h0 = H[0]; L = h0[:, :, :3].astype(int) @ [30, 59, 11] // 100; dk = (L < 40) & (h0[:, :, 3] > 0)
     dk[:, :h0.shape[1] // 4] = False; dk[:, h0.shape[1] * 3 // 4:] = False; ys, xs = np.where(dk)     # the ring: the dark hole mid-hull
@@ -83,6 +85,28 @@ if extra.get('tankV') != 2:
     extra['tankV'] = 2
 else:
     for n in TANK_N: S[n] = old(n)
+# ---- tank decals (art/art4/tank_decals.png, white like the jeep's: the rear-deck chevron and the barrel's two stripes, tinted
+# in the game as the jeep's) and the new wreck (art/art4/tank_husk.png: the husk with the chevron burnt in, laid on hull0 by
+# outline, its old material carried over where they overlap; the dead barrel with its stripes burnt, put over tur_dead's).
+# Imported once (extra.tankDecV)
+CARRY = {}                        # name: (dx, dy) new sprite px -> old sprite px, for the material
+if extra.get('tankDecV') != 1:
+    D = np.array(Image.open('art/art4/tank_decals.png').convert('RGBA'))
+    for n, c in (('decal_hull', D[10:66, 10:50]), ('decal_gun', D[28:42, 60:80])): a = bands(tight(c)); S[n] = (a, a.shape[1] / 2, a.shape[0] / 2)
+    extra['tankStar'] = [-37.2, 0.5]; extra['tankBar'] = [61.5, 0]          # their centres from the hull's / the gun's pivot
+    K = np.array(Image.open('art/art4/tank_husk.png').convert('RGBA'))
+    hk = tight(K[45:130, 0:150]); h0 = S['hull0']; hp = lay(hk, h0[0], h0[1], h0[2]); o4 = S['hull4']
+    CARRY['hull4'] = (round(o4[1] - hp[0]), round(o4[2] - hp[1])); S['hull4'] = (hk,) + hp
+    bb = tight(K[15:45, 40:100]); td = S['tur_dead'][0].copy(); best = (-1, 0, 0)
+    for oy in range(td.shape[0] - bb.shape[0] + 1):
+        for ox in range(td.shape[1] - bb.shape[1] + 1):
+            t = td[oy:oy + bb.shape[0], ox:ox + bb.shape[1]]; k = ((np.abs(t[:, :, :3].astype(int) - bb[:, :, :3]).sum(-1) < 6) & (t[:, :, 3] > 0) & (bb[:, :, 3] > 0)).sum()
+            if k > best[0]: best = (k, ox, oy)
+    _, ox, oy = best; r = td[oy:oy + bb.shape[0], ox:ox + bb.shape[1]]; r[:] = np.where(bb[:, :, 3:] > 0, bb, r)
+    S['tur_dead'] = (td,) + S['tur_dead'][1:]
+    extra['tankDecV'] = 1
+else:
+    for n in ('decal_hull', 'decal_gun'): S[n] = old(n)
 # ---- jeep v3 (art/art4/jeep.png, front to the right): five frames (100 / 75 / 50 / 25 % / wreck, pivots found by overlaying
 # them on the v2 frame 0), the hood decal, a front tyre seen from above, a broken-off wheel and a flattened one, and the
 # mounted MG (idle / firing, drawn 2 px kicked back / destroyed). Imported once (extra.jeepV), then the atlas copies are the
@@ -96,8 +120,7 @@ if extra.get('jeepV') != 3:
         c, _, _ = cut(x0, y0, x1, y1, 0, 0); return c, c.shape[1] / 2, c.shape[0] / 2
     for i, w in enumerate([(0, 0, 87, 45, 44, 22), (96, 0, 184, 45, 140, 22), (0, 46, 89, 90, 44, 67), (96, 46, 185, 90, 140, 67), (1, 90, 90, 136, 45, 112)]):
         S['jeep%d' % i] = cut(*w)
-    d = piece(116, 97, 127, 112); a = d[0]; L = a[:, :, 0].astype(int)
-    a[:, :, 0] = a[:, :, 1] = a[:, :, 2] = np.where(L >= 185, 245, np.where(L >= 120, 200, L))   # greys onto the tint's bands: paint, shade, dark
+    d = piece(116, 97, 127, 112); bands(d[0])
     S['decal'] = d; S['jeep_tire'] = piece(112, 116, 131, 122); S['jeep_wheel'] = piece(142, 108, 162, 128); S['jeep_flat'] = piece(166, 109, 187, 127)
     S['mg'] = cut(201, 36, 238, 51, 207.5, 45.5); S['mg_f'] = cut(200, 54, 250, 77, 208.5, 65.5); S['mg_dead'] = cut(201, 80, 237, 95, 207.5, 89.5)
     extra['jeepStar'] = [24, 0]                        # hood centre, from the pivot
@@ -203,7 +226,14 @@ AMn = np.zeros((H, W, 3), np.uint8); gen = 0
 for n, x, y in places:
     a = S[n][0]; h, w = a.shape[:2]
     if AM is not None and n in meta and n not in FRESH and meta[n][2:4] == [w, h]: ox, oy = meta[n][:2]; AMn[y:y + h, x:x + w] = AM[oy:oy + h, ox:ox + w]
-    else: AMn[y:y + h, x:x + w] = matgen(a, n); gen += 1
+    else:
+        AMn[y:y + h, x:x + w] = matgen(a, n); gen += 1
+        if AM is not None and n in CARRY and n in meta:     # new art over old: the old material wherever both have a pixel
+            dx, dy = CARRY[n]; ox, oy, ow, oh = meta[n][:4]
+            for j in range(h):
+                for i in range(w):
+                    u, v = i + dx, j + dy
+                    if a[j, i, 3] and 0 <= u < ow and 0 <= v < oh and A[oy + v, ox + u, 3]: AMn[y + j, x + i] = AM[oy + v, ox + u]
 AMn[PY:PY + POOL_H] = POOL; atlas_table.write(AMn, {**CFG, 'rows': CFG_H, 'pool': [PY, POOL_H], 'spr': {n: out[n] for n, _, _ in places}})
 Image.fromarray(AMn).save('atlas_m.png', optimize=True)
 extra['tips'] = {k: v for k, v in extra.get('tips', {}).items() if k.startswith('n_')}

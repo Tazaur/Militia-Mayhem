@@ -666,3 +666,7 @@ The webgl branch merged into main: the site root is the GL renderer (GX, src/0_g
 
 ## Build 221
 - Dev: build 220's dummy line-boarding reverted; vehicles now spawn at the selected range (DEV.range), same as dummies, so a dummy spawned after a vehicle lands on it and boards.
+
+## Build 222
+- Tank decals (art/art4/tank_decals.png; atlas_pack imports once, extra.tankDecV 1): the rear-deck chevron (decal_hull, centre EXTRA.tankStar from the hull pivot) and the barrel's two stripes (decal_gun, EXTRA.tankBar from the gun pivot), white, the jeep decal's grey bands (atlas_pack `bands`). vehSkin draws every vehicle decal from one table (VDECAL: jeep hood, tank hull, gun): tinted like the jeep's (white empty, team colour aboard), 70 % on the last damage frame (jeep3 / hull3 / tur_gun1), none on the wreck. The gun is now drawn skinned (sprC + vehSkin).
+- New tank husk (art/art4/tank_husk.png): hull4 replaced (chevron burnt in; laid on hull0 by outline; old material carried where both overlap, CARRY), and tur_dead's bent barrel replaced by the one with burnt stripes.

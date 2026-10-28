@@ -476,8 +476,8 @@ function drawVehicle(v) {
     for (const [n, fy, x, y] of tracks(v)) spr(n, x, y, v.a, 1, fy);
     const hn = 'hull' + hullFrame(v), hm = ATLAS[hn]; sprC(vehSkin(hn, col), hm[4], hm[5], v.x, v.y, v.a);
     for (const i of [2, 3]) { const s = v.seats[i]; if (s) drawSeated(s); }
-    const [px, py] = turretPivot(v), kick = clamp(v.recoil, 0, 1) * KICK, tf = turFrame(v), tm = ATLAS['tur' + tf];
-    spr('tur_gun' + tf, px - Math.cos(v.ta) * kick, py - Math.sin(v.ta) * kick, v.ta);
+    const [px, py] = turretPivot(v), kick = clamp(v.recoil, 0, 1) * KICK, tf = turFrame(v), tm = ATLAS['tur' + tf], gm = ATLAS['tur_gun' + tf];
+    sprC(vehSkin('tur_gun' + tf, col), gm[4], gm[5], px - Math.cos(v.ta) * kick, py - Math.sin(v.ta) * kick, v.ta);
     sprC(vehSkin('tur' + tf, col), tm[4], tm[5], px, py, v.ta);
     const [mx, my] = mgPos(v);
     drawMG(v, mx, my);

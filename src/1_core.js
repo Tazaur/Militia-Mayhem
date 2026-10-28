@@ -282,15 +282,20 @@ function buildRings() {
 }
 /* vehicle paint: grey stripes + your emblem layer, recolored to whoever is aboard */
 const SKINS = new Map();
+/* [frame names (the damage frame caught), decal sprite, its centre from the pivot (EXTRA), the last damage frame]: jeep hood
+   emblem, tank rear-deck chevron, the barrel's two stripes */
+const VDECAL = [[/^jeep([0-3])$/, 'decal', 'jeepStar', '3'], [/^hull([0-3])$/, 'decal_hull', 'tankStar', '3'], [/^tur_gun(1?)$/, 'decal_gun', 'tankBar', '1']];
 function vehSkin(name, color) {
   const key = name + '|' + color; let c = SKINS.get(key); if (c) return c;
   const m = ATLAS[name]; c = mk(m[2], m[3]); const g = c.getContext('2d');
   g.imageSmoothingEnabled = false;
   g.drawImage(SRC, m[0], m[1], m[2], m[3], 0, 0, m[2], m[3]);
   const px = m[4], py = m[5];
-  // the artist's colour pieces only (the tank's: none until its new decals): jeep hood emblem (white while the jeep is empty, faded to 70 %
-  // on the last damage frame, none on the wreck)
-  if (/^jeep[0-3]$/.test(name)) { const d = ATLAS.decal, o = EXTRA.jeepStar; g.globalAlpha = name === 'jeep3' ? 0.7 : 1; g.drawImage(tinted('decal', color), Math.round(px + o[0] - d[4]), Math.round(py + o[1] - d[5])); g.globalAlpha = 1; }
+  // the artist's colour pieces (VDECAL): white while the vehicle is empty, faded to 70 % on the last damage frame, none on the wreck
+  for (const [re, dn, at, last] of VDECAL) {
+    const r = re.exec(name); if (!r) continue; const d = ATLAS[dn], o = EXTRA[at];
+    g.globalAlpha = r[1] === last ? 0.7 : 1; g.drawImage(tinted(dn, color), Math.round(px + o[0] - d[4]), Math.round(py + o[1] - d[5])); g.globalAlpha = 1;
+  }
   SKINS.set(key, c); return c;
 }
 /* darker copies of soldier sprites for bots, so a team reads as one colour family */
