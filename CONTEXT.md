@@ -673,3 +673,9 @@ The webgl branch merged into main: the site root is the GL renderer (GX, src/0_g
 
 ## Build 223
 - Tank chevron (decal_hull) redrawn: new art in place in atlas.png (same size and pivot, the grey bands applied) and art/art4/tank_decals.png.
+
+## Build 225 (224 was a local rebuild, never released)
+- Undersides folded into their sprite: the sprite quad (kind 0) reads its underside's depth at an offset (undQ, the old hund geometry) and writes one span, base minus depth up to its top. No separate underside quads (kind 4 gone) or `q.u` parts; instances are 20 floats (i4: the underside's box in the frame's uv).
+- Sun-shadow channels (hLayers / sunLayers in 5e_light.js): floating parts (base > 0) wait in HL.f. Two of them go in different channels when their sun-aligned footprints, stretched by their shadow, overlap and their spans can't merge (same object: ranges don't touch; different objects: bases differ). Channel 0 → a/u as before; the others → HL.x (HL.k: kept copies for the memory), each its own heights (unit 8), sweep over its regions (unit 9, sunSweep now takes a list of boxes), resolved into a MAX shade mask (unit 10) that CP reads (SWL, LY). Cap 4 channels. Fixes the turret/gun/MG/jeep shadow bridging and notches.
+- Units 8+ belong to the GL renderer between frames (its textures and samplers): L2u rebinds 8–10 and clears their samplers before use. Layers off if fewer than 11 units.
+- Point-light shadows still read the merged heights (HT), so they can still bridge.

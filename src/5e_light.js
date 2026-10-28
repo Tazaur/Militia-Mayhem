@@ -287,12 +287,13 @@ function sunInit() {
     const VS = 'attribute vec2 p; void main() { gl_Position = vec4(p, 0., 1.); }', TX = `uniform sampler2D H, HS; uniform vec2 S; uniform vec4 R; uniform float FG;
 vec4 tx(vec2 p) { return texture2D(H, clamp(p, R.xy, R.zw) / S); }
 float hh(vec2 p) { vec4 c = tx(p); return max(c.r, c.g) * 63.75; }     // the top: grounded (R) or floating (G), whichever's higher
-float hv(vec2 p, bool o) { if (o) { vec4 c = texture2D(HS, clamp(p, R.xy, R.zw) / S); return max(c.r, c.g) * 63.75; } return hh(p); }`;     // the top that shows: out of sight (o), only what's remembered
+float hv(vec2 p, bool o) { if (o) { vec4 c = texture2D(HS, clamp(p, R.xy, R.zw) / S); return max(c.r, c.g) * 63.75; } return hh(p); }     // the top that shows: out of sight (o), only what's remembered
+float un(vec2 c) { return (c.x * 255. + c.y) / 255. * 128. - 64.; }     // a height packed in two bytes (sunSweep)
+float sunIn(vec4 c, float h) { float g = un(c.rg), lo = c.b * 128. - 64., hi = c.a * 128. - 64.; return max(clamp((g - h + 0.75) / 1.5, 0., 1.), clamp((min(h - lo, hi - h) + 0.75) / 1.5, 0., 1.)); }`;     // how far height h is in the sun's shadow by a sweep's record c: under its skyline, or inside its floating span
     /* the point lights, once per pixel (pl: falloff, slope toward each, its own shadow march, each its colour PC) and their
        glow scattered in haze (smoke, rain) into LT: RGB pl / 4, A scatter / 4. The sun's slope and shadow: the maps' (CP) */
     const P = prog(VS, `precision highp float; ${TX}
 uniform float K, V, HZ; uniform vec2 P; uniform vec3 L; uniform vec4 PL[${LMAX}], PD[${LMAX}]; uniform float PK[${LMAX}]; uniform vec3 PC[${LMAX}]; uniform sampler2D SWT, SWS;
-float un(vec2 c) { return (c.x * 255. + c.y) / 255. * 128. - 64.; }     // a height packed in two bytes (sunSweep)
 float blk(vec2 p, float z, out float o, out float th) { vec4 c = texture2D(H, (floor(clamp(p, R.xy, R.zw)) + 0.5) / S); o = 1.; th = c.r * 63.75; float d = th - z;     // grounded: solid from the ground up (no soft foot)
   float ft = c.g * 63.75, fb = (1. - c.a) * 63.75; if (ft > 0.01) { float e = min(ft - z, z - fb); if (e > d) { d = e; th = ft - fb; } }     // floating: its own span, the gap under it kept
   if (c.b > 0.5) { float e = min(${ROOF_Z[1].toFixed(1)} - z, z - ${ROOF_Z[0].toFixed(1)}); if (e > d) { d = e; th = ${(ROOF_Z[1] - ROOF_Z[0]).toFixed(1)}; } }     // a roof over it (B): the slab blocks too
@@ -327,7 +328,7 @@ void main() {
        its own art and blooms (BL). WX: buffer px to world px. Q 3 / 4: the heights / materials (dev) */
     const CP = prog(VS, `precision highp float; ${TX}
 #define PLT vec3(1., 0.96, 0.86)
-uniform sampler2D MT, LT, SWT, SWS; uniform vec2 G, P, O; uniform float K, Q, V, TM, BL, EN, RF, LB; uniform vec3 L, C, W, SKY, LI; uniform vec3 WX; uniform vec4 E[2];
+uniform sampler2D MT, LT, SWT, SWS, SWL; uniform vec2 G, P, O; uniform float K, Q, V, TM, BL, EN, RF, LB, LY; uniform vec3 L, C, W, SKY, LI; uniform vec3 WX; uniform vec4 E[2];
 float ro(float d) { return ${ROOF_CAP.toFixed(2)} * clamp((d - ${ROOF_NEAR.toFixed(1)}) / ${(ROOF_FAR - ROOF_NEAR).toFixed(1)}, 0., 1.); }     // roofOp
 float roofA(vec2 p, vec2 w, bool ou) {     // how much of the roof shows here (roofView's fade; out of sight, all of it)
   if (tx(p).b < 0.5 || hh(p) > ${ROOF_Z[1].toFixed(1)}) return 0.;
@@ -336,18 +337,17 @@ float roofA(vec2 p, vec2 w, bool ou) {     // how much of the roof shows here (r
   for (int i = 0; i < 4; i++) { if (float(i) >= EN) break; vec4 e = E[i / 2]; float d = length(w - (i - i / 2 * 2 == 0 ? e.xy : e.zw)); a *= i == 0 ? ro(d) : ro(d) / ${ROOF_CAP.toFixed(2)}; }
   return mix(1., a, RF); }     // RF: how far inside a house the view is (roofView's vw.rf)
 vec4 mt(vec2 p) { return texture2D(MT, clamp(p, R.xy, R.zw) / S); }
-float un(vec2 c) { return (c.x * 255. + c.y) / 255. * 128. - 64.; }     // a height packed in two bytes (sunSweep)
 vec3 hr(float t) { t = clamp(t, 0., 1.) * 4.; return t < 1. ? mix(vec3(0.04, 0.04, 0.16), vec3(0.1, 0.3, 0.95), t) : t < 2. ? mix(vec3(0.1, 0.3, 0.95), vec3(0.1, 0.85, 0.35), t - 1.) : t < 3. ? mix(vec3(0.1, 0.85, 0.35), vec3(1., 0.85, 0.1), t - 2.) : mix(vec3(1., 0.85, 0.1), vec3(1., 0.2, 0.15), t - 3.); }     // dev heights' ramp
 float hs(vec2 p) { vec3 q = fract(p.xyx * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }     // fract hash: no big sin (it splits between cells)
 float vn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); return mix(mix(hs(i), hs(i + vec2(1., 0.)), f.x), mix(hs(i + vec2(0., 1.)), hs(i + vec2(1., 1.)), f.x), f.y); }
 float wv(vec2 w) { return vn(w * 0.06 + vec2(TM * 0.35, TM * 0.25)) + 0.5 * vn(w * 0.14 - vec2(TM * 0.45, -TM * 0.2)); }
 void main() {
   vec2 f = gl_FragCoord.xy - O, p = vec2(f.x, V - f.y) + P;     // O: where this map sits in GC (GL pixels)
-  // the sun: its slope (lam) and shadow (sh: under the skyline, or inside a floating span); FG: the memory's map, from what it keeps (HS, SWS)
+  // the sun: its slope (lam) and shadow (sh: the frame's sweep, and the other channels' (SWL, LY: any)); FG: the memory's map, from what it keeps (HS, SWS)
   bool ou = FG > 0.5; float h0 = hv(p, ou), sh;
   vec3 N = normalize(vec3(-vec2(hv(p + vec2(1., 0.), ou) - hv(p - vec2(1., 0.), ou), hv(p + vec2(0., 1.), ou) - hv(p - vec2(0., 1.), ou)) * K * 0.5, 1.));
   float lam = (0.45 + 0.55 * max(dot(N, L), 0.)) / (0.45 + 0.55 * L.z);
-  { vec2 q = (floor(p) + 0.5) / S; vec4 c = ou ? texture2D(SWS, q) : texture2D(SWT, q); float g = un(c.rg), lo = c.b * 128. - 64., hi = c.a * 128. - 64.; sh = 1. - max(clamp((g - h0 + 0.75) / 1.5, 0., 1.), clamp((min(h0 - lo, hi - h0) + 0.75) / 1.5, 0., 1.)); }
+  { vec2 q = (floor(p) + 0.5) / S; sh = 1. - max(sunIn(ou ? texture2D(SWS, q) : texture2D(SWT, q), h0), LY > 0.5 && !ou ? texture2D(SWL, q).r : 0.); }
   if (Q > 4.5) { vec4 a = texture2D(LT, f / G); gl_FragColor = vec4(Q > 5.5 ? min(a.rgb * 4. + a.a * 2. * PLT, 1.) : vec3(sh), 1.); return; }     // dev: the sun's shadow alone, the point lights alone
   if (Q > 3.5) { gl_FragColor = vec4(mt(p).rgb, 1.); return; }
   if (Q > 2.5) {     // dev HEIGHTS: the top (whatever it is) on one ramp, 0 dark blue .. 64 px red; hatched where it floats over air (not where it rests on a wheel / track): the hatch is its underside
@@ -370,27 +370,30 @@ void main() {
   vec3 sky = mix(SKY * 1.2, SKY, Rv.z);
   gl_FragColor = vec4((pl * 0.45 + a.a * 2. * tint + r * (sky * 0.5 * (0.55 + 0.45 * sh) + W * spec * 2.5) + vec3(1., 0.86, 0.62) * b / 12. * BL) * (1. - ra), 1.);
 }`, ['p']);
-    /* heights: one quad per thing (i0 centre + x half-axis, i1 y half-axis + kind + p0, i2 p1 p2 + atlas uv0, i3 uv1 + its top),
-       to buffer px by X (scale, offset); kinds: 0 sprite (p0 base, p1 add: its painted heights from base up), 1 box (p0 top,
+    /* heights: one quad per thing (i0 centre + x half-axis, i1 y half-axis + kind + p0, i2 p1 p2 + atlas uv0, i3 uv1 + its top + w,
+       i4 its underside's box in its uv), to buffer px by X (scale, offset); kinds: 0 sprite (p0 base, p1 add: its painted heights
+       from base up; over its underside's box, the base lowered by the underside's painted depth there, read p2 w away: the floor
+       reaching down, one span; w past 2: the frame is drawn mirrored, the underside isn't: its v is w - 4 - v), 1 box (p0 top,
        p1 bottom, p2 roof over it: B 1), 2 disc (p0 centre top, p1 rim top, p2 bottom), 3 ring arc (p0 top, p1 inner radius / outer,
-       p2 half angle), 4 underside (p0 its top: painted heights hang down from it; uv the frame it carries, p1 p2 the underside's offset from it; p2 past 2: the frame is drawn mirrored, the underside isn't: its v is p2 - 4 - v), 5 material only (p0 reflectivity, p1 water, p2 2: a
+       p2 half angle), 5 material only (p0 reflectivity, p1 water, p2 2: a
        disc). Out: what stands on the ground (bottom under 1 px): R its top x 4; what floats (a gun past the hull, a jumper): G its
        top x 4, A 255 - its bottom x 4 (MAX: the highest top, the lowest bottom), so one over the other never fills the gap; B a roof over it (a slab ROOF_Z: casts, isn't the surface). With MM: the materials (R reflectivity, G glow, B water), the
        highest top winning (depth) */
-    const HP = prog(`attribute vec2 c; attribute vec4 i0, i1, i2, i3; uniform vec3 X; uniform vec2 F; uniform float MM; varying vec2 q, uv; varying vec4 k;
-void main() { vec2 w = i0.xy + i0.zw * c.x + i1.xy * c.y; gl_Position = vec4((w * X.x + X.yz) / F * 2. - 1., MM > 0.5 ? 1. - i3.z / 32. : 0., 1.); q = c; uv = mix(i2.zw, i3.xy, c * 0.5 + 0.5); k = vec4(i1.zw, i2.xy); }`,
-`precision highp float; uniform sampler2D A; uniform float MM; varying vec2 q, uv; varying vec4 k;
+    const HP = prog(`attribute vec2 c; attribute vec4 i0, i1, i2, i3, i4; uniform vec3 X; uniform vec2 F; uniform float MM; varying vec2 q, uv; varying vec4 k, ur; varying float ov;
+void main() { vec2 w = i0.xy + i0.zw * c.x + i1.xy * c.y; gl_Position = vec4((w * X.x + X.yz) / F * 2. - 1., MM > 0.5 ? 1. - i3.z / 32. : 0., 1.); q = c; uv = mix(i2.zw, i3.xy, c * 0.5 + 0.5); k = vec4(i1.zw, i2.xy); ur = i4; ov = i3.w; }`,
+`precision highp float; uniform sampler2D A; uniform float MM; varying vec2 q, uv; varying vec4 k, ur; varying float ov;
 vec4 span(float t, float b, float z) { float T = clamp(t * 4. / 255., 0., 1.); return b < 1. ? vec4(T, 0., z, 0.) : vec4(0., T, z, 1. - clamp(b * 4. / 255., 0., 1.)); }     // standing on the ground: R; floating: G top, A 255 - bottom
 void main() {
   float r2 = dot(q, q);
   if (k.x > 4.5) { if (MM < 0.5 || (k.w > 1.5 && r2 > 1.)) discard; gl_FragColor = vec4(k.y, 0., k.z, 1.); return; }
-  if (k.x < 0.5) { vec4 m = texture2D(A, uv); if (m.a < 0.5) discard; gl_FragColor = MM > 0.5 ? vec4(m.g, m.b, 0., 1.) : span(m.r * 63.75 + k.y + k.z, k.y, 0.); return; }
+  if (k.x < 0.5) { vec4 m = texture2D(A, uv); if (m.a < 0.5) discard; if (MM > 0.5) { gl_FragColor = vec4(m.g, m.b, 0., 1.); return; }
+    float b = k.y; if (all(greaterThanEqual(uv, ur.xy)) && all(lessThan(uv, ur.zw))) { float d = texture2D(A, ov > 2. ? vec2(uv.x + k.w, ov - 4. - uv.y) : uv + vec2(k.w, ov)).r; if (d > 0.) b = max(k.y - d * 63.75, 0.); }     // over its underside (ur): the base lowered by its painted depth
+    gl_FragColor = span(m.r * 63.75 + k.y + k.z, b, 0.); return; }
   else if (k.x < 1.5) gl_FragColor = span(k.y, k.z, k.w);
   else if (k.x < 2.5) { if (r2 > 1.) discard; gl_FragColor = span(mix(k.y, k.z, sqrt(r2)), k.w, 0.); }
-  else if (k.x > 3.5) { if (MM > 0.5 || texture2D(A, uv).a < 0.5) discard; vec4 m = texture2D(A, k.w > 2. ? vec2(uv.x + k.z, k.w - 4. - uv.y) : uv + k.zw); if (m.r <= 0.) discard; gl_FragColor = span(k.y, max(k.y - m.r * 63.75, 0.), 0.); return; }     // an underside: under the frame's art (uv), from p0 down by its painted depth (p1 p2 away)
   else { float r = sqrt(r2); if (r > 1. || r < k.z || abs(atan(q.y, q.x)) > k.w) discard; gl_FragColor = span(k.y, 0., 0.); }
   if (MM > 0.5) gl_FragColor = vec4(0., 0., 0., 1.);
-}`, ['c', 'i0', 'i1', 'i2', 'i3']);
+}`, ['c', 'i0', 'i1', 'i2', 'i3', 'i4']);
     /* the sweep: what blocks the sun at this pixel, in heights here (a blocker d px sunward shades heights b - d DH .. t - d DH),
        kept as two records so one never hides the other: RG the skyline of things standing on the ground (the highest t - d DH:
        exact, two bytes), B / A the span of floating things (a gun past the hull, an MG over the hood: lo / hi, a byte each;
@@ -399,7 +402,6 @@ void main() {
        so the slot stays free for what floats (a hull on its underside no longer pushes the turret's out). Two floating spans that don't meet: the lower one kept */
     const SP = prog(VS, `precision highp float; ${TX}
 uniform sampler2D B; uniform vec2 D; uniform float N, DH;
-float un(vec2 c) { return (c.x * 255. + c.y) / 255. * 128. - 64.; }
 vec2 pk(float v) { float x = clamp((v + 64.) / 128., 0., 0.99998) * 255.; return vec2(floor(x) / 255., fract(x)); }
 bool out_(vec2 q) { return any(lessThan(q, R.xy)) || any(greaterThan(q, R.zw)); }
 void fold(inout vec2 s, inout float g) { if (s.x <= s.y && s.x <= max(g, 0.) + 0.5) { g = max(g, s.y); s = vec2(64., -64.); } }
@@ -421,6 +423,9 @@ void main() {
     const PP = prog('attribute vec2 p; uniform vec3 X; uniform vec2 F; void main() { gl_Position = vec4((p * X.x + X.yz) / F * 2. - 1., 0., 1.); }', 'precision mediump float; void main() { gl_FragColor = vec4(0.); }', ['p']);
     const RC = prog(VS, `precision highp float; uniform sampler2D M; uniform vec3 X; uniform vec2 F; uniform float Z;
 void main() { vec2 t = floor((gl_FragCoord.xy - X.yz) / X.x * Z); gl_FragColor = any(lessThan(t, vec2(0.))) || any(greaterThanEqual(t, F)) ? vec4(0.) : texture2D(M, (t + 0.5) / F); }`, ['p']);
+    // a channel's sweep (B) to how far the top here is in its shadow (R), into the channels' shade (MAX: any of them)
+    const RS = prog(VS, `precision highp float; ${TX} uniform sampler2D B;
+void main() { vec2 p = gl_FragCoord.xy; gl_FragColor = vec4(sunIn(texture2D(B, (floor(p) + 0.5) / S), hh(p)), 0., 0., 1.); }`, ['p']);
     const buf = d => { const o = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, o); gl.bufferData(gl.ARRAY_BUFFER, d, gl.STATIC_DRAW); return o; };
     const tri = buf(new Float32Array([-1, -1, 3, -1, -1, 3])), quad = buf(new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1])), ib = {};
     for (const n in HL) ib[n] = gl.createBuffer();
@@ -432,42 +437,44 @@ void main() { vec2 t = floor((gl_FragCoord.xy - X.yz) / X.x * Z); gl_FragColor =
     gl.activeTexture(gl.TEXTURE4); const ST = [texture(gl.NEAREST), texture(gl.NEAREST)], FS = [gl.createFramebuffer(), gl.createFramebuffer()]; gl.activeTexture(gl.TEXTURE0);     // the sweep's two (ping-pong)
     gl.activeTexture(gl.TEXTURE6); const SS = [texture(gl.NEAREST), texture(gl.NEAREST)], FSS = [gl.createFramebuffer(), gl.createFramebuffer()];     // the remembered things' sweep
     gl.activeTexture(gl.TEXTURE7); const HTS = texture(gl.LINEAR), FBS = gl.createFramebuffer(); gl.activeTexture(gl.TEXTURE0);     // and their heights
+    const ly = gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS) >= 11, L2 = {};     // the channels past the first (hLayers): 8 their heights, 9 their sweep, 10 their shade
+    if (ly) { gl.activeTexture(gl.TEXTURE8); L2.H = texture(gl.NEAREST); gl.activeTexture(gl.TEXTURE9); L2.T = [texture(gl.NEAREST), texture(gl.NEAREST)]; gl.activeTexture(gl.TEXTURE10); L2.M = texture(gl.NEAREST); gl.activeTexture(gl.TEXTURE0); L2.FH = gl.createFramebuffer(); L2.F = [gl.createFramebuffer(), gl.createFramebuffer()]; L2.FM = gl.createFramebuffer(); }
     const FB = gl.createFramebuffer(), FM = gl.createFramebuffer(), FL = gl.createFramebuffer(), DB = gl.createRenderbuffer();
     const uni = (P, ns) => { const U = {}; for (const n of ns) U[n] = gl.getUniformLocation(P, n); return U; };
-    const U = uni(P, ['S', 'R', 'K', 'L', 'V', 'P', 'PL', 'PD', 'PK', 'PC', 'H', 'HZ']), SU = uni(SP, ['S', 'R', 'H', 'B', 'D', 'N', 'DH']), CU = uni(CP, ['S', 'R', 'K', 'L', 'C', 'W', 'O', 'Q', 'V', 'P', 'G', 'H', 'MT', 'LT', 'TM', 'BL', 'SKY', 'LI', 'WX', 'E', 'EN', 'RF', 'FG', 'SWT', 'SWS', 'HS', 'LB']), HU = uni(HP, ['X', 'F', 'A', 'MM']), PU = uni(PP, ['X', 'F']), RU = uni(RC, ['M', 'X', 'F', 'Z']);
-    gl.useProgram(HP); gl.uniform1i(HU.A, 1); gl.useProgram(CP); gl.uniform1i(CU.H, 0); gl.uniform1i(CU.MT, 2); gl.uniform1i(CU.LT, 3); gl.uniform1i(CU.SWT, 4); gl.uniform1i(CU.SWS, 6); gl.uniform1i(CU.HS, 7); gl.useProgram(P); gl.uniform1i(U.H, 0); gl.useProgram(SP); gl.uniform1i(SU.H, 0); gl.uniform1i(SU.B, 4); gl.useProgram(RC); gl.uniform1i(RU.M, 5);
-    _sun = { out: GL ? GC.fb : null, gl, GC, IA, MX, P, CP, HP, SP, PP, RC, U, CU, HU, SU, PU, RU, pb: gl.createBuffer(), pv: new Float32Array(4096), mem: new Map(), ST, FS, SS, FSS, HTS, FBS, tri, quad, ib, AT, HT, MT, LT, FB, FM, FL, DB, fw: 0, fh: 0, lw: 0, lh: 0, aw: w, ah: h, pl: new Float32Array(LMAX * 4), pd: new Float32Array(LMAX * 4), pk: new Float32Array(LMAX), pc: new Float32Array(LMAX * 3), ev: new Float32Array(8) };
+    const U = uni(P, ['S', 'R', 'K', 'L', 'V', 'P', 'PL', 'PD', 'PK', 'PC', 'H', 'HZ']), SU = uni(SP, ['S', 'R', 'H', 'B', 'D', 'N', 'DH']), CU = uni(CP, ['S', 'R', 'K', 'L', 'C', 'W', 'O', 'Q', 'V', 'P', 'G', 'H', 'MT', 'LT', 'TM', 'BL', 'SKY', 'LI', 'WX', 'E', 'EN', 'RF', 'FG', 'SWT', 'SWS', 'HS', 'LB', 'SWL', 'LY']), HU = uni(HP, ['X', 'F', 'A', 'MM']), PU = uni(PP, ['X', 'F']), RU = uni(RC, ['M', 'X', 'F', 'Z']), LU = uni(RS, ['S', 'R', 'H', 'B']);
+    gl.useProgram(HP); gl.uniform1i(HU.A, 1); gl.useProgram(CP); gl.uniform1i(CU.H, 0); gl.uniform1i(CU.MT, 2); gl.uniform1i(CU.LT, 3); gl.uniform1i(CU.SWT, 4); gl.uniform1i(CU.SWS, 6); gl.uniform1i(CU.HS, 7); gl.uniform1i(CU.SWL, ly ? 10 : 4); gl.useProgram(P); gl.uniform1i(U.H, 0); gl.useProgram(SP); gl.uniform1i(SU.H, 0); gl.uniform1i(SU.B, 4); gl.useProgram(RC); gl.uniform1i(RU.M, 5); gl.useProgram(RS); gl.uniform1i(LU.H, 0); gl.uniform1i(LU.B, ly ? 9 : 4);
+    _sun = { out: GL ? GC.fb : null, gl, GC, IA, MX, P, CP, HP, SP, PP, RC, RS, U, CU, HU, SU, PU, RU, LU, ly, L2, pb: gl.createBuffer(), pv: new Float32Array(4096), mem: new Map(), ST, FS, SS, FSS, HTS, FBS, tri, quad, ib, AT, HT, MT, LT, FB, FM, FL, DB, fw: 0, fh: 0, lw: 0, lh: 0, aw: w, ah: h, pl: new Float32Array(LMAX * 4), pd: new Float32Array(LMAX * 4), pk: new Float32Array(LMAX), pc: new Float32Array(LMAX * 3), ev: new Float32Array(8) };
   } catch (e) { console.warn('sun off:', e.message); _sun = false; }
   return _sun;
 }
 /* this frame's height quads: a (MAX blended), w (walls, written over: what's there is inside them) then t (trees, MAX) */
-const hbuf = () => ({ f: new Float32Array(16 * 256), n: 0 }), HL = { a: hbuf(), u: hbuf(), w: hbuf(), t: hbuf(), m: hbuf() };     // u: what the memory doesn't keep (units, crates, items...); m: materials only (water...)
+const HQ = 20, hbuf = () => ({ f: new Float32Array(HQ * 256), n: 0 }), HL = { a: hbuf(), u: hbuf(), w: hbuf(), t: hbuf(), m: hbuf(), f: hbuf(), x: hbuf(), k: hbuf() };     // u: what the memory doesn't keep (units, crates, items...); m: materials only (water...); f: floating parts waiting for their channel (hLayers); x: the channels past the first, k: the kept ones of those (the memory's)
 let HMAT = 0, HMAX = 0;     // this frame: 1 something reflective in view, 2 something glowing; the tallest top in view
-function hq(L, cx, cy, ux, uy, vx, vy, k, p0, p1, p2, u0, v0, u1, v1, z) {
-  if ((L.n + 1) * 16 > L.f.length) { const g = new Float32Array(L.f.length * 2); g.set(L.f); L.f = g; }
+function hgrow(L) { if ((L.n + 1) * HQ > L.f.length) { const g = new Float32Array(L.f.length * 2); g.set(L.f); L.f = g; } return L.n++ * HQ; }
+function hq(L, cx, cy, ux, uy, vx, vy, k, p0, p1, p2, u0, v0, u1, v1, z, w, R) {
   if (L !== HL.m && z > HMAX) HMAX = z;
-  const f = L.f, o = L.n++ * 16; f[o] = cx; f[o + 1] = cy; f[o + 2] = ux; f[o + 3] = uy; f[o + 4] = vx; f[o + 5] = vy; f[o + 6] = k; f[o + 7] = p0; f[o + 8] = p1; f[o + 9] = p2; f[o + 10] = u0 || 0; f[o + 11] = v0 || 0; f[o + 12] = u1 || 0; f[o + 13] = v1 || 0; f[o + 14] = z || 0;
+  const o = hgrow(L), f = L.f; f[o] = cx; f[o + 1] = cy; f[o + 2] = ux; f[o + 3] = uy; f[o + 4] = vx; f[o + 5] = vy; f[o + 6] = k; f[o + 7] = p0; f[o + 8] = p1; f[o + 9] = p2; f[o + 10] = u0 || 0; f[o + 11] = v0 || 0; f[o + 12] = u1 || 0; f[o + 13] = v1 || 0; f[o + 14] = z || 0; f[o + 15] = w || 0;
+  for (let i = 0; i < 4; i++) f[o + 16 + i] = R ? R[i] : 0;
 }
 /* a quad of half size hw x hh round (cx, cy), turned a */
 function hbox(L, cx, cy, hw, hh, a, k, p0, p1, p2, z) { const c = Math.cos(a), s = Math.sin(a); hq(L, cx, cy, c * hw, s * hw, -s * hh, c * hh, k, p0, p1, p2, 0, 0, 0, 0, z ?? (k === 2 ? Math.max(p0, p1) : p0)); }
 let HLA = HL.a;     // the list a sprite's heights go in (HL.u while units go in)
 /* a sprite's painted heights from base up (each add px taller), where the art is opaque; pivot at (x, y), turned a */
-function hspr(n, x, y, a, base, add, fy = 1) {     // fy -1: mirrored over its pivot's row (as spr's sy)
+function hspr(n, x, y, a, base, add, fy = 1, U) {     // fy -1: mirrored over its pivot's row (as spr's sy); U: its underside (undQ)
   const m = ATLAS[n]; if (!m) return; const c = Math.cos(a), s = Math.sin(a), ox = m[2] / 2 - m[4], oy = (m[3] / 2 - m[5]) * fy, S = _sun;
-  hq(HLA, x + c * ox - s * oy, y + s * ox + c * oy, c * m[2] / 2, s * m[2] / 2, -s * m[3] / 2 * fy, c * m[3] / 2 * fy, 0, base || 0, add || 0, 0, m[0] / S.aw, m[1] / S.ah, (m[0] + m[2]) / S.aw, (m[1] + m[3]) / S.ah, (base || 0) + (add || 0) + artMax(n));
+  hq(HLA, x + c * ox - s * oy, y + s * ox + c * oy, c * m[2] / 2, s * m[2] / 2, -s * m[3] / 2 * fy, c * m[3] / 2 * fy, 0, base || 0, add || 0, U ? U[0] : 0, m[0] / S.aw, m[1] / S.ah, (m[0] + m[2]) / S.aw, (m[1] + m[3]) / S.ah, (base || 0) + (add || 0) + artMax(n), U ? U[1] : 0, U && U.slice(2));
   HMAT |= artMat(n);
 }
-/* an underside: its painted heights hang down from top (where painted; to the ground: a track, a wheel), only under the art
-   of the frame it carries (o): the quad is where the two overlap (pivots lined up, whole px), drawn over the frame's art, the
-   underside read a whole-px offset away, so a state with other edges never shadows from paint past them. d [lx, ly, fy]: a
-   part off the pivot the underside lines up on (a track beside the hull: its pivot off the hull's), drawn mirrored if fy -1 (the
-   underside never is: the mirrored frame's rows run up it, so the left track stands on the hull's left as painted) */
-function hund(n, o, x, y, a, top, d = [0, 0, 1]) {
-  const m = ATLAS[n], f = ATLAS[o]; if (!m || !f) return; const S = _sun, [lx, ly, fy] = d, dx = Math.round(f[4] - lx - m[4]);
+/* a frame's underside (n under the frame o): its painted heights hang down from the frame's base (to the ground: a track, a
+   wheel), only under the frame's art and where the two overlap (pivots lined up, whole px), so a state with other edges never
+   shadows from paint past them: [the offset to it in the atlas (u, v; mirrored: 4 + its row's sum), its box in the frame's uv].
+   d [lx, ly, fy]: a part off the pivot the underside lines up on (a track beside the hull: its pivot off the hull's), drawn
+   mirrored if fy -1 (the underside never is: the mirrored frame's rows run up it, so the left track stands on the hull's left as painted) */
+function undQ(n, o, d) {
+  const m = ATLAS[n], f = ATLAS[o]; if (!m || !f) return null; const S = _sun, [lx, ly, fy] = d, dx = Math.round(f[4] - lx - m[4]);
   const dy = Math.round(f[5] - ly - m[5]), K = Math.floor(ly + f[5] + m[5] - 0.5);     // the underside's row: the frame's minus dy; mirrored, K minus it
-  const X0 = Math.max(0, dx), X1 = Math.min(f[2], m[2] + dx), Y0 = Math.max(0, fy > 0 ? dy : K - m[3] + 1), Y1 = Math.min(f[3], fy > 0 ? m[3] + dy : K + 1); if (X1 <= X0 || Y1 <= Y0) return;
-  const c = Math.cos(a), s = Math.sin(a), ox = (X0 + X1) / 2 - f[4], oy = ((Y0 + Y1) / 2 - f[5]) * fy, hw = (X1 - X0) / 2, hh = (Y1 - Y0) / 2 * fy;
-  hq(HLA, x + c * ox - s * oy, y + s * ox + c * oy, c * hw, s * hw, -s * hh, c * hh, 4, top, (m[0] - dx - f[0]) / S.aw, fy > 0 ? (m[1] - dy - f[1]) / S.ah : 4 + (m[1] + K + f[1] + 1) / S.ah, (f[0] + X0) / S.aw, (f[1] + Y0) / S.ah, (f[0] + X1) / S.aw, (f[1] + Y1) / S.ah, top);
+  const X0 = Math.max(0, dx), X1 = Math.min(f[2], m[2] + dx), Y0 = Math.max(0, fy > 0 ? dy : K - m[3] + 1), Y1 = Math.min(f[3], fy > 0 ? m[3] + dy : K + 1); if (X1 <= X0 || Y1 <= Y0) return null;
+  return [(m[0] - dx - f[0]) / S.aw, fy > 0 ? (m[1] - dy - f[1]) / S.ah : 4 + (m[1] + K + f[1] + 1) / S.ah, (f[0] + X0) / S.aw, (f[1] + Y0) / S.ah, (f[0] + X1) / S.aw, (f[1] + Y1) / S.ah];
 }
 /* a part starts on top of what's already under it: the painted height of the parts stacked so far (the hull, the
    turret...) at its rest point (its pivot unless given: an MG's mount, a seat), the highest within 1 px; at least min */
@@ -487,9 +494,8 @@ function hUnder(x, y) {
 const underOf = n => { const u = USE[n]; return u && ATLAS[u] ? u : null; };     // the atlas's settings: what it stands on (none: the dirt)
 function hpart(n, x, y, a, o = {}) {         // o: min (start at least), add, rx / ry (rest point), keep (others stand on it), who (the crewman), fy (-1 mirrored), at (its pivot off its underside's: hund)
   if (!ATLAS[n]) return; const P = sunP(n), un = underOf(n), f = Math.max(o.min || 0, Math.round(hUnder(o.rx ?? x, o.ry ?? y)));
-  const b = f + (un ? artMax(un, true) : 0) + (P.lift || 0), add = (o.add || 0) + (P.add || 0), fy = o.fy || 1, q = { n, x, y, a, b, add, who: o.who, fy };
-  if (o.keep) _stk.push(q); if (_pp) _pp.push(q); else hspr(n, x, y, a, b, add, fy);
-  if (un) { const u = { n: un, o: n, x, y, a, b, add: 0, u: 1, d: [...(o.at || [0, 0]), fy] }; if (_pp) _pp.push(u); else hund(un, n, x, y, a, b, u.d); }     // what it stands on, hanging from its base
+  const b = f + (un ? artMax(un, true) : 0) + (P.lift || 0), add = (o.add || 0) + (P.add || 0), fy = o.fy || 1, q = { n, x, y, a, b, add, who: o.who, fy, un: un && [un, n, [...(o.at || [0, 0]), fy]] };     // un: what it stands on, hanging from its base
+  if (o.keep) _stk.push(q); if (_pp) _pp.push(q); else hspr(n, x, y, a, b, add, fy, un && undQ(...q.un));
 }
 /* a thing's parts, bottom up, each standing on what's under it (worked out once a frame): what the height pass draws,
    and where its guns, crew and top are */
@@ -500,7 +506,7 @@ function partsOf(o) {
 }
 function partH(q, x, y) { const c = Math.cos(q.a), s = Math.sin(q.a), dx = x - q.x, dy = y - q.y; return q.b + q.add + artH(q.n, dx * c + dy * s, -dx * s + dy * c); }
 /* its top (px): the tallest part (crew left out: they don't make the hull taller in the draw order) */
-function topOf(o) { let t = 0; for (const q of partsOf(o)) if (!q.who && !q.u) t = Math.max(t, q.b + q.add + artMax(q.n)); return t; }
+function topOf(o) { let t = 0; for (const q of partsOf(o)) if (!q.who) t =Math.max(t, q.b + q.add + artMax(q.n)); return t; }
 function solParts(s) {
   if (s.down) { hpart('sol_dead', s.x, s.y, s.a + Math.PI); return; }
   const body = 'sol_' + bodyPose(s), up = solLift(s);     // a jump lifts him off the ground
@@ -528,7 +534,51 @@ function vehParts(v) {
     hpart(mg, mx, my, v.mgA, mount); crew(2, 0, SUNB.stand);     // the MG on its post; the gunner stands in the bed
   }
 }
-const hParts = o => { for (const q of partsOf(o)) if (q.u) hund(q.n, q.o, q.x, q.y, q.a, q.b, q.d); else hspr(q.n, q.x, q.y, q.a, q.b, q.add, q.fy); };
+/* a thing's parts as heights; what floats (its base off the ground) waits in HL.f for its channel (hLayers) */
+function hParts(o) {
+  for (const q of partsOf(o)) {
+    const fl = q.b > 0.5 && _sun && _sun.ly, L = HLA, i = HL.f.n; if (fl) HLA = HL.f;
+    hspr(q.n, q.x, q.y, q.a, q.b, q.add, q.fy, q.un && undQ(...q.un)); HLA = L;
+    if (fl && HL.f.n > i) HLY.p.push({ o, i, k: L === HL.a, b: q.b, lo: q.b - (q.un ? artMax(q.un[0], true) : 0), hi: q.b + q.add + artMax(q.n) });
+  }
+}
+/* the sweep keeps one floating span a pixel, and the heights one: two floating things over each other (or their shadows
+   crossing) whose spans don't meet lose one, or fill the gap between. So what floats goes in channels, each heights and swept
+   on its own (sunLayers): two go in different ones where their footprints with their shadows (sun-aligned boxes, stretched
+   away from the sun by top / tan(elevation)) overlap, unless their spans always meet: of one thing, its stack touching (the
+   turret on its hull); of two, the same base (every px of a part holds its base: two hulls, two turrets). Channel 0 is the
+   frame's (into a / u); the rest go in x by channel (k: the kept ones again, for the memory), with their regions (world) */
+const HLY = { p: [], c: [], xn: 0 }, LCH = 4;
+function hLayers() {
+  const P = HLY.p, F = HL.f.f, on = P.length > 1 && sunTone().day > 0, by = [];
+  HLY.c = []; HLY.xn = 0;
+  if (on) {
+    const tn = Math.tan(sunEl()), dx = Math.cos(SUN.az), dy = Math.sin(SUN.az);
+    for (const p of P) {
+      const o = p.i * HQ, s = F[o] * dx + F[o + 1] * dy, t = F[o + 1] * dx - F[o] * dy, es = Math.abs(F[o + 2] * dx + F[o + 3] * dy) + Math.abs(F[o + 4] * dx + F[o + 5] * dy), et = Math.abs(F[o + 3] * dx - F[o + 2] * dy) + Math.abs(F[o + 5] * dx - F[o + 4] * dy);
+      p.f = [s - es - Math.min(p.hi / tn, 720), s + es, t - et, t + et]; p.c = 0; let m = 0;
+      for (const r of P) { if (r === p) break; if (r.f[0] < p.f[1] && p.f[0] < r.f[1] && r.f[2] < p.f[3] && p.f[2] < r.f[3] && !(r.o === p.o ? r.lo <= p.hi + 0.5 && p.lo <= r.hi + 0.5 : Math.abs(r.b - p.b) <= 0.5)) m |= 1 << r.c; }
+      while (p.c < LCH - 1 && m & 1 << p.c) p.c++;
+      if (p.c) (by[p.c] = by[p.c] || []).push(p);
+    }
+  }
+  const cp = (L, i) => L.f.set(F.subarray(i * HQ, i * HQ + HQ), hgrow(L));
+  for (const p of P) if (!on || !p.c) cp(p.k ? HL.a : HL.u, p.i);
+  if (on) { const dx = Math.cos(SUN.az), dy = Math.sin(SUN.az);
+    for (const L of by) if (L) {
+      const s = HL.x.n, R = [];
+      for (const p of L) {
+        cp(HL.x, p.i); if (p.k) cp(HL.k, p.i); const b = [1e9, 1e9, -1e9, -1e9];
+        for (const u of [p.f[0], p.f[1]]) for (const v of [p.f[2], p.f[3]]) { const x = u * dx - v * dy, y = u * dy + v * dx; b[0] = Math.min(b[0], x); b[1] = Math.min(b[1], y); b[2] = Math.max(b[2], x); b[3] = Math.max(b[3], y); }
+        R.push(b);
+      }
+      for (let i = 0; i < R.length; i++) for (let j = i + 1; j < R.length; j++) { const a = R[i], b = R[j]; if (a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3]) { a[0] = Math.min(a[0], b[0]); a[1] = Math.min(a[1], b[1]); a[2] = Math.max(a[2], b[2]); a[3] = Math.max(a[3], b[3]); R.splice(j, 1); j = i; } }     // overlapping regions joined
+      HLY.c.push({ s, n: HL.x.n - s, R });
+    }
+    HLY.xn = HL.x.n;
+  }
+  HLY.p = []; HL.f.n = 0;
+}
 /* a shape's [top, bottom]: SUNH height h (+ add) standing on its lift */
 const shp = (h, n) => { const P = sunP(n), b = P.lift || 0; return [h + b + (P.add || 0), b]; };
 /* everything solid, as heights (the same things, and the same hidden ones left out, as the frame draws) */
@@ -565,20 +615,21 @@ function sunHeights(vis, hidden, vw) {
   const mat = (L, refl, wave, z) => { for (const w of L) if (vis(w.x + w.w / 2, w.y + w.h / 2, Math.max(w.w, w.h))) { hbox(HL.m, w.x + w.w / 2, w.y + w.h / 2, w.w / 2, w.h / 2, 0, 5, refl, wave, 0, z); if (refl) HMAT |= 1; } };
   mat(MAP.water, 0.75, 1, 0.2); mat(MAP.ice || [], 0.45, 0, 0.2); mat(MAP.bridges, 0, 0, 0.4);     // water mirrors the sky and ripples; ice, stiller
   for (const s of M.sol) if (s.alive && s.swim && vis(s.x, s.y, 12)) hbox(HL.m, s.x, s.y, 9, 9, 0, 5, 0, 0, 2, 0.6);     // a swimmer isn't water
+  hLayers();
 }
 /* the height quads' program, X (scale, offset) to the target's px, F its size; hInst: the per-quad attributes on / off */
 function hBegin(S, X, F) { const { gl } = S; gl.useProgram(S.HP); gl.uniform3f(S.HU.X, ...X); gl.uniform2f(S.HU.F, ...F); gl.uniform1f(S.HU.MM, 0); gl.bindBuffer(gl.ARRAY_BUFFER, S.quad); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.enableVertexAttribArray(0); hInst(S, 1); }
-function hInst(S, on) { const { gl, IA } = S; for (let i = 1; i <= 4; i++) { if (on) gl.enableVertexAttribArray(i); else gl.disableVertexAttribArray(i); IA.vertexAttribDivisorANGLE(i, on ? 1 : 0); } }
-function hUp(S, ns) { const { gl } = S; for (const n of ns) if (HL[n].n) { gl.bindBuffer(gl.ARRAY_BUFFER, S.ib[n]); gl.bufferData(gl.ARRAY_BUFFER, HL[n].f.subarray(0, HL[n].n * 16), gl.STREAM_DRAW); } }
-function hDraw(S, n) { const { gl, IA } = S, L = HL[n]; if (!L.n) return; gl.bindBuffer(gl.ARRAY_BUFFER, S.ib[n]); for (let i = 1; i <= 4; i++) gl.vertexAttribPointer(i, 4, gl.FLOAT, false, 64, (i - 1) * 16); IA.drawArraysInstancedANGLE(gl.TRIANGLES, 0, 6, L.n); }
-/* what the memory keeps: a MAX, w over (what's there is inside the walls), t MAX */
-function hKept(S) { const { gl, MX } = S; gl.blendEquation(MX.MAX_EXT); gl.enable(gl.BLEND); hDraw(S, 'a'); gl.disable(gl.BLEND); hDraw(S, 'w'); gl.enable(gl.BLEND); hDraw(S, 't'); gl.disable(gl.BLEND); }
+function hInst(S, on) { const { gl, IA } = S; for (let i = 1; i <= HQ / 4; i++) { if (on) gl.enableVertexAttribArray(i); else gl.disableVertexAttribArray(i); IA.vertexAttribDivisorANGLE(i, on ? 1 : 0); } }
+function hUp(S, ns) { const { gl } = S; for (const n of ns) if (HL[n].n) { gl.bindBuffer(gl.ARRAY_BUFFER, S.ib[n]); gl.bufferData(gl.ARRAY_BUFFER, HL[n].f.subarray(0, HL[n].n * HQ), gl.STREAM_DRAW); } }
+function hDraw(S, n, s = 0, c = HL[n].n) { const { gl, IA } = S; if (!c) return; gl.bindBuffer(gl.ARRAY_BUFFER, S.ib[n]); for (let i = 1; i <= HQ / 4; i++) gl.vertexAttribPointer(i, 4, gl.FLOAT, false, HQ * 4, (s * HQ + (i - 1) * 4) * 4); IA.drawArraysInstancedANGLE(gl.TRIANGLES, 0, 6, c); }     // c quads from the s-th
+/* what the memory keeps: a and k MAX, w over (what's there is inside the walls), t MAX */
+function hKept(S) { const { gl, MX } = S; gl.blendEquation(MX.MAX_EXT); gl.enable(gl.BLEND); hDraw(S, 'a'); hDraw(S, 'k'); gl.disable(gl.BLEND); hDraw(S, 'w'); gl.enable(gl.BLEND); hDraw(S, 't'); gl.disable(gl.BLEND); }
 /* the quads (uploaded once, one buffer per list) into the height texture HT (box cleared, then a MAX, w over, t MAX)
    and the materials MT (depth: the highest top wins); fog: into the memory's heights where you see, then read back for
    out of sight (HTS) */
 function sunDrawHeights(S, X, box, fog, vw) {
-  const { gl, MX } = S, lists = ['a', 'u', 'w', 't', 'm'], draw = n => hDraw(S, n);
-  hBegin(S, X, [S.fw, S.fh]); hUp(S, lists);
+  const { gl, MX } = S, lists = ['a', 'u', 'w', 't', 'm', 'x'], draw = n => hDraw(S, n);     // x: the channels past the first, into HT after the frame's sweep (sunLayers)
+  hBegin(S, X, [S.fw, S.fh]); hUp(S, [...lists, 'k']);
   gl.viewport(0, 0, S.fw, S.fh); gl.scissor(...box); gl.clearColor(0, 0, 0, 0);
   gl.bindFramebuffer(gl.FRAMEBUFFER, S.FB); gl.clear(gl.COLOR_BUFFER_BIT);
   gl.blendEquation(MX.MAX_EXT); gl.enable(gl.BLEND); draw('a'); pipe('gpu-h', { l: 'a' }); draw('u'); pipe('gpu-h', { l: 'u' }); gl.disable(gl.BLEND); draw('w'); pipe('gpu-h', { l: 'w' }); gl.enable(gl.BLEND); draw('t'); gl.disable(gl.BLEND); pipe('gpu-h', { l: 't' });
@@ -587,7 +638,7 @@ function sunDrawHeights(S, X, box, fog, vw) {
   if (fog) { memStamp(S, vw); memRecall(S, vw, X, box); pipe('gpu-hs'); }     // the remembered things alone
   hInst(S, 0);
   if (M.dev) DEV.nq = lists.reduce((a, n) => a + HL[n].n, 0);
-  for (const n of lists) HL[n].n = 0;
+  for (const n in HL) HL[n].n = 0;
 }
 /* the memory's heights (one per fog memory, the size of its picture: the map at FOGK): what it keeps (walls, trees,
    roofs, hay, fences, sandbags, wrecks) as last seen, the map as it starts where you've never looked. Out of sight the
@@ -604,9 +655,9 @@ function memOf(S, vw) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0); gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.RENDERBUFFER, sb);
   e = { m, t, fb, sb, W, H }; S.mem.set(m.key, e);
   // the whole map as it starts (its own lists, left empty for the frame's)
-  const hm = HMAT, hx = HMAX; sunHeights(() => true, () => true, vw); hBegin(S, [FOGK, 0, 0], [W, H]); hUp(S, ['a', 'w', 't']);
+  const hm = HMAT, hx = HMAX; sunHeights(() => true, () => true, vw); hBegin(S, [FOGK, 0, 0], [W, H]); hUp(S, ['a', 'w', 't', 'k']);
   gl.viewport(0, 0, W, H); gl.scissor(0, 0, W, H); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); hKept(S); hInst(S, 0);
-  for (const n in HL) HL[n].n = 0; HMAT = hm; HMAX = hx; gl.bindFramebuffer(gl.FRAMEBUFFER, S.out);
+  for (const n in HL) HL[n].n = 0; HLY.c = []; HLY.xn = 0; HMAT = hm; HMAX = hx; gl.bindFramebuffer(gl.FRAMEBUFFER, S.out);
   return e;
 }
 /* where you see (the sight polygons: a fan from each one's eye, each wall strip from its first corner; marked in the
@@ -634,21 +685,45 @@ function memRecall(S, vw, X, box) {
 }
 /* the sweep's passes (box: the height buffer's) from the heights on unit hu into the pair T (framebuffers FS), the last
    left on unit u for the light: enough doublings to reach the tallest thing's shadow (mxh / DH px; DH: how much lower a
-   blocker reads per buffer px it's sunward). Each pass only over what the passes after it read (vr: the view in the
-   buffer, reaching sunward by their steps still to come; the last: the view alone) */
-function sunSweep(S, K, mxh, box, reg, vr, T, FS, u, hu) {
+   blocker reads per buffer px it's sunward). Each pass only over what the passes after it read (vrs: the boxes wanted in the
+   buffer (the view; a channel's regions), each reaching sunward by their steps still to come; the last: those alone) */
+function sunSweep(S, K, mxh, box, reg, vrs, T, FS, u, hu) {
   const { gl, SU } = S, DH = Math.tan(sunEl()) / K, len = mxh / DH, dx = Math.cos(SUN.az), dy = Math.sin(SUN.az), st = u === 6;
   gl.useProgram(S.SP); gl.uniform2f(SU.S, S.fw, S.fh); gl.uniform4f(SU.R, ...reg); gl.uniform2f(SU.D, dx, dy); gl.uniform1f(SU.DH, DH); gl.uniform1i(SU.H, hu); gl.uniform1i(SU.B, u);
   gl.bindBuffer(gl.ARRAY_BUFFER, S.tri); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.viewport(0, 0, S.fw, S.fh); gl.activeTexture(gl.TEXTURE0 + u);
   const N = [0]; for (let n = 1; n < len; n *= 2) N.push(n);
   let left = N.reduce((a, n) => a + n, 0);     // the reach still to come after each pass (N 0 reads 1 px)
-  const pass = (n, t, f) => { const ex = dx * left, ey = dy * left, x0 = Math.max(box[0], Math.floor(vr[0] + Math.min(0, ex)) - 2), y0 = Math.max(box[1], Math.floor(vr[1] + Math.min(0, ey)) - 2);
-    gl.scissor(x0, y0, Math.min(box[0] + box[2], Math.ceil(vr[0] + vr[2] + Math.max(0, ex)) + 2) - x0, Math.min(box[1] + box[3], Math.ceil(vr[1] + vr[3] + Math.max(0, ey)) + 2) - y0);
+  const pass = (n, t, f) => {
     gl.bindTexture(gl.TEXTURE_2D, t); gl.bindFramebuffer(gl.FRAMEBUFFER, f); if (gl.invalidateFramebuffer) gl.invalidateFramebuffer(gl.FRAMEBUFFER, [gl.COLOR_ATTACHMENT0]);     // nothing kept from before (a tiler: no load)
-    gl.uniform1f(SU.N, n); gl.drawArrays(gl.TRIANGLES, 0, 3); pipe('gpu-sweep', { fb: f, n, st }); };
+    gl.uniform1f(SU.N, n);
+    for (const vr of vrs) { const ex = dx * left, ey = dy * left, x0 = Math.max(box[0], Math.floor(vr[0] + Math.min(0, ex)) - 2), y0 = Math.max(box[1], Math.floor(vr[1] + Math.min(0, ey)) - 2);
+      gl.scissor(x0, y0, Math.min(box[0] + box[2], Math.ceil(vr[0] + vr[2] + Math.max(0, ex)) + 2) - x0, Math.min(box[1] + box[3], Math.ceil(vr[1] + vr[3] + Math.max(0, ey)) + 2) - y0); gl.drawArrays(gl.TRIANGLES, 0, 3); }
+    if (u !== 9) pipe('gpu-sweep', { fb: f, n, st }); };
   let i = 0; pass(0, T[1], FS[0]);
   for (const n of N.slice(1)) { left -= n; pass(n, T[i], FS[i ^ 1]); i ^= 1; }
   gl.bindFramebuffer(gl.FRAMEBUFFER, S.out); gl.bindTexture(gl.TEXTURE_2D, T[i]); gl.activeTexture(gl.TEXTURE0);
+}
+/* the channels past the first (hLayers): their quads into the frame's heights too (its surfaces, the point lights), then
+   each alone: its heights (L2.H), swept over its regions in the view (L2.T), how far the top there is in its shadow into
+   the channels' shade (L2.M, MAX), read with the frame's sweep (CP SWL). false: none in view. Units 8 up are the GL
+   renderer's between frames (its textures and samplers): bound again here (L2u), and 10 before the maps */
+function L2u(S) { const { gl, L2 } = S; [[8, L2.H], [9, L2.T[0]], [10, L2.M]].forEach(([u, t]) => { gl.activeTexture(gl.TEXTURE0 + u); gl.bindTexture(gl.TEXTURE_2D, t); if (gl.bindSampler) gl.bindSampler(u, null); }); gl.activeTexture(gl.TEXTURE0); }
+function sunLayers(S, X, box, reg, vr, K, mxh) {
+  const { gl, MX, L2 } = S; let any = false; L2u(S);
+  hBegin(S, X, [S.fw, S.fh]); gl.viewport(0, 0, S.fw, S.fh); gl.scissor(...box); gl.blendEquation(MX.MAX_EXT); gl.enable(gl.BLEND);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, S.FB); hDraw(S, 'x', 0, HLY.xn);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, L2.FM); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); gl.disable(gl.BLEND);
+  for (const c of HLY.c) {
+    const rs = [];
+    for (const r of c.R) { const x0 = Math.max(vr[0], Math.floor(r[0] * X[0] + X[1])), y0 = Math.max(vr[1], Math.floor(r[1] * X[0] + X[2])), x1 = Math.min(vr[0] + vr[2], Math.ceil(r[2] * X[0] + X[1])), y1 = Math.min(vr[1] + vr[3], Math.ceil(r[3] * X[0] + X[2])); if (x1 > x0 && y1 > y0) rs.push([x0, y0, x1 - x0, y1 - y0]); }
+    if (!rs.length) continue;
+    hBegin(S, X, [S.fw, S.fh]); gl.bindFramebuffer(gl.FRAMEBUFFER, L2.FH); gl.scissor(...box); gl.clear(gl.COLOR_BUFFER_BIT); gl.enable(gl.BLEND); hDraw(S, 'x', c.s, c.n); gl.disable(gl.BLEND); hInst(S, 0);
+    sunSweep(S, K, mxh, box, reg, rs, L2.T, L2.F, 9, 8);
+    gl.useProgram(S.RS); gl.uniform2f(S.LU.S, S.fw, S.fh); gl.uniform4f(S.LU.R, ...reg); gl.bindFramebuffer(gl.FRAMEBUFFER, L2.FM); gl.viewport(0, 0, S.fw, S.fh); gl.enable(gl.BLEND);
+    gl.bindBuffer(gl.ARRAY_BUFFER, S.tri); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); for (const r of rs) { gl.scissor(...r); gl.drawArrays(gl.TRIANGLES, 0, 3); } gl.disable(gl.BLEND); any = true;
+  }
+  hInst(S, 0); gl.bindFramebuffer(gl.FRAMEBUFFER, S.out);
+  return any;
 }
 /* the sun down (sunTone day 0: sunlit = shade): nothing to sweep, the pair's first left as nothing blocking (skyline -64, no span) on unit u */
 function sunNoSweep(S, box, T, FS, u) {
@@ -672,6 +747,7 @@ function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory
     gl.activeTexture(gl.TEXTURE6); for (const t of S.SS) size(t, S.fw, S.fh); gl.activeTexture(gl.TEXTURE7); size(S.HTS, S.fw, S.fh); gl.activeTexture(gl.TEXTURE0); size(S.HT, S.fw, S.fh);
     S.ST.forEach((t, i) => attach(S.FS[i], t)); S.SS.forEach((t, i) => attach(S.FSS[i], t)); attach(S.FBS, S.HTS);
     gl.bindRenderbuffer(gl.RENDERBUFFER, S.DB); gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, S.fw, S.fh);
+    if (S.ly) { const L2 = S.L2; gl.activeTexture(gl.TEXTURE8); size(L2.H, S.fw, S.fh); gl.activeTexture(gl.TEXTURE9); for (const t of L2.T) size(t, S.fw, S.fh); gl.activeTexture(gl.TEXTURE10); size(L2.M, S.fw, S.fh); gl.activeTexture(gl.TEXTURE0); attach(L2.FH, L2.H); L2.T.forEach((t, i) => attach(L2.F[i], t)); attach(L2.FM, L2.M); }
     attach(S.FB, S.HT); attach(S.FM, S.MT); gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, S.DB);
   }
   S.pr = { rx, ry, rw, rh, px, py, w, h };     // the view's place in the buffers (pipeline viewer)
@@ -682,11 +758,13 @@ function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory
   gl.useProgram(S.CP); gl.uniform1f(S.CU.FG, 0);
   sunHeights((x, y, r) => vis(x, y, r + L), hidden, vw); pipe('cpu-heights', { n: { a: HL.a.n, u: HL.u.n, w: HL.w.n, t: HL.t.n, m: HL.m.n } });
   if (fog) memOf(S, vw);     // a new memory: the map as it starts, before this frame's lists
-  sunDrawHeights(S, [VZ * k, VOX * k + px, VOY * k + py], [rx, ry, bw, bh], fog, vw);
+  const X = [VZ * k, VOX * k + px, VOY * k + py], box = [rx, ry, bw, bh], vr = [rx + px, ry + py, rw, rh];
+  sunDrawHeights(S, X, box, fog, vw);
   const reg = [rx + 0.5, ry + 0.5, rx + bw - 0.5, ry + bh - 0.5], mxh = Math.min(64, HMAX + 1);
-  const up = sunTone().day > 0, sweep = (T, F, u, hu) => up ? sunSweep(S, K, mxh, [rx, ry, bw, bh], reg, [rx + px, ry + py, rw, rh], T, F, u, hu) : sunNoSweep(S, [rx, ry, bw, bh], T, F, u);
+  const up = sunTone().day > 0, sweep = (T, F, u, hu) => up ? sunSweep(S, K, mxh, box, reg, [vr], T, F, u, hu) : sunNoSweep(S, box, T, F, u);
   sweep(S.ST, S.FS, 4, 0);
   if (fog) sweep(S.SS, S.FSS, 6, 7);     // the remembered things' shadows, for out of sight
+  const ly = up && S.ly && HLY.c.length > 0 && sunLayers(S, X, box, reg, vr, K, mxh); HLY.c = [];     // what floats past the first channel (hLayers)
   // the light, once (into LT)
   gl.bindFramebuffer(gl.FRAMEBUFFER, S.FL); gl.viewport(0, 0, w, h); gl.scissor(rx, h - ry - rh, rw, rh);
   gl.useProgram(S.P); gl.bindBuffer(gl.ARRAY_BUFFER, S.tri); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
@@ -699,11 +777,12 @@ function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory
   if (S.pk[0] > 0) light(); else { gl.bindFramebuffer(gl.FRAMEBUFFER, S.FL); gl.viewport(0, 0, w, h); gl.scissor(rx, h - ry - rh, rw, rh); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); gl.bindFramebuffer(gl.FRAMEBUFFER, S.out); }     // no point lights: none to march
   pipe('gpu-light', { n: LN.length });
   // the maps
+  if (S.ly) L2u(S);
   gl.useProgram(S.CP);
   gl.uniform2f(CU.S, S.fw, S.fh); gl.uniform2f(CU.P, px, py); gl.uniform1f(CU.V, h); gl.uniform4f(CU.R, ...reg); gl.uniform1f(CU.K, K); gl.uniform2f(CU.G, w, h);
   gl.uniform3f(CU.L, ...Ld); const T = sunTone(); gl.uniform3f(CU.C, ...T.sh); gl.uniform3f(CU.LI, ...T.li); gl.uniform3f(CU.W, ...T.w); gl.uniform3f(CU.SKY, ...T.sky);
   gl.uniform1f(CU.TM, M.time); gl.uniform1f(CU.BL, HMAT & 2 ? 0.9 : 0); gl.uniform3f(CU.WX, VOX * k + px, VOY * k + py, VZ * k);
-  const E = MAP.tiled && MAP.tiled.roof ? viewSols(vw).map(posOf).slice(0, 4) : []; S.ev.fill(0); E.forEach((o, i) => { S.ev[i * 2] = o.x; S.ev[i * 2 + 1] = o.y; }); gl.uniform4fv(CU.E, S.ev); gl.uniform1f(CU.EN, E.length); gl.uniform1f(CU.RF, vw.rf || 0); gl.uniform1f(CU.LB, S.pk[0] > 0 ? 1 : 0);
+  const E = MAP.tiled && MAP.tiled.roof ? viewSols(vw).map(posOf).slice(0, 4) : []; S.ev.fill(0); E.forEach((o, i) => { S.ev[i * 2] = o.x; S.ev[i * 2 + 1] = o.y; }); gl.uniform4fv(CU.E, S.ev); gl.uniform1f(CU.EN, E.length); gl.uniform1f(CU.RF, vw.rf || 0); gl.uniform1f(CU.LB, S.pk[0] > 0 ? 1 : 0); gl.uniform1f(CU.LY, ly ? 1 : 0);
   const add = S.pk[0] > 0 || HMAT || M.rain, maps = SUNDBG ? [[3, 0, 1, 2, 4, 5, 6][SUNDBG - 1]] : add ? [0, 1, 2] : [0, 1];
   const at = n => [(n & 1) * w + rx, (n >> 1) * h + ry];     // map n's view in GC (canvas pixels): 0 1 / 2 3
   const map = (q, n) => { const o = (n & 1) * w, oy = (1 - (n >> 1)) * h; gl.viewport(o, oy, w, h); gl.scissor(o + rx, oy + h - ry - rh, rw, rh); gl.uniform2f(CU.O, o, oy); gl.uniform1f(CU.Q, q); gl.drawArrays(gl.TRIANGLES, 0, 3); pipe('gpu-map', { q, o }); };
