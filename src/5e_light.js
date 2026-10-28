@@ -550,10 +550,17 @@ function hParts(o) {
    part holds its base: two hulls, two turrets). Channel 0 is the frame's (into a / u); the rest go in x by channel (k: the
    kept ones again, for the memory), with their regions (world) */
 const HLY = { p: [], c: [], xn: 0 }, LCH = 4;
+const PMC = new Map();
 function partsMeet(A, B) {     // parts (q): at every px both paint, their spans meet (bottoms at their bases: an underside only lowers them)
   const D = matData(); let ma = ATLAS[A.n], mb = ATLAS[B.n]; if (!D || !ma || !mb) return false;
   if (ma[2] * ma[3] < mb[2] * mb[3]) [A, B, ma, mb] = [B, A, mb, ma];     // walk the smaller one's px
   const ca = Math.cos(A.a), sa = Math.sin(A.a), cb = Math.cos(B.a), sb = Math.sin(B.a), fa = A.fy || 1, fb = B.fy || 1;
+  const ex = B.x - A.x, ey = B.y - A.y, ra = B.a - A.a, f = (v, k) => Math.round(v * k);     // the answer depends only on the pair's relative pose: cached
+  const key = `${A.n}|${B.n}|${f(ex * ca + ey * sa, 4)}|${f(ey * ca - ex * sa, 4)}|${f(Math.atan2(Math.sin(ra), Math.cos(ra)), 200)}|${fa}|${fb}|${f(A.b, 4)}|${f(A.add, 4)}|${f(B.b, 4)}|${f(B.add, 4)}`;
+  let r = PMC.get(key); if (r !== undefined) return r;
+  if (PMC.size > 4096) PMC.clear(); PMC.set(key, r = meetPx(A, B, ma, mb, D, ca, sa, cb, sb, fa, fb)); return r;
+}
+function meetPx(A, B, ma, mb, D, ca, sa, cb, sb, fa, fb) {
   for (let y = 0; y < mb[3]; y++) for (let x = 0; x < mb[2]; x++) {
     const ib = ((mb[1] + y) * D.w + mb[0] + x) * 4; if (D.ap[ib + 3] < 128) continue;
     const ux = x + 0.5 - mb[4], uy = (y + 0.5 - mb[5]) * fb, dx = B.x + cb * ux - sb * uy - A.x, dy = B.y + sb * ux + cb * uy - A.y;

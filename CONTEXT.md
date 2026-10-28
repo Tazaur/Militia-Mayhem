@@ -682,3 +682,6 @@ The webgl branch merged into main: the site root is the GL renderer (GX, src/0_g
 
 ## Build 226
 - hLayers: parts of the same object share a channel only if partsMeet (walks the smaller sprite's painted px, samples the other's: every px both paint, their spans meet; bottoms at their bases). The whole-part range test let the tank MG (48–51) share with the turret (top 48) while its barrel reaches over the turret's lower edge: it bridged. A tank now usually runs hull | turret+gun | MG.
+
+## Build 227
+partsMeet results cached by the pair's relative pose (names, offset in A's frame to 1/4 px, relative angle to 1/200 rad, fy, bases/adds), Map PMC cleared past 4096. Profile, 12 tanks, day, fog off (headless ANGLE): sunHeights CPU 223 0.08ms / 226 1.29ms / 227 0.23ms (0.30 with all turrets spinning); drawSun incl. GPU 0.21 / 1.52 / 0.44ms.
