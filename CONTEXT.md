@@ -679,3 +679,6 @@ The webgl branch merged into main: the site root is the GL renderer (GX, src/0_g
 - Sun-shadow channels (hLayers / sunLayers in 5e_light.js): floating parts (base > 0) wait in HL.f. Two of them go in different channels when their sun-aligned footprints, stretched by their shadow, overlap and their spans can't merge (same object: ranges don't touch; different objects: bases differ). Channel 0 → a/u as before; the others → HL.x (HL.k: kept copies for the memory), each its own heights (unit 8), sweep over its regions (unit 9, sunSweep now takes a list of boxes), resolved into a MAX shade mask (unit 10) that CP reads (SWL, LY). Cap 4 channels. Fixes the turret/gun/MG/jeep shadow bridging and notches.
 - Units 8+ belong to the GL renderer between frames (its textures and samplers): L2u rebinds 8–10 and clears their samplers before use. Layers off if fewer than 11 units.
 - Point-light shadows still read the merged heights (HT), so they can still bridge.
+
+## Build 226
+- hLayers: parts of the same object share a channel only if partsMeet (walks the smaller sprite's painted px, samples the other's: every px both paint, their spans meet; bottoms at their bases). The whole-part range test let the tank MG (48–51) share with the turret (top 48) while its barrel reaches over the turret's lower edge: it bridged. A tank now usually runs hull | turret+gun | MG.

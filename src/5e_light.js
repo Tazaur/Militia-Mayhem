@@ -539,16 +539,30 @@ function hParts(o) {
   for (const q of partsOf(o)) {
     const fl = q.b > 0.5 && _sun && _sun.ly, L = HLA, i = HL.f.n; if (fl) HLA = HL.f;
     hspr(q.n, q.x, q.y, q.a, q.b, q.add, q.fy, q.un && undQ(...q.un)); HLA = L;
-    if (fl && HL.f.n > i) HLY.p.push({ o, i, k: L === HL.a, b: q.b, lo: q.b - (q.un ? artMax(q.un[0], true) : 0), hi: q.b + q.add + artMax(q.n) });
+    if (fl && HL.f.n > i) HLY.p.push({ o, q, i, k: L === HL.a, b: q.b, hi: q.b + q.add + artMax(q.n) });
   }
 }
 /* the sweep keeps one floating span a pixel, and the heights one: two floating things over each other (or their shadows
    crossing) whose spans don't meet lose one, or fill the gap between. So what floats goes in channels, each heights and swept
    on its own (sunLayers): two go in different ones where their footprints with their shadows (sun-aligned boxes, stretched
-   away from the sun by top / tan(elevation)) overlap, unless their spans always meet: of one thing, its stack touching (the
-   turret on its hull); of two, the same base (every px of a part holds its base: two hulls, two turrets). Channel 0 is the
-   frame's (into a / u); the rest go in x by channel (k: the kept ones again, for the memory), with their regions (world) */
+   away from the sun by top / tan(elevation)) overlap, unless their spans always meet: of one thing, at every px both are
+   painted (partsMeet: a turret on its hull, not an MG reaching past the turret's top); of two, the same base (every px of a
+   part holds its base: two hulls, two turrets). Channel 0 is the frame's (into a / u); the rest go in x by channel (k: the
+   kept ones again, for the memory), with their regions (world) */
 const HLY = { p: [], c: [], xn: 0 }, LCH = 4;
+function partsMeet(A, B) {     // parts (q): at every px both paint, their spans meet (bottoms at their bases: an underside only lowers them)
+  const D = matData(); let ma = ATLAS[A.n], mb = ATLAS[B.n]; if (!D || !ma || !mb) return false;
+  if (ma[2] * ma[3] < mb[2] * mb[3]) [A, B, ma, mb] = [B, A, mb, ma];     // walk the smaller one's px
+  const ca = Math.cos(A.a), sa = Math.sin(A.a), cb = Math.cos(B.a), sb = Math.sin(B.a), fa = A.fy || 1, fb = B.fy || 1;
+  for (let y = 0; y < mb[3]; y++) for (let x = 0; x < mb[2]; x++) {
+    const ib = ((mb[1] + y) * D.w + mb[0] + x) * 4; if (D.ap[ib + 3] < 128) continue;
+    const ux = x + 0.5 - mb[4], uy = (y + 0.5 - mb[5]) * fb, dx = B.x + cb * ux - sb * uy - A.x, dy = B.y + sb * ux + cb * uy - A.y;
+    const lx = Math.floor(ma[4] + dx * ca + dy * sa), ly = Math.floor(ma[5] + fa * (dy * ca - dx * sa)); if (lx < 0 || ly < 0 || lx >= ma[2] || ly >= ma[3]) continue;
+    const ia = ((ma[1] + ly) * D.w + ma[0] + lx) * 4; if (D.ap[ia + 3] < 128) continue;
+    if (A.b + A.add + D.mp[ia] / 4 < B.b - 0.5 || B.b + B.add + D.mp[ib] / 4 < A.b - 0.5) return false;
+  }
+  return true;
+}
 function hLayers() {
   const P = HLY.p, F = HL.f.f, on = P.length > 1 && sunTone().day > 0, by = [];
   HLY.c = []; HLY.xn = 0;
@@ -557,7 +571,7 @@ function hLayers() {
     for (const p of P) {
       const o = p.i * HQ, s = F[o] * dx + F[o + 1] * dy, t = F[o + 1] * dx - F[o] * dy, es = Math.abs(F[o + 2] * dx + F[o + 3] * dy) + Math.abs(F[o + 4] * dx + F[o + 5] * dy), et = Math.abs(F[o + 3] * dx - F[o + 2] * dy) + Math.abs(F[o + 5] * dx - F[o + 4] * dy);
       p.f = [s - es - Math.min(p.hi / tn, 720), s + es, t - et, t + et]; p.c = 0; let m = 0;
-      for (const r of P) { if (r === p) break; if (r.f[0] < p.f[1] && p.f[0] < r.f[1] && r.f[2] < p.f[3] && p.f[2] < r.f[3] && !(r.o === p.o ? r.lo <= p.hi + 0.5 && p.lo <= r.hi + 0.5 : Math.abs(r.b - p.b) <= 0.5)) m |= 1 << r.c; }
+      for (const r of P) { if (r === p) break; if (r.f[0] < p.f[1] && p.f[0] < r.f[1] && r.f[2] < p.f[3] && p.f[2] < r.f[3] && !(r.o === p.o ? partsMeet(r.q, p.q) : Math.abs(r.b - p.b) <= 0.5)) m |= 1 << r.c; }
       while (p.c < LCH - 1 && m & 1 << p.c) p.c++;
       if (p.c) (by[p.c] = by[p.c] || []).push(p);
     }
