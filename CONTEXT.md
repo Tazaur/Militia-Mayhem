@@ -685,3 +685,6 @@ The webgl branch merged into main: the site root is the GL renderer (GX, src/0_g
 
 ## Build 227
 partsMeet results cached by the pair's relative pose (names, offset in A's frame to 1/4 px, relative angle to 1/200 rad, fy, bases/adds), Map PMC cleared past 4096. Profile, 12 tanks, day, fog off (headless ANGLE): sunHeights CPU 223 0.08ms / 226 1.29ms / 227 0.23ms (0.30 with all turrets spinning); drawSun incl. GPU 0.21 / 1.52 / 0.44ms.
+
+## Build 231
+(228-230: local cache attempts, never released.) partsMeet uncached again: a walk is ~2us, and a pose cache's misses on a turning turret cost as much as the walks. Instead: exact early accept when even each part's lowest painted px reaches the other's base (artMax(n, 0, 1): lowest painted height, cached per sprite), and hLayers skips the check for a part whose channel is already ruled out. Channels identical to 226 over 24 pose sets (12 tanks). Profile, 12 tanks, day: sunHeights CPU 223 0.08ms / 231 0.22ms, still or spinning; drawSun incl. GPU 0.21 / 0.39ms.

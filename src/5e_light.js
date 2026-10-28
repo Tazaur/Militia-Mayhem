@@ -246,10 +246,10 @@ function artMat(n) {         // 1: some of it reflects, 2: some of it glows
   for (let y = 0; y < m[3]; y++) for (let x = 0; x < m[2]; x++) { const i = ((m[1] + y) * D.w + m[0] + x) * 4; if (D.ap[i + 3] >= 128) v |= (D.mp[i + 1] > 8 ? 1 : 0) | (D.mp[i + 2] > 8 ? 2 : 0); }
   _amt.set(n, v); return v;
 }
-function artMax(n, un) {     // its tallest pixel (an underside has no art: all of it; un: a sprite stood on, the same)
-  const all = un || n.startsWith('under_'), k = all ? '_' + n : n; let v = _amx.get(k); if (v !== undefined) return v; const D = matData(), m = ATLAS[n]; if (!D || !m) return 0; v = 0;
-  for (let y = 0; y < m[3]; y++) for (let x = 0; x < m[2]; x++) { const i = ((m[1] + y) * D.w + m[0] + x) * 4; if (all || D.ap[i + 3] >= 128) v = Math.max(v, D.mp[i] / 4); }
-  _amx.set(k, v); return v;
+function artMax(n, un, lo) {     // its tallest pixel (an underside has no art: all of it; un: a sprite stood on, the same; lo: its lowest painted one)
+  const all = un || n.startsWith('under_'), k = (lo ? '<' : '') + (all ? '_' + n : n); let v = _amx.get(k); if (v !== undefined) return v; const D = matData(), m = ATLAS[n]; if (!D || !m) return 0; v = lo ? 1e9 : 0;
+  for (let y = 0; y < m[3]; y++) for (let x = 0; x < m[2]; x++) { const i = ((m[1] + y) * D.w + m[0] + x) * 4; if (all || D.ap[i + 3] >= 128) v = (lo ? Math.min : Math.max)(v, D.mp[i] / 4); }
+  if (v === 1e9) v = 0; _amx.set(k, v); return v;
 }
 /* where things start: a soldier's gap under him (a jump) and his legs; the gun's muzzle, the throwing hand */
 const solLift = s => Math.round(SUNB.jump * jumpK(s)), solAdd = s => s.stance === 2 ? 0 : SUNB.stand;
@@ -550,17 +550,11 @@ function hParts(o) {
    part holds its base: two hulls, two turrets). Channel 0 is the frame's (into a / u); the rest go in x by channel (k: the
    kept ones again, for the memory), with their regions (world) */
 const HLY = { p: [], c: [], xn: 0 }, LCH = 4;
-const PMC = new Map();
 function partsMeet(A, B) {     // parts (q): at every px both paint, their spans meet (bottoms at their bases: an underside only lowers them)
+  if (A.b + A.add + artMax(A.n, 0, 1) >= B.b - 0.5 && B.b + B.add + artMax(B.n, 0, 1) >= A.b - 0.5) return true;     // even their lowest px reach: any pose
   const D = matData(); let ma = ATLAS[A.n], mb = ATLAS[B.n]; if (!D || !ma || !mb) return false;
   if (ma[2] * ma[3] < mb[2] * mb[3]) [A, B, ma, mb] = [B, A, mb, ma];     // walk the smaller one's px
   const ca = Math.cos(A.a), sa = Math.sin(A.a), cb = Math.cos(B.a), sb = Math.sin(B.a), fa = A.fy || 1, fb = B.fy || 1;
-  const ex = B.x - A.x, ey = B.y - A.y, ra = B.a - A.a, f = (v, k) => Math.round(v * k);     // the answer depends only on the pair's relative pose: cached
-  const key = `${A.n}|${B.n}|${f(ex * ca + ey * sa, 4)}|${f(ey * ca - ex * sa, 4)}|${f(Math.atan2(Math.sin(ra), Math.cos(ra)), 200)}|${fa}|${fb}|${f(A.b, 4)}|${f(A.add, 4)}|${f(B.b, 4)}|${f(B.add, 4)}`;
-  let r = PMC.get(key); if (r !== undefined) return r;
-  if (PMC.size > 4096) PMC.clear(); PMC.set(key, r = meetPx(A, B, ma, mb, D, ca, sa, cb, sb, fa, fb)); return r;
-}
-function meetPx(A, B, ma, mb, D, ca, sa, cb, sb, fa, fb) {
   for (let y = 0; y < mb[3]; y++) for (let x = 0; x < mb[2]; x++) {
     const ib = ((mb[1] + y) * D.w + mb[0] + x) * 4; if (D.ap[ib + 3] < 128) continue;
     const ux = x + 0.5 - mb[4], uy = (y + 0.5 - mb[5]) * fb, dx = B.x + cb * ux - sb * uy - A.x, dy = B.y + sb * ux + cb * uy - A.y;
@@ -578,7 +572,7 @@ function hLayers() {
     for (const p of P) {
       const o = p.i * HQ, s = F[o] * dx + F[o + 1] * dy, t = F[o + 1] * dx - F[o] * dy, es = Math.abs(F[o + 2] * dx + F[o + 3] * dy) + Math.abs(F[o + 4] * dx + F[o + 5] * dy), et = Math.abs(F[o + 3] * dx - F[o + 2] * dy) + Math.abs(F[o + 5] * dx - F[o + 4] * dy);
       p.f = [s - es - Math.min(p.hi / tn, 720), s + es, t - et, t + et]; p.c = 0; let m = 0;
-      for (const r of P) { if (r === p) break; if (r.f[0] < p.f[1] && p.f[0] < r.f[1] && r.f[2] < p.f[3] && p.f[2] < r.f[3] && !(r.o === p.o ? partsMeet(r.q, p.q) : Math.abs(r.b - p.b) <= 0.5)) m |= 1 << r.c; }
+      for (const r of P) { if (r === p) break; if (!(m & 1 << r.c) && r.f[0] < p.f[1] && p.f[0] < r.f[1] && r.f[2] < p.f[3] && p.f[2] < r.f[3] && !(r.o === p.o ? partsMeet(r.q, p.q) : Math.abs(r.b - p.b) <= 0.5)) m |= 1 << r.c; }
       while (p.c < LCH - 1 && m & 1 << p.c) p.c++;
       if (p.c) (by[p.c] = by[p.c] || []).push(p);
     }
