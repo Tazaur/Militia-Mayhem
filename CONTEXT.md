@@ -689,3 +689,6 @@ partsMeet results cached by the pair's relative pose (names, offset in A's frame
 ## Build 231
 (228-230: local cache attempts, never released.) partsMeet uncached again: a walk is ~2us, and a pose cache's misses on a turning turret cost as much as the walks. Instead: exact early accept when even each part's lowest painted px reaches the other's base (artMax(n, 0, 1): lowest painted height, cached per sprite), and hLayers skips the check for a part whose channel is already ruled out. Channels identical to 226 over 24 pose sets (12 tanks). Profile, 12 tanks, day: sunHeights CPU 223 0.08ms / 231 0.22ms, still or spinning; drawSun incl. GPU 0.21 / 0.39ms.
 - Build 232: the hull no longer stands on `under_hull` (atlas_m table: `use` drops hull0–3; only track0/track1 use it). Its painted depth was only ever under the tracks, so the hull's span duplicated theirs there. `vehParts` gives the hull `min` = its tracks' base (hpart returns its part), so it floats at the underside's depth (13 px) as before; the guide stacks it the same way.
+
+## Build 233
+Art drop (drop.py): atlas.png: hull4, tur_dead; atlas_m.png: tur_dead, sol_leg0, sol_nogun, sol_rpg, sol_sit, sol_stand, pool.
