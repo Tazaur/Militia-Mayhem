@@ -270,19 +270,17 @@ VIEWS.layers = {
 };
 
 /* ---------- HEIGHTS: every painted px of every part a column from its base to its top (oblique view) ---------- */
-const SIDE = [0.72, 0.6, 0.5, 0.42, 0.36]; // column side shades, lit → away from the light
-const rgba32 = (r, g, b, k) => ((255 << 24) | ((b * k) << 16) | ((g * k) << 8) | (r * k)) >>> 0;
 const RELIEF = {
   start(info) {
     if (!ART.ok) { ART.ready(() => this.start(info)); return; }
     (this.enter = this.enter || this.make())(info);
   },
   make() {
-    const cv = $('#relief'), off = document.createElement('canvas'); let img = null, buf = null, g = null, info = null, what = 'tank', spin = true, t = 0, crew = true;
+    const cv = $('#relief'), gl = VOX.init(cv); let info = null, what = 'tank', spin = true, t = 0, crew = true;
     const O = { tank: { type: 'tank', x: 0, y: 0, a: 0, ta: 0, mgA: 0.5 }, jeep: { type: 'jeep', x: 0, y: 0, a: 0, mgA: 0 }, sol: { type: 'sol', x: 0, y: 0, a: 0, pose: 'sol_stand' } };
     const paintInfo = P => {
       info.innerHTML = `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><div class="seg" id="rW"><button data-w="tank">TANK</button><button data-w="jeep">JEEP</button><button data-w="sol">SOLDIER</button></div><button class="btn${spin ? ' on' : ''}" id="rS">TURN</button><button class="btn${crew ? ' on' : ''}" id="rC">CREW</button></div>
-      <p style="margin:8px 0 6px;font-size:12.5px;color:var(--dim)">Every coloured pixel of the atlas has a height in <code>atlas_m.png</code> (red = height × 4). A part starts on whatever kept part lies under its rest point: <span class="mono">b = max(min, hUnder(rest)) + underside + lift</span>. Drag to turn and tilt, pinch to zoom.</p>
+      <p style="margin:8px 0 6px;font-size:12.5px;color:var(--dim)">Every coloured pixel of the atlas has a height in <code>atlas_m.png</code> (red = height × 4). A part starts on whatever kept part lies under its rest point: <span class="mono">b = max(min, hUnder(rest)) + underside + lift</span>. Drawn by the heightmap editor's 3D renderer: one box per pixel, lit by the game's sun. Drag to turn and tilt, pinch to zoom.</p>
       <div class="tw"><table class="vars"><tr><th>part</th><th>rests on</th><th>under</th><th>lift</th><th>b</th><th>top</th></tr>${P.map(q => `<tr><td>${q.n}</td><td class="v">${q.rest}</td><td class="v">${q.under}</td><td class="v">${q.lift + (q.add ? ' +' + q.add : '')}</td><td class="v">${q.b}</td><td class="v">${q.b + q.add + artMax(q.n)}</td></tr><tr><td colspan="6" style="font-family:var(--fb);color:var(--faint);font-size:11.5px;padding-top:0">${q.why}</td></tr>`).join('')}</table></div>
       <p class="mono" style="font-size:12px">topOf = ${topOf(P)} px → its place in the draw queue</p>`;
       $$('#rW button').forEach(b => { b.classList.toggle('on', b.dataset.w === what); b.onclick = () => { what = b.dataset.w; build(); }; });
@@ -296,52 +294,26 @@ const RELIEF = {
         for (let y = 0; y < m[3]; y++) for (let x = 0; x < m[2]; x++) {
           if (!painted(m, x, y)) continue; const i = ((m[1] + y) * ART.w + m[0] + x) * 4, top = q.b + q.add + heightPx(m, x, y);
           let bot = q.b; if (un) { const ux = Math.floor(un[4] + q.at[0] + (x - m[4])), uy = Math.floor(un[5] + q.at[1] + (y - m[5]) * q.fy); bot = ux >= 0 && uy >= 0 && ux < un[2] && uy < un[3] ? q.b - heightPx(un, ux, uy) : q.b; }
-          cols.push({ q, lx: x - m[4] + 0.5, ly: (y - m[5] + 0.5) * q.fy, top, bot: Math.max(0, bot), fc: rgba32(ART.ap[i], ART.ap[i + 1], ART.ap[i + 2], 1), sc: SIDE.map(k => rgba32(ART.ap[i], ART.ap[i + 1], ART.ap[i + 2], k)) });
+          cols.push({ q, lx: x - m[4] + 0.5, ly: (y - m[5] + 0.5) * q.fy, top, bot: Math.max(0, bot), r: ART.ap[i] / 255, g: ART.ap[i + 1] / 255, b: ART.ap[i + 2] / 255, rf: ART.mp[i + 1] / 255, gw: ART.mp[i + 2] / 255 });
         }
       }
-      // a side is never seen when the same part's neighbour on that side covers it (top ≥, bottom ≤): edges 0..3 face −y, +x, +y, −x
-      const at = new Map(); for (const c of cols) { let m = at.get(c.q); if (!m) at.set(c.q, m = new Map()); m.set(c.lx + ',' + c.ly, c); }
-      for (const c of cols) { c.hid = 0; const m = at.get(c.q); [[0, -1], [1, 0], [0, 1], [-1, 0]].forEach(([ox, oy], e) => { const o = m.get((c.lx + ox) + ',' + (c.ly + oy)); if (o && o.top >= c.top && o.bot <= c.bot) c.hid |= 1 << e; }); }
       paintInfo(P); t = 0;
     };
+    // the heightmap editor's renderer (vox.js): one box per painted px, from its bottom to its top, turned with its part
     const draw = (dt) => {
-      if (!g || cv.width !== Math.round(cv.getBoundingClientRect().width * Math.min(2, devicePixelRatio))) g = fitCanvas(cv, cv.parentElement.getBoundingClientRect().height);
-      if (!cols.length) return;
-      t += dt; camStep(dt); const o = O[what], yaw = CAM.yaw * Math.PI / 180, pitch = (90 - CAM.tilt) * Math.PI / 180;
+      if (!gl || !cols.length) return;
+      t += dt; camStep(dt); const o = O[what];
       if (spin && what !== 'sol') { const ta = Math.sin(t * 0.7) * 1.2; if (what === 'tank') { o.ta = ta; o.mgA = ta + 0.5 + Math.sin(t * 1.9) * 0.6; } else { o.mgA = ta; o.steer = Math.sin(t * 1.3) * 0.45; } P = stackParts(o); }
-      const W = g.W, H = g.H, sc = Math.min(W / (what === 'sol' ? 60 : what === 'jeep' ? 120 : 175), H / (what === 'sol' ? 70 : 110)) * CAM.zoom, cy = Math.cos(yaw), sy = Math.sin(yaw), sp = Math.sin(pitch), cp = Math.cos(pitch);
-      g.fillStyle = '#0a0f08'; g.fillRect(0, 0, W, H);
-      // ground grid
-      g.strokeStyle = 'rgba(125,220,106,.09)'; g.lineWidth = 1; for (let k = -100; k <= 100; k += 10) for (const s of [0, 1]) { const p = (x, y) => { const rx = x * cy - y * sy, ry = x * sy + y * cy; return [W / 2 + rx * sc, H * 0.58 + ry * sp * sc]; }; const [a, b] = s ? [p(k, -100), p(k, 100)] : [p(-100, k), p(100, k)]; g.beginPath(); g.moveTo(...a); g.lineTo(...b); g.stroke(); }
-      // each painted px is a column standing on its own rotated 1×1 footprint: project the footprint's 4 corners (once per part
-      // angle), fill the sides facing the camera (darker the more they face away from the light, upper left), then the top.
-      // Painter's order = distance along the view ray: ry·cos(pitch) + top·sin(pitch) (from above: by height; from the side: by depth).
-      // Filled by a small scanline rasterizer straight into an ImageData (thousands of tiny canvas paths per frame are far too slow).
-      const d = cv.width / W, BW = cv.width, BH = cv.height; if (!img || img.width !== BW || img.height !== BH) { img = new ImageData(BW, BH); buf = new Uint32Array(img.data.buffer); off.width = BW; off.height = BH; } buf.fill(0);
-      const list = [], qs = P, ft = new Map(), K = sc * d, scr = (x, y) => [(x * cy - y * sy) * K * 0.52, (x * sy + y * cy) * sp * K * 0.52];
-      const foot = q => {
-        let f = ft.get(q.a); if (f) return f;
-        const A = scr(Math.cos(q.a), Math.sin(q.a)), B = scr(-Math.sin(q.a), Math.cos(q.a)), C = [[-A[0] - B[0], -A[1] - B[1]], [A[0] - B[0], A[1] - B[1]], [A[0] + B[0], A[1] + B[1]], [-A[0] + B[0], -A[1] + B[1]]], sides = [];
-        for (let i = 0; i < 4; i++) { const a = C[i], b = C[(i + 1) % 4], mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2; let nx = b[1] - a[1], ny = a[0] - b[0]; if (nx * mx + ny * my < 0) { nx = -nx; ny = -ny; } const n = Math.hypot(nx, ny) || 1; if (ny / n > 0.02) sides.push([a, b, Math.round((1 + nx / n) * 2), 1 << i]); }
-        ft.set(q.a, f = { C, sides }); return f;
-      };
-      let pi = -1, last = null; for (const c of cols) { if (c.q !== last) { pi++; last = c.q; } const q = qs[pi] || c.q, cs = Math.cos(q.a), sn = Math.sin(q.a), wx = q.x + c.lx * cs - c.ly * sn, wy = q.y + c.lx * sn + c.ly * cs, rx = wx * cy - wy * sy, ry = wx * sy + wy * cy, top = c.top - c.q.b + q.b, bot = Math.max(0, c.bot - c.q.b + q.b); list.push([ry * cp + top * sp, BW / 2 + rx * K, BH * 0.58 + (ry * sp - top * cp) * K, (top - bot) * cp * K, c, foot(q)]); }
-      list.sort((a, b) => a[0] - b[0]);
-      const Q = new Float32Array(8), poly = col => { // convex quad Q → buf, sampled at px centres
-        let y0 = Math.min(Q[1], Q[3], Q[5], Q[7]), y1 = Math.max(Q[1], Q[3], Q[5], Q[7]); y0 = Math.max(0, Math.ceil(y0 - 0.5)); y1 = Math.min(BH - 1, Math.floor(y1 - 0.5));
-        for (let y = y0; y <= y1; y++) {
-          const yc = y + 0.5; let xl = 1e9, xr = -1e9;
-          for (let i = 0, j = 3; i < 4; j = i++) { const ay = Q[j * 2 + 1], by = Q[i * 2 + 1]; if ((ay <= yc) !== (by <= yc)) { const x = Q[j * 2] + (yc - ay) / (by - ay) * (Q[i * 2] - Q[j * 2]); if (x < xl) xl = x; if (x > xr) xr = x; } }
-          const xa = Math.max(0, Math.ceil(xl - 0.5)), xb = Math.min(BW - 1, Math.floor(xr - 0.5)), o = y * BW; for (let x = xa; x <= xb; x++) buf[o + x] = col;
-        }
-      };
-      for (const [, X, Y, h, c, f] of list) {
-        if (h > 0.3) for (const [a, b, k, e] of f.sides) { if (c.hid & e) continue; Q[0] = X + a[0]; Q[1] = Y + a[1]; Q[2] = X + b[0]; Q[3] = Y + b[1]; Q[4] = Q[2]; Q[5] = Q[3] + h; Q[6] = Q[0]; Q[7] = Q[1] + h; poly(c.sc[k]); }
-        const C = f.C; for (let i = 0; i < 4; i++) { Q[i * 2] = X + C[i][0]; Q[i * 2 + 1] = Y + C[i][1]; } poly(c.fc);
+      const I = VOX.data(cols.length); let k = 0, pi = -1, last = null;
+      for (const c of cols) {     // re-place each column by its part's current pose (parts keep their order in P)
+        if (c.q !== last) { pi++; last = c.q; } const q = P[pi] || c.q, cs = Math.cos(q.a), sn = Math.sin(q.a), top = c.top - c.q.b + q.b, bot = Math.max(0, c.bot - c.q.b + q.b);
+        I[k++] = q.x + c.lx * cs - c.ly * sn; I[k++] = q.y + c.lx * sn + c.ly * cs; I[k++] = top - bot; I[k++] = c.r; I[k++] = c.g; I[k++] = c.b; I[k++] = c.rf; I[k++] = c.gw; I[k++] = bot; I[k++] = q.a;
       }
-      off.getContext('2d').putImageData(img, 0, 0); g.drawImage(off, 0, 0, W, H);
-      g.font = '600 11px Chakra Petch'; g.fillStyle = '#a49f86'; g.fillText('drag to turn · pinch to zoom · columns = painted height', 10, H - 10);
+      VOX.upload(cols.length);
+      const S = what === 'sol' ? 60 : what === 'jeep' ? 120 : 175, asp = Math.min(1, cv.clientWidth / (cv.clientHeight || 1));
+      VOX.draw({ yaw: CAM.yaw * Math.PI / 180, pitch: Math.min(1.55, (90 - CAM.tilt) * Math.PI / 180), dist: S * 1.2 / (0.73 * asp) / CAM.zoom, tx: 0, ty: what === 'sol' ? 12 : 8, tz: 0 }, SUN);
     };
+    if (!gl) cv.insertAdjacentHTML('afterend', '<p class="muted" style="position:absolute;left:12px;top:12px">This view needs WebGL2.</p>');
     loop(cv, (dt) => draw(dt));
     return el => { info = el; build(); };
   }
