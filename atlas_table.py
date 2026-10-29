@@ -4,7 +4,9 @@ The settings strip is atlas_m's last rows: 2 bytes of length, then UTF-8 JSON, o
 row first (left to right), then the row above, so it's found whatever the atlas's size. The JSON:
   v: 2, rows: the strip's rows, pool: [y, h] (the underside pool's rows),
   spr: { name: [x, y, w, h, px, py] } (every sprite: its rect and pivot),
-  under: { name: [x, y, w, h, px, py] inside the pool }, use: { sprite: what it stands on } (the heightmap editor's).
+  under: { name: [x, y, w, h, px, py] inside the pool }, use: { sprite: what it stands on } (the heightmap editor's),
+  anim: { name: { f: [[frame, fy], ...], rest } } (frames: sprites or under_<name>, fy -1 mirrored; a sprite stands on
+  one as anim_<name>, the frame by its step: a soldier's walk).
 atlas.json is made from it (meta): the sprites plus _pool / _cfg."""
 import json
 import numpy as np
@@ -48,6 +50,10 @@ def check(c, W, H):
         if r[0] < 0 or r[1] < 0 or r[0] + r[2] > W or r[1] + r[3] > P[0]: bad.append(f'{n} {r[:4]} is outside the art area')
     for b, r in (c.get('under') or {}).items():
         if r[0] < 0 or r[1] < 0 or r[0] + r[2] > W or r[1] + r[3] > P[1]: bad.append(f'under_{b} {r} is outside the pool')
+    U = c.get('under') or {}; A = c.get('anim') or {}; there = lambda f: f in S or f[:6] == 'under_' and f[6:] in U
+    for a, o in A.items():
+        for f in o.get('f') or []:
+            if not there(f[0]): bad.append(f"the animation {a} has {f[0]}, which isn't there")
     for n, u in (c.get('use') or {}).items():
-        if u not in S and u[6:] not in (c.get('under') or {}): bad.append(f"{n} stands on {u}, which isn't there")
+        if not there(u) and not (u[:5] == 'anim_' and u[5:] in A): bad.append(f"{n} stands on {u}, which isn't there")
     return bad

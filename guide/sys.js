@@ -35,8 +35,8 @@ sys({
   render(b) {
     b.innerHTML = `<p class="lead">A gun is just data: one row of the <code>WPN</code> table. Firing spawns a bullet projectile with a speed, a life and a damage; where it goes depends on a spread cone that the shooter's state widens or tightens.</p>
     <h3>Damage per second</h3>${DEMO('wDps', 'DPS = damage ÷ seconds between shots. The shotgun\'s is all 8 pellets landing.')}
-    <h3>The spread cone — try it</h3>${DEMO('wCone', 'Each dot is one shot. Bloom builds while you hold the trigger and cools when you stop.', BTNS('wW', ['M4', 'AK', 'SMG', 'LMG', 'SNIPER'], 0) + RNG('wSt', 'stance', 0, 2, 1, 0) + RNG('wSp', 'speed px/s', 0, 130, 1, 0) + '<button class="btn" id="wAds">ADS</button><button class="btn on" id="wFire">FIRE</button>')}
-    ${MX(`sm = [1, .7, .45][stance]          // stand / crouch / prone
+    <h3>The spread cone — try it</h3>${DEMO('wCone', 'Each dot is one shot. Bloom builds while you hold the trigger and cools when you stop.', BTNS('wW', ['M4', 'AK', 'SMG', 'LMG', 'SNIPER'], 0) + RNG('wSt', 'stance', 0, 1, 1, 0) + RNG('wSp', 'speed px/s', 0, 130, 1, 0) + '<button class="btn" id="wAds">ADS</button><button class="btn on" id="wFire">FIRE</button>')}
+    ${MX(`sm = [1, .45][stance]              // stand / prone
    × (1 + clamp(speed / 82, 0, 1.6) × 1.3)
    × (ADS ? .5 : 1)
    × (1 + 1.6 × bloom)
@@ -70,7 +70,7 @@ sys({
   render(b) {
     b.innerHTML = `<p class="lead">One function, <code>explosion(x, y, r, dmgS, dmgV)</code>, serves grenades, rockets, shells, mines and dying vehicles. Soldiers get a curved falloff — but only if the blast can reach them (walls shelter, glass doesn't).</p>
     ${DEMO('bD', 'Tap anywhere to set off a shell blast. Numbers are the damage each soldier takes (stance changes it).', BTNS('bK', ['FRAG', 'ROCKET', 'SHELL', 'TANK DIES'], 2))}
-    ${MX(`soldier dmg = dmgS × (1 − d / r)^0.6 × [1, .8, .6][stance]
+    ${MX(`soldier dmg = dmgS × (1 − d / r)^0.6 × [1, .6][stance]
 vehicle  f  = clamp(1 − dmin / (.6 r), .25, 1)
          dmg = dmgV × f,   push = 25 / mass × f
 trees within .35 r and sandbags / hay within .55 r are destroyed`)}
@@ -80,7 +80,7 @@ trees within .35 r and sandbags / hay within .55 r are destroyed`)}
     const K = [[88, 150, 'FRAG'], [62, 110, 'ROCKET'], [78, 180, 'SHELL'], [110, 400, 'TANK']]; let k = 2, bx = null, by = null, bt = 9;
     seg(b, 'bK', i => k = i);
     const c = b.querySelector('#bD'), g = fitCanvas(c, 250), sols = [];
-    for (let i = 0; i < 9; i++) sols.push({ x: 0.1 + 0.8 * Math.random(), y: 0.15 + 0.7 * Math.random(), st: i % 3, a: Math.random() * TAU });
+    for (let i = 0; i < 9; i++) sols.push({ x: 0.1 + 0.8 * Math.random(), y: 0.15 + 0.7 * Math.random(), st: i % 2, a: Math.random() * TAU });
     const wall = { x: 0.55, y: 0.18, w: 0.04, h: 0.42 };
     c.onclick = e => { const r = c.getBoundingClientRect(); bx = e.clientX - r.left; by = e.clientY - r.top; bt = 0; };
     const segRect = (x0, y0, x1, y1, R) => { let t0 = 0, t1 = 1; const dx = x1 - x0, dy = y1 - y0; for (const [p, q] of [[-dx, x0 - R.x], [dx, R.x + R.w - x0], [-dy, y0 - R.y], [dy, R.y + R.h - y0]]) { if (p === 0) { if (q < 0) return false; } else { const t = q / p; if (p < 0) t0 = Math.max(t0, t); else t1 = Math.min(t1, t); } } return t0 <= t1; };
@@ -89,9 +89,9 @@ trees within .35 r and sandbags / hay within .55 r are destroyed`)}
       g.fillStyle = '#16351a'; g.fillRect(0, 0, W, H); g.fillStyle = '#6e5a46'; g.fillRect(wr.x, wr.y, wr.w, wr.h); txt(g, 'wall', wr.x - 2, wr.y - 4, '#a49f86', '10px Chakra Petch');
       if (bx !== null) { const gr = g.createRadialGradient(bx, by, 0, bx, by, R * 0.5); gr.addColorStop(0, 'rgba(20,14,8,.8)'); gr.addColorStop(1, 'rgba(20,14,8,0)'); g.fillStyle = gr; g.fillRect(bx - R, by - R, R * 2, R * 2); g.strokeStyle = 'rgba(224,183,44,.5)'; g.setLineDash([4, 4]); g.beginPath(); g.arc(bx, by, R, 0, TAU); g.stroke(); g.setLineDash([]); }
       for (const s of sols) {
-        const x = s.x * W, y = s.y * H; sprDraw(g, s.st === 2 ? 'sol_leg0' : 'sol_stand', x, y, s.a, 1.1 * sc * 1.6); if (s.st === 2) sprDraw(g, 'sol_stand', x, y, s.a, 1.1 * sc * 1.6);
-        txt(g, ['stand', 'crouch', 'prone'][s.st], x, y + 22, '#6f725f', '9px Chakra Petch', 'center');
-        if (bx !== null) { const d = Math.hypot(x - bx, y - by) / sc, shel = segRect(bx, by, x, y, wr); let v = d < r && !shel ? dm * (1 - d / r) ** 0.6 * [1, 0.8, 0.6][s.st] : 0; const a = clamp(2.5 - bt, 0, 1);
+        const x = s.x * W, y = s.y * H; sprDraw(g, s.st === 1 ? 'sol_leg0' : 'sol_stand', x, y, s.a, 1.1 * sc * 1.6); if (s.st === 1) sprDraw(g, 'sol_stand', x, y, s.a, 1.1 * sc * 1.6);
+        txt(g, ['stand', 'prone'][s.st], x, y + 22, '#6f725f', '9px Chakra Petch', 'center');
+        if (bx !== null) { const d = Math.hypot(x - bx, y - by) / sc, shel = segRect(bx, by, x, y, wr); let v = d < r && !shel ? dm * (1 - d / r) ** 0.6 * [1, 0.6][s.st] : 0; const a = clamp(2.5 - bt, 0, 1);
           txt(g, shel && d < r ? 'sheltered' : v ? '−' + Math.round(v) : '', x, y - 16 - Math.min(1, bt) * 8, shel ? '#5fd3d0' : '#ef5a44', '700 12px JetBrains Mono', 'center'); if (v && bt < 0.4) { g.strokeStyle = 'rgba(239,90,68,.6)'; g.beginPath(); g.moveTo(bx, by); g.lineTo(x, y); g.stroke(); } }
       }
       if (bx !== null && bt < 0.6) { g.globalCompositeOperation = 'lighter'; sprDraw(g, 'boom' + Math.min(2, (bt * 6) | 0), bx, by, 0, R / 30); const fl = g.createRadialGradient(bx, by, 0, bx, by, R * 2.2); fl.addColorStop(0, `rgba(255,200,120,${0.5 * (1 - bt / 0.6) ** 2})`); fl.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = fl; g.fillRect(0, 0, W, H); g.globalCompositeOperation = 'source-over'; }
@@ -148,20 +148,20 @@ sys({
   id: 'soldiers', sec: 'BATTLE', title: 'Soldiers', sub: '3_sim controlSoldier · hurtSoldier', icon: 'sol_stand', blurb: 'Stances, speeds, hitboxes, health, regen, kits.',
   render(b) {
     b.innerHTML = `<p class="lead">Every soldier — yours, a bot's, an online player's — runs the same <code>controlSoldier(s, I, dt)</code> with an input object <code>I</code>. Only where <code>I</code> comes from differs.</p>
-    ${DEMO('sD', 'Hit circle (red) shrinks as you go down; the bar is how fast you move.', BTNS('sS', ['STAND', 'CROUCH', 'PRONE', 'SPRINT'], 0))}
-    ${vars([['walk', '82 px/s', 'sprint 128 · crouch 52 · prone 34 · swim 40 · wrench 30 · ADS ×.6'], ['smoothing', 'k = 1 − e^(−14 dt)', 'velocity eases to the stick (ice: 3)'], ['hit radius', '9 / 6.5 / 4.5', 'stand / crouch / prone (seated 7, swimming 6)'], ['blast taken', '×1 / .8 / .6', 'by stance'], ['hp', '100', 'co-op players 200'], ['regen', '+9 hp/s', 'after 5 s without damage'], ['jump', '.42 s', 'needs ≥ 110 px/s; clears low cover'], ['knife', '28 px · ±1 rad', '100 dmg, .7 s cooldown'], ['spawn shield', '1.6 s', ''], ['respawn', '5 s / 6 s', 'player / bot']])}
+    ${DEMO('sD', 'Hit circle (red) shrinks as you go down; the bar is how fast you move.', BTNS('sS', ['STAND', 'PRONE', 'SPRINT'], 0))}
+    ${vars([['walk', '82 px/s', 'sprint 128 · prone 34 · swim 40 · wrench 30 · ADS ×.6'], ['smoothing', 'k = 1 − e^(−14 dt)', 'velocity eases to the stick (ice: 3)'], ['hit radius', '9 / 4.5', 'stand / prone (seated 7, swimming 6)'], ['blast taken', '×1 / .6', 'by stance'], ['hp', '100', 'co-op players 200'], ['regen', '+9 hp/s', 'after 5 s without damage'], ['jump', '.42 s', 'needs ≥ 110 px/s; clears low cover'], ['knife', '28 px · ±1 rad', '100 dmg, .7 s cooldown'], ['spawn shield', '1.6 s', ''], ['respawn', '5 s / 6 s', 'player / bot']])}
     <h3>Kits</h3>${tbl(['kit', 'primary', 'second', 'nades', 'gadget'], [['RIFLEMAN', 'M4 / SCAR', 'pistol / m-pistol', '3', 'medic bag: 14 hp/s within 58 px, 12 s'], ['ENGINEER', 'AK / SMG / shotgun', 'bazooka', '1', 'wrench: 110 hp/s tank, 70 jeep'], ['SUPPORT', 'LMG / HMG', 'pistol / m-pistol', '2', 'ammo box: +35% reserve every 2 s, 15 s'], ['RECON', '.50 cal / DMR', 'pistol', '1', 'AT mines (3 max) · spots enemies']])}
     <h3>Scoring</h3>${vars([['kill', '+100', 'roadkill +150, teamkill −100'], ['flag capture', '+200', 'each soldier in the ring'], ['vehicle kill', '+300 / +200', 'tank / jeep'], ['heal / repair', '+10', 'per 25 hp healed / 50 hp repaired'], ['ammo pouch', '35%', 'dropped on death; +25% reserve']])}`;
     let st = 0; seg(b, 'sS', i => st = i);
     const c = b.querySelector('#sD'), g = fitCanvas(c, 200); let x = 40, ph = 0;
     ART.ready(() => loop(c, (dt, t) => {
-      const sp = [82, 52, 34, 128][st], hr = [9, 6.5, 4.5, 9][st], sc = 2.6; x += sp * dt * 0.9; ph += dt * sp / 12; if (x > g.W + 30) x = -30;
+      const sp = [82, 34, 128][st], hr = [9, 4.5, 9][st], sc = 2.6; x += sp * dt * 0.9; ph += dt * sp / 12; if (x > g.W + 30) x = -30;
       g.fillStyle = '#1d3a1e'; g.fillRect(0, 0, g.W, g.H); const y = g.H * 0.45;
       g.strokeStyle = 'rgba(52,92,242,.8)'; g.lineWidth = 2; g.beginPath(); g.ellipse(x, y, 10 * sc, 8 * sc, 0, 0, TAU); g.stroke();
-      if (st === 2) sprDraw(g, 'sol_leg' + ((ph | 0) % 3), x, y, 0, sc); else { const f = Math.sin(ph) * 5; g.fillStyle = '#2b2b1e'; g.fillRect(x + f * sc - 4, y - 7 * sc, 8, 5); g.fillRect(x - f * sc - 4, y + 4 * sc, 8, 5); }
-      sprDraw(g, 'sol_stand', x, y + (st === 1 ? 2 : 0), 0, sc * (st === 1 ? 0.93 : 1));
+      if (st === 1) sprDraw(g, 'sol_leg' + ((ph | 0) % 3), x, y, 0, sc); else { const f = Math.sin(ph) * 5; g.fillStyle = '#2b2b1e'; g.fillRect(x + f * sc - 4, y - 7 * sc, 8, 5); g.fillRect(x - f * sc - 4, y + 4 * sc, 8, 5); }
+      sprDraw(g, 'sol_stand', x, y, 0, sc);
       g.strokeStyle = 'rgba(239,90,68,.9)'; g.setLineDash([3, 3]); g.beginPath(); g.arc(x, y, hr * sc, 0, TAU); g.stroke(); g.setLineDash([]);
-      txt(g, `${['STAND', 'CROUCH', 'PRONE', 'SPRINT'][st]} · ${sp} px/s · hit r ${hr}`, 10, g.H - 34, '#f5d670', '11px JetBrains Mono');
+      txt(g, `${['STAND', 'PRONE', 'SPRINT'][st]} · ${sp} px/s · hit r ${hr}`, 10, g.H - 34, '#f5d670', '11px JetBrains Mono');
       g.fillStyle = '#25301f'; g.fillRect(10, g.H - 22, g.W - 20, 8); g.fillStyle = COL.acc; g.fillRect(10, g.H - 22, (g.W - 20) * sp / 128, 8);
     }));
   }
@@ -170,7 +170,7 @@ sys({
   id: 'proj', sec: 'BATTLE', title: 'Bullets, Shells & Height', sub: '3_sim updateProjectiles · shotFall', icon: 'tur_gun', blurb: 'Every shot has a height. Low cover stops low bullets. Grenades arc.',
   render(b) {
     b.innerHTML = `<p class="lead">The game is top-down but shots live in 3D: each projectile carries a height <code>z</code> above the ground. It starts at the muzzle's painted height and falls; whatever it crosses is hit only if the shot is below its top.</p>
-    ${DEMO('pD', 'Side view. A crouched shooter\'s bullet starts low and is stopped by the sandbags; a standing one clears them.', BTNS('pS', ['STANDING', 'CROUCHED', 'PRONE'], 0))}
+    ${DEMO('pD', 'Side view. A prone shooter\'s bullet starts low and is stopped by the sandbags; a standing one clears them.', BTNS('pS', ['STANDING', 'PRONE'], 0))}
     ${MX(`each step: segment (x0,y0,z0) → (x1,y1,z1)
 nearest hit t over: ground (z ≤ 0), walls, wrecks under their top,
   statics, soldiers (circle by stance), vehicles (box under topOf(v))
@@ -183,15 +183,15 @@ ground speed = dist / .75
 vh = (350 T² − h0) / T            // up-speed so it lands at T
 h'' = −700 px/s² · bounce vh × −.35 · friction e^(−3 dt)
 frag fuse 1.7 s · smoke 1.4 s`)}
-    ${vars([['sandbag stops a bullet', 'if', 'shooter crouched / prone, or bullet below the bag top (12), or a prone man lies within 30 px — never your own cover within 30 px'], ['vehicle crew', '60%', 'exposed crew on the line get hit if aimed at (or 60% chance); else the hull takes vdmg'], ['whiz', '30 px', 'a near miss plays a whiz to that player'], ['lag comp', 'lagAt(e, T)', 'joiners\' shots are tested against where targets were when they fired']])}`;
+    ${vars([['sandbag stops a bullet', 'if', 'shooter prone, or bullet below the bag top (12), or a prone man lies within 30 px — never your own cover within 30 px'], ['vehicle crew', '60%', 'exposed crew on the line get hit if aimed at (or 60% chance); else the hull takes vdmg'], ['whiz', '30 px', 'a near miss plays a whiz to that player'], ['lag comp', 'lagAt(e, T)', 'joiners\' shots are tested against where targets were when they fired']])}`;
     let st = 0; seg(b, 'pS', i => st = i);
     const c = b.querySelector('#pD'), g = fitCanvas(c, 190); let shots = [], cd = 0;
     loop(c, dt => {
-      const W = g.W, H = g.H, gy = H - 30, sx = 30, bag = W * 0.55, bagH = 12, k = (H - 60) / 40, h0 = [30, 16, 5][st];
+      const W = g.W, H = g.H, gy = H - 30, sx = 30, bag = W * 0.55, bagH = 12, k = (H - 60) / 40, h0 = [30, 5][st];
       cd -= dt; if (cd <= 0) { cd = 0.35; shots.push({ x: sx, z: h0 + (Math.random() - 0.5) * 2, dead: 0 }); }
       g.fillStyle = '#0a0f08'; g.fillRect(0, 0, W, H); g.fillStyle = '#2a3a1c'; g.fillRect(0, gy, W, 30);
       g.fillStyle = '#b39b52'; g.beginPath(); g.ellipse(bag, gy - bagH * k / 2, 14, bagH * k / 2, 0, 0, TAU); g.fill(); txt(g, 'sandbags · 12 px', bag, gy - bagH * k - 6, '#a49f86', '10px Chakra Petch', 'center');
-      g.fillStyle = '#345cf2'; const bh = [36, 22, 7][st]; g.fillRect(sx - 6, gy - bh * k, 12, bh * k); txt(g, 'z₀ = ' + h0, sx + 12, gy - h0 * k, '#f5d670', '10px JetBrains Mono');
+      g.fillStyle = '#345cf2'; const bh = [36, 7][st]; g.fillRect(sx - 6, gy - bh * k, 12, bh * k); txt(g, 'z₀ = ' + h0, sx + 12, gy - h0 * k, '#f5d670', '10px JetBrains Mono');
       g.fillStyle = '#e02c26'; g.fillRect(W - 40, gy - 36 * k, 12, 36 * k);
       for (const s of shots) { if (!s.dead) { s.x += 900 * dt * W / 900; s.z -= s.z * 0.9 * dt; if (Math.abs(s.x - bag) < 8 && (st > 0 || s.z < bagH)) s.dead = 1; if (s.x > W - 40) s.dead = 2; } else s.dead += dt; dot(g, s.x, gy - s.z * k, 2.5, s.dead === 1 || (s.dead > 0 && s.dead < 1 && s.x < bag + 9) ? '#ef5a44' : '#ffe39a'); }
       shots = shots.filter(s => s.dead < 1.2 && s.x < W);
@@ -215,16 +215,16 @@ sys({
     <h3>Each think</h3>${FLOW(['<b>Target</b>: nearest visible enemy in range (440 px; recon 640, tank 620, seated 520), passing <code>sees()</code>. Tanks and rocket carriers prefer vehicles.', '<b>React</b>: a new target waits react × U(.7, 1.3) before shooting', '<b>Goal</b>: flags scored by distance + 900 if ours, −150 if attacked, −250 neutral, + rand 500; TDM: nearest enemy ± 400. Hurt < 45 hp → a crate within 380', '<b>Path</b>: A* on the walk grid (vehicles: drive grid), replanned every 2.5–4 s', '<b>Decide</b>: cover, smoke, repair, enter a vehicle, drop a medbag / ammo / mine, strafe, prone-snipe', '<b>Aim</b>: target + its velocity × distance / bullet speed, plus error'])}
     <h3>Seeing in the dark</h3>${DEMO('bV', 'How far a bot sees a target, by how lit the target is (litAt: sun, flashes, fires, lamps). Someone who just fired is always seen.')}
     ${MX(`range = lerp(dark, day, litAt(target))
-day  [10000, 380, 240]  stand / crouch / prone
-dark [  150, 100,  70]
+day  [10000, 240]  stand / prone
+dark [  150,  70]
 seen if d ≤ range and sees(eye, target)   // no wall, smoke+glass < .5
 err  = U(−1, 1) × skill.err × (1 + d / 400)  // radians
 lead = target + v × d / 1050            // tank: / 760`)}
     ${tbl(['skill', 'react s', 'aim err', 'fire rate'], [['ROOKIE', '.6', '.17', '.55'], ['REGULAR', '.38', '.09', '.8'], ['VETERAN', '.22', '.05', '1']])}
     <h3>Aim error at a distance</h3>${DEMO('bE', 'Shots from a bot at 300 px for each skill. Co-op waves sharpen raiders: err × (1 − .5k), k = min(1, (wave − 1) / 9).', BTNS('bS', ['ROOKIE', 'REGULAR', 'VETERAN'], 1))}
     <h3>Movement states</h3>${vars([['duel', '< 300 px', 'approach > 260, back off < 150, strafe .8 sideways, switch every .8–1.8 s'], ['cover', '150 px', 'a sandbag crescent facing the threat (±1 rad), prone when close'], ['camp', '5%', 'a window / door post for 15–30 s (tiled maps)'], ['bursts', 'U(.4, 1.1) × rate s', 'rest U(.25, .7) / rate'], ['grenade', '8%', 'at 110–270 px; vs vehicles < 200'], ['stuck', '< 12 px in 1.2 s', 'random unstick for .5 s'], ['heard', '± 15% of d', 'shot at by someone unseen: returns fire at a guess for 2.5 s']])}`;
-    const g = fitCanvas(b.querySelector('#bV'), 180), P = plot(g, { x0: 0, x1: 1, y0: 0, y1: 420, gx: [0, 0.25, 0.5, 0.75, 1], gy: [0, 100, 200, 300, 400], xl: 'litAt(target)', yl: 'px', l: 40, c: [{ f: x => lerp(150, 1e4, x), col: COL.acc }, { f: x => lerp(100, 380, x), col: COL.cyan }, { f: x => lerp(70, 240, x), col: COL.violet }] });
-    txt(g, 'standing (→ 10 000 in daylight)', P.X(0.02), P.Y(395), COL.acc, '600 10px Chakra Petch'); txt(g, 'crouched', P.X(0.75), P.Y(318), COL.cyan, '600 10px Chakra Petch'); txt(g, 'prone', P.X(0.8), P.Y(170), COL.violet, '600 10px Chakra Petch');
+    const g = fitCanvas(b.querySelector('#bV'), 180), P = plot(g, { x0: 0, x1: 1, y0: 0, y1: 420, gx: [0, 0.25, 0.5, 0.75, 1], gy: [0, 100, 200, 300, 400], xl: 'litAt(target)', yl: 'px', l: 40, c: [{ f: x => lerp(150, 1e4, x), col: COL.acc }, { f: x => lerp(70, 240, x), col: COL.violet }] });
+    txt(g, 'standing (→ 10 000 in daylight)', P.X(0.02), P.Y(395), COL.acc, '600 10px Chakra Petch'); txt(g, 'prone', P.X(0.8), P.Y(170), COL.violet, '600 10px Chakra Petch');
     let sk = 1; seg(b, 'bS', i => sk = i); const c = b.querySelector('#bE'), g2 = fitCanvas(c, 170); let hits = [], cd = 0;
     ART.ready(() => loop(c, dt => {
       const err = [0.17, 0.09, 0.05][sk], W = g2.W, H = g2.H, sx = 30, tx = W - 50, ty = H / 2, d = 300, sc = (tx - sx) / d; cd -= dt;
@@ -498,7 +498,7 @@ k = min(1, (m − z) / (1 − z))      // rescaled magnitude
 aim assist (pads, touch): nearest seen enemy within .13 rad
   (touch .3) and 460 px pulls aim 45% toward it
 mouse: world = (mouse − (view.x + view.w/2)) / zoom + cam`)}
-    ${tbl(['action', 'keyboard', 'gamepad', 'touch'], [['move', 'WASD', 'left stick', 'left 45% of screen: stick (58 px)'], ['aim', 'mouse', 'right stick', 'right side drag (ADS)'], ['fire', 'LMB', 'RT', 'fire stick: tap / drag > 24 px'], ['ADS', 'RMB', 'LT', 'aim drag'], ['sprint', 'Shift', 'L3 latch', 'stick rim ≥ .92 R held 260 ms'], ['jump', 'Space', 'A', 'button'], ['crouch / prone', 'C (hold) / Z', 'B tap / hold 300 ms', 'button'], ['reload', 'R', 'X', 'button'], ['enter / use', 'E', 'Y', 'button'], ['grenade / gadget', 'G / F', 'RB / LB', 'buttons'], ['spot / lamp', 'Q / L', 'D-pad up / hold 400 ms', '—']])}
+    ${tbl(['action', 'keyboard', 'gamepad', 'touch'], [['move', 'WASD', 'left stick', 'left 45% of screen: stick (58 px)'], ['aim', 'mouse', 'right stick', 'right side drag (ADS)'], ['fire', 'LMB', 'RT', 'fire stick: tap / drag > 24 px'], ['ADS', 'RMB', 'LT', 'aim drag'], ['sprint', 'Shift', 'L3 latch', 'stick rim ≥ .92 R held 260 ms'], ['jump', 'Space', 'A', 'button'], ['prone / stand', 'C / Z / Ctrl', 'B', 'button'], ['reload', 'R', 'X', 'button'], ['enter / use', 'E', 'Y', 'button'], ['grenade / gadget', 'G / F', 'RB / LB', 'buttons'], ['spot / lamp', 'Q / L', 'D-pad up / hold 400 ms', '—']])}
     ${vars([['edges', 'pressed', 'cleared by endInputFrame each frame: a press is seen exactly once'], ['touch stick', 'origin follows', 'if the finger goes past 1.25 R'], ['auto fire', 'on / off / range', 'range: fires when the aim line crosses a seen enemy'], ['rumble', 'dual-rumble', 'explosions, hits, tanks nearby']])}`;
     let z = 0.2; seg(b, 'iS', i => z = [0.2, 0.25][i]);
     const c = b.querySelector('#iD'), g = fitCanvas(c, 200); let S = [0.3, -0.2], drag = false;

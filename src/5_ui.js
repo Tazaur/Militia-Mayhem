@@ -371,7 +371,7 @@ function drawSoldier(s, vw) {
   if (!M.ffa) { ctx.strokeStyle = TEAMHEX[s.team]; ctx.globalAlpha = 0.6; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(s.x, s.y, shadow ? 14 : 11, shadow ? 14 : 11, 0, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1; }
   if (s.spotT > 0 && vw && vw.p && vw.p.sol && s.spotTeam === vw.p.sol.team) { ctx.strokeStyle = '#ff4030'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(s.x - 6, s.y - 22); ctx.lineTo(s.x, s.y - 16); ctx.lineTo(s.x + 6, s.y - 22); ctx.stroke(); }
   const al = s.protect > 0 && Math.floor(M.time * 12) % 2 ? 0.45 : undefined;
-  if (s.stance === 2) { solDraw(s, solSpr(s.color, legFrame(s)), s.x, s.y, s.a, 1, 1, al); solDraw(s, solSpr(s.color, body), s.x, s.y, s.a, 1, 1, al); }
+  if (s.stance === 1) { solDraw(s, solSpr(s.color, legFrame(s)), s.x, s.y, s.a, 1, 1, al); solDraw(s, solSpr(s.color, body), s.x, s.y, s.a, 1, 1, al); }
   else {
     if (s.moving && jk === 0) {
       const ph = Math.sin(s.walkT / 5), c = Math.cos(s.a), sn = Math.sin(s.a), w = shadow ? 5 : 3.5;
@@ -412,7 +412,7 @@ function drawShadowLayer(vw, vis) {
     if (!s.alive || s.down || s.veh || s.swim || !vis(s.x, s.y, 30) || smokeHides(eyes, s, vw)) continue;
     const body = bodyPose(s);
     const jk = jumpK(s), o = 1 + jk * 5, ox = s.x + 2.5 * o, oy = s.y + 3.5 * o;
-    if (s.stance === 2) spr(solShadow(legFrame(s)), ox, oy, s.a);
+    if (s.stance === 1) spr(solShadow(legFrame(s)), ox, oy, s.a);
     spr(solShadow(body), ox, oy, s.a);
   }
   worldT();
@@ -490,7 +490,7 @@ function drawVehicle(v) {
     for (const i of [0, 1]) { const s = v.seats[i]; if (s) drawSeated(s); }
     const [mx, my] = mgPos(v);
     drawMG(v, mx, my);
-    const g = v.seats[2]; if (g) drawSeated(g, true);
+    const g = v.seats[2]; if (g) drawSeated(g, true, jeepGunner(v));
   }
   FLASH = 0;
 }
@@ -499,11 +499,11 @@ function drawMG(v, mx, my) {
   const f = v.mgFlash > 0; spr(f ? 'mg_f' : 'mg', mx, my, v.mgA);
   if (f) { const fx = mx + Math.cos(v.mgA) * 31, fy = my + Math.sin(v.mgA) * 31; flashAt(fx, fy, 8, true); light(fx, fy, 120 * rnd(0.88, 1.1), mgH(v), rnd(0.75, 1), v); }
 }
-function drawSeated(s, mg) {
+function drawSeated(s, mg, at) {     // at: where he stands (the jeep's gunner, behind his gun)
   const role = s.veh.T.seats[s.seat].role, jeep = s.veh.type === 'jeep';
-  // drivers and jeep passengers sit; MG gunners stand at the gun; tank riders keep their rifle up
-  const pose = role === 'drive' || mg || (jeep && role === 'rifle' && !s.flash) ? 'sit' : 'stand';
-  const fl = FLASH; FLASH = 0; solDraw(s, solSpr(s.color, pose), s.x, s.y, s.a, 0.9, 0.9); FLASH = fl;     // the crew doesn't flash with the vehicle
+  // drivers, jeep passengers and the tank / nest gunners sit; the jeep's gunner stands in the bed behind the MG; tank riders keep their rifle up
+  const pose = !at && (role === 'drive' || mg || (jeep && role === 'rifle' && !s.flash)) ? 'sit' : 'stand', [x, y] = at || [s.x, s.y];
+  const fl = FLASH; FLASH = 0; solDraw(s, solSpr(s.color, pose), x, y, at ? s.veh.mgA : s.a, 0.9, 0.9); FLASH = fl;     // the crew doesn't flash with the vehicle
   if (s.flash > 0 && !mg && role !== 'drive') { const [mx, my] = muzzle(s, 20); flashAt(mx, my, 8); light(mx, my, 90, gunH(s), rnd(0.6, 0.8)); }
 }
 const FIRE = ['fire0', 'fire2', 'fire3', 'fire4'], SMOKE = ['smoke0', 'smoke1', 'smoke2', 'smoke3'], BOOM = ['boom0', 'boom1', 'boom2'];

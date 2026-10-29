@@ -198,7 +198,7 @@ function sunTone() {
 }
 let HS = 0.5; const LIGHT_Q = [0.35, 0.5, 0.75];                                     // height buffer resolution vs the screen (settings › LIGHTING QUALITY)
 const SUNH = { flag: 22, item: 4, wall: 40, fence: 9, hay: 14, crate: 10, nest: 10, tree: [56, 36] };     // px
-const SUNB = { mgNest: SUNH.nest, stand: 18, jump: 4 };     // px: the nest MG rests on its bags (drawn over them, so never lower); a soldier's legs (added to his painted height, solid); a jump's gap
+const SUNB = { mgNest: SUNH.nest, jump: 4, step: 4.5 };     // px: the nest MG rests on its bags (drawn over them, so never lower); a jump's gap; walked per frame of a walk (two frames a footstep)
 /* per part (sprite name less its frame number) or shape (SUNH name): lift = an air gap (px) between it and what it rests
    on, add = px taller than painted. A part's start is the top of what's under it (+ lift); its pixels stand on that.
    A sprite on an underside (the atlas's settings, use: under_<name>, a rect in its pool, heights only, painted as depth down; or any sprite, itself too) stands on it: as high as its
@@ -206,7 +206,7 @@ const SUNB = { mgNest: SUNH.nest, stand: 18, jump: 4 };     // px: the nest MG r
 const SUNP = { tur_gun: { lift: 4 }, tur_gun1: { lift: 4 } };
 /* draw order: each thing's height (px, its top as the sun pass has it); drawWorld draws low to high */
 const ZH = { body: 1, item: 2, shot: 12 };     // fallbacks; the rest comes from the art (topOf, artMax, shotZ)
-const solZ = s => s.down ? ZH.body : solLift(s) + solAdd(s) + artMax('sol_' + bodyPose(s));
+const solZ = s => s.down ? ZH.body : solBase(s) + artMax('sol_' + bodyPose(s));
 const sunP = n => SUNP[n] || SUNP[n.replace(/\d+$/, '')] || {};
 let SUNNOW = false, SUNDBG = 0, _sun = null;
 const MIMG = typeof Image !== 'undefined' && typeof MAT_SRC !== 'undefined' ? new Image() : null;
@@ -219,14 +219,15 @@ function matData() {
   g2.drawImage(MIMG, 0, 0); const mp = g2.getImageData(0, 0, w, h).data; g2.clearRect(0, 0, w, h); g2.drawImage(IMG, 0, 0); const ap = g2.getImageData(0, 0, w, h).data;
   MAT = { mp, ap, w, h }; ATLAS_CFG = atlasCfg(mp, w, h);
   const P = ATLAS._pool, C = ATLAS_CFG; for (const [n, r] of Object.entries(C.under || {})) ATLAS['under_' + n] = [r[0], P[1] + r[1], r[2], r[3], r[4], r[5]];     // undersides: where in the pool
-  USE = C.use || {}; if (!C.use) for (const n in ATLAS) { const u = 'under_' + n.replace(/\d+$/, ''); if (n[0] !== '_' && !n.startsWith('under_') && C.under && ATLAS[u] && !(C.off || []).includes(n)) USE[n] = u; }     // older settings: a part's states on its underside, but the ones off
+  ANIM = C.anim || {}; USE = C.use || {}; if (!C.use) for (const n in ATLAS) { const u = 'under_' + n.replace(/\d+$/, ''); if (n[0] !== '_' && !n.startsWith('under_') && C.under && ATLAS[u] && !(C.off || []).includes(n)) USE[n] = u; }     // older settings: a part's states on its underside, but the ones off
   return MAT;
 }
 /* the atlas's table (atlas_table.py; the heightmap editor writes it): a JSON string in atlas_m's last rows, 2 bytes of length
    then UTF-8, over its pixels' G / B bytes, the bottom row first. Its sprites are atlas.json (made from it at build); here
    the undersides { under: { name: [x, y, w, h, px, py] in the pool } } and what stands on what { use: { sprite: under_<name>
-   or a sprite } } (older ones: off, the states without their part's underside) */
-let ATLAS_CFG = {}, USE = {};     // USE: what each sprite stands on (a pool underside, another sprite, itself)
+   or a sprite or anim_<name> } } and animations { anim: { name: { f: [[frame, fy], ...], rest } } } (frames: sprites or
+   under_<name>; fy -1 mirrored; rest: the frame when still) (older ones: off, the states without their part's underside) */
+let ATLAS_CFG = {}, USE = {}, ANIM = {};     // USE: what each sprite stands on (a pool underside, another sprite, itself, an animation of them)
 function atlasCfg(mp, w, h) {
   const at = k => { const y = h - 1 - (k / w | 0), i = (y * w + k % w) * 4; return mp.subarray(i + 1, i + 3); };     // the k-th byte pair, bottom row first
   const n = at(0)[0] << 8 | at(0)[1], b = new Uint8Array(n + 3); if (!n || n + 2 > w * h * 2) return {};
@@ -251,13 +252,15 @@ function artMax(n, un, lo) {     // its tallest pixel (an underside has no art: 
   for (let y = 0; y < m[3]; y++) for (let x = 0; x < m[2]; x++) { const i = ((m[1] + y) * D.w + m[0] + x) * 4; if (all || D.ap[i + 3] >= 128) v = (lo ? Math.min : Math.max)(v, D.mp[i] / 4); }
   if (v === 1e9) v = 0; _amx.set(k, v); return v;
 }
-/* where things start: a soldier's gap under him (a jump) and his legs; the gun's muzzle, the throwing hand */
-const solLift = s => Math.round(SUNB.jump * jumpK(s)), solAdd = s => s.stance === 2 ? 0 : SUNB.stand;
-function handH(s) { return solLift(s) + solAdd(s) + artH('sol_nogun', 10, 0); }
+/* where things start: a soldier's gap under him (a jump) and his legs (standing: his body's underside, a walk; prone and
+   seated: none); the gun's muzzle, the throwing hand */
+const solLift = s => Math.round(SUNB.jump * jumpK(s)), solStep = s => s.moving && !s.swim && !(s.jumpT > 0) ? s.walkT / SUNB.step : null;
+function solBase(s) { const u = s.stance === 1 ? null : underOf('sol_' + bodyPose(s), solStep(s)); return solLift(s) + (u ? artMax(u[0], true) : 0); }
+function handH(s) { return solBase(s) + artH('sol_nogun', 10, 0); }
 function gunH(s) {
   if (s.veh) { const q = partsOf(s.veh).find(q => q.who === s); if (!q) return ZH.shot; const [x, y] = muzzle(s, 20); return partH(q, x, y); }
   const [x, y] = gunTip(s), c = Math.cos(s.a), sn = Math.sin(s.a), dx = x - s.x, dy = y - s.y;
-  return solLift(s) + solAdd(s) + artH('sol_' + bodyPose(s), dx * c + dy * sn, -dx * sn + dy * c);
+  return solBase(s) + artH('sol_' + bodyPose(s), dx * c + dy * sn, -dx * sn + dy * c);
 }
 /* a vehicle's mounted MG and cannon at their muzzles */
 function mgH(v) { const q = partsOf(v).find(q => /^mg/.test(q.n)), [mx, my] = mgPos(v); return q ? partH(q, mx + Math.cos(v.mgA) * 31, my + Math.sin(v.mgA) * 31) : ZH.shot; }
@@ -491,10 +494,15 @@ function hUnder(x, y) {
   }
   return b;
 }
-const underOf = n => { const u = USE[n]; return u && ATLAS[u] ? u : null; };     // the atlas's settings: what it stands on (none: the dirt)
-function hpart(n, x, y, a, o = {}) {         // o: min (start at least), add, rx / ry (rest point), keep (others stand on it), who (the crewman), fy (-1 mirrored), at (its pivot off its underside's: hund)
-  if (!ATLAS[n]) return; const P = sunP(n), un = underOf(n), f = Math.max(o.min || 0, Math.round(hUnder(o.rx ?? x, o.ry ?? y)));
-  const b = f + (un ? artMax(un, true) : 0) + (P.lift || 0), add = (o.add || 0) + (P.add || 0), fy = o.fy || 1, q = { n, x, y, a, b, add, who: o.who, fy, un: un && [un, n, [...(o.at || [0, 0]), fy]] };     // un: what it stands on, hanging from its base
+/* what it stands on (the atlas's settings; none: the dirt): [it, fy (-1: mirrored)]; an animation's frame at step t (null: its rest) */
+function underOf(n, t) {
+  let u = USE[n], fy = 1; const A = u && u.startsWith('anim_') && ANIM[u.slice(5)];
+  if (A) { const F = A.f || [], i = t == null ? A.rest || 0 : Math.floor(t); [u, fy = 1] = F[(i % F.length + F.length) % F.length] || []; }
+  return u && ATLAS[u] ? [u, fy] : null;
+}
+function hpart(n, x, y, a, o = {}) {         // o: min (start at least), add, rx / ry (rest point), keep (others stand on it), who (the crewman), fy (-1 mirrored), at (its pivot off its underside's: hund), t (its animation's step), flat (on nothing)
+  if (!ATLAS[n]) return; const P = sunP(n), u = o.flat ? null : underOf(n, o.t), un = u && u[0], f = Math.max(o.min || 0, Math.round(hUnder(o.rx ?? x, o.ry ?? y)));
+  const b = f + (un ? artMax(un, true) : 0) + (P.lift || 0), add = (o.add || 0) + (P.add || 0), fy = o.fy || 1, q = { n, x, y, a, b, add, who: o.who, fy, un: un && [un, n, [...(o.at || [0, 0]), fy * u[1]]] };     // un: what it stands on, hanging from its base (mirrored under it: the rows run up it, as a mirrored frame's)
   if (o.keep) _stk.push(q); if (_pp) _pp.push(q); else hspr(n, x, y, a, b, add, fy, un && undQ(...q.un)); return q;
 }
 /* a thing's parts, bottom up, each standing on what's under it (worked out once a frame): what the height pass draws,
@@ -506,19 +514,21 @@ function partsOf(o) {
 }
 function partH(q, x, y) { const c = Math.cos(q.a), s = Math.sin(q.a), dx = x - q.x, dy = y - q.y; return q.b + q.add + artH(q.n, dx * c + dy * s, -dx * s + dy * c); }
 /* its top (px): the tallest part (crew left out: they don't make the hull taller in the draw order) */
+/* the jeep's gunner: standing in the bed, 12 px behind the MG (8 behind its post) */
+function jeepGunner(v) { const [mx, my] = mgPos(v); return [mx - Math.cos(v.mgA) * 12, my - Math.sin(v.mgA) * 12]; }
 function topOf(o) { let t = 0; for (const q of partsOf(o)) if (!q.who) t =Math.max(t, q.b + q.add + artMax(q.n)); return t; }
 function solParts(s) {
   if (s.down) { hpart('sol_dead', s.x, s.y, s.a + Math.PI); return; }
   const body = 'sol_' + bodyPose(s), up = solLift(s);     // a jump lifts him off the ground
-  if (s.stance === 2) { hpart('sol_' + legFrame(s), s.x, s.y, s.a, { min: up }); hpart(body, s.x, s.y, s.a, { min: up }); }
-  else hpart(body, s.x, s.y, s.a, { min: up, add: solAdd(s) });     // standing: his legs under him, solid
+  if (s.stance === 1) { hpart('sol_' + legFrame(s), s.x, s.y, s.a, { min: up }); hpart(body, s.x, s.y, s.a, { min: up, flat: 1 }); }
+  else hpart(body, s.x, s.y, s.a, { min: up, t: solStep(s) });     // standing: on his legs (the underside's walk)
 }
 function wreckParts(w) {
   if (w.type === 'tank') { const tx = w.x - 4 * Math.cos(w.a), ty = w.y - 4 * Math.sin(w.a), t = wreckTrack(w); if (t) hpart('track2', t[0], t[1], w.a, { fy: t[4] }); hpart('hull4', w.x, w.y, w.a, { keep: 1 }); hpart('tur_dead', tx, ty, w.ta); }
   else { if (w.bx !== undefined) hpart(w.bf ? 'jeep_flat' : 'jeep_wheel', w.bx, w.by, w.ba); hpart('jeep4', w.x, w.y, w.a); }
 }
 function vehParts(v) {
-  const [mx, my] = mgPos(v), mg = v.mgFlash > 0 ? 'mg_f' : 'mg', crew = (i, min, add) => { const s = v.seats[i]; if (s) hpart('sol_sit', s.x, s.y, s.a, { min, add, who: s }); };
+  const [mx, my] = mgPos(v), mg = v.mgFlash > 0 ? 'mg_f' : 'mg', crew = (i, o) => { const s = v.seats[i]; if (s) hpart('sol_sit', s.x, s.y, s.a, { ...o, flat: 1, who: s }); };     // seated: no legs under him
   const mount = { rx: mx - Math.cos(v.mgA) * 4, ry: my - Math.sin(v.mgA) * 4 };     // mgPos is 4 px out from the mount
   if (v.type === 'nest') { hpart(mg, mx, my, v.mgA, { ...mount, min: SUNB.mgNest }); crew(0); return; }
   if (v.type === 'tank') {
@@ -531,7 +541,7 @@ function vehParts(v) {
     const c = Math.cos(v.a), s = Math.sin(v.a), [wx, wy] = EXTRA.jeepWells[0], st = jeepSteer(v), f = v.hp / v.T.hp;
     for (const sd of [-1, 1]) hpart('jeep_tire', v.x + c * wx - s * wy * sd, v.y + s * wx + c * wy * sd, v.a + st);
     hpart('jeep' + (f > 0.75 ? 0 : f > 0.5 ? 1 : f > 0.25 ? 2 : 3), v.x, v.y, v.a, { keep: 1 }); crew(0); crew(1);
-    hpart(mg, mx, my, v.mgA, mount); crew(2, 0, SUNB.stand);     // the MG on its post; the gunner stands in the bed
+    hpart(mg, mx, my, v.mgA, mount); const gn = v.seats[2]; if (gn) { const [gx, gy] = jeepGunner(v); hpart('sol_stand', gx, gy, v.mgA, { who: gn }); }     // the MG on its post; the gunner stands in the bed behind it, on his legs
   }
 }
 /* a thing's parts as heights; what floats (its base off the ground) waits in HL.f for its channel (hLayers) */

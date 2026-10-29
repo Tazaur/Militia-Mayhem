@@ -608,7 +608,7 @@ const DZ = (x, y, z) => { const m = Math.hypot(x, y); if (m < z) return [0, 0, 0
    D-pad on foot: up spot (hold: flashlight) · down map · left/right throwable (in a vehicle the D-pad picks a seat) · Start pause · View scoreboard */
 function padState(i) {
   const gp = gpList[i]; if (!gp || !gp.connected) { PADS[i] = null; return null; }
-  const P = PADS[i] || (PADS[i] = { prev: [], sx: 0, sy: 0, bT: -1 });
+  const P = PADS[i] || (PADS[i] = { prev: [], sx: 0, sy: 0 });
   const cur = gp.buttons.map(b => !!b && (b.pressed || b.value > 0.45));
   const prev = P.prev; P.prev = cur;
   const b = k => !!cur[k], pr = k => !!cur[k] && !prev[k];
@@ -617,15 +617,12 @@ function padState(i) {
   const sx = Math.abs(ax[0] || 0) > 0.6 ? Math.sign(ax[0]) : 0, sy = Math.abs(ax[1] || 0) > 0.6 ? Math.sign(ax[1]) : 0;
   const dpX = pr(15) ? 1 : pr(14) ? -1 : 0, dpY = pr(13) ? 1 : pr(12) ? -1 : 0, stX = sx && sx !== P.sx ? sx : 0, stY = sy && sy !== P.sy ? sy : 0;
   let navX = dpX || stX, navY = dpY || stY; P.sx = sx; P.sy = sy;
-  let crouch = false, proneT = false; const now = performance.now();
+  const proneT = pr(1), now = performance.now();     // B: down / up (prone or standing)
   if (pr(10)) P.run = true; if (!(lx || ly)) P.run = false;     // LS-click: sprint latches on until the stick comes back to the middle
-  if (pr(1)) P.bT = now;
   if (pr(12)) P.uT = now; let lamp = false; if (cur[12] && P.uT > 0 && now - P.uT > 400) { lamp = true; P.uT = -1; }     // hold D-pad up: flashlight
-  if (cur[1] && P.bT > 0 && now - P.bT > 300) { proneT = true; P.bT = -1; }
-  if (!cur[1] && prev[1] && P.bT > 0) { crouch = true; P.bT = -1; }
   return {
     pad: gp, mx: lx, my: ly, aim: rm > 0.25 ? Math.atan2(ry, rx) : null, aimMag: rm,
-    fire: b(7), ads: b(6), alt: pr(5), gadget: b(4), gadgetP: pr(4), interact: pr(3), swapW: false, reload: pr(2), crouch, proneT,
+    fire: b(7), ads: b(6), alt: pr(5), gadget: b(4), gadgetP: pr(4), interact: pr(3), swapW: false, reload: pr(2), proneT,
     jump: pr(0), melee: pr(11), spot: pr(12), lamp, sprint: !!P.run,
     seatNext: pr(1), seatDir: pr(12) ? 0 : pr(15) ? 1 : pr(13) ? 2 : pr(14) ? 3 : -1, seatIdx: -1,
     pause: pr(9), score: b(8), navX, navY, confirm: pr(0), back: pr(1), join: pr(0) || pr(9), deploy: pr(0),
@@ -635,20 +632,16 @@ function padState(i) {
 /* Keyboard + mouse (PC shooter layout):
    WASD · mouse aim · LMB fire · RMB aim down sights · Shift sprint · Space jump/vault · C / Z / Ctrl prone
    R reload · E enter/exit vehicle · G grenade · F gadget · V melee · Q spot · L flashlight · 1/2 or wheel swap weapon · 1-4 / F1-F4 seats in a vehicle */
-let KB_CT = -1;
 function kbState() {
   const K = c => !!KB.keys[c], P = c => KB.pressed.has(c);
-  let crouch = false, proneT = P('KeyZ') || P('ControlLeft'); const now = performance.now();
-  if (P('KeyC')) KB_CT = now;
-  if (K('KeyC') && KB_CT > 0 && now - KB_CT > 300) { proneT = true; KB_CT = -1; }
-  if (!K('KeyC') && KB_CT > 0) { crouch = true; KB_CT = -1; }
+  const proneT = P('KeyC') || P('KeyZ') || P('ControlLeft');
   const wheel = KB.wheel; KB.wheel = 0;
   const seatIdx = P('Digit1') || P('F1') ? 0 : P('Digit2') || P('F2') ? 1 : P('Digit3') || P('F3') ? 2 : P('Digit4') || P('F4') ? 3 : -1;
   return {
     kb: true, mx: (K('KeyD') || K('ArrowRight') ? 1 : 0) - (K('KeyA') || K('ArrowLeft') ? 1 : 0),
     my: (K('KeyS') || K('ArrowDown') ? 1 : 0) - (K('KeyW') || K('ArrowUp') ? 1 : 0),
     aim: null, mouse: true, fire: KB.mouse.down, ads: KB.mouse.rdown, alt: P('KeyG'), gadget: K('KeyF'), gadgetP: P('KeyF'), interact: P('KeyE'),
-    swapW: !!wheel, pickW: P('Digit1') ? 0 : P('Digit2') ? 1 : -1, reload: P('KeyR'), crouch, proneT,
+    swapW: !!wheel, pickW: P('Digit1') ? 0 : P('Digit2') ? 1 : -1, reload: P('KeyR'), proneT,
     jump: P('Space'), melee: P('KeyV'), spot: P('KeyQ'), lamp: P('KeyL'), sprint: K('ShiftLeft') || K('ShiftRight'),
     seatNext: P('KeyF'), seatDir: -1, seatIdx,
     pause: P('Escape') || P('KeyP'), score: K('Tab'),

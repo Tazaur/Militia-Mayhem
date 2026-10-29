@@ -761,7 +761,7 @@ function devDrawPanel() {
     if (s && s.alive) {
       row([`‹  HP ${Math.ceil(s.hp)} / ${s.mhp}  ›`, d => s.hp = clamp(Math.round(s.hp + d * s.mhp * 0.1), 1, s.mhp), undefined, true]);
       if (!s.veh) row([`‹  KIT ${KITS[s.kit].n}  ›`, d => { s.kit = (s.kit + d + KITS.length) % KITS.length; giveLoadout(s); if (s.player) s.player.kit = s.kit; }, undefined, true]);
-      row([`‹  STANCE ${['STAND', 'CROUCH', 'PRONE'][s.stance]}  ›`, d => s.stance = clamp(s.stance + d, 0, 2), undefined, true]);
+      row([`‹  STANCE ${['STAND', 'PRONE'][s.stance]}  ›`, d => s.stance = clamp(s.stance + d, 0, 1), undefined, true]);
       if (s.veh) row([`‹  VEHICLE HP ${Math.ceil(s.veh.hp)} / ${s.veh.T.hp}  ›`, d => s.veh.hp = clamp(Math.round(s.veh.hp + d * s.veh.T.hp * 0.1), 1, s.veh.T.hp), undefined, true]);
     }
   } else if (DEV.tab === 2) {

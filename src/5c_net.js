@@ -575,7 +575,7 @@ function netSnap() {
   for (const s of M.sol) {
     if (!s.alive) { S.push('A'); continue; }
     const W_ = s.w ? cw(s) : null, vi = s.veh ? M.vehicles.indexOf(s.veh) : -1;
-    const fA = 1 | (s.stance === 2 ? 2 : 0) | (s.swim ? 4 : 0) | (s.torch ? 8 : 0) | (s.ads ? 16 : 0) | (s.protect > 0 ? 32 : 0);
+    const fA = 1 | (s.stance === 1 ? 2 : 0) | (s.swim ? 4 : 0) | (s.torch ? 8 : 0) | (s.ads ? 16 : 0) | (s.protect > 0 ? 32 : 0);
     const fB = (s.thrownSmoke ? 1 : 0) | (s.handT > 0 ? 2 : 0) | (s.meleeT > 0 ? 4 : 0) | (s.spotT > 0 && s.spotTeam === 0 ? 8 : 0) | (s.spotT > 0 && s.spotTeam === 1 ? 16 : 0) | (W_ && W_.mag > 0 ? 32 : 0);
     S.push(pk(fA, 1) + pk(fB, 1) + pk(Math.max(0, s.throwT) / 0.35 * 63, 1) + pk(Math.max(0, s.jumpT) / 0.42 * 63, 1) + pk(s.x, 2) + pk(s.y, 2) + angE(s.a) + pk(W_ ? WPNK.indexOf(W_.id) : 0, 1) + pk((s.shotN || 0) % 64, 1) + pk(vi >= 0 ? vi * 4 + s.seat + 1 : 0, 1) + pk(s.kit | (s.lamp ? 32 : 0), 1));     // kit, and 32: flashlight on
   }
@@ -815,7 +815,7 @@ function netClientUpdate(dt) {
 function netCount(I) {
   const K = ['jump', 'reload', 'alt', 'nadeCyc', 'gadgetP', 'enter', 'melee', 'spot', null, 'swapW', 'seatNext'];
   for (let i = 0; i < K.length; i++) if (K[i] && I[K[i]]) NET.cc[i]++;
-  if (I.crouch || I.proneT || I.stanceCycle) NET.cc[8]++;
+  if (I.proneT || I.stanceCycle) NET.cc[8]++;
   if (I.seatDir >= 0) { NET.cc[11]++; NET.sd = I.seatDir; }
   if (I.seatIdx >= 0) { NET.cc[12]++; NET.si = I.seatIdx; }
   if (I.pickW >= 0) { NET.cc[13]++; NET.pw = I.pickW; }
@@ -944,7 +944,7 @@ function netApplySnaps(now, dt) {
     else if (own) { /* just corrected: netOwnPos put us where the host says */ }
     else if (mine && s.netPos && ra.vi < 0 && Math.hypot(tx - px, ty - py) < 60) { const q = 1 - Math.exp(-dt * 22); s.x = lerp(px, tx, q); s.y = lerp(py, ty, q); } else { s.x = tx; s.y = ty; }
     s.netPos = true;
-    s.stance = ra.fA & 2 ? 2 : 0; s.swim = !!(ra.fA & 4); s.torch = !!(ra.fA & 8); s.ads = !!(ra.fA & 16); s.protect = ra.fA & 32 ? 1 : 0;
+    s.stance = ra.fA & 2 ? 1 : 0; s.swim = !!(ra.fA & 4); s.torch = !!(ra.fA & 8); s.ads = !!(ra.fA & 16); s.protect = ra.fA & 32 ? 1 : 0;
     s.thrownSmoke = !!(ra.fB & 1); s.handT = ra.fB & 2 ? 0.3 : 0; s.kit = ra.kit; s.lamp = ra.lamp; s.handK = KITS[s.kit].g;
     if (ra.fB & 4) { if (!s._mel) { s.meleeT = 0.18; s._mel = 1; } } else s._mel = 0;
     s.spotT = (myTeam === 0 && ra.fB & 8) || (myTeam === 1 && ra.fB & 16) ? 1 : 0; s.spotTeam = myTeam;
@@ -968,7 +968,7 @@ function netApplySnaps(now, dt) {
   // your own aim answers your hand straight away
   const I = NET.lastI;
   if (me.alive && I && typeof I.aimA === 'number') {
-    if (!me.veh && me.stance !== 2) me.a = I.aimA;
+    if (!me.veh && me.stance !== 1) me.a = I.aimA;
     else if (me.veh) {
       const v = me.veh, role = v.T.seats[me.seat].role; if (role === 'rifle') me.a = I.aimA; if (role === 'drive' && v.type === 'tank') v.aimT = I.aimA;
       if (role === 'mg') {
@@ -1040,7 +1040,7 @@ function netLocalMove(s, I, dt) {
   let mx = I.mx, my = I.my; const m = Math.hypot(mx, my); if (m > 1) { mx /= m; my /= m; }
   if (I.jump && s.jumpT <= 0 && !s.swim) { let dx = mx, dy = my; const l = Math.hypot(dx, dy); if (l < 0.2) { dx = Math.cos(s.a); dy = Math.sin(s.a); } else { dx /= l; dy /= l; } s.jumpT = 0.42; s.jdx = dx; s.jdy = dy; }
   const sprint = I.sprint && m > 0.3 && !I.fire && s.stance === 0 && !s.swim, ads = !!I.ads && !sprint && !s.swim, ice = onIce(s.x, s.y);
-  const spd = (s.swim ? 40 : s.stance === 2 ? 34 : sprint ? 128 : s.torch ? 30 : 82) * (ads ? 0.6 : 1), k = 1 - Math.exp(-dt * (ice ? 3 : 14));
+  const spd = (s.swim ? 40 : s.stance === 1 ? 34 : sprint ? 128 : s.torch ? 30 : 82) * (ads ? 0.6 : 1), k = 1 - Math.exp(-dt * (ice ? 3 : 14));
   s.vx = lerp(s.vx, mx * spd, k); s.vy = lerp(s.vy, my * spd, k);
   if (s.jumpT > 0) {
     s.jumpT -= dt; const along = s.vx * s.jdx + s.vy * s.jdy; if (along < 110) { s.vx += s.jdx * (110 - along); s.vy += s.jdy * (110 - along); }
@@ -1115,7 +1115,7 @@ function netShotFx(s) {
   s.firedT = 1.2; s.flash = W_.rocket ? 0.1 : 0.05;
   if (W_.rocket) { rocketFx(s, x, y); return; }
   shotFx(s, W_, x, y);
-  const n = W_.pel || 1, sm = (s.ads ? 0.5 : 1) * (s.stance === 2 ? 0.45 : 1);
+  const n = W_.pel || 1, sm = (s.ads ? 0.5 : 1) * (s.stance === 1 ? 0.45 : 1);
   for (let i = 0; i < n; i++) { const a = s.a + rnd(-W_.spread, W_.spread) * sm, sp = W_.spd * (W_.pel ? rnd(0.85, 1.1) : 1); NET.bul.push({ k: 'bullet', x, y, ox: x, oy: y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: W_.life * (W_.pel ? rnd(0.8, 1.1) : 1), src: s, team: s.team, heavy: W_.dmg >= 40, low: s.stance >= 1 }); }
 }
 function netCannonFx(v) {
@@ -1136,7 +1136,7 @@ function netBullets(dt) {
     for (const w of M.wrecks) { const t = segWreck(x0, y0, x1, y1, w); if (t >= 0 && t < bt) { bt = t; hit = 1; } }
     staticsNear((x0 + x1) / 2, (y0 + y1) / 2, Math.hypot(x1 - x0, y1 - y0) / 2 + 14, _near);
     for (const s of _near) { if (s.type === 'fence' || (s.type === 'bag' && !p.low)) continue; const t = segCirc(x0, y0, x1, y1, s.x, s.y, s.type === 'tree' ? 9 : s.type === 'hay' ? 12 : s.r); if (t >= 0 && t < bt) { bt = t; hit = 1; } }
-    for (const s of M.sol) { if (!s.alive || s === p.src || (s.veh && !s.veh.T.seats[s.seat].exposed) || (!M.ffa && s.team === p.team && !M.ff)) continue; const t = segCirc(x0, y0, x1, y1, s.x, s.y, s.veh ? 7 : s.stance === 2 ? 4.5 : 9); if (t >= 0 && t < bt) { bt = t; hit = 3; } }
+    for (const s of M.sol) { if (!s.alive || s === p.src || (s.veh && !s.veh.T.seats[s.seat].exposed) || (!M.ffa && s.team === p.team && !M.ff)) continue; const t = segCirc(x0, y0, x1, y1, s.x, s.y, s.veh ? 7 : s.stance === 1 ? 4.5 : 9); if (t >= 0 && t < bt) { bt = t; hit = 3; } }
     for (const v of M.vehicles) {
       if (!v.active || v.dead || v === p.srcV || (p.src && p.src.veh === v)) continue; const vt = vehTeam(v); if (vt >= 0 && vt === p.team && !M.ff) continue;
       if (Math.abs(v.x - x0) > 160 || Math.abs(v.y - y0) > 160) continue;

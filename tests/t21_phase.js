@@ -30,10 +30,10 @@ setImmediate(()=>{
     };
     // open ground, 16 directions, standing and prone
     v.active=true; v.x=P[0]; v.y=P[1]; v.a=0.3; v.vx=v.vy=v.spd=v.av=0;
-    for(const stance of [0,2]) for(let k=0;k<16;k++){const a=k/16*Math.PI*2; run(v.x-Math.cos(a)*(v.T.hl+40),v.y-Math.sin(a)*(v.T.hl+40),Math.cos(a),Math.sin(a),stance,150);}
+    for(const stance of [0,1]) for(let k=0;k<16;k++){const a=k/16*Math.PI*2; run(v.x-Math.cos(a)*(v.T.hl+40),v.y-Math.sin(a)*(v.T.hl+40),Math.cos(a),Math.sin(a),stance,150);}
     res[type]={open:+worst.toFixed(1),at:worstK};
     // vehicle parked against a wall, soldier squeezing into the gap
-    if(B&&v.T.drive){ worst=-99; v.a=0; v.x=B.x+B.w/2; v.y=B.y-v.T.hw-6; for(const sx of [-1,1]) for(const stance of [0,2]) run(v.x+sx*(v.T.hl+30),v.y+v.T.hw-2,-sx,0.15,stance,240); res[type].wall=+worst.toFixed(1); res[type].wat=worstK; }
+    if(B&&v.T.drive){ worst=-99; v.a=0; v.x=B.x+B.w/2; v.y=B.y-v.T.hw-6; for(const sx of [-1,1]) for(const stance of [0,1]) run(v.x+sx*(v.T.hl+30),v.y+v.T.hw-2,-sx,0.15,stance,240); res[type].wall=+worst.toFixed(1); res[type].wat=worstK; }
   }
   console.log(JSON.stringify(res));
   for(const k in res){ if(res[k].open>0){console.log('inside',k,'open ground');errs++;} if(res[k].wall>0){console.log('inside',k,'against a wall');errs++;} }

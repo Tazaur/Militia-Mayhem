@@ -12,11 +12,9 @@ setImmediate(()=>{
   press(5); press(5); console.log('kit',G.KITS[me.kit].n); press(2); console.log('var',me.var);
   const opts=G.spawnOptions(me); console.log('spawn opts',opts.map(o=>o.name).join(', '));
   press(0); console.log('alive',me.alive,'weapon',me.w.map(w=>w.id).join('+'),'nades',me.nades,'mines',me.mines);
-  // stance: tap B = crouch, hold B = prone, tap again = crouch
-  press(1); console.log('after tap B stance',me.stance);
-  hold(1,25); console.log('after hold B stance',me.stance);
-  press(1); console.log('tap from prone ->',me.stance);
-  press(1); console.log('tap again ->',me.stance);
+  // stance: B goes prone, B again stands
+  press(1); console.log('after B stance',me.stance);
+  press(1); console.log('B again ->',me.stance);
   // gadget: support ammo box drop (kit index 2)
   press(4); console.log('items',G.M.items.map(i=>i.k).join(','),'gcd',me.gcd.toFixed(1));
   // RB swap to pistol, then back
@@ -30,6 +28,5 @@ setImmediate(()=>{
   press(1); step(35); console.log('B -> seat',tank.T.seats[me.seat].n);
   press(1); step(35); console.log('B -> seat',tank.T.seats[me.seat].n);
   press(3); console.log('Y exit ->',!me.veh);
-  // sandbag rule: standing shooter at a bag with a crouched target behind
   console.log('errs',errs());
 });

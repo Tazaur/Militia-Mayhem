@@ -390,7 +390,7 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 - 3D view Lit look (default; Channel = the old tinted view, toggle on the 3D view): sun + hemisphere sky ambient, reflectivity mirrors the sky with fresnel and a sun highlight that sharpens with it, glow emits and blooms (MSAA scene + glow target, glow blurred twice at half res, added with a soft shoulder). Scene menu (sun button on the 3D view): sky presets Game / Clear day / Overcast / Dusk / Night, sun turn, sun height, reflection and bloom strength. Art off = plain grey to judge materials alone.
 
 ## Build 154
-- New atlas_m (hulls 38–39, jeeps 37, turret 11, gun 8, windshield reflectivity, MG glow). Standing / crouching soldiers get `SUNB.stand = 18` added to their painted height (solid from the ground, no gap); prone uses the art as is.
+- New atlas_m (hulls 38–39, jeeps 37, turret 11, gun 8, windshield reflectivity, MG glow). Standing soldiers got `SUNB.stand = 18` added (gone since build 235: they stand on their walk underside) to their painted height (solid from the ground, no gap); prone uses the art as is.
 - Heights come from the art, not tables: `matData()` (material + colour alpha, no WebGL needed), `artH(n, lx, ly)` (painted height at a sprite point, stepping back toward the pivot past its edge), `artMax(n)`. `partsOf(o)` builds a soldier's / vehicle's / wreck's stacked parts once a frame (hpart collects instead of drawing; sunHeights draws them via hParts); `partH`, `topOf` (crew left out).
 - Spawn heights: `gunH(s)` (muzzle: stand 25, prone 7; seated crew from their seat on the stack), `handH(s)` (grenade start: 26 / 8), `mgH(v)`, `canH(v)`, `shotZ(p)` (projectile height, cached on first use). Lights, draw order (bullets by their height, vehicles / wrecks by topOf, sandbag arcs by artMax), muzzle / exhaust / trail / burning smoke (`part.z`) all use them. MGH and the old ZH entries are gone (ZH keeps body / item / shot fallback / smoke).
 - Grenades start at the hand (`h0`) with vh lowered so they land when a ground throw would (range unchanged); drawn lifted by their height above the hand-to-landing line (`nadeY`), so no jump at the throw.
@@ -692,3 +692,12 @@ partsMeet results cached by the pair's relative pose (names, offset in A's frame
 
 ## Build 233
 Art drop (drop.py): atlas.png: hull4, tur_dead; atlas_m.png: tur_dead, sol_leg0, sol_nogun, sol_rpg, sol_sit, sol_stand, pool.
+
+## Build 235
+- Two stances only (standing 0, prone 1): crouch is gone from the input (C / Z / Ctrl and gamepad B toggle prone), sim (hit r [9, 4.5], blast [1, .6], spread [1, .45], speeds), bots (`SEE_DAY = [1e4, 240]`, `SEE_DARK = [150, 70]`), net, dev menu, tests and the guide.
+- Animations in the atlas table: `anim: { name: { f: [[frame, fy], ...], rest } }` (frames are sprites or `under_<name>`, fy -1 mirrored); a sprite stands on one as `use: anim_<name>`. `underOf(n, t)` returns [underside, fy] (step t, null = rest); `hpart` takes `t` (step) and `flat` (no underside), and passes `fy * fyU` into `q.un` so undQ maps a mirrored underside like a mirrored frame. atlas_table.check knows anim.
+- Soldier walk: `sol_walk` = under_sol_stand (stride), under_sol_nogun (neutral), under_sol_stand mirrored, neutral; rest = neutral. sol_stand / sol_nogun / sol_rpg stand on it; `solStep(s)` = walkT / `SUNB.step` (4.5 px a frame, two frames a footstep) while moving. `SUNB.stand` / `solAdd` are gone: `solBase(s)` (jump gap + the underside's depth, 21) feeds solZ / handH / gunH. Prone and seated crew are `flat`.
+- Jeep gunner stands: drawn in the stand pose at `jeepGunner(v)` (12 px behind mgPos, in the bed), and in the height pass `sol_stand` there on his legs (bed 18 + 21). Was sol_sit at the post's point + 18.
+- Hull `use` stripped again (the editor's saved table had re-added hull0–3 → under_hull).
+- Heightmap editor: Sprite menu › Animation: new from the open sprite, add frames (picker), mirror / rest / reorder / remove per frame, delete, Play (3D view, the sprite on it, at walking speed). Stands on lists animations. Rename / delete keep the frames in step; strays keep animation frames. Fixed: menus' left position was inside a comment.
+- Guide: HEIGHTS soldier walks (WALK), jeep gunner standing; sys.js stance demos and tables are stand / prone.

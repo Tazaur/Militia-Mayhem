@@ -19,7 +19,7 @@ ART.ready = f => ART.ok ? f() : ART.cb.push(f);
       const o = JSON.parse(new TextDecoder().decode(b.subarray(2, 2 + n))); if (o && o.v === 2) cfg = o;
     } catch (e) { }
     const P = A._pool; for (const [n, r] of Object.entries(cfg.under || {})) A['under_' + n] = [r[0], P[1] + r[1], r[2], r[3], r[4], r[5]];
-    Object.assign(ART, { ok: true, img, mat, A, X, mp, ap, w, h, cfg, USE: cfg.use || {} });
+    Object.assign(ART, { ok: true, img, mat, A, X, mp, ap, w, h, cfg, USE: cfg.use || {}, ANIM: cfg.anim || {} });
     ART.cb.forEach(f => f()); ART.cb = [];
   }).catch(e => { console.warn('atlas', e); ART.fail = true; ART.cb.forEach(f => { try { f(); } catch (x) { } }); });
 })();
@@ -57,15 +57,21 @@ function artMax(n, all) {
   const m = ART.A[n]; let v = 0; if (m) for (let y = 0; y < m[3]; y++) for (let x = 0; x < m[2]; x++) if (all || painted(m, x, y)) v = Math.max(v, heightPx(m, x, y));
   _amx.set(k, v); return v;
 }
-const SUNP = { tur_gun: { lift: 4 } }, SUNB = { mgNest: 10, stand: 18, jump: 4 };
+const SUNP = { tur_gun: { lift: 4 } }, SUNB = { mgNest: 10, jump: 4, step: 4.5 };
 const sunP = n => SUNP[n] || SUNP[n.replace(/\d+$/, '')] || {};
+/* what a sprite stands on: [it, fy] (an animation's frame at step t; null: its rest) — 5e_light underOf */
+function underOf(n, t) {
+  let u = ART.USE[n], fy = 1; const A = u && u.startsWith('anim_') && ART.ANIM[u.slice(5)];
+  if (A) { const F = A.f || [], i = t == null ? A.rest || 0 : Math.floor(t); [u, fy = 1] = F[(i % F.length + F.length) % F.length] || []; }
+  return u && ART.A[u] ? [u, fy] : null;
+}
 /* a thing's parts, bottom up; each starts on the painted height of the kept parts under its rest point (3 x 3 px) */
 function stackParts(o) {
   const stk = [], out = [], A = ART.A;
   const hUnder = (x, y) => { let b = 0; for (const q of stk) { const m = A[q.n], c = Math.cos(q.a), s = Math.sin(q.a); for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) { const dx = x + i - q.x, dy = y + j - q.y, lx = Math.floor(m[4] + dx * c + dy * s), ly = Math.floor(m[5] - (dx * s - dy * c) * q.fy); if (lx < 0 || ly < 0 || lx >= m[2] || ly >= m[3]) continue; if (painted(m, lx, ly)) b = Math.max(b, q.b + q.add + heightPx(m, lx, ly)); } } return b; };
   const hpart = (n, x, y, a, p = {}) => {
-    if (!A[n]) return; const P = sunP(n), u = ART.USE[n], un = u && A[u] ? u : null, rest = Math.round(hUnder(p.rx ?? x, p.ry ?? y)), f = Math.max(p.min || 0, rest);
-    const q = { n, x, y, a, rest: f, under: un ? artMax(un, true) : 0, lift: P.lift || 0, b: f + (un ? artMax(un, true) : 0) + (P.lift || 0), add: (p.add || 0), fy: p.fy || 1, who: p.who, un, at: p.at || [0, 0], keep: !!p.keep, why: p.why || '' };
+    if (!A[n]) return; const P = sunP(n), u = p.flat ? null : underOf(n, p.t), un = u && u[0], rest = Math.round(hUnder(p.rx ?? x, p.ry ?? y)), f = Math.max(p.min || 0, rest);
+    const q = { n, x, y, a, rest: f, under: un ? artMax(un, true) : 0, lift: P.lift || 0, b: f + (un ? artMax(un, true) : 0) + (P.lift || 0), add: (p.add || 0), fy: p.fy || 1, ufy: (p.fy || 1) * (u ? u[1] : 1), who: p.who, un, at: p.at || [0, 0], keep: !!p.keep, why: p.why || '' };
     if (p.keep) stk.push(q); out.push(q); return q;
   };
   const W = (lx, ly) => [o.x + lx * Math.cos(o.a) - ly * Math.sin(o.a), o.y + lx * Math.sin(o.a) + ly * Math.cos(o.a)];
@@ -73,24 +79,24 @@ function stackParts(o) {
     const px = o.x - 4 * Math.cos(o.a), py = o.y - 4 * Math.sin(o.a), kick = (o.recoil || 0) * 20;
     let tb = 0; for (const i of [0, 1]) { const n = 'track0', m = A[n], fy = i ? 1 : -1, lx = 0.3 + m[4] - m[2] / 2, ly = [-23.5, 24.5][i] + fy * (m[5] - m[3] / 2); const [x, y] = W(lx, ly); tb = Math.max(tb, hpart(n, x, y, o.a, { fy, at: [lx, ly], why: 'hangs to the ground from the underside' }).b); }
     hpart('hull0', o.x, o.y, o.a, { keep: 1, min: tb, why: 'floats at its tracks\' base; kept: others stand on it' });
-    if (o.crew) for (const sd of [-17, 17]) { const [x, y] = W(-30, sd); hpart('sol_sit', x, y, o.ta, { who: 1, why: 'rider on the deck' }); }
+    if (o.crew) for (const sd of [-17, 17]) { const [x, y] = W(-30, sd); hpart('sol_sit', x, y, o.ta, { flat: 1, who: 1, why: 'rider on the deck' }); }
     hpart('tur_gun', px - Math.cos(o.ta) * kick, py - Math.sin(o.ta) * kick, o.ta, { rx: px, ry: py, why: 'rests under the turret pivot, +4 air gap' });
     hpart('tur', px, py, o.ta, { keep: 1, why: 'kept: on the hull' });
     const r = o.ta - o.a, c = Math.cos(r), s = Math.sin(r), [sx, sy] = W(-4 - 8 * c - 5 * s, -8 * s + 5 * c), mx = sx + Math.cos(o.mgA) * 4, my = sy + Math.sin(o.mgA) * 4;
     hpart('mg', mx, my, o.mgA, { rx: sx, ry: sy, why: 'on the cupola mount' });
-    if (o.crew) hpart('sol_sit', sx, sy, o.mgA, { who: 1, why: 'gunner in the cupola' });
+    if (o.crew) hpart('sol_sit', sx, sy, o.mgA, { flat: 1, who: 1, why: 'gunner in the cupola' });
   } else if (o.type === 'jeep') {
     const c = Math.cos(o.a), s = Math.sin(o.a), [wx, wy] = ART.X.jeepWells[0];
     for (const sd of [-1, 1]) hpart('jeep_tire', o.x + c * wx - s * wy * sd, o.y + s * wx + c * wy * sd, o.a + (o.steer || 0), { why: 'front tyre, steers' });
     hpart('jeep0', o.x, o.y, o.a, { keep: 1, why: 'kept: on its underside' });
-    if (o.crew) for (const sd of [-8, 8]) { const [x, y] = W(-1, sd); hpart('sol_sit', x, y, o.a, { who: 1, why: sd < 0 ? 'driver' : 'passenger' }); }
+    if (o.crew) for (const sd of [-8, 8]) { const [x, y] = W(-1, sd); hpart('sol_sit', x, y, o.a, { flat: 1, who: 1, why: sd < 0 ? 'driver' : 'passenger' }); }
     const [kx, ky] = W(-22, 0), mx = kx + Math.cos(o.mgA) * 4, my = ky + Math.sin(o.mgA) * 4;
     hpart('mg', mx, my, o.mgA, { rx: kx, ry: ky, why: 'on its post' });
-    if (o.crew) hpart('sol_sit', kx, ky, o.mgA, { add: 18, who: 1, why: 'gunner stands in the bed (+18)' });
+    if (o.crew) hpart('sol_stand', kx - Math.cos(o.mgA) * 8, ky - Math.sin(o.mgA) * 8, o.mgA, { who: 1, why: 'gunner: stands in the bed behind the post, on his legs' });
   } else {
     const up = Math.round(SUNB.jump * (o.jump || 0));
-    if (o.stance === 2) { hpart('sol_leg0', o.x, o.y, o.a, { min: up, why: 'prone legs' }); hpart('sol_stand', o.x, o.y, o.a, { min: up, why: 'prone body' }); }
-    else hpart(o.pose || 'sol_stand', o.x, o.y, o.a, { min: up, add: SUNB.stand, why: 'legs under him: +18 solid' });
+    if (o.stance === 1) { hpart('sol_leg0', o.x, o.y, o.a, { min: up, why: 'prone legs' }); hpart('sol_stand', o.x, o.y, o.a, { min: up, flat: 1, why: 'prone body: on the ground' }); }
+    else { const u = underOf(o.pose || 'sol_stand', o.step); hpart(o.pose || 'sol_stand', o.x, o.y, o.a, { min: up, t: o.step, why: 'on his legs: ' + (u ? u[0] + (u[1] < 0 ? ' mirrored' : '') : 'none') + (o.step == null ? ' (still)' : ' (walking)') }); }
   }
   return out;
 }
@@ -279,7 +285,7 @@ const RELIEF = {
     const cv = $('#relief'), gl = VOX.init(cv); let info = null, what = 'tank', spin = true, t = 0, crew = true;
     const O = { tank: { type: 'tank', x: 0, y: 0, a: 0, ta: 0, mgA: 0.5 }, jeep: { type: 'jeep', x: 0, y: 0, a: 0, mgA: 0 }, sol: { type: 'sol', x: 0, y: 0, a: 0, pose: 'sol_stand' } };
     const paintInfo = P => {
-      info.innerHTML = `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><div class="seg" id="rW"><button data-w="tank">TANK</button><button data-w="jeep">JEEP</button><button data-w="sol">SOLDIER</button></div><button class="btn${spin ? ' on' : ''}" id="rS">TURN</button><button class="btn${crew ? ' on' : ''}" id="rC">CREW</button></div>
+      info.innerHTML = `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><div class="seg" id="rW"><button data-w="tank">TANK</button><button data-w="jeep">JEEP</button><button data-w="sol">SOLDIER</button></div><button class="btn${spin ? ' on' : ''}" id="rS">${what === 'sol' ? 'WALK' : 'TURN'}</button><button class="btn${crew ? ' on' : ''}" id="rC">CREW</button></div>
       <p style="margin:8px 0 6px;font-size:12.5px;color:var(--dim)">Every coloured pixel of the atlas has a height in <code>atlas_m.png</code> (red = height × 4). A part starts on whatever kept part lies under its rest point: <span class="mono">b = max(min, hUnder(rest)) + underside + lift</span>. Drawn by the heightmap editor's 3D renderer: one box per pixel, lit by the game's sun. Drag to turn and tilt, pinch to zoom.</p>
       <div class="tw"><table class="vars"><tr><th>part</th><th>rests on</th><th>under</th><th>lift</th><th>b</th><th>top</th></tr>${P.map(q => `<tr><td>${q.n}</td><td class="v">${q.rest}</td><td class="v">${q.under}</td><td class="v">${q.lift + (q.add ? ' +' + q.add : '')}</td><td class="v">${q.b}</td><td class="v">${q.b + q.add + artMax(q.n)}</td></tr><tr><td colspan="6" style="font-family:var(--fb);color:var(--faint);font-size:11.5px;padding-top:0">${q.why}</td></tr>`).join('')}</table></div>
       <p class="mono" style="font-size:12px">topOf = ${topOf(P)} px → its place in the draw queue</p>`;
@@ -287,23 +293,25 @@ const RELIEF = {
       $('#rS').onclick = () => { spin = !spin; $('#rS').classList.toggle('on', spin); }; $('#rC').onclick = () => { crew = !crew; $('#rC').classList.toggle('on', crew); build(); };
     };
     let cols = [], P = [];
-    const build = () => {
-      const o = O[what]; o.crew = crew ? 1 : 0; P = stackParts(o); cols = [];
+    const colsOf = () => {
+      cols = [];
       for (const q of P) {
         const m = ART.A[q.n], un = q.un && ART.A[q.un];
         for (let y = 0; y < m[3]; y++) for (let x = 0; x < m[2]; x++) {
           if (!painted(m, x, y)) continue; const i = ((m[1] + y) * ART.w + m[0] + x) * 4, top = q.b + q.add + heightPx(m, x, y);
-          let bot = q.b; if (un) { const ux = Math.floor(un[4] + q.at[0] + (x - m[4])), uy = Math.floor(un[5] + q.at[1] + (y - m[5]) * q.fy); bot = ux >= 0 && uy >= 0 && ux < un[2] && uy < un[3] ? q.b - heightPx(un, ux, uy) : q.b; }
+          let bot = q.b; if (un) { const ux = Math.floor(un[4] + q.at[0] + (x - m[4])), uy = Math.floor(un[5] + q.at[1] + (y + 0.5 - m[5]) * q.ufy); bot = ux >= 0 && uy >= 0 && ux < un[2] && uy < un[3] ? q.b - heightPx(un, ux, uy) : q.b; }     // mirrored: the rows run up it
           cols.push({ q, lx: x - m[4] + 0.5, ly: (y - m[5] + 0.5) * q.fy, top, bot: Math.max(0, bot), r: ART.ap[i] / 255, g: ART.ap[i + 1] / 255, b: ART.ap[i + 2] / 255, rf: ART.mp[i + 1] / 255, gw: ART.mp[i + 2] / 255 });
         }
       }
-      paintInfo(P); t = 0;
     };
+    let step = null;     // the soldier's walk: its underside's frame (5e_light solStep)
+    const build = () => { const o = O[what]; o.crew = crew ? 1 : 0; o.step = what === 'sol' && spin ? 0 : null; step = o.step; P = stackParts(o); colsOf(); paintInfo(P); t = 0; };
     // the heightmap editor's renderer (vox.js): one box per painted px, from its bottom to its top, turned with its part
     const draw = (dt) => {
       if (!gl || !cols.length) return;
       t += dt; camStep(dt); const o = O[what];
-      if (spin && what !== 'sol') { const ta = Math.sin(t * 0.7) * 1.2; if (what === 'tank') { o.ta = ta; o.mgA = ta + 0.5 + Math.sin(t * 1.9) * 0.6; } else { o.mgA = ta; o.steer = Math.sin(t * 1.3) * 0.45; } P = stackParts(o); }
+      if (what === 'sol') { const k = spin ? Math.floor(t * 82 / SUNB.step) : null; if (k !== step) { step = o.step = k; P = stackParts(o); colsOf(); } }
+      else if (spin) { const ta = Math.sin(t * 0.7) * 1.2; if (what === 'tank') { o.ta = ta; o.mgA = ta + 0.5 + Math.sin(t * 1.9) * 0.6; } else { o.mgA = ta; o.steer = Math.sin(t * 1.3) * 0.45; } P = stackParts(o); }
       const I = VOX.data(cols.length); let k = 0, pi = -1, last = null;
       for (const c of cols) {     // re-place each column by its part's current pose (parts keep their order in P)
         if (c.q !== last) { pi++; last = c.q; } const q = P[pi] || c.q, cs = Math.cos(q.a), sn = Math.sin(q.a), top = c.top - c.q.b + q.b, bot = Math.max(0, c.bot - c.q.b + q.b);

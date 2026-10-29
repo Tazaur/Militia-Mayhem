@@ -7,7 +7,7 @@ setImmediate(()=>{
   const mkS=(team,x,y)=>{const s=M.sol.find(o=>o.team===team&&!o.used); return s;};
   // use two existing bots
   const shooterT=M.sol.find(s=>s.team===0), target=M.sol.find(s=>s.team===1); M.sol=[shooterT,target]; shooterT.bot.thinkT=1e9; target.bot.thinkT=1e9;
-  for(const st of [0,1,2]) {
+  for(const st of [0,1]) {
     let hits=0;
     for(let trial=0;trial<40;trial++){
       // target sits in the arc's sheltered spot; shooter stands 250px out in the direction the arc faces
@@ -21,7 +21,7 @@ setImmediate(()=>{
       for(let i=0;i<20;i++){ target.x=A.x;target.y=A.y; step(1); if(!M.proj.length)break; }
       if(target.hp<hp0) hits++;
     }
-    console.log(['standing','crouched','prone'][st],'behind sandbags: hit',hits,'/ 40');
+    console.log(['standing','prone'][st],'behind sandbags: hit',hits,'/ 40');
   }
   console.log('errs',errs());
 });

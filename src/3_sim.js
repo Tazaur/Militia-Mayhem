@@ -195,12 +195,12 @@ function afterSpawn(s) {
 function pickKit() { const r = Math.random(); return r < 0.35 ? 0 : r < 0.6 ? 1 : r < 0.8 ? 2 : 3; }
 
 /* ---------------- damage & death ---------------- */
-const SOL_HITR = [9, 6.5, 4.5], solHitR = s => s.veh ? 7 : s.swim ? 6 : SOL_HITR[s.stance];     // a soldier's hit circle: by stance; seated, swimming
+const SOL_HITR = [9, 4.5], solHitR = s => s.veh ? 7 : s.swim ? 6 : SOL_HITR[s.stance];     // a soldier's hit circle: by stance; seated, swimming
 function hurtSoldier(s, dmg, src, kind, dx, dy, wname) {
   if (!s.alive || s.down || s.protect > 0 || M.over) return;
   if (M.dev && DEV.god && s.player) return;
   if (src && !canHurt(src, s)) return;
-  if (kind === 'explosion' || kind === 'mine') dmg *= [1, 0.8, 0.6][s.stance];
+  if (kind === 'explosion' || kind === 'mine') dmg *= [1, 0.6][s.stance];
   s.hp -= dmg; s.lastHurt = M.time; s.hurtT = 0.35;
   if (s.dummy) devHit(s, dmg);
   if (s.bot && src && src !== s && isEnemy(s.team, src.team)) botHeard(s, src.veh || src);
@@ -624,7 +624,7 @@ function fireWeapon(s) {
   const [x, y] = gunTip(s);
   // accuracy: stance, movement speed, aiming down sights, and sustained-fire bloom
   const sp_ = Math.hypot(s.vx, s.vy);
-  const sm = [1, 0.7, 0.45][s.stance] * (1 + clamp(sp_ / 82, 0, 1.6) * 1.3) * (s.ads ? 0.5 : 1) * (1 + s.bloom * 1.6);
+  const sm = [1, 0.45][s.stance] * (1 + clamp(sp_ / 82, 0, 1.6) * 1.3) * (s.ads ? 0.5 : 1) * (1 + s.bloom * 1.6);
   s.bloom = Math.min(1, s.bloom + (W_.rate < 0.15 ? 0.11 : 0.3));
   const n = W_.pel || 1;
   for (let i = 0; i < n; i++) {
@@ -1075,7 +1075,7 @@ function updateNade(p, dt) {
 /* ---------------- soldier control ---------------- */
 /* someone who moved d px this frame, heading ang: walk cycle, footprints (they fade over a couple of minutes), rustling, ripples */
 function stepFx(s, d, ang, dt) {
-  const pr = s.stance === 2; s.moving = d / Math.max(dt, 1e-3) > (pr ? 6 : 18); s.walkT += d;
+  const pr = s.stance === 1; s.moving = d / Math.max(dt, 1e-3) > (pr ? 6 : 18); s.walkT += d;
   if (s.moving && !s.swim && !(s.jumpT > 0)) { s.stepAcc += d; if (s.stepAcc > (pr ? 10 : 9)) { s.stepAcc = 0; s.stepSide = -s.stepSide; footprint(s.x, s.y, ang, pr ? 0 : s.stepSide, pr); } }
   if (pr && s.moving && Math.random() < dt * 3) sfx('rustle', s.x, s.y, 0.5);
   if (s.swim && s.moving && Math.random() < dt * 4) { sfx('splash', s.x, s.y, 0.5); part({ k: 'ripple', x: s.x, y: s.y, vx: 0, vy: 0, life: 0.9, max: 0.9, sz: 14, drag: 0 }); }
@@ -1086,7 +1086,7 @@ function controlSoldier(s, I, dt) {
   if (s.msg) { s.msg.t -= dt; if (s.msg.t <= 0) s.msg = null; }
   for (const p of s.pops) p.t -= dt; prune(s.pops, p => p.t > 0);
   if (I.aimA !== null && I.aimA !== undefined) {
-    if (s.stance === 2 && !s.veh) s.a += clamp(angDiff(s.a, I.aimA), -4 * dt, 4 * dt); else s.a = I.aimA;
+    if (s.stance === 1 && !s.veh) s.a += clamp(angDiff(s.a, I.aimA), -4 * dt, 4 * dt); else s.a = I.aimA;
   }
   if (M.time - s.lastHurt > 5 && s.hp < s.mhp) s.hp = Math.min(s.mhp, s.hp + 9 * dt * s.mhp / 100);
   if (s.reloadT > 0) { s.reloadT -= dt; if (s.reloadW !== s.wi) s.reloadT = 0; else if (s.reloadT <= 0) { const st = cw(s), need = WPN[st.id].mag - st.mag, take = Math.min(need, st.res); st.mag += take; st.res -= take; } }
@@ -1116,9 +1116,9 @@ function controlSoldier(s, I, dt) {
     s.jumpT = 0.42; s.jdx = dx; s.jdy = dy; s.stance = 0; sfx('jump', s.x, s.y);
   }
   if (!s.swim) {
-    // two stances only: standing and prone
-    if (I.crouch || I.proneT) { s.stance = s.stance === 2 ? 0 : 2; s.stanceT = 0.3; sfx('rustle', s.x, s.y); }
-    if (I.stanceCycle) { s.stance = s.stance === 2 ? 0 : 2; s.stanceT = 0.25; sfx('rustle', s.x, s.y); }
+    // two stances: standing (0) and prone (1)
+    if (I.proneT) { s.stance = s.stance ? 0 : 1; s.stanceT = 0.3; sfx('rustle', s.x, s.y); }
+    if (I.stanceCycle) { s.stance = s.stance ? 0 : 1; s.stanceT = 0.25; sfx('rustle', s.x, s.y); }
   }
   let mx = I.mx, my = I.my; const m = Math.hypot(mx, my); if (m > 1) { mx /= m; my /= m; }
   if (I.sprint && m > 0.3 && s.stance) { s.stance = 0; s.stanceT = 0.2; }
@@ -1127,7 +1127,7 @@ function controlSoldier(s, I, dt) {
   if (I.netPos) netAuthMove(s, I.netPos, dt);        // an online joiner moves themselves; the host checks it
   else {
     const ice = onIce(s.x, s.y);
-    const spd = (s.swim ? 40 : s.stance === 2 ? 34 : s.stance === 1 ? 52 : sprint ? 128 : s.torch ? 30 : 82) * (s.ads ? 0.6 : 1), k = 1 - Math.exp(-dt * (ice ? 3 : 14));
+    const spd = (s.swim ? 40 : s.stance ? 34 : sprint ? 128 : s.torch ? 30 : 82) * (s.ads ? 0.6 : 1), k = 1 - Math.exp(-dt * (ice ? 3 : 14));
     s.vx = lerp(s.vx, mx * spd, k); s.vy = lerp(s.vy, my * spd, k);
     if (s.jumpT > 0) {
       s.jumpT -= dt; const along = s.vx * s.jdx + s.vy * s.jdy; if (along < 110) { s.vx += s.jdx * (110 - along); s.vy += s.jdy * (110 - along); }
@@ -1138,7 +1138,7 @@ function controlSoldier(s, I, dt) {
     soldierCollide(s);
   }
   stepFx(s, Math.hypot(s.vx, s.vy) * dt, Math.atan2(s.vy, s.vx), dt);
-  if (s.stance === 2 && s.moving && (I.aimA === null || I.aimA === undefined)) s.a += clamp(angDiff(s.a, Math.atan2(s.vy, s.vx)), -4 * dt, 4 * dt);
+  if (s.stance === 1 && s.moving && (I.aimA === null || I.aimA === undefined)) s.a += clamp(angDiff(s.a, Math.atan2(s.vy, s.vx)), -4 * dt, 4 * dt);
   if (sprint && (I.aimA === null || I.aimA === undefined)) s.a = Math.atan2(s.vy, s.vx);
   if (s.swim) return;
   useGadget(s, I, dt);

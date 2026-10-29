@@ -4,7 +4,7 @@
 const _en = [];
 /* can s make o out at d (sight itself is sees()): firing, spotted or a flashlight on gives you away; else how far depends on
    stance and how lit you stand (litAt): by day as ever, in the dark only close */
-const SEE_DAY = [1e4, 380, 240], SEE_DARK = [150, 100, 70];
+const SEE_DAY = [1e4, 240], SEE_DARK = [150, 70];
 function visibleTo(s, o, d) {
   if (o.firedT > 0 || (o.spotT > 0 && o.spotTeam === s.team) || (o.lamp && !o.veh) || (o.veh && o.veh.lights)) return true;
   const st = o.stance | 0; if (d <= SEE_DARK[st]) return true;
@@ -108,8 +108,8 @@ function botHeard(s, o) {
   const B = s.bot, e = Math.hypot(o.x - s.x, o.y - s.y) * HEARD_ERR;
   B.heard = { x: o.x + rnd(-e, e), y: o.y + rnd(-e, e), t: M.time };
 }
-function newI() { return { mx: 0, my: 0, aimA: null, fire: false, alt: false, smoke: false, altDist: 0, swapW: false, enter: false, reload: false, sprint: false, seatNext: false, seatDir: -1, seatIdx: -1, crouch: false, proneT: false, stanceCycle: false, gadget: false, gadgetP: false, ads: false, jump: false, melee: false, spot: false, lamp: false, pickW: -1, interactSwap: false }; }
-function setStance(s, st) { if (st === 1) st = 2; if (s.stance !== st && !s.swim) { s.stance = st; s.stanceT = 0.25; } }
+function newI() { return { mx: 0, my: 0, aimA: null, fire: false, alt: false, smoke: false, altDist: 0, swapW: false, enter: false, reload: false, sprint: false, seatNext: false, seatDir: -1, seatIdx: -1, proneT: false, stanceCycle: false, gadget: false, gadgetP: false, ads: false, jump: false, melee: false, spot: false, lamp: false, pickW: -1, interactSwap: false }; }
+function setStance(s, st) { if (s.stance !== st && !s.swim) { s.stance = st; s.stanceT = 0.25; } }
 function botControl(s, dt) {
   const B = s.bot, sk = M.skill, I = newI();
   if (M.over) return I;
@@ -191,7 +191,7 @@ function botControl(s, dt) {
       setStance(s, 0); fighting = true;           // camping: up and shooting from the post
     } else if (B.cover && T) {
       const dx = B.cover.x - s.x, dy = B.cover.y - s.y, d = Math.hypot(dx, dy);
-      if (d > 8) { if (d > 40) botFollow(B, s.x, s.y, B.cover, I, dt, navS, 6); else { I.mx = dx / d; I.my = dy / d; } setStance(s, d < 18 ? 2 : 0); } else { setStance(s, 2); }
+      if (d > 8) { if (d > 40) botFollow(B, s.x, s.y, B.cover, I, dt, navS, 6); else { I.mx = dx / d; I.my = dy / d; } setStance(s, d < 18 ? 1 : 0); } else { setStance(s, 1); }
       fighting = true;
     } else if (T && T.d < 300) {
       B.strafeT -= dt; if (B.strafeT <= 0) { B.strafeT = rnd(0.8, 1.8); B.strafe = Math.random() < 0.5 ? -1 : 1; }
@@ -199,10 +199,10 @@ function botControl(s, dt) {
       I.mx = ux * k - uy * B.strafe * 0.8; I.my = uy * k + ux * B.strafe * 0.8;
       setStance(s, 0); fighting = true;
     } else if (T && s.kit === 3 && T.d < 640) {
-      setStance(s, 2); fighting = true;         // recon: go prone and snipe
+      setStance(s, 1); fighting = true;         // recon: go prone and snipe
     } else if (B.goal) {
       const moving = botFollow(B, s.x, s.y, B.goal, I, dt, navS, B.goal.flag ? 30 : B.goal.post ? 6 : 12);
-      if (!moving && B.goal.post) { setStance(s, 2); I.aimA = B.goal.post.a + Math.sin(M.time * 0.5 + s.id) * 0.5; }      // camping: down, watching out of the window / door
+      if (!moving && B.goal.post) { setStance(s, 1); I.aimA = B.goal.post.a + Math.sin(M.time * 0.5 + s.id) * 0.5; }      // camping: down, watching out of the window / door
       else if (!moving && B.goal.flag) { B.strafeT -= dt; if (B.strafeT <= 0) { B.strafeT = rnd(1, 2.5); B.lx = rnd(-1, 1); B.ly = rnd(-1, 1); } I.mx = B.lx * 0.4; I.my = B.ly * 0.4; }
       I.sprint = !T && Math.random() < 0.9;
       if (!T) I.aimA = Math.atan2(I.my || Math.sin(s.a), I.mx || Math.cos(s.a));
@@ -281,7 +281,7 @@ function readPlayers() { for (const p of PLAYERS) p.raw = isNet(p) ? null : devS
 function humanInput(p) {
   const st = p.raw, s = p.sol, I = newI();
   if (!st) return I;
-  Object.assign(I, { mx: st.mx, my: st.my, fire: st.fire, alt: st.alt, swapW: !!st.swapW, pickW: st.pickW === undefined ? -1 : st.pickW, enter: !!st.interact, interactSwap: !st.mouse, reload: st.reload, sprint: st.sprint, seatNext: st.seatNext, seatDir: st.seatDir, seatIdx: st.seatIdx, nadeCyc: !!st.nadeCyc, crouch: !!st.crouch, proneT: !!st.proneT, stanceCycle: !!st.stanceCycle, gadget: !!st.gadget, gadgetP: !!st.gadgetP, ads: !!st.ads, jump: !!st.jump, melee: !!st.melee, spot: !!st.spot, lamp: !!st.lamp });
+  Object.assign(I, { mx: st.mx, my: st.my, fire: st.fire, alt: st.alt, swapW: !!st.swapW, pickW: st.pickW === undefined ? -1 : st.pickW, enter: !!st.interact, interactSwap: !st.mouse, reload: st.reload, sprint: st.sprint, seatNext: st.seatNext, seatDir: st.seatDir, seatIdx: st.seatIdx, nadeCyc: !!st.nadeCyc, proneT: !!st.proneT, stanceCycle: !!st.stanceCycle, gadget: !!st.gadget, gadgetP: !!st.gadgetP, ads: !!st.ads, jump: !!st.jump, melee: !!st.melee, spot: !!st.spot, lamp: !!st.lamp });
   if (st.mapT && !(s.veh && p.dev.type === 'pad')) { p.mapOpen = !p.mapOpen; sfx('ui'); }
   if (st.mouse) {
     const vw = M.views.find(v => v.p === p) || M.views[0];
