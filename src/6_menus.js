@@ -441,6 +441,7 @@ const SET = { open: false, from: null, tab: 0, sub: 0, sel: 0 };
 const choice = (n, key, o, after) => ({ n, o, get: () => CFG[key], set: v => { CFG[key] = v; if (after) after(); } });
 const slider = (n, key, lo, hi, st, unit, after) => ({ n, lo, hi, st, unit, get: () => CFG[key], set: v => { CFG[key] = v; if (after) after(); } });
 const fogPreset = () => FOG_PRESETS.findIndex(([, p]) => p.fogD === CFG.fogD && p.fogK === CFG.fogK && p.fogE === CFG.fogE && (!p.fogE || p.fogW === CFG.fogW));
+const qualPreset = () => QUALITY.findIndex(([, p]) => Object.keys(p).every(k => (k === 'sun' ? CFG.sun !== false : CFG[k]) === p[k]));
 const SETS = {
   style: choice('FILTER', 'style', [['classic', 'CLASSIC'], ['grit', 'GRITTY']], () => { applyStyleAssets(); if (M) { if (M.demo) demoMatch(); else paintGround(); } }),
   sun: { n: 'DYNAMIC LIGHTING', o: [[true, 'ON'], [false, 'OFF']], get: () => CFG.sun !== false, set: v => CFG.sun = v, lab: v => v && !sunInit() ? 'NOT SUPPORTED' : null },
@@ -453,7 +454,12 @@ const SETS = {
   fogE: slider('EDGE SHADOW', 'fogE', 0, 100, 5, '%'),
   fogW: slider('EDGE WIDTH', 'fogW', 8, 64, 4, ' PX'),
   res: slider('RENDER RESOLUTION', 'res', 50, 100, 5, '%', () => resize()),
+  quality: { n: 'PRESET', o: QUALITY.map(([n], i) => [i, n]), get: qualPreset, set: i => { const r = CFG.res; Object.assign(CFG, QUALITY[i][1]); if (CFG.res !== r) resize(); }, lab: i => i < 0 ? 'CUSTOM' : null },
   lightQ: choice('LIGHTING QUALITY', 'lightQ', [[0, 'LOW'], [1, 'MEDIUM'], [2, 'HIGH']]),
+  shLay: choice('FLOATING SHADOWS', 'shLay', [[true, 'SEPARATE'], [false, 'MERGED']]),
+  shLen: choice('SHADOW LENGTH', 'shLen', [[64, 'FULL'], [32, 'SHORT']]),
+  shMem: choice('SHADOWS OUT OF SIGHT', 'shMem', [[true, 'ON'], [false, 'OFF']]),
+  shPt: choice('LAMP SHADOWS', 'shPt', [[true, 'ON'], [false, 'OFF']]),
   rec: { n: 'RECORDER', o: [[false, 'OFF'], [true, 'ON']], get: () => REC.on, set: v => v ? recStart() : recStop(), lab: v => v ? 'RECORDING · OFF SAVES IT' : null },     // 5f_rec: a log of the frame, to share
   fps: choice('FPS COUNTER', 'fps', [[0, 'OFF'], [1, 'FPS'], [2, 'FPS + FRAME TIMES'], ...(GL ? [[3, 'FPS + GPU STAGES']] : [])]),
   minimap: choice('MINIMAP', 'minimap', [[true, 'ON'], [false, 'OFF']]),
@@ -470,7 +476,7 @@ const SETS = {
   tAuto: { n: 'DRAG TO AIM', o: [['on', 'AIMS + FIRES'], ['off', 'AIMS ONLY'], ['range', 'FIRES IN RANGE']], get: () => TOUCH.auto, set: v => { TOUCH.auto = v; store.set('autofire', v); } }
 };
 /* core tabs (title row), each with its pages (sub tabs, the row under it); Q / E or LB / RB step through every page */
-const SET_TABS = [['VIDEO', [['GRAPHICS', ['style', 'sun', 'clearLos', 'fullscreen', 'camera']], ['FOG OF WAR', ['fogStyle', 'fogD', 'fogK', 'fogE', 'fogW']], ['PERFORMANCE', ['res', 'lightQ', 'rec']]]],
+const SET_TABS = [['VIDEO', [['GRAPHICS', ['style', 'clearLos', 'fullscreen', 'camera']], ['FOG OF WAR', ['fogStyle', 'fogD', 'fogK', 'fogE', 'fogW']], ['PERFORMANCE', ['quality', 'res', 'lightQ', 'rec']], ['SHADOWS', ['sun', 'shLay', 'shLen', 'shMem', 'shPt']]]],
   ['AUDIO', [['VOLUME', ['volMaster', 'volSfx', 'volMus']], ['SOUND', ['sound']]]], ['HUD', [['DISPLAY', ['fps', 'minimap', 'teams']]]],
   ['CONTROLS', [['TOUCH', ['tSize', 'tAlpha', 'tFireX', 'tFireY', 'tLfire', 'tAuto']], ['BINDINGS', null]]]];
 const SET_PAGES = SET_TABS.flatMap(([, P], i) => P.map((_, j) => [i, j]));

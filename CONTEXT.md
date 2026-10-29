@@ -718,3 +718,8 @@ Art drop (drop.py): atlas.png: hull4, tur_dead; atlas_m.png: tur_dead, sol_leg0,
 ## Build 245 (second phone recording, b243: the 2D minimap copy still cost 3–10 ms a frame in fights — a readback is a GPU round trip in Chrome however it's fenced)
 - In-game minimap: its backing and the ground are drawn on the GL screen under the HUD (`onGLHere`: GL in the HUD's current transform), from `surfMini(ground)`; flags / markers stay on the 2D layer over it. No readback in play (surf2D: 0 calls). The split dividers moved onto GL too (else they'd show over the minimap). The tac map and the menu's preview sit on 2D panels: they keep `groundMini` (surf2D).
 - `fieldOcc` skips empty 4 × 4-tile blocks (`f.Bk`, rebuilt at the end of each S-tick from `act`; `f.BW` its width): exact (0 of 200 000 random lines differ, max 2e-13), ~3× faster for an eye in smoke.
+
+## Build 246
+- Settings › VIDEO › PERFORMANCE › PRESET (ULTRA / HIGH / MEDIUM / LOW / LOWEST; `QUALITY` in 1_core, like FOG_PRESETS): sets res, lightQ, sun and the shadow rows; any row changed after reads CUSTOM (`qualPreset`). Default = HIGH (the old defaults).
+- New page VIDEO › SHADOWS: DYNAMIC LIGHTING (moved from GRAPHICS), FLOATING SHADOWS (`shLay` false: hLayers puts everything in the first channel, no sunLayers sweeps), SHADOW LENGTH (`shLen` 64 / 32: the sweep's reach and the buffer's sunward pad), SHADOWS OUT OF SIGHT (`shMem` false: no fog memory sweep / map 3), LAMP SHADOWS (`shPt` false: P's march skipped, uniform MQ 0).
+- Headless laptop GPU per frame: ULTRA 11.4 · HIGH 7.2 · MEDIUM 6.0 · LOW 4.8 · LOWEST 4.6 ms. LOWEST's sprites are 3.7 ms: the legacy drop-shadow layer (SHC, a 2D canvas) uploaded every frame — next: drop shadows on GL.

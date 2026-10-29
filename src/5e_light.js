@@ -296,7 +296,7 @@ float sunIn(vec4 c, float h) { float g = un(c.rg), lo = c.b * 128. - 64., hi = c
     /* the point lights, once per pixel (pl: falloff, slope toward each, its own shadow march, each its colour PC) and their
        glow scattered in haze (smoke, rain) into LT: RGB pl / 4, A scatter / 4. The sun's slope and shadow: the maps' (CP) */
     const P = prog(VS, `precision highp float; ${TX}
-uniform float K, V, HZ; uniform vec2 P; uniform vec3 L; uniform vec4 PL[${LMAX}], PD[${LMAX}]; uniform float PK[${LMAX}]; uniform vec3 PC[${LMAX}]; uniform sampler2D SWT, SWS;
+uniform float K, V, HZ, MQ; uniform vec2 P; uniform vec3 L; uniform vec4 PL[${LMAX}], PD[${LMAX}]; uniform float PK[${LMAX}]; uniform vec3 PC[${LMAX}]; uniform sampler2D SWT, SWS;
 float blk(vec2 p, float z, out float o, out float th) { vec4 c = texture2D(H, (floor(clamp(p, R.xy, R.zw)) + 0.5) / S); o = 1.; th = c.r * 63.75; float d = th - z;     // grounded: solid from the ground up (no soft foot)
   float ft = c.g * 63.75, fb = (1. - c.a) * 63.75; if (ft > 0.01) { float e = min(ft - z, z - fb); if (e > d) { d = e; th = ft - fb; } }     // floating: its own span, the gap under it kept
   if (c.b > 0.5) { float e = min(${ROOF_Z[1].toFixed(1)} - z, z - ${ROOF_Z[0].toFixed(1)}); if (e > d) { d = e; th = ${(ROOF_Z[1] - ROOF_Z[0]).toFixed(1)}; } }     // a roof over it (B): the slab blocks too
@@ -316,7 +316,7 @@ void main() {
       vec3 a = normalize(vec3(PD[i].xy, 1. - PD[i].w)), r = normalize(vec3(-v / K, -lh)), sd = vec3(-PD[i].y, PD[i].x, 0.), up = cross(a, sd);
       float c = acos(PD[i].z), dv = asin(clamp(dot(r, up), -1., 1.)) / c, dh = asin(clamp(dot(r, sd), -1., 1.)) / (c * (1. + ${SPOT_FAR.toFixed(2)} * clamp(dv, 0., 1.)));
       cn = dot(r, a) > 0. ? clamp((1. - length(vec2(dh, dv))) / 0.25, 0., 1.) : 0.; if (cn <= 0.) continue; }
-    float s = 1., n = clamp(length(v) / 6., 8., 64.);     // 6 buffer px apart on average (up to 64), closer toward the light (what carries it: a barrel, a hull's edge, isn't stepped over), wider near here
+    float s = 1., n = clamp(length(v) / 6., 8., 64.) * MQ;     // 6 buffer px apart on average (up to 64), closer toward the light (what carries it: a barrel, a hull's edge, isn't stepped over), wider near here
     for (int k = 1; k < 64; k++) { if (float(k) >= n) break; float o, th, u = (float(k) - j) / n, t = mix(u, u * (2. - u), 0.6), d = blk(p + v * t, h0 + lh * t, o, th); if (d > 0.) s = min(s, 1. - clamp(d / min(3., th * 0.35), 0., 1.) * o); }
     s *= cn;
     vec3 ld = normalize(vec3(v / K, max(lh, dl * 0.5)));     // the slope it lights: from at least a little above (a flash at hip height still lights the hull facing it)
@@ -444,7 +444,7 @@ void main() { vec2 p = gl_FragCoord.xy; gl_FragColor = vec4(sunIn(texture2D(B, (
     if (ly) { gl.activeTexture(gl.TEXTURE8); L2.H = texture(gl.NEAREST); gl.activeTexture(gl.TEXTURE9); L2.T = [texture(gl.NEAREST), texture(gl.NEAREST)]; gl.activeTexture(gl.TEXTURE10); L2.M = texture(gl.NEAREST); gl.activeTexture(gl.TEXTURE0); L2.FH = gl.createFramebuffer(); L2.F = [gl.createFramebuffer(), gl.createFramebuffer()]; L2.FM = gl.createFramebuffer(); }
     const FB = gl.createFramebuffer(), FM = gl.createFramebuffer(), FL = gl.createFramebuffer(), DB = gl.createRenderbuffer();
     const uni = (P, ns) => { const U = {}; for (const n of ns) U[n] = gl.getUniformLocation(P, n); return U; };
-    const U = uni(P, ['S', 'R', 'K', 'L', 'V', 'P', 'PL', 'PD', 'PK', 'PC', 'H', 'HZ']), SU = uni(SP, ['S', 'R', 'H', 'B', 'D', 'N', 'DH']), CU = uni(CP, ['S', 'R', 'K', 'L', 'C', 'W', 'O', 'Q', 'V', 'P', 'G', 'H', 'MT', 'LT', 'TM', 'BL', 'SKY', 'LI', 'WX', 'E', 'EN', 'RF', 'FG', 'SWT', 'SWS', 'HS', 'LB', 'SWL', 'LY']), HU = uni(HP, ['X', 'F', 'A', 'MM']), PU = uni(PP, ['X', 'F']), RU = uni(RC, ['M', 'X', 'F', 'Z']), LU = uni(RS, ['S', 'R', 'H', 'B']);
+    const U = uni(P, ['S', 'R', 'K', 'L', 'V', 'P', 'PL', 'PD', 'PK', 'PC', 'H', 'HZ', 'MQ']), SU = uni(SP, ['S', 'R', 'H', 'B', 'D', 'N', 'DH']), CU = uni(CP, ['S', 'R', 'K', 'L', 'C', 'W', 'O', 'Q', 'V', 'P', 'G', 'H', 'MT', 'LT', 'TM', 'BL', 'SKY', 'LI', 'WX', 'E', 'EN', 'RF', 'FG', 'SWT', 'SWS', 'HS', 'LB', 'SWL', 'LY']), HU = uni(HP, ['X', 'F', 'A', 'MM']), PU = uni(PP, ['X', 'F']), RU = uni(RC, ['M', 'X', 'F', 'Z']), LU = uni(RS, ['S', 'R', 'H', 'B']);
     gl.useProgram(HP); gl.uniform1i(HU.A, 1); gl.useProgram(CP); gl.uniform1i(CU.H, 0); gl.uniform1i(CU.MT, 2); gl.uniform1i(CU.LT, 3); gl.uniform1i(CU.SWT, 4); gl.uniform1i(CU.SWS, 6); gl.uniform1i(CU.HS, 7); gl.uniform1i(CU.SWL, ly ? 10 : 4); gl.useProgram(P); gl.uniform1i(U.H, 0); gl.useProgram(SP); gl.uniform1i(SU.H, 0); gl.uniform1i(SU.B, 4); gl.useProgram(RC); gl.uniform1i(RU.M, 5); gl.useProgram(RS); gl.uniform1i(LU.H, 0); gl.uniform1i(LU.B, ly ? 9 : 4);
     _sun = { out: GL ? GC.fb : null, gl, GC, IA, MX, P, CP, HP, SP, PP, RC, RS, U, CU, HU, SU, PU, RU, LU, ly, L2, pb: gl.createBuffer(), pv: new Float32Array(4096), mem: new Map(), ST, FS, SS, FSS, HTS, FBS, tri, quad, ib, AT, HT, MT, LT, FB, FM, FL, DB, fw: 0, fh: 0, lw: 0, lh: 0, aw: w, ah: h, pl: new Float32Array(LMAX * 4), pd: new Float32Array(LMAX * 4), pk: new Float32Array(LMAX), pc: new Float32Array(LMAX * 3), ev: new Float32Array(8) };
   } catch (e) { console.warn('sun off:', e.message); _sun = false; }
@@ -575,7 +575,7 @@ function partsMeet(A, B) {     // parts (q): at every px both paint, their spans
   return true;
 }
 function hLayers() {
-  const P = HLY.p, F = HL.f.f, on = P.length > 1 && sunTone().day > 0, by = [];
+  const P = HLY.p, F = HL.f.f, on = P.length > 1 && CFG.shLay !== false && sunTone().day > 0, by = [];     // MERGED: all in the first channel
   HLY.c = []; HLY.xn = 0;
   if (on) {
     const tn = Math.tan(sunEl()), dx = Math.cos(SUN.az), dy = Math.sin(SUN.az);
@@ -762,7 +762,7 @@ function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory
   const rx = Math.floor(vw.x * dpr * HS), ry = Math.floor(vw.y * dpr * HS), rw = Math.min(w - rx, Math.ceil(vw.w * dpr * HS)), rh = Math.min(h - ry, Math.ceil(vw.h * dpr * HS));
   // the height buffer reaches past the view toward the sun by the longest shadow (64 px tall), so what's off screen
   // that side still throws its shadow in (no pop-in); the view sits at (px, py) in it
-  const L = Math.min(64 / Math.tan(sunEl()), 720), dx = Math.cos(SUN.az) * L * K, dy = Math.sin(SUN.az) * L * K;
+  const SL = CFG.shLen || 64, L = Math.min(SL / Math.tan(sunEl()), 720), dx = Math.cos(SUN.az) * L * K, dy = Math.sin(SUN.az) * L * K;
   const px = Math.ceil(Math.max(0, -dx)) + 2, py = Math.ceil(Math.max(0, -dy)) + 2, bw = rw + px + Math.ceil(Math.max(0, dx)) + 2, bh = rh + py + Math.ceil(Math.max(0, dy)) + 2;
   const size = (t, w, h) => { gl.bindTexture(gl.TEXTURE_2D, t); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null); };
   const attach = (f, t) => { gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0); };
@@ -779,13 +779,13 @@ function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory
   if (S.lw !== w || S.lh !== h) { S.lw = w; S.lh = h; gl.activeTexture(gl.TEXTURE3); size(S.LT, w, h); gl.activeTexture(gl.TEXTURE0); attach(S.FL, S.LT); }
   // heights and materials (buffer px = (world x VZ + VOX) x k + pad)
   gl.enable(gl.SCISSOR_TEST); HMAT = 0; HMAX = 0;
-  const fog = vw._fog && fogged && !SUNDBG ? 1 : 0;
+  const fog = vw._fog && fogged && !SUNDBG && CFG.shMem !== false ? 1 : 0;     // SHADOWS OUT OF SIGHT off: no memory sweep
   gl.useProgram(S.CP); gl.uniform1f(S.CU.FG, 0);
   sunHeights((x, y, r) => vis(x, y, r + L), hidden, vw); pipe('cpu-heights', { n: { a: HL.a.n, u: HL.u.n, w: HL.w.n, t: HL.t.n, m: HL.m.n } });
   if (fog) memOf(S, vw);     // a new memory: the map as it starts, before this frame's lists
   const X = [VZ * k, VOX * k + px, VOY * k + py], box = [rx, ry, bw, bh], vr = [rx + px, ry + py, rw, rh];
   sunDrawHeights(S, X, box, fog, vw);
-  const reg = [rx + 0.5, ry + 0.5, rx + bw - 0.5, ry + bh - 0.5], mxh = Math.min(64, HMAX + 1);
+  const reg = [rx + 0.5, ry + 0.5, rx + bw - 0.5, ry + bh - 0.5], mxh = Math.min(SL, HMAX + 1);
   const up = sunTone().day > 0, sweep = (T, F, u, hu) => up ? sunSweep(S, K, mxh, box, reg, [vr], T, F, u, hu) : sunNoSweep(S, box, T, F, u);
   sweep(S.ST, S.FS, 4, 0);
   if (fog) sweep(S.SS, S.FSS, 6, 7);     // the remembered things' shadows, for out of sight
@@ -795,7 +795,7 @@ function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory
   gl.useProgram(S.P); gl.bindBuffer(gl.ARRAY_BUFFER, S.tri); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
   const el = sunEl(), ce = Math.cos(el), Ld = [Math.cos(SUN.az) * ce, Math.sin(SUN.az) * ce, Math.sin(el)];
   gl.uniform2f(U.S, S.fw, S.fh); gl.uniform2f(U.P, px, py); gl.uniform1f(U.V, h); gl.uniform4f(U.R, ...reg); gl.uniform1f(U.K, K);
-  gl.uniform3f(U.L, ...Ld); gl.uniform1f(U.HZ, M.rain ? 0.15 : 0);
+  gl.uniform3f(U.L, ...Ld); gl.uniform1f(U.HZ, M.rain ? 0.15 : 0); gl.uniform1f(U.MQ, CFG.shPt === false ? 0 : 1);     // LAMP SHADOWS off: no march
   S.pk.fill(0); S.pd.fill(0); const LN = S.ln = lightsNow(vis); if (!devOff('add')) LN.forEach((l, i) => { S.pl.set([(VZ * l.x + VOX) * k + px, (VZ * l.y + VOY) * k + py, l.r, l.h], i * 4); if (l.d) S.pd.set(l.d.length > 3 ? l.d : [...l.d, 1], i * 4); S.pk[i] = l.k; S.pc.set(l.c || LCOL, i * 3); });
   gl.uniform4fv(U.PL, S.pl); gl.uniform4fv(U.PD, S.pd); gl.uniform1fv(U.PK, S.pk); gl.uniform3fv(U.PC, S.pc);
   const light = () => { gl.bindFramebuffer(gl.FRAMEBUFFER, S.FL); gl.viewport(0, 0, w, h); gl.scissor(rx, h - ry - rh, rw, rh); gl.useProgram(S.P); gl.bindBuffer(gl.ARRAY_BUFFER, S.tri); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.drawArrays(gl.TRIANGLES, 0, 3); gl.bindFramebuffer(gl.FRAMEBUFFER, S.out); };
