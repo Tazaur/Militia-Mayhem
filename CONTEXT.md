@@ -723,3 +723,8 @@ Art drop (drop.py): atlas.png: hull4, tur_dead; atlas_m.png: tur_dead, sol_leg0,
 - Settings › VIDEO › PERFORMANCE › PRESET (ULTRA / HIGH / MEDIUM / LOW / LOWEST; `QUALITY` in 1_core, like FOG_PRESETS): sets res, lightQ, sun and the shadow rows; any row changed after reads CUSTOM (`qualPreset`). Default = HIGH (the old defaults).
 - New page VIDEO › SHADOWS: DYNAMIC LIGHTING (moved from GRAPHICS), FLOATING SHADOWS (`shLay` false: hLayers puts everything in the first channel, no sunLayers sweeps), SHADOW LENGTH (`shLen` 64 / 32: the sweep's reach and the buffer's sunward pad), SHADOWS OUT OF SIGHT (`shMem` false: no fog memory sweep / map 3), LAMP SHADOWS (`shPt` false: P's march skipped, uniform MQ 0).
 - Headless laptop GPU per frame: ULTRA 11.4 · HIGH 7.2 · MEDIUM 6.0 · LOW 4.8 · LOWEST 4.6 ms. LOWEST's sprites are 3.7 ms: the legacy drop-shadow layer (SHC, a 2D canvas) uploaded every frame — next: drop shadows on GL.
+
+## Build 247
+- New preset LOW between MEDIUM and the old LOW (now VERY LOW): res 90 %, lighting MEDIUM, sun shadows kept (merged channels, no out-of-sight sweep), spotlights only, no reflections.
+- Settings › VIDEO › LIGHTS page: LIGHTS (`lights` 'spot': lightsNow keeps only lights with a cone `d` — flashlights, headlights; no muzzle flashes, blasts, fires, tail lights), REFLECTIONS (`refl` false: CP uniform RFL 0 — no sky mirror / glints / reflective dimming; no glow bloom BL; the add map skipped unless point lights or rain).
+- Headless laptop GPU: ULTRA 12.3 · HIGH 7.8 · MEDIUM 6.7 · LOW 5.2 · VERY LOW 3.8 · LOWEST 2.7 ms.

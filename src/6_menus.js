@@ -460,6 +460,8 @@ const SETS = {
   shLen: choice('SHADOW LENGTH', 'shLen', [[64, 'FULL'], [32, 'SHORT']]),
   shMem: choice('SHADOWS OUT OF SIGHT', 'shMem', [[true, 'ON'], [false, 'OFF']]),
   shPt: choice('LAMP SHADOWS', 'shPt', [[true, 'ON'], [false, 'OFF']]),
+  lights: choice('LIGHTS', 'lights', [['all', 'ALL'], ['spot', 'SPOTLIGHTS ONLY']]),
+  refl: choice('REFLECTIONS', 'refl', [[true, 'ON'], [false, 'OFF']]),
   rec: { n: 'RECORDER', o: [[false, 'OFF'], [true, 'ON']], get: () => REC.on, set: v => v ? recStart() : recStop(), lab: v => v ? 'RECORDING · OFF SAVES IT' : null },     // 5f_rec: a log of the frame, to share
   fps: choice('FPS COUNTER', 'fps', [[0, 'OFF'], [1, 'FPS'], [2, 'FPS + FRAME TIMES'], ...(GL ? [[3, 'FPS + GPU STAGES']] : [])]),
   minimap: choice('MINIMAP', 'minimap', [[true, 'ON'], [false, 'OFF']]),
@@ -476,7 +478,7 @@ const SETS = {
   tAuto: { n: 'DRAG TO AIM', o: [['on', 'AIMS + FIRES'], ['off', 'AIMS ONLY'], ['range', 'FIRES IN RANGE']], get: () => TOUCH.auto, set: v => { TOUCH.auto = v; store.set('autofire', v); } }
 };
 /* core tabs (title row), each with its pages (sub tabs, the row under it); Q / E or LB / RB step through every page */
-const SET_TABS = [['VIDEO', [['GRAPHICS', ['style', 'clearLos', 'fullscreen', 'camera']], ['FOG OF WAR', ['fogStyle', 'fogD', 'fogK', 'fogE', 'fogW']], ['PERFORMANCE', ['quality', 'res', 'lightQ', 'rec']], ['SHADOWS', ['sun', 'shLay', 'shLen', 'shMem', 'shPt']]]],
+const SET_TABS = [['VIDEO', [['GRAPHICS', ['style', 'clearLos', 'fullscreen', 'camera']], ['FOG OF WAR', ['fogStyle', 'fogD', 'fogK', 'fogE', 'fogW']], ['PERFORMANCE', ['quality', 'res', 'lightQ', 'rec']], ['LIGHTS', ['lights', 'refl']], ['SHADOWS', ['sun', 'shLay', 'shLen', 'shMem', 'shPt']]]],
   ['AUDIO', [['VOLUME', ['volMaster', 'volSfx', 'volMus']], ['SOUND', ['sound']]]], ['HUD', [['DISPLAY', ['fps', 'minimap', 'teams']]]],
   ['CONTROLS', [['TOUCH', ['tSize', 'tAlpha', 'tFireX', 'tFireY', 'tLfire', 'tAuto']], ['BINDINGS', null]]]];
 const SET_PAGES = SET_TABS.flatMap(([, P], i) => P.map((_, j) => [i, j]));

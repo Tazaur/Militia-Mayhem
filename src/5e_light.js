@@ -92,7 +92,7 @@ function lightsNow(vis) {          // this frame's strongest lights in view (and
   lampsOn((x, y, h, a, o, fix) => light(x, y, LAMP.r, h, LAMP.k, null, [...lampD(a, fix), lampPool(o, a, x, y, h, fix)]));     // flashlights, headlights (from the state: one out of sight still throws its beam in)
   for (const v of M.vehicles) if (v.lights && v.active && !v.dead && v.type !== 'nest') { const b = brakeK(v); tailLights(v, (x, y, h) => light(x, y, TAIL.r * (1 + 0.4 * b), h, TAIL.k * (1 + TAIL.brake * b), v, null, TAIL.c)); }
   const dk = dayDim(); if (dk < 1) for (const l of LIGHTS) l.k *= dk;
-  const L = LIGHTS.filter(l => l.k > 0.02 && vis(l.x, l.y, l.r)).sort((a, b) => b.k * b.r - a.k * a.r).slice(0, LMAX); LIGHTS.length = 0; if (M.dev) DEV.lp = L;
+  const sp = CFG.lights === 'spot', L = LIGHTS.filter(l => l.k > 0.02 && (!sp || l.d) && vis(l.x, l.y, l.r)).sort((a, b) => b.k * b.r - a.k * a.r).slice(0, LMAX); LIGHTS.length = 0; if (M.dev) DEV.lp = L;
   return L;
 }
 /* a point light's colour at (x, y, z) in the open air (as the light pass has it on flat ground: its falloff, a spotlight's
@@ -331,7 +331,7 @@ void main() {
        its own art and blooms (BL). WX: buffer px to world px. Q 3 / 4: the heights / materials (dev) */
     const CP = prog(VS, `precision highp float; ${TX}
 #define PLT vec3(1., 0.96, 0.86)
-uniform sampler2D MT, LT, SWT, SWS, SWL; uniform vec2 G, P, O; uniform float K, Q, V, TM, BL, EN, RF, LB, LY; uniform vec3 L, C, W, SKY, LI; uniform vec3 WX; uniform vec4 E[2];
+uniform sampler2D MT, LT, SWT, SWS, SWL; uniform vec2 G, P, O; uniform float K, Q, V, TM, BL, EN, RF, LB, LY, RFL; uniform vec3 L, C, W, SKY, LI; uniform vec3 WX; uniform vec4 E[2];
 float ro(float d) { return ${ROOF_CAP.toFixed(2)} * clamp((d - ${ROOF_NEAR.toFixed(1)}) / ${(ROOF_FAR - ROOF_NEAR).toFixed(1)}, 0., 1.); }     // roofOp
 float roofA(vec2 p, vec2 w, bool ou) {     // how much of the roof shows here (roofView's fade; out of sight, all of it)
   if (tx(p).b < 0.5 || hh(p) > ${ROOF_Z[1].toFixed(1)}) return 0.;
@@ -358,7 +358,7 @@ void main() {
     vec3 col = hr(t / 64.); if (c.g > c.r && fb > c.r * 63.75 + 0.5 && mod(floor(p.x + p.y), 6.) < 2.) col = hr(fb / 64.);
     gl_FragColor = vec4(col, 1.); return; }
   vec4 a = LB < 0.5 ? vec4(0.) : (texture2D(LT, (f + vec2(-1., -1.)) / G) + texture2D(LT, (f + vec2(1., -1.)) / G) + texture2D(LT, (f + vec2(-1., 1.)) / G) + texture2D(LT, (f + vec2(1., 1.)) / G)) * 0.25, m = mt(p);     // the lights blurred (4 linear taps: a 4 x 4 px footprint): their soft shadows' jittered steps blend, not dither; LB 0: no point lights, LT not read
-  float r = m.r, gw = m.g; vec3 pl = a.rgb * 4., tint = pl.r + pl.g + pl.b > 0.004 ? pl / max(max(pl.r, pl.g), pl.b) : PLT;     // the point lights (LT: their colours summed); tint: their colour here (a red light's haze is red)
+  float r = m.r * RFL, gw = m.g; vec3 pl = a.rgb * 4., tint = pl.r + pl.g + pl.b > 0.004 ? pl / max(max(pl.r, pl.g), pl.b) : PLT;     // the point lights (LT: their colours summed); tint: their colour here (a red light's haze is red)
   vec2 w = (p - WX.xy) / WX.z;
   if (m.b > 0.5) { vec2 e = vec2(1.5, 0.); N = normalize(N + vec3(wv(w - e.xy) - wv(w + e.xy), wv(w - e.yx) - wv(w + e.yx), 0.) * 0.9); }
   vec3 Rv = reflect(vec3(0., 0., -1.), N); float spec = pow(max(dot(Rv, L), 0.), mix(12., 160., r)) * sh;
@@ -444,7 +444,7 @@ void main() { vec2 p = gl_FragCoord.xy; gl_FragColor = vec4(sunIn(texture2D(B, (
     if (ly) { gl.activeTexture(gl.TEXTURE8); L2.H = texture(gl.NEAREST); gl.activeTexture(gl.TEXTURE9); L2.T = [texture(gl.NEAREST), texture(gl.NEAREST)]; gl.activeTexture(gl.TEXTURE10); L2.M = texture(gl.NEAREST); gl.activeTexture(gl.TEXTURE0); L2.FH = gl.createFramebuffer(); L2.F = [gl.createFramebuffer(), gl.createFramebuffer()]; L2.FM = gl.createFramebuffer(); }
     const FB = gl.createFramebuffer(), FM = gl.createFramebuffer(), FL = gl.createFramebuffer(), DB = gl.createRenderbuffer();
     const uni = (P, ns) => { const U = {}; for (const n of ns) U[n] = gl.getUniformLocation(P, n); return U; };
-    const U = uni(P, ['S', 'R', 'K', 'L', 'V', 'P', 'PL', 'PD', 'PK', 'PC', 'H', 'HZ', 'MQ']), SU = uni(SP, ['S', 'R', 'H', 'B', 'D', 'N', 'DH']), CU = uni(CP, ['S', 'R', 'K', 'L', 'C', 'W', 'O', 'Q', 'V', 'P', 'G', 'H', 'MT', 'LT', 'TM', 'BL', 'SKY', 'LI', 'WX', 'E', 'EN', 'RF', 'FG', 'SWT', 'SWS', 'HS', 'LB', 'SWL', 'LY']), HU = uni(HP, ['X', 'F', 'A', 'MM']), PU = uni(PP, ['X', 'F']), RU = uni(RC, ['M', 'X', 'F', 'Z']), LU = uni(RS, ['S', 'R', 'H', 'B']);
+    const U = uni(P, ['S', 'R', 'K', 'L', 'V', 'P', 'PL', 'PD', 'PK', 'PC', 'H', 'HZ', 'MQ']), SU = uni(SP, ['S', 'R', 'H', 'B', 'D', 'N', 'DH']), CU = uni(CP, ['S', 'R', 'K', 'L', 'C', 'W', 'O', 'Q', 'V', 'P', 'G', 'H', 'MT', 'LT', 'TM', 'BL', 'SKY', 'LI', 'WX', 'E', 'EN', 'RF', 'FG', 'SWT', 'SWS', 'HS', 'LB', 'SWL', 'LY', 'RFL']), HU = uni(HP, ['X', 'F', 'A', 'MM']), PU = uni(PP, ['X', 'F']), RU = uni(RC, ['M', 'X', 'F', 'Z']), LU = uni(RS, ['S', 'R', 'H', 'B']);
     gl.useProgram(HP); gl.uniform1i(HU.A, 1); gl.useProgram(CP); gl.uniform1i(CU.H, 0); gl.uniform1i(CU.MT, 2); gl.uniform1i(CU.LT, 3); gl.uniform1i(CU.SWT, 4); gl.uniform1i(CU.SWS, 6); gl.uniform1i(CU.HS, 7); gl.uniform1i(CU.SWL, ly ? 10 : 4); gl.useProgram(P); gl.uniform1i(U.H, 0); gl.useProgram(SP); gl.uniform1i(SU.H, 0); gl.uniform1i(SU.B, 4); gl.useProgram(RC); gl.uniform1i(RU.M, 5); gl.useProgram(RS); gl.uniform1i(LU.H, 0); gl.uniform1i(LU.B, ly ? 9 : 4);
     _sun = { out: GL ? GC.fb : null, gl, GC, IA, MX, P, CP, HP, SP, PP, RC, RS, U, CU, HU, SU, PU, RU, LU, ly, L2, pb: gl.createBuffer(), pv: new Float32Array(4096), mem: new Map(), ST, FS, SS, FSS, HTS, FBS, tri, quad, ib, AT, HT, MT, LT, FB, FM, FL, DB, fw: 0, fh: 0, lw: 0, lh: 0, aw: w, ah: h, pl: new Float32Array(LMAX * 4), pd: new Float32Array(LMAX * 4), pk: new Float32Array(LMAX), pc: new Float32Array(LMAX * 3), ev: new Float32Array(8) };
   } catch (e) { console.warn('sun off:', e.message); _sun = false; }
@@ -806,9 +806,9 @@ function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory
   gl.useProgram(S.CP);
   gl.uniform2f(CU.S, S.fw, S.fh); gl.uniform2f(CU.P, px, py); gl.uniform1f(CU.V, h); gl.uniform4f(CU.R, ...reg); gl.uniform1f(CU.K, K); gl.uniform2f(CU.G, w, h);
   gl.uniform3f(CU.L, ...Ld); const T = sunTone(); gl.uniform3f(CU.C, ...T.sh); gl.uniform3f(CU.LI, ...T.li); gl.uniform3f(CU.W, ...T.w); gl.uniform3f(CU.SKY, ...T.sky);
-  gl.uniform1f(CU.TM, M.time); gl.uniform1f(CU.BL, HMAT & 2 ? 0.9 : 0); gl.uniform3f(CU.WX, VOX * k + px, VOY * k + py, VZ * k);
+  gl.uniform1f(CU.TM, M.time); const rf = CFG.refl !== false; gl.uniform1f(CU.RFL, rf ? 1 : 0); gl.uniform1f(CU.BL, HMAT & 2 && rf ? 0.9 : 0);     // REFLECTIONS off: no sky mirror, glints or glow bloom gl.uniform3f(CU.WX, VOX * k + px, VOY * k + py, VZ * k);
   const E = MAP.tiled && MAP.tiled.roof ? viewSols(vw).map(posOf).slice(0, 4) : []; S.ev.fill(0); E.forEach((o, i) => { S.ev[i * 2] = o.x; S.ev[i * 2 + 1] = o.y; }); gl.uniform4fv(CU.E, S.ev); gl.uniform1f(CU.EN, E.length); gl.uniform1f(CU.RF, vw.rf || 0); gl.uniform1f(CU.LB, S.pk[0] > 0 ? 1 : 0); gl.uniform1f(CU.LY, ly ? 1 : 0);
-  const add = S.pk[0] > 0 || HMAT || M.rain, maps = SUNDBG ? [[3, 0, 1, 2, 4, 5, 6][SUNDBG - 1]] : add ? [0, 1, 2] : [0, 1];
+  const add = S.pk[0] > 0 || (HMAT && rf) || M.rain, maps = SUNDBG ? [[3, 0, 1, 2, 4, 5, 6][SUNDBG - 1]] : add ? [0, 1, 2] : [0, 1];
   const at = n => [(n & 1) * w + rx, (n >> 1) * h + ry];     // map n's view in GC (canvas pixels): 0 1 / 2 3
   const map = (q, n) => { const o = (n & 1) * w, oy = (1 - (n >> 1)) * h; gl.viewport(o, oy, w, h); gl.scissor(o + rx, oy + h - ry - rh, rw, rh); gl.uniform2f(CU.O, o, oy); gl.uniform1f(CU.Q, q); gl.drawArrays(gl.TRIANGLES, 0, 3); pipe('gpu-map', { q, o }); };
   maps.forEach((q, n) => map(q, n));
