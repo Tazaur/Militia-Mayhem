@@ -762,16 +762,18 @@ function fieldOcc(x0, y0, x1, y1) {
   const f = M.gsf; if (!f || !f.act.length) return 0;
   const O = SMK_OUT * GS; x0 += O; y0 += O; x1 += O; y1 += O;     // to the field's own px
   const X0 = f.box[0] * GS, Y0 = f.box[1] * GS, X1 = f.box[2] * GS, Y1 = f.box[3] * GS, dx = x1 - x0, dy = y1 - y0; let t0 = 0, t1 = 1;
-  for (const [p, q] of [[-dx, x0 - X0], [dx, X1 - x0], [-dy, y0 - Y0], [dy, Y1 - y0]]) {
+  for (let e = 0; e < 4; e++) {     // the box's four sides (no arrays: this runs for every fog tile, every frame)
+    const p = e === 0 ? -dx : e === 1 ? dx : e === 2 ? -dy : dy, q = e === 0 ? x0 - X0 : e === 1 ? X1 - x0 : e === 2 ? y0 - Y0 : Y1 - y0;
     if (!p) { if (q < 0) return 0; continue; }
     const r = q / p; if (p < 0) { if (r > t1) return 0; if (r > t0) t0 = r; } else { if (r < t0) return 0; if (r < t1) t1 = r; }
   }
   if (t1 <= t0) return 0;
+  const full = 1 / SMK_K;     // past this much: all of it, the rest of the line can't change that
   const L = Math.hypot(dx, dy) / GS, si = Math.sign(dx), sj = Math.sign(dy), ddx = si ? GS / Math.abs(dx) : Infinity, ddy = sj ? GS / Math.abs(dy) : Infinity, A = f.A, W = f.W;
   let i = clamp(Math.floor((x0 + dx * t0) / GS), f.box[0], f.box[2] - 1), j = clamp(Math.floor((y0 + dy * t0) / GS), f.box[1], f.box[3] - 1), t = t0, o = 0;
   let tx = si ? ((i + (si > 0)) * GS - x0) / dx : Infinity, ty = sj ? ((j + (sj > 0)) * GS - y0) / dy : Infinity;
   while (t < t1) {
-    const tn = Math.min(tx, ty, t1), a = A[j * W + i]; if (a) o += (a < 1 ? a : 1) * (tn - t) * L;
+    const tn = Math.min(tx, ty, t1), a = A[j * W + i]; if (a) { o += (a < 1 ? a : 1) * (tn - t) * L; if (o >= full) return 1; }
     t = tn; if (tx < ty) { tx += ddx; i += si; } else { ty += ddy; j += sj; }
     if (i < f.box[0] || j < f.box[1] || i >= f.box[2] || j >= f.box[3]) break;
   }

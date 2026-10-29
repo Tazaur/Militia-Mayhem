@@ -375,21 +375,48 @@ function gxDst(s, b) {
 }
 /* a GL surface read back small into a 2D canvas (the HUD's maps): once it's settled (unchanged 100 ms), or every 2 s while
    it keeps changing; a 2D canvas: itself */
+/* a GL surface at most maxW wide, made on the GPU (halved step by step: each a 2 × 2 box, so no shimmer) and redone when it changes:
+   at most every 2 s while it keeps changing, or 100 ms after it settles. Was a readPixels back to a 2D canvas (~100 ms a time on phones) */
+function surfMini(s, maxW) {
+  if (!(s instanceof GSurf)) return s;
+  const now = performance.now(); let T = s._mini;
+  if (T && T.w0 === s._w && T.h0 === s._h) {
+    if (T.gv === s._gv) return T.out;
+    if (T.pg !== s._gv) { T.pg = s._gv; T.tc = now; }
+    if (now - T.t < 2000 && now - T.tc < 100) return T.out;
+  }
+  if (!T || T.w0 !== s._w || T.h0 !== s._h) {
+    const k = Math.min(1, maxW / s._w), w = Math.max(1, Math.round(s._w * k)), h = Math.max(1, Math.round(s._h * k)), st = [];
+    for (let sw = s._w, sh = s._h; sw > w * 2; ) { sw = Math.ceil(sw / 2); sh = Math.ceil(sh / 2); st.push(new GSurf(sw, sh)); }
+    st.push(new GSurf(w, h)); T = s._mini = { st, out: st[st.length - 1], w0: s._w, h0: s._h };
+  }
+  let src = s;
+  for (const d of T.st) { const x = d.getContext('2d'); x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'copy'; x.imageSmoothingEnabled = true; x.drawImage(src, 0, 0, src._w, src._h, 0, 0, d._w, d._h); x.globalCompositeOperation = 'source-over'; src = d; }
+  T.gv = s._gv; T.t = now; return T.out;
+}
+/* the same as a 2D canvas (the HUD is drawn on the 2D layer over GL): read back without a stall — into a pixel buffer behind a fence,
+   picked up on a later frame once the GPU is past it (only the very first waits); opaque rows copied as they are */
 function surf2D(s, maxW) {
   if (!(s instanceof GSurf)) return s;
-  const now = performance.now(); let T = s._2d;
-  if (T && T.w0 === s._w && T.h0 === s._h) {
-    if (T.gv === s._gv) return T.c;
-    if (T.pg !== s._gv) { T.pg = s._gv; T.tc = now; }
-    if (now - T.t < 2000 && now - T.tc < 100) return T.c;
+  const g = GL, m = surfMini(s, maxW); let T = s._2d;
+  if (!T || T.w !== m._w || T.h !== m._h) { if (T) { if (T.f) g.deleteSync(T.f); g.deleteBuffer(T.pb); } T = s._2d = { w: m._w, h: m._h, c: mk(m._w, m._h), pb: g.createBuffer(), px: new Uint8Array(m._w * m._h * 4), f: null, gv: -1, ok: false }; g.bindBuffer(g.PIXEL_PACK_BUFFER, T.pb); g.bufferData(g.PIXEL_PACK_BUFFER, T.px.byteLength, g.STREAM_READ); g.bindBuffer(g.PIXEL_PACK_BUFFER, null); }
+  if (T.f && (!T.ok || g.getSyncParameter(T.f, g.SYNC_STATUS) === g.SIGNALED)) {
+    g.deleteSync(T.f); T.f = null; g.bindBuffer(g.PIXEL_PACK_BUFFER, T.pb); g.getBufferSubData(g.PIXEL_PACK_BUFFER, 0, T.px); g.bindBuffer(g.PIXEL_PACK_BUFFER, null);
+    const { w, h, px } = T, id = new ImageData(w, h), d = id.data, W4 = w * 4;
+    for (let y = 0; y < h; y++) {
+      const o = (h - 1 - y) * W4, q = y * W4; let op = true;
+      for (let i = 3; i < W4; i += 4) if (px[o + i] !== 255) { op = false; break; }
+      if (op) d.set(px.subarray(o, o + W4), q);
+      else for (let i = 0; i < W4; i += 4) { const a = px[o + i + 3], f = a ? 255 / a : 0; d[q + i] = px[o + i] * f; d[q + i + 1] = px[o + i + 1] * f; d[q + i + 2] = px[o + i + 2] * f; d[q + i + 3] = a; }
+    }
+    T.c.getContext('2d').putImageData(id, 0, 0); T.ok = true;
   }
-  const k = Math.min(1, maxW / s._w), w = Math.max(1, Math.round(s._w * k)), h = Math.max(1, Math.round(s._h * k)), g = GL;
-  if (!T || T.c.width !== w || T.c.height !== h) T = s._2d = { c: mk(w, h), tmp: new GSurf(w, h) };
-  const x = T.tmp.getContext('2d'); x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'copy'; x.imageSmoothingEnabled = true; x.drawImage(s, 0, 0, s._w, s._h, 0, 0, w, h); gxFlush();
-  g.bindFramebuffer(g.FRAMEBUFFER, T.tmp.fb); const px = new Uint8Array(w * h * 4); g.readPixels(0, 0, w, h, g.RGBA, g.UNSIGNED_BYTE, px); GXB.fbo = undefined;
-  const id = new ImageData(w, h), d = id.data;
-  for (let y = 0; y < h; y++) for (let i = 0, o = (h - 1 - y) * w * 4, q = y * w * 4; i < w * 4; i += 4) { const a = px[o + i + 3], f = a ? 255 / a : 0; d[q + i] = px[o + i] * f; d[q + i + 1] = px[o + i + 1] * f; d[q + i + 2] = px[o + i + 2] * f; d[q + i + 3] = a; }
-  T.c.getContext('2d').putImageData(id, 0, 0); T.gv = s._gv; T.t = now; T.w0 = s._w; T.h0 = s._h; return T.c;
+  if (!T.f && T.gv !== m._gv) {
+    gxFlush(); g.bindFramebuffer(g.FRAMEBUFFER, m.fb); GXB.fbo = undefined; g.bindBuffer(g.PIXEL_PACK_BUFFER, T.pb); g.readPixels(0, 0, T.w, T.h, g.RGBA, g.UNSIGNED_BYTE, 0); g.bindBuffer(g.PIXEL_PACK_BUFFER, null);
+    T.f = g.fenceSync(g.SYNC_GPU_COMMANDS_COMPLETE, 0); T.gv = m._gv;
+    if (!T.ok) return surf2D(s, maxW);     // the first: wait for it
+  }
+  return T.c;
 }
 const groundMini = () => surf2D(ground, 640);
 function gxFrame() { if (!GXR) return; GXFR++; if (GXFR % 120 === 0) for (const [k, e] of GXR.txt) if (GXFR - e.f > 240) GXR.txt.delete(k); }
@@ -820,7 +847,12 @@ function gxStripOut(S, hw) {
 }
 function gxN(p) { let n = p.length / 2; if (n > 1 && p[0] === p[n * 2 - 2] && p[1] === p[n * 2 - 1]) n--; return n; }     // points, less a last one back on the first
 function gxWind(p) { let A = 0; const n = p.length / 2; for (let i = 0; i < n; i++) { const j = (i + 1) % n; A += p[i * 2] * p[j * 2 + 1] - p[j * 2] * p[i * 2 + 1]; } return A >= 0 ? 1 : -1; }
-function gxDisc(x, y, r) { const n = Math.max(6, Math.min(32, Math.ceil(r * 0.8) + 4)), c = gxV(x, y, 0, 0); let a = gxV(x + r, y, 0, 0); for (let i = 1; i <= n; i++) { const t = i / n * Math.PI * 2, b = gxV(x + Math.cos(t) * r, y + Math.sin(t) * r, 0, 0); gxT(c, a, b); a = b; } }
+const GXCIR = [];     // unit circles by segment count: [cos, sin, ...] (round caps and joins: hundreds a frame)
+function gxDisc(x, y, r) {
+  const n = Math.max(6, Math.min(32, Math.ceil(r * 0.8) + 4)), U = GXCIR[n] || (GXCIR[n] = Float64Array.from({ length: n * 2 + 2 }, (_, k) => (k & 1 ? Math.sin : Math.cos)((k >> 1) / n * Math.PI * 2)));
+  const c = gxV(x, y, 0, 0); let a = gxV(x + r, y, 0, 0);
+  for (let i = 1; i <= n; i++) { const b = gxV(x + U[i * 2] * r, y + U[i * 2 + 1] * r, 0, 0); gxT(c, a, b); a = b; }
+}
 /* a polyline cut into dashes (device px) */
 function gxDash(p, closed, D, off) {
   const out = []; let di = 0, left = D[0], on = true, tot = D.reduce((a, b) => a + b, 0); if (tot <= 0) return [p];
