@@ -184,30 +184,51 @@ const LAYERS = [
   { id: 'grade', n: 'WEATHER & GRADE', z: 'screen space', f: '5_ui · grit', d: 'Rain / snow streaks, then the grit look: multiply #e2d9c2, 7% film grain, 38% vignette.' },
   { id: 'hud', n: 'HUD (2D CANVAS)', z: 'separate canvas', f: '5_ui · 6_menus', d: 'Not GL: a plain 2D canvas (#c) lying over the WebGL one (#g). Ammo, tickets, minimap, kill feed, touch sticks, menus.' }
 ];
+/* one camera for both 3D views (DRAW STACK and HEIGHTS), one set of controls on #stage:
+   drag sideways = turn, drag up/down = tilt (0 top-down … 70°), pinch / wheel = zoom, tap = select. */
+const CAM0 = { yaw: -32, tilt: 50, zoom: 1 }, CAM = { ...CAM0, goal: null };
+function camTo(o) { CAM.goal = { ...CAM, ...o }; }
+function camStep(dt) { const G = CAM.goal; if (!G) return; const k = Math.min(1, dt * 9); let done = 1; for (const f of ['yaw', 'tilt', 'zoom']) { CAM[f] += (G[f] - CAM[f]) * k; if (Math.abs(G[f] - CAM[f]) > 0.01) done = 0; else CAM[f] = G[f]; } if (done) CAM.goal = null; }
+function orbit(el, onTap, onChange) {
+  const P = new Map(); let base = null, moved = false, tapT = null, pinch = 0, z0 = 1;
+  const dist = () => { const [a, b] = [...P.values()]; return Math.hypot(a[0] - b[0], a[1] - b[1]) || 1; };
+  const rebase = () => { const [x, y] = [...P.values()][0]; base = [x, y, CAM.yaw, CAM.tilt]; };
+  el.addEventListener('pointerdown', e => {
+    if (e.button > 0) return; CAM.goal = null; P.set(e.pointerId, [e.clientX, e.clientY]); try { el.setPointerCapture(e.pointerId); } catch (_) { }
+    if (P.size === 1) { moved = false; tapT = e.target; rebase(); } else { moved = true; pinch = dist(); z0 = CAM.zoom; }
+  });
+  el.addEventListener('pointermove', e => {
+    if (!P.has(e.pointerId)) return; P.set(e.pointerId, [e.clientX, e.clientY]);
+    if (P.size > 1) CAM.zoom = clamp(z0 * dist() / pinch, 0.6, 2.5);
+    else { const dx = e.clientX - base[0], dy = e.clientY - base[1]; if (Math.abs(dx) + Math.abs(dy) > 6) moved = true; if (!moved) return; CAM.yaw = base[2] + dx * 0.4; CAM.tilt = clamp(base[3] - dy * 0.35, 0, 70); }
+    onChange();
+  });
+  const end = e => { if (!P.delete(e.pointerId)) return; if (e.type === 'pointerup' && !moved && !P.size) onTap(tapT); if (P.size === 1) { pinch = 0; rebase(); } };
+  for (const t of ['pointerup', 'pointercancel', 'lostpointercapture']) el.addEventListener(t, end);
+  el.addEventListener('wheel', e => { e.preventDefault(); CAM.goal = null; CAM.zoom = clamp(CAM.zoom * Math.exp(-e.deltaY * 0.0015), 0.6, 2.5); onChange(); }, { passive: false });
+}
 VIEWS.layers = {
   init() {
-    const stack = $('#stack'), info = $('#layInfo'); let sel = 4, exp = 1, mode = 'stack', rx = 56, rz = -32, gap = 1, gapT = 1, anim = 0;
+    const stack = $('#stack'), info = $('#layInfo'); let sel = 4, exp = 1, mode = 'stack', gap = 1, gapT = 1, anim = 0;
     const S = 1; // world px per canvas px
-    const els = LAYERS.map((L, i) => { const d = document.createElement('div'); d.className = 'lay'; const c = document.createElement('canvas'); c.width = SC.W; c.height = SC.H; d.appendChild(c); stack.appendChild(d); d.onclick = e => { e.stopPropagation(); pick(i); }; return { d, c, g: c.getContext('2d') }; });
+    const els = LAYERS.map((L, i) => { const d = document.createElement('div'); d.className = 'lay'; const c = document.createElement('canvas'); c.width = SC.W; c.height = SC.H; d.appendChild(c); stack.appendChild(d); return { d, c, g: c.getContext('2d') }; });
     const fin = document.createElement('div'); fin.className = 'lay'; const fc = document.createElement('canvas'); fc.width = SC.W; fc.height = SC.H; fin.appendChild(fc); stack.appendChild(fin); const fg = fc.getContext('2d');
     let size = 300;
     const place = () => {
       const r = $('#stage').getBoundingClientRect(); size = Math.min(r.width * 0.78, r.height * 1.05, 520); const h = size * SC.H / SC.W, sp = Math.min(40, r.height / 11) * gap;
       els.forEach((e, i) => { e.c.style.width = size + 'px'; e.c.style.height = h + 'px'; e.d.style.transform = `translate(${-size / 2}px,${-h / 2}px) translateZ(${(i - 5) * sp}px)`; e.d.classList.toggle('sel', i === sel && gap > 0.2); e.d.classList.toggle('dim', gap > 0.2 && sel >= 0 && i > sel && exp); });
       fc.style.width = size + 'px'; fc.style.height = h + 'px'; fin.style.transform = `translate(${-size / 2}px,${-h / 2}px) translateZ(1px)`; fin.style.opacity = gap < 0.05 ? 1 : 0; fin.style.pointerEvents = 'none';
-      stack.style.transform = `rotateX(${rx}deg) rotateZ(${rz}deg)`;
+      stack.style.transform = `scale(${CAM.zoom}) rotateX(${CAM.tilt}deg) rotateZ(${CAM.yaw}deg)`;
     };
     const pick = i => {
       sel = i; const L = LAYERS[i];
       info.innerHTML = `<div style="display:flex;gap:8px;align-items:center"><button class="btn" id="lp">‹</button><div style="flex:1;min-width:0"><h4>${i + 1}. ${L.n}</h4><span class="z">${L.z} · ${L.f}</span></div><button class="btn" id="ln">›</button></div><p style="margin:6px 0 0;font-size:13.2px;color:var(--dim)">${L.d}</p>`;
       $('#lp').onclick = () => pick((i + LAYERS.length - 1) % LAYERS.length); $('#ln').onclick = () => pick((i + 1) % LAYERS.length); place();
     };
-    // drag to turn the stack
-    let drag = null; const st = $('#stage');
-    st.addEventListener('pointerdown', e => { if (mode !== 'stack') return; drag = [e.clientX, e.clientY, rx, rz, 0]; st.setPointerCapture(e.pointerId); });
-    st.addEventListener('pointermove', e => { if (!drag) return; const dx = e.clientX - drag[0], dy = e.clientY - drag[1]; if (Math.abs(dx) + Math.abs(dy) > 4) drag[4] = 1; rz = drag[3] + dx * 0.35; rx = clamp(drag[2] - dy * 0.3, 0, 80); place(); });
-    st.addEventListener('pointerup', () => drag = null);
-    $('#layExp').onclick = e => { const b = e.target.closest('button'); if (!b) return; exp = +b.dataset.e; $$('#layExp button').forEach(x => x.classList.toggle('on', x === b)); gapT = exp; if (!exp) { rx = 0; rz = 0; } else { rx = 56; rz = -32; } };
+    orbit($('#stage'), t => { const l = mode === 'stack' && t && t.closest && t.closest('.lay'), i = els.findIndex(e => e.d === l); if (i >= 0) pick(i); }, () => { if (mode === 'stack') place(); });
+    $('#camR').onpointerdown = e => e.stopPropagation();
+    $('#camR').onclick = () => camTo(exp ? CAM0 : { yaw: 0, tilt: 0, zoom: 1 });
+    $('#layExp').onclick = e => { const b = e.target.closest('button'); if (!b) return; exp = +b.dataset.e; $$('#layExp button').forEach(x => x.classList.toggle('on', x === b)); gapT = exp; camTo(exp ? CAM0 : { yaw: 0, tilt: 0, zoom: 1 }); };
     $('#layMode').onclick = e => { const b = e.target.closest('button'); if (!b) return; mode = b.dataset.m; $$('#layMode button').forEach(x => x.classList.toggle('on', x === b)); $('#stack').style.display = mode === 'stack' ? '' : 'none'; $('#relief').style.display = mode === 'stack' ? 'none' : 'block'; $('#layExp').style.display = mode === 'stack' ? '' : 'none'; if (mode === 'stack') pick(sel); else RELIEF.start(info); };
     addEventListener('resize', place);
     pick(sel);
@@ -241,7 +262,7 @@ VIEWS.layers = {
         anim = 1;
       };
       redraw(0, 0);
-      loop($('#stage'), (dt, t) => { if (mode !== 'stack') return; gap += (gapT - gap) * Math.min(1, dt * 7); if (Math.abs(gap - gapT) < 0.002) gap = gapT; place(); redraw(t, dt); });
+      loop($('#stage'), (dt, t) => { if (mode !== 'stack') return; camStep(dt); gap += (gapT - gap) * Math.min(1, dt * 7); if (Math.abs(gap - gapT) < 0.002) gap = gapT; place(); redraw(t, dt); });
     });
     this.show = place; requestAnimationFrame(place);
   }
@@ -250,11 +271,15 @@ VIEWS.layers = {
 /* ---------- HEIGHTS: every painted px of every part a column from its base to its top (oblique view) ---------- */
 const RELIEF = {
   start(info) {
-    const cv = $('#relief'); let g = null, what = 'tank', yaw = -0.7, pitch = 0.95, spin = true, t = 0, crew = true;
+    if (!ART.ok) { ART.ready(() => this.start(info)); return; }
+    (this.enter = this.enter || this.make())(info);
+  },
+  make() {
+    const cv = $('#relief'); let g = null, info = null, what = 'tank', spin = true, t = 0, crew = true;
     const O = { tank: { type: 'tank', x: 0, y: 0, a: 0, ta: 0, mgA: 0.5 }, jeep: { type: 'jeep', x: 0, y: 0, a: 0, mgA: 0 }, sol: { type: 'sol', x: 0, y: 0, a: 0, pose: 'sol_stand' } };
     const paintInfo = P => {
       info.innerHTML = `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><div class="seg" id="rW"><button data-w="tank">TANK</button><button data-w="jeep">JEEP</button><button data-w="sol">SOLDIER</button></div><button class="btn${spin ? ' on' : ''}" id="rS">TURN</button><button class="btn${crew ? ' on' : ''}" id="rC">CREW</button></div>
-      <p style="margin:8px 0 6px;font-size:12.5px;color:var(--dim)">Every coloured pixel of the atlas has a height in <code>atlas_m.png</code> (red = height × 4). A part starts on whatever kept part lies under its rest point: <span class="mono">b = max(min, hUnder(rest)) + underside + lift</span>. Drag to turn.</p>
+      <p style="margin:8px 0 6px;font-size:12.5px;color:var(--dim)">Every coloured pixel of the atlas has a height in <code>atlas_m.png</code> (red = height × 4). A part starts on whatever kept part lies under its rest point: <span class="mono">b = max(min, hUnder(rest)) + underside + lift</span>. Drag to turn and tilt, pinch to zoom.</p>
       <div class="tw"><table class="vars"><tr><th>part</th><th>rests on</th><th>under</th><th>lift</th><th>b</th><th>top</th></tr>${P.map(q => `<tr><td>${q.n}</td><td class="v">${q.rest}</td><td class="v">${q.under}</td><td class="v">${q.lift + (q.add ? ' +' + q.add : '')}</td><td class="v">${q.b}</td><td class="v">${q.b + q.add + artMax(q.n)}</td></tr><tr><td colspan="6" style="font-family:var(--fb);color:var(--faint);font-size:11.5px;padding-top:0">${q.why}</td></tr>`).join('')}</table></div>
       <p class="mono" style="font-size:12px">topOf = ${topOf(P)} px → its place in the draw queue</p>`;
       $$('#rW button').forEach(b => { b.classList.toggle('on', b.dataset.w === what); b.onclick = () => { what = b.dataset.w; build(); }; });
@@ -273,16 +298,12 @@ const RELIEF = {
       }
       paintInfo(P); t = 0;
     };
-    let drag = null;
-    cv.onpointerdown = e => { drag = [e.clientX, e.clientY, yaw, pitch]; cv.setPointerCapture(e.pointerId); };
-    cv.onpointermove = e => { if (!drag) return; yaw = drag[2] + (e.clientX - drag[0]) * 0.01; pitch = clamp(drag[3] - (e.clientY - drag[1]) * 0.006, 0.35, 1.45); };
-    cv.onpointerup = () => drag = null;
     const draw = (dt) => {
       if (!g || cv.width !== Math.round(cv.getBoundingClientRect().width * Math.min(2, devicePixelRatio))) g = fitCanvas(cv, cv.parentElement.getBoundingClientRect().height);
       if (!cols.length) return;
-      t += dt; const o = O[what];
+      t += dt; camStep(dt); const o = O[what], yaw = CAM.yaw * Math.PI / 180, pitch = (90 - CAM.tilt) * Math.PI / 180;
       if (spin && what !== 'sol') { const ta = Math.sin(t * 0.7) * 1.2; if (what === 'tank') { o.ta = ta; o.mgA = ta + 0.5 + Math.sin(t * 1.9) * 0.6; } else { o.mgA = ta; o.steer = Math.sin(t * 1.3) * 0.45; } P = stackParts(o); }
-      const W = g.W, H = g.H, sc = Math.min(W / (what === 'sol' ? 60 : what === 'jeep' ? 120 : 175), H / (what === 'sol' ? 70 : 110)), cy = Math.cos(yaw), sy = Math.sin(yaw), sp = Math.sin(pitch), cp = Math.cos(pitch);
+      const W = g.W, H = g.H, sc = Math.min(W / (what === 'sol' ? 60 : what === 'jeep' ? 120 : 175), H / (what === 'sol' ? 70 : 110)) * CAM.zoom, cy = Math.cos(yaw), sy = Math.sin(yaw), sp = Math.sin(pitch), cp = Math.cos(pitch);
       g.fillStyle = '#0a0f08'; g.fillRect(0, 0, W, H);
       // ground grid
       g.strokeStyle = 'rgba(125,220,106,.09)'; g.lineWidth = 1; for (let k = -100; k <= 100; k += 10) for (const s of [0, 1]) { const p = (x, y) => { const rx = x * cy - y * sy, ry = x * sy + y * cy; return [W / 2 + rx * sc, H * 0.58 + ry * sp * sc]; }; const [a, b] = s ? [p(k, -100), p(k, 100)] : [p(-100, k), p(100, k)]; g.beginPath(); g.moveTo(...a); g.lineTo(...b); g.stroke(); }
@@ -296,10 +317,9 @@ const RELIEF = {
         const sh = 0.55; g.fillStyle = `rgb(${c.r * sh | 0},${c.g * sh | 0},${c.b * sh | 0})`; if (Yb > Yt) g.fillRect(X, Yt, s1, Yb - Yt + 0.5);
         g.fillStyle = `rgb(${c.r},${c.g},${c.b})`; g.fillRect(X, Yt - sp * sc * 0.5, s1, Math.max(1, sp * sc));
       }
-      g.font = '600 11px Chakra Petch'; g.fillStyle = '#a49f86'; g.fillText('drag to turn · columns = painted height', 10, H - 10);
+      g.font = '600 11px Chakra Petch'; g.fillStyle = '#a49f86'; g.fillText('drag to turn · pinch to zoom · columns = painted height', 10, H - 10);
     };
-    if (!ART.ok) { ART.ready(() => this.start(info)); return; }
-    build();
-    if (!this.L) this.L = loop(cv, (dt) => draw(dt));
+    loop(cv, (dt) => draw(dt));
+    return el => { info = el; build(); };
   }
 };
