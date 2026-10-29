@@ -728,3 +728,9 @@ Art drop (drop.py): atlas.png: hull4, tur_dead; atlas_m.png: tur_dead, sol_leg0,
 - New preset LOW between MEDIUM and the old LOW (now VERY LOW): res 90 %, lighting MEDIUM, sun shadows kept (merged channels, no out-of-sight sweep), spotlights only, no reflections.
 - Settings › VIDEO › LIGHTS page: LIGHTS (`lights` 'spot': lightsNow keeps only lights with a cone `d` — flashlights, headlights; no muzzle flashes, blasts, fires, tail lights), REFLECTIONS (`refl` false: CP uniform RFL 0 — no sky mirror / glints / reflective dimming; no glow bloom BL; the add map skipped unless point lights or rain).
 - Headless laptop GPU: ULTRA 12.3 · HIGH 7.8 · MEDIUM 6.7 · LOW 5.2 · VERY LOW 3.8 · LOWEST 2.7 ms.
+
+## Build 248
+- fieldMask (the smoke's sight rays for the fog's soft mask) kept for the frame per eye (SMK_MC, keyed by eye, box, cell, M.time): fogCut and drawSoftFog each cast the full set before — half the rays at every setting.
+- PERFORMANCE › FOG QUALITY (`fogQ` 'low': fieldMask cells 2 × 2 smoke tiles, a quarter of the rays; fogEdge 3 rings instead of 6). SMOKE DETAIL (`smk` 'low': smokePuffs draws the first smoky tile of each 2 × 2 at 1.35 × the radius instead of the checkerboard; no self-shade passes; no smokeLamps). Both LOW on presets LOW and below.
+- Laptop headless in smoke, HIGH vs LOW interleaved: drawSmokes 0.43 → 0.28 ms, fieldMask 0.31 → 0.17 (it was ~1.1 before the cache).
+- Skipped, measured no gain: "units whole or hidden" fog mode (they're drawn whole already; the overlay's hole costs the same). The beam's splash light was already dropped by LIGHTS › SPOTLIGHTS ONLY (it has no cone).

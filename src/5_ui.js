@@ -170,19 +170,21 @@ function drawSmokes(vw) { if (M.gsf && M.gsf.act.length) { worldT(); drawSmokeFi
    dark and stepped away from the sun (SMK_SELF), laid on it; each puff a sunlit billow (softDot lit), so where more smoke stands sunward it's in shade and the sunward
    rim stays bright. Each puff drifts and breathes slowly (phase from the tile); thinned near the eyes (SMOKE_KEEP).
    A tile's look (f.V) eases to its thickness at SMK_IN a second, so new smoke swells in; a puff is fainter the smaller
-   it is (down to SMK_SMALL), so a little one squeezed against a wall doesn't stand out as a hot spot */
+   it is (down to SMK_SMALL), so a little one squeezed against a wall doesn't stand out as a hot spot. SMOKE DETAIL LOW
+   (CFG.smk): one puff per 2 x 2 tiles, a third bigger, no self-shade, no lamp light in it */
 const SMK_VIS = 3, SMK_PUFF = 1.5, SMK_GROW = 0.9, SMK_PAD = 5, SMK_IN = 2.5, SMK_SMALL = 0.5;     // SMK_PAD: tiles past the view whose puffs can reach in
 const SMK_SELF = [[6, 0.08], [14, 0.07], [24, 0.06]], SMK_DROP = 8;     // self-shade steps (px, opacity); the ground shadow's offset
 const SMK_C = mkG(1, 1), SMK_SH = mkG(1, 1), SMK_L = mkG(1, 1);
 /* each puff of the field in the tile box (null: all of them): f(x, y, radius, opacity, hash, brown part). The look eases in here (once a frame) */
 function smokePuffs(bx, eyes, cb) {
   const f = M.gsf, [n0, n1] = SIGHT_NEAR, { W, A, B, R, V: Vs } = f, T = M.time, ease = Math.min(1, clamp(T - f.vt, 0, 0.1) * SMK_IN); f.vt = T;
-  const [i0, j0, i1, j1] = bx || [-1, -1, 1e9, 1e9];
+  const [i0, j0, i1, j1] = bx || [-1, -1, 1e9, 1e9]; const lo = CFG.smk === 'low', rk = lo ? 1.35 : 1;
   for (const k of f.act) {
     const i = k % W, j = (k - i) / W; if (i < i0 || j < j0 || i >= i1 || j >= j1) continue;
-    if ((i + j) & 1 && (A[k + 1] > 0 || A[k - 1] > 0 || A[k + W] > 0 || A[k - W] > 0)) continue;
+    if (lo) { const b = k - (i & 1) - (j & 1) * W; if (k !== b && (A[b] > 0 || (k === b + W + 1 && (A[b + 1] > 0 || A[b + W] > 0)) || (k === b + W && A[b + 1] > 0))) continue; }     // LOW: the first smoky tile of each 2 x 2
+    else if ((i + j) & 1 && (A[k + 1] > 0 || A[k - 1] > 0 || A[k + W] > 0 || A[k - W] > 0)) continue;
     const a = A[k], den = Vs[k] += (1 - Math.exp(-SMK_VIS * a) - Vs[k]) * ease, h = ((k * 2654435761) >>> 0) / 4294967296, p = h * TAU;
-    const x = (i - SMK_OUT + 0.5) * GS + Math.sin(T * 0.35 + p) * 3, y = (j - SMK_OUT + 0.5) * GS + Math.cos(T * 0.27 + p) * 3, r = GS * (SMK_PUFF + SMK_GROW * R[k]) * (0.6 + 0.4 * den);
+    const x = (i - SMK_OUT + 0.5) * GS + Math.sin(T * 0.35 + p) * 3, y = (j - SMK_OUT + 0.5) * GS + Math.cos(T * 0.27 + p) * 3, r = GS * (SMK_PUFF + SMK_GROW * R[k]) * (0.6 + 0.4 * den) * rk;
     let al = den * (0.85 + 0.15 * Math.sin(T * 0.45 + p)) * (SMK_SMALL + (1 - SMK_SMALL) * Math.min(1, r / (GS * 3))); for (const o of eyes) al *= SMOKE_KEEP + (1 - SMOKE_KEEP) * clamp((Math.hypot(x - o.x, y - o.y) - n0) / (n1 - n0), 0, 1);
     cb(x, y, r, al, h, B[k] / a);
   }
@@ -196,7 +198,7 @@ function smokeLight(X0, Y0, pw, ph) {
   if (c.width < w || c.height < h) { c.width = Math.max(c.width, w); c.height = Math.max(c.height, h); }
   const g = c.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-over'; g.fillStyle = col(T.li); g.fillRect(0, 0, w, h);
   const el = sunEl(); if (el >= 0.03) smokeShadows(g, X0, Y0, pw, ph, el, T, col);
-  pipe('smk-shadows'); smokeLamps(g, X0, Y0, w, h); pipe('smk-lamps');
+  pipe('smk-shadows'); if (CFG.smk !== 'low') smokeLamps(g, X0, Y0, w, h); pipe('smk-lamps');
   return c;
 }
 /* the static shadows at the smoke's height, into its light */
@@ -254,7 +256,7 @@ function drawSmokeField(vw, eyes) {
   g.fill(); g.globalCompositeOperation = 'source-over';
   pipe('smk-cut'); gs.globalCompositeOperation = 'copy'; gs.drawImage(SMK_C, 0, 0, pw, ph, 0, 0, pw, ph); gs.globalCompositeOperation = 'source-in'; gs.fillStyle = '#000'; gs.fillRect(0, 0, pw, ph); gs.globalCompositeOperation = 'source-over';
   const ux = -Math.cos(SUN.az), uy = -Math.sin(SUN.az);     // away from the sun
-  pipe('smk-sh'); g.globalCompositeOperation = 'source-atop'; for (const [d, o] of SMK_SELF) { g.globalAlpha = o; g.drawImage(SMK_SH, 0, 0, pw, ph, X0 + ux * d, Y0 + uy * d, pw, ph); }
+  pipe('smk-sh'); g.globalCompositeOperation = 'source-atop'; if (CFG.smk !== 'low') for (const [d, o] of SMK_SELF) { g.globalAlpha = o; g.drawImage(SMK_SH, 0, 0, pw, ph, X0 + ux * d, Y0 + uy * d, pw, ph); }
   g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
   pipe('smk-self'); ctx.globalAlpha = 0.28; ctx.drawImage(SMK_SH, 0, 0, pw, ph, X0 + ux * SMK_DROP, Y0 + uy * SMK_DROP, pw, ph);
   ctx.globalAlpha = 1;

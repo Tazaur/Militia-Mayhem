@@ -253,7 +253,7 @@ function fogLit(fn) { const L = fogMatrix(), S = _sun; ctx.withMatrix(L.m, L.b, 
    edge and gone fogW px out (inside, it's in sight, where this layer never shows). g has the world transform */
 function fogEdge(g, polys) {
   if (!(CFG.fogE > 0) || !polys.length) return;
-  const n = 6, a = 1 - Math.pow(1 - CFG.fogE / 100, 1 / n);
+  const n = CFG.fogQ === 'low' ? 3 : 6, a = 1 - Math.pow(1 - CFG.fogE / 100, 1 / n);     // FOG QUALITY LOW: half the rings
   g.beginPath(); for (const P of polys) P.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)), g.closePath();
   g.lineJoin = 'round'; g.strokeStyle = `rgba(2,4,3,${a.toFixed(3)})`;
   for (let i = n; i >= 1; i--) { g.lineWidth = 2 * CFG.fogW * i / n / VZ; g.stroke(); }
@@ -287,20 +287,27 @@ function softMask(g, ex, ey, box) {
   g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
   return any;
 }
-/* the grid smoke field on the mask: each tile of the box gets fieldOcc of the sight line to its centre, drawn a tile a
-   pixel and smoothed (added to the mask). Lines that miss the smoke's tiles cost next to nothing */
-const SMK_M = document.createElement('canvas');
+/* the grid smoke field on the mask: each cell of the box gets fieldOcc of the sight line to its centre, drawn a cell a
+   pixel and smoothed (added to the mask). A cell is a smoke tile (FOG QUALITY LOW: 2 x 2 of them, a quarter of the rays).
+   Lines that miss the smoke's tiles cost next to nothing. Kept for the frame per eye (fogCut and drawSoftFog both want it) */
+const SMK_MC = [];
 function fieldMask(g, ex, ey, box) {
-  const i0 = Math.floor(box[0] / GS), j0 = Math.floor(box[1] / GS), w = Math.ceil(box[2] / GS) - i0 + 1, h = Math.ceil(box[3] / GS) - j0 + 1;
-  if (SMK_M.width < w || SMK_M.height < h) { SMK_M.width = Math.max(w, SMK_M.width); SMK_M.height = Math.max(h, SMK_M.height); SMK_M.im = null; }
-  const mg = SMK_M.getContext('2d'), im = SMK_M.im || (SMK_M.im = mg.createImageData(SMK_M.width, SMK_M.height)), d = im.data, Wm = SMK_M.width; let any = false; d.fill(0);
-  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
-    const v = fieldOcc(ex, ey, (i0 + i + 0.5) * GS, (j0 + j + 0.5) * GS), o = (j * Wm + i) * 4;
-    d[o] = d[o + 1] = d[o + 2] = 255; d[o + 3] = v * 255; if (v) any = true;
+  const G = CFG.fogQ === 'low' ? GS * 2 : GS, i0 = Math.floor(box[0] / G), j0 = Math.floor(box[1] / G), w = Math.ceil(box[2] / G) - i0 + 1, h = Math.ceil(box[3] / G) - j0 + 1;
+  const key = ex + ',' + ey + ',' + i0 + ',' + j0 + ',' + w + ',' + h + ',' + G + ',' + M.time;
+  let e = SMK_MC.find(e => e.key === key);
+  if (!e) {
+    e = SMK_MC.find(e => e.t !== M.time) || (SMK_MC[SMK_MC.length] = { c: document.createElement('canvas') });
+    const c = e.c; e.key = key; e.t = M.time;
+    if (c.width < w || c.height < h) { c.width = Math.max(w, c.width); c.height = Math.max(h, c.height); c.im = null; }
+    const mg = c.getContext('2d'), im = c.im || (c.im = mg.createImageData(c.width, c.height)), d = im.data, Wm = c.width; let any = false; d.fill(0);
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+      const v = fieldOcc(ex, ey, (i0 + i + 0.5) * G, (j0 + j + 0.5) * G), o = (j * Wm + i) * 4;
+      d[o] = d[o + 1] = d[o + 2] = 255; d[o + 3] = v * 255; if (v) any = true;
+    }
+    e.any = any; if (any) mg.putImageData(im, 0, 0);     // all of it (smoothing reads past the drawn part's edge)
   }
-  if (!any) return false;
-  mg.putImageData(im, 0, 0);     // all of it (smoothing reads past the drawn part's edge)
-  const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = true; g.globalAlpha = 1; g.drawImage(SMK_M, 0, 0, w, h, i0 * GS, j0 * GS, w * GS, h * GS); g.imageSmoothingEnabled = sm;
+  if (!e.any) return false;
+  const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = true; g.globalAlpha = 1; g.drawImage(e.c, 0, 0, w, h, i0 * G, j0 * G, w * G, h * G); g.imageSmoothingEnabled = sm;
   return true;
 }
 /* the soft layers in the vision fog: the remembered view shows through the mask (smoke + windows) inside your sight.
