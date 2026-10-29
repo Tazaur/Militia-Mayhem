@@ -405,29 +405,26 @@ function drawDowned(s) {
 const jumpK = s => s.jumpT > 0 ? Math.sin(Math.PI * clamp(1 - s.jumpT / 0.42, 0, 1)) : 0;
 /* prone legs: frame 0 lying still, 1 / 0 / 2 / 0 while crawling */
 function legFrame(s) { return s.moving ? 'leg' + [1, 0, 2, 0][Math.floor(s.walkT / 7) % 4] : 'leg0'; }
+/* without the sun's light (DYNAMIC LIGHTING off): drop shadows. Every part of a soldier or vehicle (partsOf, as the light
+   has them) as a black silhouette, laid from its base's height to its top's along the sun (SHD.k px per px up, capped), so
+   what's taller throws further; into one layer at a quarter resolution (overlaps don't darken twice; scaled up smoothed:
+   soft), laid on at one opacity. A GL surface in GL (no upload) */
+const SHD = { step: 2, kMax: 0.45, q: 0.25 }, SHG = mkG(1, 1);     // q: the layer's resolution (scaled up smoothed: the softening)
 function drawShadowLayer(vw, vis) {
-  if (SHC.width !== cv.width || SHC.height !== cv.height) { SHC.width = cv.width; SHC.height = cv.height; SHX = SHC.getContext('2d'); }
-  const main = ctx; ctx = SHX;
-  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR); ctx.imageSmoothingEnabled = false;
-  worldT(); ctx.fillStyle = '#000'; const eyes = viewEyes(vw);
-  for (const s of M.sol) {
-    if (!s.alive || s.down || s.veh || s.swim || !vis(s.x, s.y, 30) || smokeHides(eyes, s, vw)) continue;
-    const body = bodyPose(s);
-    const jk = jumpK(s), o = 1 + jk * 5, ox = s.x + 2.5 * o, oy = s.y + 3.5 * o;
-    if (s.stance === 1) spr(solShadow(legFrame(s)), ox, oy, s.a);
-    spr(solShadow(body), ox, oy, s.a);
-  }
-  worldT();
-  for (const v of M.vehicles) {
-    if (!v.active || !vis(v.x, v.y, 80)) continue;
-    if (v.type === 'nest') { ctx.beginPath(); ctx.arc(v.x + 3, v.y + 4, 21, 0, TAU); ctx.fill(); continue; }
-    ctx.save(); ctx.translate(v.x + 4, v.y + 6); ctx.rotate(v.a); rr(ctx, -v.T.hl, -v.T.hw, v.T.hl * 2, v.T.hw * 2, 8); ctx.fill(); ctx.restore();
-  }
+  const C = SHG, q = SHD.q, cw = Math.ceil(cv.width * q), ch = Math.ceil(cv.height * q); if (C.width !== cw || C.height !== ch) { C.width = cw; C.height = ch; }
+  const main = ctx, d0 = DPR, X = vw.x * d0, Y = vw.y * d0, Wd = vw.w * d0, Ht = vw.h * d0; ctx = C.getContext('2d'); DPR = d0 * q;     // drawn at q (spr, worldT read DPR)
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(X * q - 1, Y * q - 1, Wd * q + 2, Ht * q + 2); ctx.imageSmoothingEnabled = true; ctx.globalAlpha = 1;
+  const k = Math.min(SHD.kMax, 1 / Math.tan(sunEl())), ux = -Math.cos(SUN.az) * k, uy = -Math.sin(SUN.az) * k, eyes = viewEyes(vw);
+  const cast = o => { for (const p of partsOf(o)) { const b = p.b, t = p.b + p.add + artMax(p.n), n = Math.max(1, Math.ceil((t - b) * k / SHD.step)); for (let i = 0; i <= n; i++) { const h = b + (t - b) * i / n; spr(p.n, p.x + ux * h, p.y + uy * h, p.a, 1, p.fy); } } };
+  for (const s of M.sol) if (s.alive && !s.down && !s.veh && !s.swim && vis(s.x, s.y, 30) && !smokeHides(eyes, s, vw)) cast(s);
+  for (const v of M.vehicles) if (v.active && vis(v.x, v.y, 80)) cast(v);
+  worldT(); ctx.fillStyle = '#000';
   for (const f of M.flings) { if (!vis(f.x, f.y, 40)) continue; const h = Math.sin(Math.PI * f.t / f.T); ctx.beginPath(); ctx.ellipse(f.x, f.y + 4, 10 * (1 - h * 0.3), 6 * (1 - h * 0.3), 0, 0, TAU); ctx.fill(); }
-  ctx = main;
-  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = CFG.style === 'grit' ? 0.42 : 0.36;
-  ctx.drawImage(SHC, vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR, vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR);
-  ctx.globalAlpha = 1; worldT();
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'source-atop'; ctx.fillRect(X * q - 1, Y * q - 1, Wd * q + 2, Ht * q + 2); ctx.globalCompositeOperation = 'source-over';     // the colours gone: silhouettes
+  DPR = d0; ctx = main;
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = CFG.style === 'grit' ? 0.42 : 0.36; ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(C, X * q, Y * q, Wd * q, Ht * q, X, Y, Wd, Ht);
+  ctx.globalAlpha = 1; ctx.imageSmoothingEnabled = false; worldT();
 }
 function solDraw(s, n, x, y, a, sx, sy, al) {
   if (!s.dark) { spr(n, x, y, a, sx, sy, al); return; }
@@ -938,6 +935,7 @@ function feedIcon(how) {
   if (id) return [weaponIconKind(id), '#f0f0e0'];
   return ['skull', '#e8e8e0'];
 }
+const MINI_DT = 0.5;     // s between the minimap's marker updates
 function drawMinimap() {
   const { many, mw, mh, mx, my } = miniRect(), k = mw / WW;
   onGLHere(() => {     // GL: under the HUD layer, from the ground itself (a 2D copy is a readback from the GPU: a stall each time it changes)
@@ -946,21 +944,27 @@ function drawMinimap() {
     ctx.globalAlpha = 0.85; ctx.drawImage(g, 0, 0, gw, gh, mx, my, mw, mh); ctx.globalAlpha = 1;
   });
   for (const f of M.flags) { ctx.fillStyle = f.owner < 0 ? '#ddd' : TEAMHEX[f.owner]; ctx.beginPath(); ctx.arc(mx + f.x * k, my + f.y * k, 5, 0, TAU); ctx.fill(); txt(f.name.length > 1 ? 'H' : f.name, mx + f.x * k, my + f.y * k + 1, 8, '#000', 'center', 'middle', FB); }
-  const myTeams = humanTeams(), LS = LOCALS(), eyesM = LS.map(p => p.sol).filter(s => s && s.alive), fogOn = M.cfg.fog && M.cfg.fog !== 'off';
-  const mine = o => LS.some(p => p.sol === o);
-  // an enemy shows when spotted, heard firing nearby, or in sight (fog on: line of sight, not through smoke; fog off: close by)
-  const seenAt = (x, y, o) => (o && o.spotT > 0 && myTeams.has(o.spotTeam)) || (o && o.firedT > 0 && eyesM.some(e => Math.hypot(e.x - x, e.y - y) < 500))
-    || eyesM.some(e => { const ex = e.veh ? e.veh.x : e.x, ey = e.veh ? e.veh.y : e.y, d = Math.hypot(ex - x, ey - y); return fogOn ? d < 700 && sees(ex, ey, x, y) : d < 300; });
-  for (const v of M.vehicles) if (v.active) {
-    const t = vehTeam(v), crew = v.seats.find(o => o); if (t >= 0 && crew && !(M.ffa ? v.seats.some(o => o && mine(o)) : myTeams.has(t)) && !seenAt(v.x, v.y, crew)) continue;
-    ctx.fillStyle = t < 0 ? '#bbb' : t < 2 ? TEAMHEX[t] : '#ddd'; ctx.fillRect(mx + v.x * k - 3, my + v.y * k - 2, 6, 4); }
-  for (const s of M.sol) {
-    if (!s.alive) continue;
-    const friendly = M.ffa ? mine(s) : myTeams.has(s.team);
-    if (!friendly && !seenAt(s.x, s.y, s)) continue;
-    ctx.fillStyle = s.player ? CHEX[s.color] : M.ffa ? '#ff5a45' : TEAMHEX[s.team]; const r = s.player ? 3 : 1.6;
-    ctx.fillRect(mx + s.x * k - r, my + s.y * k - r, r * 2, r * 2);
+  // the markers: who's where and seen, worked out twice a second (MINI_DT: a sight line per enemy each time), drawn every
+  // frame from that; your own dot from where you are now
+  const LS = LOCALS(), mine = o => LS.some(p => p.sol === o);
+  if (!M._mm || M.time - M._mm.t >= MINI_DT || M.time < M._mm.t) {
+    const myTeams = humanTeams(), eyesM = LS.map(p => p.sol).filter(s => s && s.alive), fogOn = M.cfg.fog && M.cfg.fog !== 'off', L = [];
+    // an enemy shows when spotted, heard firing nearby, or in sight (fog on: line of sight, not through smoke; fog off: close by)
+    const seenAt = (x, y, o) => (o && o.spotT > 0 && myTeams.has(o.spotTeam)) || (o && o.firedT > 0 && eyesM.some(e => Math.hypot(e.x - x, e.y - y) < 500))
+      || eyesM.some(e => { const ex = e.veh ? e.veh.x : e.x, ey = e.veh ? e.veh.y : e.y, d = Math.hypot(ex - x, ey - y); return fogOn ? d < 700 && sees(ex, ey, x, y) : d < 300; });
+    for (const v of M.vehicles) if (v.active) {
+      const t = vehTeam(v), crew = v.seats.find(o => o); if (t >= 0 && crew && !(M.ffa ? v.seats.some(o => o && mine(o)) : myTeams.has(t)) && !seenAt(v.x, v.y, crew)) continue;
+      L.push(null, v.x, v.y, 3, 2, t < 0 ? '#bbb' : t < 2 ? TEAMHEX[t] : '#ddd'); }
+    for (const s of M.sol) {
+      if (!s.alive) continue;
+      const friendly = M.ffa ? mine(s) : myTeams.has(s.team);
+      if (!friendly && !seenAt(s.x, s.y, s)) continue;
+      const r = s.player ? 3 : 1.6; L.push(mine(s) ? s : null, s.x, s.y, r, r, s.player ? CHEX[s.color] : M.ffa ? '#ff5a45' : TEAMHEX[s.team]);
+    }
+    M._mm = { t: M.time, L };
   }
+  const L = M._mm.L;
+  for (let i = 0; i < L.length; i += 6) { const o = L[i], x = o ? o.x : L[i + 1], y = o ? o.y : L[i + 2]; if (o && !o.alive) continue; ctx.fillStyle = L[i + 5]; ctx.fillRect(mx + x * k - L[i + 3], my + y * k - L[i + 4], L[i + 3] * 2, L[i + 4] * 2); }
   if (!many && M.views[0]) { const vw = M.views[0]; ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1; ctx.strokeRect(mx + (vw.cam.x - vw.w / 2 / vw.cam.z) * k, my + (vw.cam.y - vw.h / 2 / vw.cam.z) * k, vw.w / vw.cam.z * k, vw.h / vw.cam.z * k); }
 }
 function drawScoreboard() {

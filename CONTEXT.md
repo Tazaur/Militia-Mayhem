@@ -734,3 +734,8 @@ Art drop (drop.py): atlas.png: hull4, tur_dead; atlas_m.png: tur_dead, sol_leg0,
 - PERFORMANCE › FOG QUALITY (`fogQ` 'low': fieldMask cells 2 × 2 smoke tiles, a quarter of the rays; fogEdge 3 rings instead of 6). SMOKE DETAIL (`smk` 'low': smokePuffs draws the first smoky tile of each 2 × 2 at 1.35 × the radius instead of the checkerboard; no self-shade passes; no smokeLamps). Both LOW on presets LOW and below.
 - Laptop headless in smoke, HIGH vs LOW interleaved: drawSmokes 0.43 → 0.28 ms, fieldMask 0.31 → 0.17 (it was ~1.1 before the cache).
 - Skipped, measured no gain: "units whole or hidden" fog mode (they're drawn whole already; the overlay's hole costs the same). The beam's splash light was already dropped by LIGHTS › SPOTLIGHTS ONLY (it has no cone).
+
+## Build 251
+- Minimap markers (the sight line per enemy) worked out every MINI_DT 0.5 s into M._mm, drawn each frame from it; your own dot follows you live. The ground picture was already throttled (surfMini).
+- FOG QUALITY LOW also stamps the fog memory every other frame (applyFog, vw._fmF).
+- LOWEST's drop shadows rebuilt (drawShadowLayer): each part of a soldier / vehicle (partsOf) drawn as a black silhouette, smeared from its base to its top along the sun (SHD.kMax 0.45 px per px up), into SHG (a GL surface, mkG) at a quarter resolution (DPR swapped while drawing), scaled up smoothed (the softening, no blur pass). SHC stays a 2D canvas for the menus' soldiers (uiShadowLayer). Laptop GPU LOWEST 4.6 → ~2.5–3 ms.

@@ -134,7 +134,7 @@ function applyFog(vw, vis, x0, y0, x1, y1, rv) {
   const box = sightBox(x0, y0, x1, y1, eyes), polys = eyes.map(([x, y]) => visPoly(x, y, box, null, MAP.tiled ? SUB / 2 : 5)), m = fogMemory(vw);   // dev yard: strips half a wall deep, so the wall you look at shows
   // remember what is in sight now, roofs and all
   const bx0 = Math.max(0, Math.floor(x0)), by0 = Math.max(0, Math.floor(y0)), bx1 = Math.min(WW, Math.ceil(x1)), by1 = Math.min(WH, Math.ceil(y1)), bw = bx1 - bx0, bh = by1 - by0;
-  if (bw > 0 && bh > 0) {
+  if (bw > 0 && bh > 0 && (CFG.fogQ !== 'low' || (vw._fmF = (vw._fmF || 0) + 1) & 1)) {     // FOG QUALITY LOW: every other frame
     // built whole first, then laid in with one clipped draw: layer by layer, the clip's soft edge let each lower layer
     // (walls, floors) leak a little through the roof along every sight ray, and it built up as you moved
     if (FOG_NOW.width < bw || FOG_NOW.height < bh) { FOG_NOW.width = Math.max(FOG_NOW.width, bw); FOG_NOW.height = Math.max(FOG_NOW.height, bh); }
