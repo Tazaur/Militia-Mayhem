@@ -150,25 +150,26 @@ function sceneHeights(k, parts) {
   const hz = SCENE.house; for (let y = hz.y; y < hz.y + hz.h; y += 1 / k) for (let x = hz.x; x < hz.x + hz.w; x += 1 / k) put(x, y, 40);
   return { T, W, H, k };
 }
-/* the sun on the CPU: march each px toward the sun; shadowed if something rises over the ray (top + d·tan el). Slope from the
+/* the sun on the CPU: shadowed if something toward the sun rises over the ray (top + d·tan el), found in one sweep. Slope from the
    heights' gradient: lam = (.45 + .55·max(N·L, 0)) / (.45 + .55·Lz). Out: per px the multiply colour */
 const SUN = { az: -2.36, el: 0.7, tint: [0.46, 0.5, 0.64] };
 function sunShade(HB, az = SUN.az, el = SUN.el) {
-  const { T, W, H, k } = HB, out = new Uint8ClampedArray(W * H * 4), dx = Math.cos(az), dy = Math.sin(az), te = Math.tan(el), mx = 60;
-  const Lz = Math.sin(el), Lx = Math.cos(el) * dx, Ly = Math.cos(el) * dy, sh = new Float32Array(W * H);
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const i = y * W + x, h0 = T[i]; let s = 0;
-    for (let d = 1; d < (mx / te) * k + 2; d++) { const X = Math.round(x + dx * d), Y = Math.round(y + dy * d); if (X < 0 || Y < 0 || X >= W || Y >= H) break; const r = h0 + d / k * te; if (r > mx) break; if (T[Y * W + X] > r + 0.5) { s = 1; break; } }
-    sh[i] = s;
+  const { T, W, H, k } = HB, out = new Uint8ClampedArray(W * H * 4), dx = Math.cos(az), dy = Math.sin(az), te = Math.tan(el);
+  const Lz = Math.sin(el), Lx = Math.cos(el) * dx, Ly = Math.cos(el) * dy, sh = new Float32Array(W * H), C = new Float32Array(W * H); const [tr, tg, tb] = SUN.tint;
+  // one sweep, sun side first: C = the highest shadow height reaching this px (its sun-side neighbour's C, dropping tan el per world px, or its own top)
+  const X = Math.abs(dx) >= Math.abs(dy), m = X ? Math.abs(dx) : Math.abs(dy), sa = Math.sign(X ? dx : dy), fr = (X ? dy : dx) / m, drop = te / m / k, N = X ? W : H, M = X ? H : W;
+  for (let a = sa > 0 ? N - 1 : 0; a >= 0 && a < N; a -= sa) for (let b = 0; b < M; b++) {
+    const i = X ? b * W + a : a * W + b, ua = a + sa, ub = Math.round(b + fr);
+    const c = ua >= 0 && ua < N && ub >= 0 && ub < M ? C[X ? ub * W + ua : ua * W + ub] - drop : -1;
+    sh[i] = c > T[i] + 0.5 ? 1 : 0; C[i] = Math.max(T[i], c);
   }
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const i = y * W + x, hx = (T[y * W + Math.min(W - 1, x + 1)] - T[y * W + Math.max(0, x - 1)]) * k / 2, hy = (T[Math.min(H - 1, y + 1) * W + x] - T[Math.max(0, y - 1) * W + x]) * k / 2;
-    const n = Math.hypot(hx, hy, 1), N = [-hx / n, -hy / n, 1 / n], lam = Math.min(1.25, (0.45 + 0.55 * Math.max(0, N[0] * Lx + N[1] * Ly + N[2] * Lz)) / (0.45 + 0.55 * Lz));
-    const s = sh[i]; for (let c = 0; c < 3; c++) out[i * 4 + c] = 255 * Math.min(1, lerp(1, SUN.tint[c], s) * lam); out[i * 4 + 3] = 255;
+    const lam = Math.min(1.25, (0.45 + 0.55 * Math.max(0, (Lz - hx * Lx - hy * Ly) / Math.sqrt(hx * hx + hy * hy + 1))) / (0.45 + 0.55 * Lz)), j = i * 4;
+    if (sh[i]) { out[j] = 255 * Math.min(1, tr * lam); out[j + 1] = 255 * Math.min(1, tg * lam); out[j + 2] = 255 * Math.min(1, tb * lam); } else out[j] = out[j + 1] = out[j + 2] = 255 * Math.min(1, lam); out[j + 3] = 255;
   }
   return { out, sh };
 }
-function bufCanvas(rgba, W, H) { const c = document.createElement('canvas'); c.width = W; c.height = H; c.getContext('2d').putImageData(new ImageData(rgba, W, H), 0, 0); return c; }
 
 /* the draw stack, bottom up: what each layer holds, where it comes from, its height key in the queue */
 const LAYERS = [
@@ -200,7 +201,7 @@ function orbit(el, onTap, onChange) {
   el.addEventListener('pointermove', e => {
     if (!P.has(e.pointerId)) return; P.set(e.pointerId, [e.clientX, e.clientY]);
     if (P.size > 1) CAM.zoom = clamp(z0 * dist() / pinch, 0.6, 2.5);
-    else { const dx = e.clientX - base[0], dy = e.clientY - base[1]; if (Math.abs(dx) + Math.abs(dy) > 6) moved = true; if (!moved) return; CAM.yaw = base[2] + dx * 0.4; CAM.tilt = clamp(base[3] - dy * 0.35, 0, 70); }
+    else { const dx = e.clientX - base[0], dy = e.clientY - base[1]; if (Math.abs(dx) + Math.abs(dy) > 6) moved = true; if (!moved) return; CAM.yaw = base[2] - dx * 0.4; CAM.tilt = clamp(base[3] - dy * 0.35, 0, 70); }
     onChange();
   });
   const end = e => { if (!P.delete(e.pointerId)) return; if (e.type === 'pointerup' && !moved && !P.size) onTap(tapT); if (P.size === 1) { pinch = 0; rebase(); } };
@@ -236,7 +237,7 @@ VIEWS.layers = {
       if (!ART.ok) { info.innerHTML = '<p class="muted">Could not load the game\'s atlas (open this page from the site, not a file).</p>'; return; }
       const ground = document.createElement('canvas'); ground.width = SC.W; ground.height = SC.H; paintGroundTo(ground.getContext('2d'));
       const dec = document.createElement('canvas'); dec.width = SC.W; dec.height = SC.H; paintDecalsTo(dec.getContext('2d'));
-      let shadeC = null, shadeT = -1, tP = null, jP = null, sP = [];
+      const shadeC = document.createElement('canvas'), sg = shadeC.getContext('2d'); let tP = null, jP = null, stP = null;
       const staticParts = () => [...stackParts(SCENE.jeep), ...SCENE.sols.flatMap(s => stackParts(s))].concat([{ n: 'bagarc0', x: SCENE.bags[0].x, y: SCENE.bags[0].y, a: 0, b: 0, add: 0, fy: 1 }]);
       const redraw = (t, dt) => {
         const T = SCENE.tank; T.ta = T.a + Math.sin(t * 0.6) * 1.1; T.mgA = T.ta + 0.9 + Math.sin(t * 1.7) * 0.5; T.recoil = Math.max(0, (T.recoil || 0) - dt * 2.2); if ((t % 3.2) < dt) T.recoil = 1;
@@ -245,7 +246,7 @@ VIEWS.layers = {
         if (!anim) { G(0).drawImage(ground, 0, 0); G(1).drawImage(dec, 0, 0); let g = G(2); for (const d of SCENE.dead) sprDraw(g, 'sol_dead', d.x, d.y, d.a); for (const c of SCENE.crates) crateDraw(g, c); for (let i = 0; i < 4; i++) { g.fillStyle = '#c9a23a'; g.fillRect(150 + i * 5, 190 + (i % 2) * 3, 3, 1.5); } g = G(5); for (const t of SCENE.trees) treeDraw(g, t); const hz = SCENE.house; g.fillStyle = '#6e4a36'; g.fillRect(hz.x, hz.y, hz.w, hz.h); g.fillStyle = '#5a3a2a'; for (let y = hz.y; y < hz.y + hz.h; y += 4) g.fillRect(hz.x, y, hz.w, 1); g.fillStyle = '#7e5a44'; g.fillRect(hz.x, hz.y + hz.h / 2 - 1, hz.w, 2); }
         let g = G(3); sprDraw(g, 'bagarc0', SCENE.bags[0].x, SCENE.bags[0].y, 0); for (const s of SCENE.sols) solDraw(g, s);
         g = G(4); drawParts(g, jP); drawParts(g, tP);
-        if (!shadeC || t - shadeT > 0.25) { shadeT = t; const HB = sceneHeights(0.5, [...tP, ...staticParts()]), sh = sunShade(HB); shadeC = bufCanvas(sh.out, HB.W, HB.H); }
+        { stP = stP || staticParts(); const HB = sceneHeights(0.5, [...tP, ...stP]), sh = sunShade(HB); shadeC.width = HB.W; shadeC.height = HB.H; sg.putImageData(new ImageData(sh.out, HB.W, HB.H), 0, 0); }
         g = G(6); g.imageSmoothingEnabled = true; g.drawImage(shadeC, 0, 0, SC.W, SC.H);
         g = G(7); const bf = Math.floor(t * 8) % 3; sprDraw(g, 'boom' + bf, 214, 196, t * 0.4, 0.7 + 0.1 * Math.sin(t * 9)); for (let i = 0; i < 3; i++) { const k = ((t * 0.25 + i / 3) % 1); sprDraw(g, 'smoke' + i, 224 + k * 30, 186 - k * 40, k * 2, 0.5 + k * 0.6, (1 - k) * 0.8); }
         if (T.recoil > 0.7) { const px = T.x - 4 * Math.cos(T.a) + Math.cos(T.ta) * 88, py = T.y - 4 * Math.sin(T.a) + Math.sin(T.ta) * 88; g.globalCompositeOperation = 'lighter'; sprDraw(g, 'fire1', px, py, T.ta, 1.2 * T.recoil); g.globalCompositeOperation = 'source-over'; }
@@ -269,13 +270,15 @@ VIEWS.layers = {
 };
 
 /* ---------- HEIGHTS: every painted px of every part a column from its base to its top (oblique view) ---------- */
+const SIDE = [0.72, 0.6, 0.5, 0.42, 0.36]; // column side shades, lit → away from the light
+const rgba32 = (r, g, b, k) => ((255 << 24) | ((b * k) << 16) | ((g * k) << 8) | (r * k)) >>> 0;
 const RELIEF = {
   start(info) {
     if (!ART.ok) { ART.ready(() => this.start(info)); return; }
     (this.enter = this.enter || this.make())(info);
   },
   make() {
-    const cv = $('#relief'); let g = null, info = null, what = 'tank', spin = true, t = 0, crew = true;
+    const cv = $('#relief'), off = document.createElement('canvas'); let img = null, buf = null, g = null, info = null, what = 'tank', spin = true, t = 0, crew = true;
     const O = { tank: { type: 'tank', x: 0, y: 0, a: 0, ta: 0, mgA: 0.5 }, jeep: { type: 'jeep', x: 0, y: 0, a: 0, mgA: 0 }, sol: { type: 'sol', x: 0, y: 0, a: 0, pose: 'sol_stand' } };
     const paintInfo = P => {
       info.innerHTML = `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><div class="seg" id="rW"><button data-w="tank">TANK</button><button data-w="jeep">JEEP</button><button data-w="sol">SOLDIER</button></div><button class="btn${spin ? ' on' : ''}" id="rS">TURN</button><button class="btn${crew ? ' on' : ''}" id="rC">CREW</button></div>
@@ -293,9 +296,12 @@ const RELIEF = {
         for (let y = 0; y < m[3]; y++) for (let x = 0; x < m[2]; x++) {
           if (!painted(m, x, y)) continue; const i = ((m[1] + y) * ART.w + m[0] + x) * 4, top = q.b + q.add + heightPx(m, x, y);
           let bot = q.b; if (un) { const ux = Math.floor(un[4] + q.at[0] + (x - m[4])), uy = Math.floor(un[5] + q.at[1] + (y - m[5]) * q.fy); bot = ux >= 0 && uy >= 0 && ux < un[2] && uy < un[3] ? q.b - heightPx(un, ux, uy) : q.b; }
-          cols.push({ q, lx: x - m[4] + 0.5, ly: (y - m[5] + 0.5) * q.fy, top, bot: Math.max(0, bot), r: ART.ap[i], g: ART.ap[i + 1], b: ART.ap[i + 2] });
+          cols.push({ q, lx: x - m[4] + 0.5, ly: (y - m[5] + 0.5) * q.fy, top, bot: Math.max(0, bot), fc: rgba32(ART.ap[i], ART.ap[i + 1], ART.ap[i + 2], 1), sc: SIDE.map(k => rgba32(ART.ap[i], ART.ap[i + 1], ART.ap[i + 2], k)) });
         }
       }
+      // a side is never seen when the same part's neighbour on that side covers it (top ≥, bottom ≤): edges 0..3 face −y, +x, +y, −x
+      const at = new Map(); for (const c of cols) { let m = at.get(c.q); if (!m) at.set(c.q, m = new Map()); m.set(c.lx + ',' + c.ly, c); }
+      for (const c of cols) { c.hid = 0; const m = at.get(c.q); [[0, -1], [1, 0], [0, 1], [-1, 0]].forEach(([ox, oy], e) => { const o = m.get((c.lx + ox) + ',' + (c.ly + oy)); if (o && o.top >= c.top && o.bot <= c.bot) c.hid |= 1 << e; }); }
       paintInfo(P); t = 0;
     };
     const draw = (dt) => {
@@ -307,16 +313,33 @@ const RELIEF = {
       g.fillStyle = '#0a0f08'; g.fillRect(0, 0, W, H);
       // ground grid
       g.strokeStyle = 'rgba(125,220,106,.09)'; g.lineWidth = 1; for (let k = -100; k <= 100; k += 10) for (const s of [0, 1]) { const p = (x, y) => { const rx = x * cy - y * sy, ry = x * sy + y * cy; return [W / 2 + rx * sc, H * 0.58 + ry * sp * sc]; }; const [a, b] = s ? [p(k, -100), p(k, 100)] : [p(-100, k), p(100, k)]; g.beginPath(); g.moveTo(...a); g.lineTo(...b); g.stroke(); }
-      const list = [], qs = P;
-      // re-place each column by its part's current pose (parts keep their order in P)
-      let pi = -1, last = null; for (const c of cols) { if (c.q !== last) { pi++; last = c.q; } const q = qs[pi] || c.q, cs = Math.cos(q.a), sn = Math.sin(q.a), wx = q.x + c.lx * cs - c.ly * sn, wy = q.y + c.lx * sn + c.ly * cs, rx = wx * cy - wy * sy, ry = wx * sy + wy * cy, top = c.top - c.q.b + q.b, bot = Math.max(0, c.bot - c.q.b + q.b); list.push([ry, rx, top, bot, c]); }
-      list.sort((a, b) => a[0] - b[0] || a[3] - b[3]);
-      const s1 = Math.max(1, sc * 1.02);
-      for (const [ry, rx, top, bot, c] of list) {
-        const X = W / 2 + rx * sc, Yg = H * 0.58 + ry * sp * sc, Yt = Yg - top * cp * sc, Yb = Yg - bot * cp * sc;
-        const sh = 0.55; g.fillStyle = `rgb(${c.r * sh | 0},${c.g * sh | 0},${c.b * sh | 0})`; if (Yb > Yt) g.fillRect(X, Yt, s1, Yb - Yt + 0.5);
-        g.fillStyle = `rgb(${c.r},${c.g},${c.b})`; g.fillRect(X, Yt - sp * sc * 0.5, s1, Math.max(1, sp * sc));
+      // each painted px is a column standing on its own rotated 1×1 footprint: project the footprint's 4 corners (once per part
+      // angle), fill the sides facing the camera (darker the more they face away from the light, upper left), then the top.
+      // Painter's order = distance along the view ray: ry·cos(pitch) + top·sin(pitch) (from above: by height; from the side: by depth).
+      // Filled by a small scanline rasterizer straight into an ImageData (thousands of tiny canvas paths per frame are far too slow).
+      const d = cv.width / W, BW = cv.width, BH = cv.height; if (!img || img.width !== BW || img.height !== BH) { img = new ImageData(BW, BH); buf = new Uint32Array(img.data.buffer); off.width = BW; off.height = BH; } buf.fill(0);
+      const list = [], qs = P, ft = new Map(), K = sc * d, scr = (x, y) => [(x * cy - y * sy) * K * 0.52, (x * sy + y * cy) * sp * K * 0.52];
+      const foot = q => {
+        let f = ft.get(q.a); if (f) return f;
+        const A = scr(Math.cos(q.a), Math.sin(q.a)), B = scr(-Math.sin(q.a), Math.cos(q.a)), C = [[-A[0] - B[0], -A[1] - B[1]], [A[0] - B[0], A[1] - B[1]], [A[0] + B[0], A[1] + B[1]], [-A[0] + B[0], -A[1] + B[1]]], sides = [];
+        for (let i = 0; i < 4; i++) { const a = C[i], b = C[(i + 1) % 4], mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2; let nx = b[1] - a[1], ny = a[0] - b[0]; if (nx * mx + ny * my < 0) { nx = -nx; ny = -ny; } const n = Math.hypot(nx, ny) || 1; if (ny / n > 0.02) sides.push([a, b, Math.round((1 + nx / n) * 2), 1 << i]); }
+        ft.set(q.a, f = { C, sides }); return f;
+      };
+      let pi = -1, last = null; for (const c of cols) { if (c.q !== last) { pi++; last = c.q; } const q = qs[pi] || c.q, cs = Math.cos(q.a), sn = Math.sin(q.a), wx = q.x + c.lx * cs - c.ly * sn, wy = q.y + c.lx * sn + c.ly * cs, rx = wx * cy - wy * sy, ry = wx * sy + wy * cy, top = c.top - c.q.b + q.b, bot = Math.max(0, c.bot - c.q.b + q.b); list.push([ry * cp + top * sp, BW / 2 + rx * K, BH * 0.58 + (ry * sp - top * cp) * K, (top - bot) * cp * K, c, foot(q)]); }
+      list.sort((a, b) => a[0] - b[0]);
+      const Q = new Float32Array(8), poly = col => { // convex quad Q → buf, sampled at px centres
+        let y0 = Math.min(Q[1], Q[3], Q[5], Q[7]), y1 = Math.max(Q[1], Q[3], Q[5], Q[7]); y0 = Math.max(0, Math.ceil(y0 - 0.5)); y1 = Math.min(BH - 1, Math.floor(y1 - 0.5));
+        for (let y = y0; y <= y1; y++) {
+          const yc = y + 0.5; let xl = 1e9, xr = -1e9;
+          for (let i = 0, j = 3; i < 4; j = i++) { const ay = Q[j * 2 + 1], by = Q[i * 2 + 1]; if ((ay <= yc) !== (by <= yc)) { const x = Q[j * 2] + (yc - ay) / (by - ay) * (Q[i * 2] - Q[j * 2]); if (x < xl) xl = x; if (x > xr) xr = x; } }
+          const xa = Math.max(0, Math.ceil(xl - 0.5)), xb = Math.min(BW - 1, Math.floor(xr - 0.5)), o = y * BW; for (let x = xa; x <= xb; x++) buf[o + x] = col;
+        }
+      };
+      for (const [, X, Y, h, c, f] of list) {
+        if (h > 0.3) for (const [a, b, k, e] of f.sides) { if (c.hid & e) continue; Q[0] = X + a[0]; Q[1] = Y + a[1]; Q[2] = X + b[0]; Q[3] = Y + b[1]; Q[4] = Q[2]; Q[5] = Q[3] + h; Q[6] = Q[0]; Q[7] = Q[1] + h; poly(c.sc[k]); }
+        const C = f.C; for (let i = 0; i < 4; i++) { Q[i * 2] = X + C[i][0]; Q[i * 2 + 1] = Y + C[i][1]; } poly(c.fc);
       }
+      off.getContext('2d').putImageData(img, 0, 0); g.drawImage(off, 0, 0, W, H);
       g.font = '600 11px Chakra Petch'; g.fillStyle = '#a49f86'; g.fillText('drag to turn · pinch to zoom · columns = painted height', 10, H - 10);
     };
     loop(cv, (dt) => draw(dt));
