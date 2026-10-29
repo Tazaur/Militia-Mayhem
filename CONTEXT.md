@@ -749,3 +749,7 @@ Art drop (drop.py): atlas.png: hull4, tur_dead; atlas_m.png: tur_dead, sol_leg0,
 - A preset is { v, p, pr, rv, bs, lp, th, in, nd, L: [layers] }; a layer is a tone (t), noise (n), FM (f) or crackle (c) voice; keys left out take SFXK's defaults. The header comment in 1c_sfx.js lists every key.
 - sfx2(name) plays SFXU[name] (sent from the Sound Lab, localStorage mmgl.sfxlab, any name, either sound mix) else SFXD[name] (modern mix), else returns false → classic code. Engines: SFXU.eng_tank / eng_car else ENGD. The music's thump / burst are sfxVoice calls now.
 - sound/index.html loads ../src/1c_sfx.js directly, so the lab plays exactly the game's code. Library, undo, A/B compare, offline-rendered waveform, autosave (localStorage mmsfx.lab). Export lines "name: { … }," paste straight into SFXD / ENGD.
+
+## Build 255: crackle fix, Sound Lab scope pinned + live
+- sfxRun's crackle grains lacked k:'n', so they went down the oscillator path and threw (non-finite filter cutoff) — explosions / cannon / wall crack lost their crackle and any layers after it in 254. Fixed.
+- Sound Lab: the waveform sits in the (now one-line) sticky header with length + peak; it redraws while a slider is dragged (one offline render in flight, the latest settings drawn next; B cached).

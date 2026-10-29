@@ -16,9 +16,12 @@
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--fb);font-size:15px;line-height:1.4;-webkit-tap-highlight-color:transparent}
 button,select,input,textarea{font:inherit;color:inherit}
-header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:8px;padding:calc(8px + env(safe-area-inset-top)) 16px 8px;background:var(--bg);border-bottom:1px solid var(--line)}
-header h1{font-family:var(--fd);font-weight:400;font-size:18px;margin:0;flex:1;min-width:0;line-height:1.1}
-header h1 small{display:block;font-family:var(--fb);font-size:11px;color:var(--dim);letter-spacing:1.5px;text-transform:uppercase;margin-top:2px}
+header{position:sticky;top:0;z-index:5;padding:calc(6px + env(safe-area-inset-top)) 16px 6px;background:var(--bg);border-bottom:1px solid var(--line)}
+header .hr{display:flex;align-items:center;gap:8px;max-width:728px;margin:0 auto;position:relative}
+#scope{max-width:728px;margin:6px auto 0}
+header .btn.ic{width:30px;min-height:28px;font-size:12px;border-radius:8px}
+header h1{font-family:var(--fd);font-weight:400;font-size:15px;margin:0;flex:none;min-width:0;line-height:1.1}
+header #stats{flex:1;min-width:0;font-family:var(--fm);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 main{max-width:760px;margin:0 auto;padding:10px 16px 110px}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;padding:0 11px;border:1px solid var(--line2);border-radius:10px;background:var(--panel);cursor:pointer;font-weight:600;font-size:13px;letter-spacing:.4px;white-space:nowrap}
 .btn:disabled{opacity:.4}
@@ -59,7 +62,7 @@ details[open]>summary::before{content:'▾ '}
 .lh b{font-family:var(--fd);font-weight:400;font-size:14px;color:var(--c)}
 .lh .sum{flex:1;min-width:0;font-family:var(--fm);font-size:11px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
 /* the scope */
-#wave{display:block;width:100%;height:96px;border-radius:10px;background:var(--panel2);cursor:pointer;touch-action:manipulation}
+#wave{display:block;width:100%;height:76px;border-radius:10px;background:var(--panel2);cursor:pointer;touch-action:manipulation}
 /* bottom bar: always in reach of a thumb */
 .bar{position:fixed;left:0;right:0;bottom:0;z-index:6;background:color-mix(in srgb,var(--bg) 92%,transparent);border-top:1px solid var(--line);padding:8px 16px calc(8px + env(safe-area-inset-bottom));backdrop-filter:blur(6px)}
 .bar .in{max-width:760px;margin:0 auto;display:flex;gap:8px;align-items:center}
@@ -78,8 +81,8 @@ dialog::backdrop{background:#000a}
 </style>
 </head>
 <body>
-<header>
-  <h1>Sound Lab<small>Militia Mayhem · synth presets</small></h1>
+<header><div class="hr">
+  <h1>Sound Lab</h1><span class="muted" id="stats">…</span>
   <button class="btn ic" id="undo" title="Undo">↶</button><button class="btn ic" id="redo" title="Redo">↷</button>
   <button class="btn ic" id="mbtn" title="More">⋯</button>
   <div class="menu" id="menu">
@@ -92,7 +95,8 @@ dialog::backdrop{background:#000a}
     <button data-m="clear">Remove all from game</button>
     <hr>
     <button data-m="reset">Reset library</button>
-  </div>
+  </div></div>
+  <div id="scope"><canvas id="wave" title="Tap to play"></canvas></div>
 </header>
 <main id="main"></main>
 <div class="bar"><div class="in">
@@ -258,7 +262,11 @@ function playAB() { const a = cur().P, b = cmpP(); if (!b || a.e || b.e) return;
 /* ---------- the scope: render offline with the same code and draw it ---------- */
 const OC = window.OfflineAudioContext || window.webkitOfflineAudioContext, SR = 22050;
 let OB = null, waveT = 0, waveN = 0;
-function wave() { clearTimeout(waveT); waveT = setTimeout(drawWave, 120); }
+let waveBusy = false, waveAgain = false;
+function wave() { if (waveBusy) { waveAgain = true; return; } waveBusy = true; requestAnimationFrame(() => drawWave().catch(() => { }).then(() => { waveBusy = false; if (waveAgain) { waveAgain = false; wave(); } })); }
+/* B is re-rendered only when it (or the preview) changes */
+let bKey = '', bBuf = null;
+async function renderB(B) { const k = JSON.stringify([B, S.X]); if (k !== bKey) { bBuf = await render1(B); bKey = k; } return bBuf; }
 async function render1(P) {
   if (!OC || !P) return null;
   const len = P.e ? 1.5 : Math.min(8, sfxLen(P) + (P.rv ? 0.9 : 0.1)), c = new OC(1, Math.ceil(SR * len), SR);
@@ -272,7 +280,7 @@ async function render1(P) {
 async function drawWave() {
   const cv = $('#wave'); if (!cv) return;
   const n = ++waveN, P = cur().P, B = S.cmp ? cmpP() : null;
-  let ba, bb; try { ba = await render1(P); bb = B ? await render1(B) : null; } catch (e) { return; }
+  let ba, bb; try { ba = await render1(P); bb = B ? await renderB(B) : null; } catch (e) { return; }
   if (n !== waveN || !ba) return;
   const d = Math.min(2, devicePixelRatio || 1), W = cv.clientWidth * d, Hh = cv.clientHeight * d; cv.width = W; cv.height = Hh;
   const g = cv.getContext('2d'), dur = Math.max(ba.duration, bb ? bb.duration : 0), mid = Hh / 2;
@@ -287,7 +295,7 @@ async function drawWave() {
   if (bb) one(bb, '#4c8dff', 0.55);
   one(ba, '#e0b72c', 0.9);
   const db = peak > 0 ? 20 * Math.log10(peak) : -99;
-  $('#stats').innerHTML = (P.e ? 'engine · speed ' + S.X.sp.toFixed(2) : sfxLen(P).toFixed(2) + ' s') + ' · peak <span style="color:' + (db > -1 ? 'var(--red)' : 'inherit') + '">' + db.toFixed(1) + ' dB</span>' + (db > -1 ? ' (the limiter squashes it)' : '') + (bb ? ' · <span style="color:var(--blue)">B</span>' : '');
+  $('#stats').innerHTML = (P.e ? 'speed ' + S.X.sp.toFixed(2) : sfxLen(P).toFixed(2) + ' s') + ' · <span style="color:' + (db > -1 ? 'var(--red)' : 'inherit') + '" title="' + (db > -1 ? 'loud: the limiter squashes it' : 'peak') + '">' + db.toFixed(1) + ' dB</span>' + (bb ? ' · <span style="color:var(--blue)">B</span>' : '');
 }
 
 /* ---------- controls ---------- */
@@ -330,8 +338,7 @@ function render() {
     <div class="row" style="margin-top:8px"><button class="btn sm" id="dup">Duplicate</button><button class="btn sm" id="ren">Rename</button>
       ${p.b ? `<button class="btn sm" id="rev"${changed(p) ? '' : ' disabled'}>Revert to game</button>` : `<button class="btn sm" id="del">Delete</button>`}
       <span class="sp" style="flex:1"></span>${p.b ? '<span class="tag">game sound</span>' : ''}${inGame ? '<span class="tag g">in game</span>' : ''}</div></div>
-  <div class="card"><canvas id="wave" title="Tap to play"></canvas><div class="row" style="margin-top:6px"><span class="muted" id="stats" style="flex:1">…</span></div>
-    <div class="row" style="margin-top:6px"><span class="muted">Compare</span><select id="cmp"><option value="">—</option><option value="#pin"${S.cmp === '#pin' ? ' selected' : ''}${pinB ? '' : ' disabled'}>Pinned snapshot</option>${opts(S.cmp)}</select>
+  <div class="card"><div class="row"><span class="muted">Compare</span><select id="cmp"><option value="">—</option><option value="#pin"${S.cmp === '#pin' ? ' selected' : ''}${pinB ? '' : ' disabled'}>Pinned snapshot</option>${opts(S.cmp)}</select>
       <button class="btn sm" id="pin" title="Remember this version to compare against">Pin</button><button class="btn sm" id="pb">▶ B</button>${P.e ? '' : '<button class="btn sm" id="pab">A → B</button>'}</div></div>
   <div class="card"><h2>${P.e ? 'Engine' : 'Sound'}<span class="sp"></span></h2>
     <div class="row" style="margin-bottom:6px"><span class="muted">Plays as</span><select id="gn">${targets}</select><select id="cat">${CATS.map(([c, nm]) => `<option value="${c}"${c === p.cat ? ' selected' : ''}>${nm}</option>`).join('')}</select></div>`;
@@ -388,7 +395,6 @@ main.addEventListener('focusin', e => { if (e.target.classList.contains('val')) 
 main.addEventListener('click', e => {
   const b = e.target.closest('button,canvas,.sum'); if (!b) return;
   const P = cur().P, i = +b.dataset.i;
-  if (b.id === 'wave') return play();
   if (b.dataset.tog !== undefined) { const L = P.L[+b.dataset.tog]; L._c = !L._c; render(); save(); return; }
   if (b.dataset.add) { P.L.push(clone(NEWL[b.dataset.add])); render(); done(true); return; }
   switch (b.dataset.l) {
@@ -471,6 +477,7 @@ $('#play').onclick = () => play();
 $('#auto').onclick = () => { S.auto = !S.auto; $('#auto').classList.toggle('on', S.auto); save(); };
 $('#loop').onclick = () => { S.loop = !S.loop; $('#loop').classList.toggle('on', S.loop); save(); if (S.loop) play(); else clearTimeout(loopT); };
 $('#vary').onclick = vary;
+$('#wave').onclick = () => play();
 addEventListener('keydown', e => { if (e.target.closest('input,textarea,select')) return; if (e.code === 'Space') { e.preventDefault(); play(); } if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') { e.preventDefault(); hist(e.shiftKey ? 1 : -1); } });
 addEventListener('resize', wave);
 document.addEventListener('visibilitychange', () => { if (document.hidden) { engOff(); clearTimeout(loopT); } });

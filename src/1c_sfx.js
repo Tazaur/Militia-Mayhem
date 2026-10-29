@@ -82,7 +82,7 @@ function sfxRun(A, P, out, now, vol) {
     if (L0.m) continue;
     const L = Object.assign({}, SFXK[L0.k], L0);
     if (L.k === 'c') {
-      const N = Object.assign({}, SFXK.n, { ft: 'bandpass', q: L.q });
+      const N = Object.assign({}, SFXK.n, { k: 'n', ft: 'bandpass', q: L.q });
       for (let i = 0; i < L.c; i++) { const d = Math.pow(Math.random(), 1.6) * L.sp; N.f = L.f + Math.random() * (L.f2 - L.f); N.t = L.t + Math.random() * L.tr; sfxVoice(A, N, out, now + L.d + d, g * L.v * (1 - d / L.sp) * (0.5 + Math.random() * 0.5), pk); }
       continue;
     }
