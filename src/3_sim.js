@@ -755,6 +755,8 @@ function updateSmokeField(dt) {
     const i = k % W, j = (k - i) / W; if (i < i0) i0 = i; if (i >= i1) i1 = i + 1; if (j < j0) j0 = j; if (j >= j1) j1 = j + 1;
   }
   act.length = w; f.box = [i0, j0, i1, j1];
+  const BW = (W + 3) >> 2, nb = BW * ((H + 3) >> 2), Bk = f.Bk && f.Bk.length === nb ? f.Bk : (f.Bk = new Uint8Array(nb)); f.BW = BW; Bk.fill(0);     // 4 × 4 blocks holding any smoke: sight lines skip the rest (fieldOcc)
+  for (let q = 0; q < w; q++) { const k = act[q], i = k % W; Bk[(((k - i) / W) >> 2) * BW + (i >> 2)] = 1; }
 }
 /* how much the field's smoke takes off the sight line (x0, y0)-(x1, y1): thickness times the length crossed (in
    tiles), times SMK_K (two thick tiles: all of it). Cut to the box of tiles holding smoke, then tile by tile */
@@ -772,8 +774,20 @@ function fieldOcc(x0, y0, x1, y1) {
   const L = Math.hypot(dx, dy) / GS, si = Math.sign(dx), sj = Math.sign(dy), ddx = si ? GS / Math.abs(dx) : Infinity, ddy = sj ? GS / Math.abs(dy) : Infinity, A = f.A, W = f.W;
   let i = clamp(Math.floor((x0 + dx * t0) / GS), f.box[0], f.box[2] - 1), j = clamp(Math.floor((y0 + dy * t0) / GS), f.box[1], f.box[3] - 1), t = t0, o = 0;
   let tx = si ? ((i + (si > 0)) * GS - x0) / dx : Infinity, ty = sj ? ((j + (sj > 0)) * GS - y0) / dy : Infinity;
+  const Bk = f.Bk, BW = f.BW;
   while (t < t1) {
-    const tn = Math.min(tx, ty, t1), a = A[j * W + i]; if (a) { o += (a < 1 ? a : 1) * (tn - t) * L; if (o >= full) return 1; }
+    const bi = i >> 2, bj = j >> 2;
+    if (Bk && !Bk[bj * BW + bi]) {     // an empty 4 × 4 block: on to where the line leaves it
+      const ex = si ? ((si > 0 ? bi + 1 : bi) * 4 * GS - x0) / dx : Infinity, ey = sj ? ((sj > 0 ? bj + 1 : bj) * 4 * GS - y0) / dy : Infinity, te = Math.min(ex, ey);
+      if (te >= t1) break;
+      t = te;
+      i = ex <= ey ? (si > 0 ? bi * 4 + 4 : bi * 4 - 1) : clamp(Math.floor((x0 + dx * t) / GS), bi * 4, bi * 4 + 3);
+      j = ey <= ex ? (sj > 0 ? bj * 4 + 4 : bj * 4 - 1) : clamp(Math.floor((y0 + dy * t) / GS), bj * 4, bj * 4 + 3);
+      tx = si ? ((i + (si > 0)) * GS - x0) / dx : Infinity; ty = sj ? ((j + (sj > 0)) * GS - y0) / dy : Infinity;
+      if (i < f.box[0] || j < f.box[1] || i >= f.box[2] || j >= f.box[3]) break;
+      continue;
+    }
+    const tn = Math.min(tx, ty, t1), a = A[j * W + i]; if (a && tn > t) { o += (a < 1 ? a : 1) * (tn - t) * L; if (o >= full) return 1; }
     t = tn; if (tx < ty) { tx += ddx; i += si; } else { ty += ddy; j += sj; }
     if (i < f.box[0] || j < f.box[1] || i >= f.box[2] || j >= f.box[3]) break;
   }

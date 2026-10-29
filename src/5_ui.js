@@ -938,8 +938,11 @@ function feedIcon(how) {
 }
 function drawMinimap() {
   const { many, mw, mh, mx, my } = miniRect(), k = mw / WW;
-  ctx.fillStyle = 'rgba(8,20,8,0.82)'; ctx.fillRect(mx - 3, my - 3, mw + 6, mh + 6);
-  ctx.globalAlpha = 0.85; ctx.drawImage(groundMini(), 0, 0, groundMini().width, groundMini().height, mx, my, mw, mh); ctx.globalAlpha = 1;
+  onGLHere(() => {     // GL: under the HUD layer, from the ground itself (a 2D copy is a readback from the GPU: a stall each time it changes)
+    const g = GL ? surfMini(ground, 640) : groundMini(), gw = GL ? g._w : g.width, gh = GL ? g._h : g.height;
+    ctx.fillStyle = 'rgba(8,20,8,0.82)'; ctx.fillRect(mx - 3, my - 3, mw + 6, mh + 6);
+    ctx.globalAlpha = 0.85; ctx.drawImage(g, 0, 0, gw, gh, mx, my, mw, mh); ctx.globalAlpha = 1;
+  });
   for (const f of M.flags) { ctx.fillStyle = f.owner < 0 ? '#ddd' : TEAMHEX[f.owner]; ctx.beginPath(); ctx.arc(mx + f.x * k, my + f.y * k, 5, 0, TAU); ctx.fill(); txt(f.name.length > 1 ? 'H' : f.name, mx + f.x * k, my + f.y * k + 1, 8, '#000', 'center', 'middle', FB); }
   const myTeams = humanTeams(), LS = LOCALS(), eyesM = LS.map(p => p.sol).filter(s => s && s.alive), fogOn = M.cfg.fog && M.cfg.fog !== 'off';
   const mine = o => LS.some(p => p.sol === o);

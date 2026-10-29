@@ -951,7 +951,7 @@ function render() {
   else if (state === 'netmenu') uiScaled(drawNetMenu);
   else if (state === 'lobby') uiScaled(drawLobby);
   else {
-    if (M.views.length > 1) { ctx.fillStyle = '#0a0a08'; for (const vw of M.views) { if (vw.x > 0) ctx.fillRect(vw.x - 2, vw.y, 4, vw.h); if (vw.y > 0) ctx.fillRect(vw.x, vw.y - 2, vw.w, 4); } }
+    if (M.views.length > 1) onGL(() => { ctx.fillStyle = '#0a0a08'; for (const vw of M.views) { if (vw.x > 0) ctx.fillRect(vw.x - 2, vw.y, 4, vw.h); if (vw.y > 0) ctx.fillRect(vw.x, vw.y - 2, vw.w, 4); } });     // on GL: under the minimap
     for (const vw of hudViews()) drawViewHUD(vw);
     drawGlobalHUD();
     if (M.scoreHeld && state === 'play') uiScaled(drawScoreboard);
@@ -968,6 +968,8 @@ function render() {
 }
 /* f drawn on the GL screen (as ctx), when GL is on */
 function onGL(f) { if (!GL) return f(); const m = ctx; ctx = GLSCR.getContext('2d'); try { screenT(); f(); } finally { ctx = m; screenT(); } }
+/* the same, in the HUD's transform as it stands (under the whole HUD layer: only for what nothing on the HUD is meant to cover) */
+function onGLHere(f) { if (!GL) return f(); const t = ctx.getTransform(), m = ctx; ctx = GLSCR.getContext('2d'); try { ctx.setTransform(t.a, t.b, t.c, t.d, t.e, t.f); f(); } finally { ctx = m; ctx.setTransform(t.a, t.b, t.c, t.d, t.e, t.f); } }
 /* settings › FPS COUNTER: top right, under the safe area */
 function drawFps() {
   screenT(); const u = uiU(), t = `${Math.round(DEV.fps)} FPS` + (CFG.fps > 1 ? ` · ${DEV.um.toFixed(1)} / ${DEV.rm.toFixed(1)} MS` : '');
