@@ -36,6 +36,7 @@ const dayClock = () => { const h = ((6 + DEV.ph / TAU * 24) % 24 + 24) % 24; ret
 function devTime(dt, um, rm) {
   if (M && M.dev && state === 'play') dayCycle(dt); const e = 0.08; DEV.fps += ((dt > 0 ? 1 / dt : 60) - DEV.fps) * e; DEV.um += (um - DEV.um) * e; DEV.rm += (rm - DEV.rm) * e;
   const P = GPUP, now = performance.now(); P.wk = Math.max(P.wk, dt * 1000); if (now - P.wt > 1000) { P.worst = P.wk; P.wk = 0; P.wt = now; }     // the slowest frame of the last second
+  recFrame(dt, um, rm);
 }
 /* settings › FPS COUNTER › GPU STAGES (GL): every pipe() hook in the frame closes a GPU timer named for the work just done
    (grouped: GPUG), read back a few frames late; averaged a frame over each second (GPUP.out: [label, ms] slowest first) */

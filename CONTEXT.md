@@ -701,3 +701,7 @@ Art drop (drop.py): atlas.png: hull4, tur_dead; atlas_m.png: tur_dead, sol_leg0,
 - Hull `use` stripped again (the editor's saved table had re-added hull0–3 → under_hull).
 - Heightmap editor: Sprite menu › Animation: new from the open sprite, add frames (picker), mirror / rest / reorder / remove per frame, delete, Play (3D view, the sprite on it, at walking speed). Stands on lists animations. Rename / delete keep the frames in step; strays keep animation frames. Fixed: menus' left position was inside a comment.
 - Guide: HEIGHTS soldier walks (WALK), jeep gunner standing; sys.js stance demos and tables are stand / prone.
+
+## Build 238
+- Recorder (`src/5f_rec.js`): Settings › Video › Performance › RECORDER. ON wraps every global function (self / with-calls time, calls; ones over 1000 calls a frame are let go after the first second, so overhead stays small), hooks GL / Canvas2D methods (draws, KB uploaded, texture uploads, framebuffer switches, sync points, per-method counts), logs events (sfx, explosions, kills, spawns, enter / exit, state changes, toasts, long tasks, errors). Per frame: dt / update / draw / entity counts; per second: functions, GL methods, GPU stages (FPS counter 3), heap; the 40 slowest frames with their functions. OFF (or 10 min) saves to IndexedDB `mm-rec` (newest 5) and shares / downloads `mm-rec-b<build>-<date>.json`.
+- Viewer: `perf/index.html` (/perf/): reads `mm-rec` (same origin) or a file; summary, timeline (tap a second), functions, slowest frames, GL / canvas calls, events, settings.

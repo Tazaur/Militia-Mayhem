@@ -454,6 +454,7 @@ const SETS = {
   fogW: slider('EDGE WIDTH', 'fogW', 8, 64, 4, ' PX'),
   res: slider('RENDER RESOLUTION', 'res', 50, 100, 5, '%', () => resize()),
   lightQ: choice('LIGHTING QUALITY', 'lightQ', [[0, 'LOW'], [1, 'MEDIUM'], [2, 'HIGH']]),
+  rec: { n: 'RECORDER', o: [[false, 'OFF'], [true, 'ON']], get: () => REC.on, set: v => v ? recStart() : recStop(), lab: v => v ? 'RECORDING · OFF SAVES IT' : null },     // 5f_rec: a log of the frame, to share
   fps: choice('FPS COUNTER', 'fps', [[0, 'OFF'], [1, 'FPS'], [2, 'FPS + FRAME TIMES'], ...(GL ? [[3, 'FPS + GPU STAGES']] : [])]),
   minimap: choice('MINIMAP', 'minimap', [[true, 'ON'], [false, 'OFF']]),
   teams: { ...choice('TEAM COLORS', 'teamColors', [['player', 'PLAYER COLOR'], ['classic', 'BLUE VS RED']]), note: () => inMatch() ? '  (NEXT MATCH)' : '' },
@@ -469,7 +470,7 @@ const SETS = {
   tAuto: { n: 'DRAG TO AIM', o: [['on', 'AIMS + FIRES'], ['off', 'AIMS ONLY'], ['range', 'FIRES IN RANGE']], get: () => TOUCH.auto, set: v => { TOUCH.auto = v; store.set('autofire', v); } }
 };
 /* core tabs (title row), each with its pages (sub tabs, the row under it); Q / E or LB / RB step through every page */
-const SET_TABS = [['VIDEO', [['GRAPHICS', ['style', 'sun', 'clearLos', 'fullscreen', 'camera']], ['FOG OF WAR', ['fogStyle', 'fogD', 'fogK', 'fogE', 'fogW']], ['PERFORMANCE', ['res', 'lightQ']]]],
+const SET_TABS = [['VIDEO', [['GRAPHICS', ['style', 'sun', 'clearLos', 'fullscreen', 'camera']], ['FOG OF WAR', ['fogStyle', 'fogD', 'fogK', 'fogE', 'fogW']], ['PERFORMANCE', ['res', 'lightQ', 'rec']]]],
   ['AUDIO', [['VOLUME', ['volMaster', 'volSfx', 'volMus']], ['SOUND', ['sound']]]], ['HUD', [['DISPLAY', ['fps', 'minimap', 'teams']]]],
   ['CONTROLS', [['TOUCH', ['tSize', 'tAlpha', 'tFireX', 'tFireY', 'tLfire', 'tAuto']], ['BINDINGS', null]]]];
 const SET_PAGES = SET_TABS.flatMap(([, P], i) => P.map((_, j) => [i, j]));
@@ -961,6 +962,7 @@ function render() {
     netOverlay();
   }
   if (CFG.fps && state !== 'menu' && !(M.dev && DEV.stats)) drawFps();
+  drawRec();
   if (SET.open) uiScaled(drawSettings);
   if (GL) gxFlush();
 }

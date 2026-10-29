@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Militia Mayhem · Recordings</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* the recorder's viewer (src/5f_rec.js): the game's recordings, kept in this browser, or a file */
+:root{
+  --bg:#0d120b;--panel:#1a2316;--panel2:#212c1c;--line:#2f3c28;--line2:#3d4d34;
+  --ink:#ece4c8;--dim:#a49f86;--faint:#6f725f;--acc:#e0b72c;--acc2:#f5d670;--blue:#4c8dff;--red:#ef5a44;--green:#7ddc6a;--cyan:#5fd3d0;--violet:#b48cff;--orange:#ff9a3c;
+  --fd:'Black Ops One',system-ui;--fb:'Chakra Petch',system-ui,sans-serif;--fm:'JetBrains Mono',ui-monospace,monospace;color-scheme:dark
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--fb);font-size:15px;line-height:1.45}
+button,select,input{font:inherit;color:inherit}
+header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;background:var(--bg);border-bottom:1px solid var(--line)}
+header h1{font-family:var(--fd);font-weight:400;font-size:18px;margin:0;flex:1;min-width:0;line-height:1.1}
+header h1 small{display:block;font-family:var(--fb);font-size:11px;color:var(--dim);letter-spacing:1.5px;text-transform:uppercase;margin-top:2px}
+main{max-width:1100px;margin:0 auto;padding:14px 16px 60px}
+.btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px;border:1px solid var(--line2);border-radius:10px;background:var(--panel);cursor:pointer;font-weight:600;font-size:13px;letter-spacing:.5px}
+.btn.on{background:var(--acc);color:#1a1405;border-color:var(--acc)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin:12px 0}
+h2{font-family:var(--fd);font-weight:400;font-size:16px;letter-spacing:.5px;margin:22px 0 6px;color:var(--acc2)}
+.muted{color:var(--dim);font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.stat{background:var(--panel2);border-radius:10px;padding:8px 10px}
+.stat b{display:block;font-family:var(--fm);font-size:20px;font-weight:600}
+.stat span{font-size:11.5px;color:var(--dim);letter-spacing:.5px}
+.tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{position:sticky;top:0;text-align:left;font-size:11px;letter-spacing:1px;color:var(--faint);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--line2);cursor:pointer;white-space:nowrap;background:var(--panel)}
+td{padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+td.n{font-family:var(--fm);text-align:right}
+td.k{font-family:var(--fm);color:var(--ink)}
+.bar{height:6px;border-radius:3px;background:var(--acc);min-width:1px}
+canvas{display:block;width:100%;touch-action:pan-y}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.lst{display:flex;flex-direction:column;gap:6px}
+.lst .btn{justify-content:space-between;height:auto;padding:10px 12px;text-align:left}
+.tag{font-family:var(--fm);font-size:11px;padding:2px 6px;border-radius:6px;background:var(--panel2);color:var(--dim)}
+details{border-top:1px solid var(--line);padding:8px 0}
+summary{cursor:pointer;font-family:var(--fm);font-size:13px}
+input[type=search]{height:34px;border-radius:9px;border:1px solid var(--line2);background:var(--panel2);padding:0 10px;min-width:0;flex:1}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin:0 4px 0 10px;vertical-align:-1px}
+</style>
+</head>
+<body>
+<header><h1>Recordings<small>Militia Mayhem · what eats the frame</small></h1><label class="btn">Open file<input id="file" type="file" accept=".json,application/json" hidden></label></header>
+<main id="main">
+  <div class="card"><p style="margin:0 0 8px">Record in the game: <b>Settings › Video › Performance › Recorder: ON</b>, play, then set it <b>OFF</b>. It saves here (this browser) and opens the share sheet so you can send the file.</p><div id="list" class="lst"></div></div>
+  <div id="view"></div>
+</main>
+<script>
+const $ = s => document.querySelector(s), esc = t => String(t).replace(/[&<>"]/g, c => '&#' + c.charCodeAt(0) + ';');
+const f1 = v => (Math.round(v * 10) / 10).toFixed(1), f2 = v => v.toFixed(2), sum = a => a.reduce((x, y) => x + y, 0), avg = a => a.length ? sum(a) / a.length : 0;
+const pct = (a, p) => { const s = [...a].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(s.length * p))] || 0; };
+const fmtT = ms => { const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+/* the ones kept in this browser (the game saves its newest 5 under mm-rec) */
+function db() { return new Promise((ok, no) => { const r = indexedDB.open('mm-rec', 1); r.onupgradeneeded = () => r.result.createObjectStore('recs', { keyPath: 'id' }); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); }); }
+async function list() {
+  let all = []; try { const d = await db(); all = await new Promise(ok => { const q = d.transaction('recs').objectStore('recs').getAll(); q.onsuccess = () => ok(q.result); }); } catch (e) { }
+  all.sort((a, b) => b.id < a.id ? -1 : 1);
+  $('#list').innerHTML = all.length ? all.map((r, i) => `<button class="btn" data-i="${i}"><span>${esc(r.name)}</span><span class="tag">${(r.txt.length / 1048576).toFixed(1)} MB</span></button>`).join('') : '<span class="muted">None in this browser yet (they are kept where the game ran: open this page in the same browser, or open the file).</span>';
+  $('#list').onclick = e => { const b = e.target.closest('button'); if (b) show(JSON.parse(all[+b.dataset.i].txt)); };
+  if (all.length && !location.hash) show(JSON.parse(all[0].txt));
+}
+$('#file').onchange = async () => { const f = $('#file').files[0]; if (f) show(JSON.parse(await f.text())); };
+document.addEventListener('dragover', e => e.preventDefault()); document.addEventListener('drop', async e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) show(JSON.parse(await f.text())); });
+
+let R = null, SEL = null;
+function show(r) {
+  R = r; SEL = null; const F = R.frames, n = F.dt.length, dt = F.dt, other = dt.map((d, i) => Math.max(0, d - F.upd[i] - F.draw[i]));
+  const slow = dt.filter(d => d > 34).length, fps = 1000 / avg(dt), D = R.dev;
+  const evk = {}; for (const e of R.ev) evk[e[1]] = (evk[e[1]] || 0) + 1;
+  $('#view').innerHTML = `
+  <h2>BUILD ${R.build} · ${fmtT(R.ms)} RECORDED</h2>
+  <div class="muted">${esc(R.date.slice(0, 16).replace('T', ' '))} · ${esc(D.gpu || 'GPU unknown')} · ${D.w}×${D.h} @${D.dpr} (canvas ${D.cv.join('×')}) · ${D.cores || '?'} cores${D.mem ? ' · ' + D.mem + ' GB' : ''} · ${D.gl ? 'WebGL' : '2D'}${R.note ? ' · ' + esc(R.note) : ''}</div>
+  <div class="grid" style="margin-top:10px">
+    ${[[f1(fps), 'AVG FPS'], [f1(pct(dt, 0.5)), 'MEDIAN FRAME MS'], [f1(pct(dt, 0.95)), '95% FRAME MS'], [f1(pct(dt, 0.99)), '99% FRAME MS'], [(100 * slow / n).toFixed(1) + '%', 'FRAMES OVER 34 MS'],
+      [f2(avg(F.upd)), 'UPDATE MS / FRAME'], [f2(avg(F.draw)), 'DRAW MS / FRAME (CPU)'], [f2(avg(other)), 'OTHER MS (GPU WAIT, BROWSER)'], [Math.round(avg(F.glDraw)), 'GL DRAWS / FRAME'], [Math.round(avg(F.glKB)) + ' KB', 'UPLOADED / FRAME'], [f1(avg(F.glFB)), 'FRAMEBUFFER SWITCHES'], [f1(avg(F.glSync)), 'GL SYNCS / FRAME'], [f1(avg(F.c2d)), 'CANVAS 2D CALLS'], [Math.round(avg(F.calls)), 'GAME CALLS / FRAME']].map(([v, k]) => `<div class="stat"><b>${v}</b><span>${k}</span></div>`).join('')}
+  </div>
+  <h2>TIMELINE</h2>
+  <div class="card"><div class="legend muted"><i style="background:var(--blue)"></i>update<i style="background:var(--acc)"></i>draw (CPU)<i style="background:#5b6450"></i>other: GPU / browser<i style="background:var(--red)"></i>kills / blasts<i style="background:var(--violet)"></i>long tasks / errors</div>
+  <canvas id="tl" height="200" style="margin-top:6px"></canvas><canvas id="ct" height="90"></canvas><div class="muted" id="tlInfo">Tap the timeline: that second's functions and events. Lines: 16.7 ms (60 fps) and 33 ms (30 fps).</div></div>
+  <div id="secV"></div>
+  <h2>FUNCTIONS</h2>
+  <div class="muted">Per frame over the whole recording. <b>Self</b>: in the function itself (and in const helpers it calls); <b>with calls</b>: everything under it. <span class="tag">LET GO</span> ones were called over 1000× a frame: timed only in the first seconds (their time then goes to their caller).</div>
+  <div class="row" style="margin:8px 0"><input type="search" id="fq" placeholder="filter functions"></div>
+  <div class="card tw" style="max-height:520px;overflow:auto;padding:0"><table id="ft"></table></div>
+  <h2>SLOWEST FRAMES</h2><div class="card" id="worst"></div>
+  <h2>GL / CANVAS CALLS</h2><div class="muted">Per frame: every GL / canvas method the game called (sync points stall the GPU on phones: getError, getParameter, readPixels, getQueryParameter).</div><div class="card tw" style="padding:0"><table id="pc"></table></div>
+  <h2>EVENTS</h2><div class="row muted" id="evk" style="margin-bottom:6px">${Object.entries(evk).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<button class="btn" data-k="${esc(k)}">${esc(k)} <span class="tag">${v}</span></button>`).join('')}</div>
+  <div class="card tw" style="max-height:360px;overflow:auto;padding:0"><table id="evt"></table></div>
+  <h2>SETTINGS</h2><div class="card muted" style="font-family:var(--fm);font-size:12px;word-break:break-all">${esc(JSON.stringify(R.cfg))}</div>`;
+  fnTable(); worst(); pcTable(); evTable(null); timeline();
+  $('#fq').oninput = fnTable; $('#evk').onclick = e => { const b = e.target.closest('button'); if (!b) return; const on = !b.classList.contains('on'); document.querySelectorAll('#evk .btn').forEach(x => x.classList.remove('on')); if (on) b.classList.add('on'); evTable(on ? b.dataset.k : null); };
+  scrollTo(0, 0);
+}
+let FS = 1;
+function fnTable() {
+  const n = R.frames.dt.length, q = ($('#fq').value || '').toLowerCase(), fr = sum(R.frames.dt) / n;
+  const rows = R.fns.filter(f => !q || f[0].toLowerCase().includes(q)).map(f => ({ k: f[0], s: f[1] / n, t: f[2] / n, c: f[4] ? f[4] : f[3] / n, hot: f[4] }));
+  rows.sort((a, b) => FS === 1 ? b.s - a.s : FS === 2 ? b.t - a.t : b.c - a.c); const mx = Math.max(...rows.map(r => r.s), 0.001);
+  $('#ft').innerHTML = `<tr><th>FUNCTION</th><th data-s="1">SELF MS${FS === 1 ? ' ▾' : ''}</th><th></th><th data-s="2">WITH CALLS${FS === 2 ? ' ▾' : ''}</th><th data-s="3">CALLS${FS === 3 ? ' ▾' : ''}</th><th>% OF FRAME</th></tr>`
+    + rows.slice(0, 300).map(r => `<tr><td class="k">${esc(r.k)}${r.hot ? ' <span class="tag">LET GO</span>' : ''}</td><td class="n">${r.s.toFixed(3)}</td><td style="min-width:70px;width:90px"><div class="bar" style="width:${(100 * r.s / mx).toFixed(1)}%"></div></td><td class="n">${r.t.toFixed(3)}</td><td class="n">${r.c < 10 ? r.c.toFixed(2) : Math.round(r.c)}</td><td class="n">${(100 * r.s / fr).toFixed(1)}</td></tr>`).join('');
+  $('#ft').querySelectorAll('th[data-s]').forEach(t => t.onclick = () => { FS = +t.dataset.s; fnTable(); });
+}
+function worst() {
+  const C = R.cols.slice(4);
+  $('#worst').innerHTML = R.worst.map(w => { const ev = R.ev.filter(e => Math.abs(e[0] - w.t) < 400 && e[1] !== 'sfx').slice(0, 12), sf = R.ev.filter(e => Math.abs(e[0] - w.t) < 400 && e[1] === 'sfx').map(e => e[2]);
+    return `<details><summary>${f1(w.dt)} ms at ${fmtT(w.t)} · update ${f1(w.upd)} · draw ${f1(w.draw)}</summary>
+    <div class="muted" style="margin:6px 0">${C.map((c, i) => c + ' ' + Math.round(w.cnt[i])).join(' · ')}</div>
+    ${ev.length || sf.length ? `<div class="muted" style="margin-bottom:6px">around it: ${ev.map(e => esc(e.slice(1).join(' '))).join(' · ')}${sf.length ? ' · sounds: ' + esc([...new Set(sf)].join(', ')) : ''}</div>` : ''}
+    <div class="tw"><table><tr><th>FUNCTION</th><th>SELF MS</th><th>WITH CALLS</th><th>CALLS</th></tr>${w.fns.map(f => `<tr><td class="k">${esc(f[0])}</td><td class="n">${f2(f[1])}</td><td class="n">${f2(f[2])}</td><td class="n">${f[3]}</td></tr>`).join('')}</table></div></details>`; }).join('');
+}
+function pcTable() {
+  const T = {}; let fr = 0; for (const s of R.sec) { fr += s.frames; for (const k in s.pc || {}) T[k] = (T[k] || 0) + s.pc[k]; }
+  const sync = /^(getError|getParameter|readPixels|getQueryParameter|clientWaitSync|finish|getImageData)$/;
+  $('#pc').innerHTML = '<tr><th>METHOD</th><th>PER FRAME</th></tr>' + Object.entries(T).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<tr><td class="k" style="${sync.test(k) ? 'color:var(--red)' : ''}">${esc(k)}${sync.test(k) ? ' <span class="tag">SYNC</span>' : ''}</td><td class="n">${f1(v / Math.max(1, fr))}</td></tr>`).join('');
+}
+function evTable(k) {
+  const E = R.ev.filter(e => !k || e[1] === k).slice(0, 3000);
+  $('#evt').innerHTML = '<tr><th>TIME</th><th>EVENT</th><th>DETAIL</th></tr>' + E.map(e => `<tr><td class="n">${fmtT(e[0])}.${String(e[0] % 1000).padStart(3, '0')}</td><td class="k">${esc(e[1])}</td><td>${esc(e.slice(2).join(' · '))}</td></tr>`).join('');
+}
+const RED = new Set(['kill', 'explosion', 'destroyVehicle', 'destroyStatic']), VIO = new Set(['longtask', 'error']);
+function timeline() {
+  const c = $('#tl'), c2 = $('#ct'), F = R.frames, n = F.dt.length, d = devicePixelRatio || 1, W = c.clientWidth, H = 200, H2 = 90;
+  for (const [cv, h] of [[c, H], [c2, H2]]) { cv.width = W * d; cv.height = h * d; cv.style.height = h + 'px'; }
+  const g = c.getContext('2d'); g.scale(d, d); const T = R.ms || F.t[n - 1] || 1, X = t => t / T * W, mx = Math.min(100, Math.max(40, pct(F.dt, 0.995) * 1.1)), Y = v => H - 14 - v / mx * (H - 24);
+  g.fillStyle = '#141b11'; g.fillRect(0, 0, W, H);
+  // per pixel column: the worst frame in it, split update / draw / other
+  const col = new Array(Math.ceil(W)).fill(-1); for (let i = 0; i < n; i++) { const x = Math.floor(X(F.t[i])); if (col[x] < 0 || F.dt[i] > F.dt[col[x]]) col[x] = i; }
+  col.forEach((i, x) => { if (i < 0) return; const u = F.upd[i], r = F.draw[i], o = Math.max(0, F.dt[i] - u - r);
+    g.fillStyle = '#4c8dff'; g.fillRect(x, Y(u), 1, Y(0) - Y(u)); g.fillStyle = '#e0b72c'; g.fillRect(x, Y(u + r), 1, Y(u) - Y(u + r)); g.fillStyle = '#5b6450'; g.fillRect(x, Y(u + r + o), 1, Y(u + r) - Y(u + r + o)); });
+  g.strokeStyle = 'rgba(125,220,106,.6)'; g.setLineDash([4, 4]); for (const v of [16.7, 33.3]) { g.beginPath(); g.moveTo(0, Y(v)); g.lineTo(W, Y(v)); g.stroke(); } g.setLineDash([]);
+  g.fillStyle = '#a49f86'; g.font = '10px JetBrains Mono'; g.fillText(Math.round(mx) + ' ms', 4, 11); g.fillText('16.7', 4, Y(16.7) - 2); g.fillText('33', 4, Y(33.3) - 2);
+  for (const e of R.ev) if (RED.has(e[1]) || VIO.has(e[1])) { g.fillStyle = RED.has(e[1]) ? '#ef5a44' : '#b48cff'; g.fillRect(X(e[0]), H - 10, 1.5, 8); }
+  if (SEL !== null) { g.fillStyle = 'rgba(245,214,112,.18)'; const s = R.sec[SEL], s0 = SEL ? R.sec[SEL - 1].t : 0; g.fillRect(X(s0), 0, Math.max(2, X(s.t) - X(s0)), H); }
+  // counts: soldiers, particles, shots, GL draws (each to its own max)
+  const g2 = c2.getContext('2d'); g2.scale(d, d); g2.fillStyle = '#141b11'; g2.fillRect(0, 0, W, H2);
+  [['parts', '#ff9a3c'], ['sol', '#7ddc6a'], ['proj', '#5fd3d0'], ['glDraw', '#b48cff']].forEach(([k, cl], j) => {
+    const a = F[k], m = Math.max(1, ...a); g2.strokeStyle = cl; g2.beginPath(); for (let x = 0; x < W; x += 2) { const i = col[x] >= 0 ? col[x] : null; if (i === null) continue; const y = H2 - 4 - a[i] / m * (H2 - 16); x ? g2.lineTo(x, y) : g2.moveTo(x, y); } g2.stroke();
+    g2.fillStyle = cl; g2.font = '10px JetBrains Mono'; g2.fillText(`${k} ≤${Math.round(m)}`, 4 + j * 92, 11); });
+  c.onclick = e => { const b = c.getBoundingClientRect(), t = (e.clientX - b.left) / W * T; SEL = R.sec.findIndex(s => s.t >= t); if (SEL < 0) SEL = R.sec.length - 1; timeline(); second(); };
+}
+function second() {
+  const s = R.sec[SEL], s0 = SEL ? R.sec[SEL - 1].t : 0, k = Math.max(1, s.frames), fr = R.frames.dt.filter((_, i) => R.frames.t[i] > s0 && R.frames.t[i] <= s.t);
+  const ev = R.ev.filter(e => e[0] > s0 && e[0] <= s.t), evc = {}; for (const e of ev) { const key = e[1] === 'sfx' ? 'sfx ' + e[2] : e[1]; evc[key] = (evc[key] || 0) + 1; }
+  $('#secV').innerHTML = `<div class="card"><b>${fmtT(s0)} – ${fmtT(s.t)}</b> <span class="muted">· ${s.frames} frames · avg ${f1(avg(fr))} ms · worst ${f1(Math.max(0, ...fr))} ms${s.mem ? ' · heap ' + s.mem + ' MB' : ''} · ${esc(s.st || '')}</span>
+  ${s.gpu ? `<div class="muted" style="margin-top:4px">GPU: ${s.gpu.map(([a, b]) => esc(a) + ' ' + f2(b)).join(' · ')}</div>` : ''}
+  <div class="muted" style="margin:6px 0">${Object.entries(evc).sort((a, b) => b[1] - a[1]).map(([a, b]) => esc(a) + ' ×' + b).join(' · ') || 'no events'}</div>
+  <div class="tw"><table><tr><th>FUNCTION</th><th>SELF MS / FRAME</th><th>WITH CALLS</th><th>CALLS / FRAME</th></tr>${[...s.f].sort((a, b) => b[1] - a[1]).slice(0, 30).map(f => `<tr><td class="k">${esc(f[0])}</td><td class="n">${(f[1] / k).toFixed(3)}</td><td class="n">${(f[2] / k).toFixed(3)}</td><td class="n">${(f[3] / k).toFixed(1)}</td></tr>`).join('')}</table></div></div>`;
+}
+addEventListener('resize', () => { if (R) timeline(); });
+list();
+</script>
+</body>
+</html>
