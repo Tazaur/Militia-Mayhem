@@ -66,13 +66,13 @@ function stackParts(o) {
   const hpart = (n, x, y, a, p = {}) => {
     if (!A[n]) return; const P = sunP(n), u = ART.USE[n], un = u && A[u] ? u : null, rest = Math.round(hUnder(p.rx ?? x, p.ry ?? y)), f = Math.max(p.min || 0, rest);
     const q = { n, x, y, a, rest: f, under: un ? artMax(un, true) : 0, lift: P.lift || 0, b: f + (un ? artMax(un, true) : 0) + (P.lift || 0), add: (p.add || 0), fy: p.fy || 1, who: p.who, un, at: p.at || [0, 0], keep: !!p.keep, why: p.why || '' };
-    if (p.keep) stk.push(q); out.push(q);
+    if (p.keep) stk.push(q); out.push(q); return q;
   };
   const W = (lx, ly) => [o.x + lx * Math.cos(o.a) - ly * Math.sin(o.a), o.y + lx * Math.sin(o.a) + ly * Math.cos(o.a)];
   if (o.type === 'tank') {
     const px = o.x - 4 * Math.cos(o.a), py = o.y - 4 * Math.sin(o.a), kick = (o.recoil || 0) * 20;
-    for (const i of [0, 1]) { const n = 'track0', m = A[n], fy = i ? 1 : -1, lx = 0.3 + m[4] - m[2] / 2, ly = [-23.5, 24.5][i] + fy * (m[5] - m[3] / 2); const [x, y] = W(lx, ly); hpart(n, x, y, o.a, { fy, at: [lx, ly], why: 'on the hull\'s underside' }); }
-    hpart('hull0', o.x, o.y, o.a, { keep: 1, why: 'kept: others stand on it' });
+    let tb = 0; for (const i of [0, 1]) { const n = 'track0', m = A[n], fy = i ? 1 : -1, lx = 0.3 + m[4] - m[2] / 2, ly = [-23.5, 24.5][i] + fy * (m[5] - m[3] / 2); const [x, y] = W(lx, ly); tb = Math.max(tb, hpart(n, x, y, o.a, { fy, at: [lx, ly], why: 'hangs to the ground from the underside' }).b); }
+    hpart('hull0', o.x, o.y, o.a, { keep: 1, min: tb, why: 'floats at its tracks\' base; kept: others stand on it' });
     if (o.crew) for (const sd of [-17, 17]) { const [x, y] = W(-30, sd); hpart('sol_sit', x, y, o.ta, { who: 1, why: 'rider on the deck' }); }
     hpart('tur_gun', px - Math.cos(o.ta) * kick, py - Math.sin(o.ta) * kick, o.ta, { rx: px, ry: py, why: 'rests under the turret pivot, +4 air gap' });
     hpart('tur', px, py, o.ta, { keep: 1, why: 'kept: on the hull' });

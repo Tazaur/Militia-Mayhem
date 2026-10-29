@@ -495,7 +495,7 @@ const underOf = n => { const u = USE[n]; return u && ATLAS[u] ? u : null; };    
 function hpart(n, x, y, a, o = {}) {         // o: min (start at least), add, rx / ry (rest point), keep (others stand on it), who (the crewman), fy (-1 mirrored), at (its pivot off its underside's: hund)
   if (!ATLAS[n]) return; const P = sunP(n), un = underOf(n), f = Math.max(o.min || 0, Math.round(hUnder(o.rx ?? x, o.ry ?? y)));
   const b = f + (un ? artMax(un, true) : 0) + (P.lift || 0), add = (o.add || 0) + (P.add || 0), fy = o.fy || 1, q = { n, x, y, a, b, add, who: o.who, fy, un: un && [un, n, [...(o.at || [0, 0]), fy]] };     // un: what it stands on, hanging from its base
-  if (o.keep) _stk.push(q); if (_pp) _pp.push(q); else hspr(n, x, y, a, b, add, fy, un && undQ(...q.un));
+  if (o.keep) _stk.push(q); if (_pp) _pp.push(q); else hspr(n, x, y, a, b, add, fy, un && undQ(...q.un)); return q;
 }
 /* a thing's parts, bottom up, each standing on what's under it (worked out once a frame): what the height pass draws,
    and where its guns, crew and top are */
@@ -523,8 +523,8 @@ function vehParts(v) {
   if (v.type === 'nest') { hpart(mg, mx, my, v.mgA, { ...mount, min: SUNB.mgNest }); crew(0); return; }
   if (v.type === 'tank') {
     const [px, py] = turretPivot(v), kick = clamp(v.recoil, 0, 1) * KICK, tf = turFrame(v);
-    for (const [n, fy, x, y, lx, ly] of tracks(v)) hpart(n, x, y, v.a, { fy, at: [lx, ly] });     // on the hull's underside, beside its pivot
-    hpart('hull' + hullFrame(v), v.x, v.y, v.a, { keep: 1 }); crew(2); crew(3);
+    let tb = 0; for (const [n, fy, x, y, lx, ly] of tracks(v)) { const q = hpart(n, x, y, v.a, { fy, at: [lx, ly] }); if (q) tb = Math.max(tb, q.b); }     // on the hull's underside, beside its pivot
+    hpart('hull' + hullFrame(v), v.x, v.y, v.a, { keep: 1, min: tb }); crew(2); crew(3);     // the hull floats at its tracks' base (only the tracks hang to the ground: the underside paints nothing else)
     hpart('tur_gun' + tf, px - Math.cos(v.ta) * kick, py - Math.sin(v.ta) * kick, v.ta, { rx: px, ry: py }); hpart('tur' + tf, px, py, v.ta, { keep: 1 });     // the gun rests on the hull under the turret
     hpart(mg, mx, my, v.mgA, mount); crew(1);
   } else {
