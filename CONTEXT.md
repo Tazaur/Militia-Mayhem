@@ -735,7 +735,11 @@ Art drop (drop.py): atlas.png: hull4, tur_dead; atlas_m.png: tur_dead, sol_leg0,
 - Laptop headless in smoke, HIGH vs LOW interleaved: drawSmokes 0.43 → 0.28 ms, fieldMask 0.31 → 0.17 (it was ~1.1 before the cache).
 - Skipped, measured no gain: "units whole or hidden" fog mode (they're drawn whole already; the overlay's hole costs the same). The beam's splash light was already dropped by LIGHTS › SPOTLIGHTS ONLY (it has no cone).
 
-## Build 251
+## Build 252
 - Minimap markers (the sight line per enemy) worked out every MINI_DT 0.5 s into M._mm, drawn each frame from it; your own dot follows you live. The ground picture was already throttled (surfMini).
 - FOG QUALITY LOW also stamps the fog memory every other frame (applyFog, vw._fmF).
 - LOWEST's drop shadows rebuilt (drawShadowLayer): each part of a soldier / vehicle (partsOf) drawn as a black silhouette, smeared from its base to its top along the sun (SHD.kMax 0.45 px per px up), into SHG (a GL surface, mkG) at a quarter resolution (DPR swapped while drawing), scaled up smoothed (the softening, no blur pass). SHC stays a 2D canvas for the menus' soldiers (uiShadowLayer). Laptop GPU LOWEST 4.6 → ~2.5–3 ms.
+
+## Build 253
+- drawSkirt's dashed map edge stroked only where it's in the box (each side its visible part, lineDashOffset from strokeRect's run round the edge so the dashes don't move): it built every dash round the whole map, twice a frame (the world and FOG_OUT), whenever the view reached past an edge. Laptop 0.22 → 0.065 ms; applyFog 0.35 → 0.23.
+- Measured and skipped: caching the statics' sun heights (sunHeights is 0.12 ms on the laptop, ~5 static boxes in view; the cost is the units' parts, which move).

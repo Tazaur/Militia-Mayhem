@@ -266,7 +266,17 @@ function drawSkirt(x0, y0, x1, y1) {
   for (const r of rs) if (r[2] > 0 && r[3] > 0) ctx.fillRect(r[0], r[1], r[2], r[3]);
   ctx.fillStyle = 'rgba(40,6,2,0.38)';
   for (const r of rs) if (r[2] > 0 && r[3] > 0) ctx.fillRect(r[0], r[1], r[2], r[3]);
-  ctx.save(); ctx.strokeStyle = 'rgba(255,90,60,0.55)'; ctx.lineWidth = 3; ctx.setLineDash([18, 12]); ctx.strokeRect(-2, -2, WW + 4, WH + 4); ctx.restore();
+  // the map's dashed edge, only where it's in the box (x0..y1): each side its part, dashed on from where strokeRect's
+  // one run round the edge would have it (the same dashes as the camera moves)
+  ctx.save(); ctx.strokeStyle = 'rgba(255,90,60,0.55)'; ctx.lineWidth = 3; ctx.setLineDash([18, 12]);
+  const L = WW + 4, Hh = WH + 4, m = 4;
+  for (const [ax, ay, dx, dy, n, o] of [[-2, -2, 1, 0, L, 0], [WW + 2, -2, 0, 1, Hh, L], [WW + 2, WH + 2, -1, 0, L, L + Hh], [-2, WH + 2, 0, -1, Hh, 2 * L + Hh]]) {
+    const ex = ax + dx * n, ey = ay + dy * n; if (Math.max(ax, ex) < x0 - m || Math.min(ax, ex) > x1 + m || Math.max(ay, ey) < y0 - m || Math.min(ay, ey) > y1 + m) continue;
+    const lo = dx ? (dx > 0 ? x0 - m - ax : ax - x1 - m) : (dy > 0 ? y0 - m - ay : ay - y1 - m), hi = dx ? (dx > 0 ? x1 + m - ax : ax - x0 + m) : (dy > 0 ? y1 + m - ay : ay - y0 + m);
+    const t0 = Math.max(0, lo), t1 = Math.min(n, hi); if (t1 <= t0) continue;
+    ctx.lineDashOffset = o + t0; ctx.beginPath(); ctx.moveTo(ax + dx * t0, ay + dy * t0); ctx.lineTo(ax + dx * t1, ay + dy * t1); ctx.stroke();
+  }
+  ctx.restore();
 }
 function paintGround() {
   const grit = CFG.style === 'grit', P = SNOWY() ? (grit ? PALS.snowGrit : PALS.snow) : (PALS[CFG.style] || PALS.classic), RF = ROOFS[CFG.style] || ROOFS.classic;
