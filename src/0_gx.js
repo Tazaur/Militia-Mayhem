@@ -90,7 +90,7 @@ class GXGrad {
 }
 class GXPat { constructor(img, rep) { this.img = img; this.rep = rep; } setTransform() { gxWarn('pattern transform'); } }
 /* ---------------- the batch ---------------- */
-const GXB = { cap: 0, F: null, U: null, I: null, icap: 0, nv: 0, ni: 0, tgt: null, bl: 0, st: 0, sc: [0, 0, 1, 1], slots: [], ok: false, fbo: undefined, prog: null, bb: [0, 0, 0, 0], dst: null, mask: null, cm: null };
+const GXB = { cap: 0, F: null, U: null, I: null, icap: 0, nv: 0, ni: 0, tgt: null, bl: 0, st: 0, sc: [0, 0, 1, 1], slots: [], ok: false, fbo: undefined, prog: null, bb: [0, 0, 0, 0], dst: null, mask: null, cm: null, tb: [], ts: [] };
 const GXP = { k: 0, mode: 0, slot: 0, col: 0, gr: 0, r0: 0, ia: 1, ib: 0, ic: 0, id: 1, ie: 0, if: 0, x0: 0, y0: 0, dx: 0, dy: 0, ir: 1, pw: 1, ph: 1 };
 let GXR = null, GXK = 0, GXFR = 0;
 /* blend modes: [src rgb, dst rgb, src a, dst a]; u: unbounded (cleared outside the shape), m: multiply (two passes; one onto
@@ -204,7 +204,7 @@ function gxBindTarget(s) {
   const g = GL, B = GXB;
   if (!B.ok) {
     g.bindVertexArray(GXR.vao); g.disable(g.DEPTH_TEST); g.disable(g.CULL_FACE); g.enable(g.BLEND); g.enable(g.SCISSOR_TEST); g.blendEquation(g.FUNC_ADD);
-    g.colorMask(true, true, true, true); g.disable(g.STENCIL_TEST); B.stOn = false; B.ok = true; B.fbo = undefined; B.prog = null; B.blk = null;
+    g.colorMask(true, true, true, true); g.disable(g.STENCIL_TEST); B.stOn = false; B.ok = true; B.fbo = undefined; B.prog = null; B.blk = null; B.tb.length = B.ts.length = 0;     // other GL work may have bound units 8–14
   }
   const fb = s.scr ? null : s.fb;
   if (B.fbo !== fb) { g.bindFramebuffer(g.FRAMEBUFFER, fb); B.fbo = fb; B.vw = null; }
@@ -223,10 +223,14 @@ function gxSten(o) {
 const GXCLIP = () => [GL.EQUAL, 0x80, 0x80, 0, GL.KEEP, GL.KEEP];
 function gxBindSlots() {
   const g = GL, S = GXB.slots;
-  for (let i = 0; i < 6; i++) { g.activeTexture(g.TEXTURE8 + i); g.bindTexture(g.TEXTURE_2D, i < S.length ? S[i].t : null); g.bindSampler(8 + i, i < S.length ? S[i].s : null); }     // the unused emptied: a target still bound on one is a feedback loop
-  g.activeTexture(g.TEXTURE14); g.bindTexture(g.TEXTURE_2D, GXR.GRT); g.bindSampler(14, GXR.S[1]);
-  if (!GXB.u15) { g.activeTexture(g.TEXTURE15); g.bindTexture(g.TEXTURE_2D, null); }     // uploads leave theirs there: a target's own is a feedback loop (MK, D read it)
-  g.activeTexture(g.TEXTURE0);
+  const T = GXB.tb, M = GXB.ts; let a = false;     // units 8–14 as last bound: only the changes go to GL
+  for (let i = 0; i < 7; i++) {     // the unused emptied: a target still bound on one is a feedback loop
+    const t = i < 6 ? (i < S.length ? S[i].t : null) : GXR.GRT, s = i < 6 ? (i < S.length ? S[i].s : null) : GXR.S[1];
+    if (T[i] !== t) { g.activeTexture(g.TEXTURE8 + i); g.bindTexture(g.TEXTURE_2D, t); T[i] = t; a = true; }
+    if (M[i] !== s) { g.bindSampler(8 + i, s); M[i] = s; }
+  }
+  if (!GXB.u15) { g.activeTexture(g.TEXTURE15); g.bindTexture(g.TEXTURE_2D, null); a = true; }     // uploads leave theirs there: a target's own is a feedback loop (MK, D read it)
+  if (a) g.activeTexture(g.TEXTURE0);
 }
 function gxUpload() {
   const g = GL, B = GXB;
@@ -629,7 +633,9 @@ class GX {
     const subs = this._subs(a), M = this._m, sc = Math.sqrt(Math.abs(M[0] * M[3] - M[1] * M[2]));
     let hw = this.lineWidth * sc / 2, al = this.globalAlpha; if (!(hw > 0)) return; if (hw < 0.5) { al *= hw * 2; hw = 0.5; }
     const opq = al >= 0.999 && typeof this.strokeStyle === 'string' && gxColor(this.strokeStyle)[3] >= 0.999 && (this.globalCompositeOperation === 'source-over' || this.globalCompositeOperation === 'destination-out');
-    const m = this._pre(!opq); if (!m) return; if (!this._paint(this.strokeStyle, al)) { GXB.ni = GXB.i0; return; }
+    const strip = !opq && !this._dash.length && this.globalCompositeOperation === 'source-over' && subs.length === 1 && gxStrip(subs[0], hw, this.lineCap, this.lineJoin, this.miterLimit);
+    const m = this._pre(!opq && !strip); if (!m) return; if (!this._paint(this.strokeStyle, al)) { GXB.ni = GXB.i0; return; }
+    if (strip) { gxStripOut(strip, hw); this._post(m, 0); return; }     // covers each px once: batched like an opaque one
     const dash = this._dash.length ? this._dash.map(v => v * sc) : null;
     for (const s of subs) {
       if (s.p.length < 4) continue;
@@ -739,7 +745,7 @@ class GX {
     gxBindTarget(sf); g.disable(g.BLEND); gxSten(null); gxUse(P, sf); g.uniform1i(P.G, 8); g.uniform4f(P.uD, xu[0], xu[1], xu[2], xu[3]); g.uniform3f(P.uOn, on[0] ? 1 : 0, on[1] ? 1 : 0, on[2] ? 1 : 0);
     const Gw = src._w, Gh = src._h, kx = sw / dw, ky = sh / dh;
     at.forEach(([sx, sy], i) => g.uniform4f(P['uM' + i], kx / Gw, ky / Gh, (sx - dx * kx) / Gw, 1 - (sy + (H - dy) * ky) / Gh));
-    g.activeTexture(g.TEXTURE8); g.bindTexture(g.TEXTURE_2D, src.tex); g.bindSampler(8, R.S[1]); g.activeTexture(g.TEXTURE0);
+    g.activeTexture(g.TEXTURE8); g.bindTexture(g.TEXTURE_2D, src.tex); g.bindSampler(8, R.S[1]); g.activeTexture(g.TEXTURE0); GXB.tb[0] = src.tex; GXB.ts[0] = R.S[1];
     const x0 = Math.max(0, Math.floor(dx)), x1 = Math.min(sf.gw, Math.ceil(dx + dw)), y0 = Math.max(0, Math.floor(dy)), y1 = Math.min(H, Math.ceil(dy + dh));
     g.scissor(x0, H - y1, x1 - x0, y1 - y0); g.bindBuffer(g.ARRAY_BUFFER, R.vb);
     const F = new Float32Array(54); [[x0, y0], [x1, y0], [x1, y1], [x0, y0], [x1, y1], [x0, y1]].forEach(([a, b], i) => { F[i * 9] = a; F[i * 9 + 1] = b; });
@@ -776,6 +782,41 @@ function gxConvex(s) {
   }
   if (Math.abs(Math.abs(turn) - Math.PI * 2) > 0.01) return 0;
   return sg;
+}
+/* a translucent stroke that covers each px once as one mitred strip, so it needs no stencil pass: one sub-path (its end on its start: closed),
+   butt / square caps, every join within the miter limit (or under 20°, where round / bevel are within a px of it), no inner offset folding,
+   no two segments not side by side within the width. null: not provable (the stencil path draws it). → { q: points, n, c: closed } */
+function gxStrip(sub, hw, cap, join, ml) {
+  let p = sub.p, n = gxN(p), c = sub.c || n < p.length / 2;
+  if (!c && n > 2) { const dx = p[0] - p[n * 2 - 2], dy = p[1] - p[n * 2 - 1]; if (dx * dx + dy * dy < 1e-4) { n--; c = true; } }
+  if (n < 2 || n > 64 || (c && n < 3) || (!c && cap === 'round')) return null;
+  if (!c && cap === 'square') { p = p.slice(0, n * 2); const ex = (i, j) => { const dx = p[i] - p[j], dy = p[i + 1] - p[j + 1], L = Math.hypot(dx, dy) || 1; p[i] += dx / L * hw; p[i + 1] += dy / L * hw; }; ex(0, 2); ex(n * 2 - 2, n * 2 - 4); }
+  const N = c ? n : n - 1, len = i => Math.hypot(p[((i + 1) % n) * 2] - p[i * 2], p[((i + 1) % n) * 2 + 1] - p[i * 2 + 1]);
+  for (let i = 0; i < N; i++) if (len(i) < 1e-3) return null;
+  for (let i = c ? 0 : 1; i < (c ? n : n - 1); i++) {
+    const h = (i - 1 + n) % n, la = len(h), lb = len(i), ax = (p[i * 2] - p[h * 2]) / la, ay = (p[i * 2 + 1] - p[h * 2 + 1]) / la, bx = (p[((i + 1) % n) * 2] - p[i * 2]) / lb, by = (p[((i + 1) % n) * 2 + 1] - p[i * 2 + 1]) / lb;
+    const d = ax * bx + ay * by; if (d < 0.94 && !(join === 'miter' && 1 / Math.sqrt((1 + d) / 2) <= ml)) return null;
+    if (hw * Math.sqrt(Math.max(0, 1 - d) / (1 + d)) > 0.45 * Math.min(la, lb)) return null;
+  }
+  const dd = (px, py, i) => { const x0 = p[i * 2], y0 = p[i * 2 + 1], x1 = p[((i + 1) % n) * 2], y1 = p[((i + 1) % n) * 2 + 1], dx = x1 - x0, dy = y1 - y0, t = Math.max(0, Math.min(1, ((px - x0) * dx + (py - y0) * dy) / (dx * dx + dy * dy))), ex = x0 + dx * t - px, ey = y0 + dy * t - py; return ex * ex + ey * ey; };
+  const lim = 4 * hw * hw * 1.05;
+  for (let i = 0; i < N; i++) for (let k = i + 2; k < N; k++) {
+    if (c && i === 0 && k === N - 1) continue;
+    if (dd(p[i * 2], p[i * 2 + 1], k) < lim || dd(p[((i + 1) % n) * 2], p[((i + 1) % n) * 2 + 1], k) < lim || dd(p[k * 2], p[k * 2 + 1], i) < lim || dd(p[((k + 1) % n) * 2], p[((k + 1) % n) * 2 + 1], i) < lim) return null;
+  }
+  return { q: p, n, c };
+}
+function gxStripOut(S, hw) {
+  const { q: p, n, c } = S, L = new Array(n), R = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const h = c ? (i - 1 + n) % n : i - 1, j = c ? (i + 1) % n : i + 1;
+    let nx = 0, ny = 0;
+    if (h >= 0) { const dx = p[i * 2] - p[h * 2], dy = p[i * 2 + 1] - p[h * 2 + 1], l = Math.hypot(dx, dy); nx -= dy / l; ny += dx / l; }
+    if (j < n) { const dx = p[j * 2] - p[i * 2], dy = p[j * 2 + 1] - p[i * 2 + 1], l = Math.hypot(dx, dy); nx -= dy / l; ny += dx / l; }
+    const k = h >= 0 && j < n ? 2 * hw / (nx * nx + ny * ny) : hw;     // the miter: hw / cos(half the turn) along the bisector
+    L[i] = gxV(p[i * 2] + nx * k, p[i * 2 + 1] + ny * k, 0, 0); R[i] = gxV(p[i * 2] - nx * k, p[i * 2 + 1] - ny * k, 0, 0);
+  }
+  for (let i = 0; i < (c ? n : n - 1); i++) { const j = (i + 1) % n; gxT(L[i], L[j], R[j]); gxT(L[i], R[j], R[i]); }
 }
 function gxN(p) { let n = p.length / 2; if (n > 1 && p[0] === p[n * 2 - 2] && p[1] === p[n * 2 - 1]) n--; return n; }     // points, less a last one back on the first
 function gxWind(p) { let A = 0; const n = p.length / 2; for (let i = 0; i < n; i++) { const j = (i + 1) % n; A += p[i * 2] * p[j * 2 + 1] - p[j * 2] * p[i * 2 + 1]; } return A >= 0 ? 1 : -1; }
