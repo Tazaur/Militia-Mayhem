@@ -3,71 +3,22 @@
    reverb tail; distance rolls off the highs. Tanks rumble in your gut as they get close, rockets sizzle in flight,
    blasts that land near you leave your ears ringing, and the score is a heartbeat that speeds up with the fight. */
 const SND = { int: 0, loops: new Map(), rumbleT: 0 };
-function chain2(h, verb) {
-  const c = AU.ctx, lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 700 + 19000 * Math.pow(h.v, 1.7); lp.Q.value = 0.4;
-  if (c.createStereoPanner && h.p) { const pn = c.createStereoPanner(); pn.pan.value = clamp(h.p, -0.9, 0.9); lp.connect(pn); pn.connect(AU.sfx); } else lp.connect(AU.sfx);
-  if (verb) { const sg = c.createGain(); sg.gain.value = verb * (0.45 + (1 - h.v) * 1.1); lp.connect(sg); sg.connect(AU.verbIn); }
-  return lp;
-}
+/* the Sound Lab's "Send to game": presets saved in this browser replace the built-in ones (any sound name, either sound mix) */
+const SFXU = store.get('sfxlab', {});
+addEventListener('storage', e => { if (e.key !== 'mmgl.sfxlab') return; for (const k in SFXU) delete SFXU[k]; Object.assign(SFXU, store.get('sfxlab', {})); });
 function gainEnv(out, now, v, att, dec) { const g = AU.ctx.createGain(); g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(Math.max(0.0002, v), now + att); g.gain.exponentialRampToValueAtTime(0.0001, now + att + dec); g.connect(out); return g; }
-/* a pitch-dropping sine pushed through soft clipping: the "boom" in every shot */
-function thump(out, now, f0, f1, t, v, drive) {
-  const c = AU.ctx, o = c.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(f0, now); o.frequency.exponentialRampToValueAtTime(Math.max(10, f1), now + t * 0.8);
-  const ws = c.createWaveShaper(); ws.curve = AU.curve; const pre = c.createGain(); pre.gain.value = drive || 2.2;
-  o.connect(pre); pre.connect(ws); ws.connect(gainEnv(out, now, v, 0.004, t)); o.start(now); o.stop(now + t + 0.05);
-}
-function burst(out, now, o) {
-  const c = AU.ctx, s = c.createBufferSource(); s.buffer = AU.noise;
-  const f = c.createBiquadFilter(); f.type = o.ft || 'lowpass'; f.frequency.setValueAtTime(o.f, now); if (o.f2) f.frequency.exponentialRampToValueAtTime(o.f2, now + o.t); f.Q.value = o.q || 0.7;
-  s.connect(f); f.connect(gainEnv(out, now, o.v, o.att || 0.002, o.t)); s.start(now, Math.random() * 1.5); s.stop(now + o.t + 0.05);
-}
-function crackle(out, now, n, span, v) { for (let i = 0; i < n; i++) { const d = Math.pow(Math.random(), 1.6) * span; burst(out, now + d, { ft: 'bandpass', f: 1200 + Math.random() * 2800, q: 3, t: 0.02 + Math.random() * 0.04, v: v * (1 - d / span) * (0.5 + Math.random() * 0.5) }); } }
-function metal(out, now, v) { for (const [f, d] of [[1310, 0.28], [1874, 0.2], [2620, 0.12]]) { const o = AU.ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = f * (0.97 + Math.random() * 0.06); o.connect(gainEnv(out, now, v, 0.002, d)); o.start(now); o.stop(now + d + 0.05); } }
-/* recipe: [crack v, thump f0, f1, t, v, body cutoff, end, t, v, reverb] */
-const GUN2 = {
-  rifle: [0.5, 150, 46, 0.12, 0.75, 3200, 300, 0.18, 0.45, 0.35, 30],
-  br: [0.6, 120, 38, 0.17, 0.9, 2600, 240, 0.26, 0.55, 0.45, 40],
-  pistol: [0.42, 190, 70, 0.08, 0.55, 3600, 600, 0.11, 0.35, 0.25, 40],
-  mg: [0.5, 112, 40, 0.11, 0.85, 2600, 260, 0.15, 0.5, 0.32, 36],
-  shotgun: [0.7, 90, 30, 0.3, 1.05, 2600, 170, 0.42, 0.85, 0.6, 0],
-  sniper: [0.95, 80, 26, 0.48, 1.1, 2200, 110, 0.65, 0.85, 0.95, 0]
-};
-const SFX2 = { rifle: 1, br: 1, pistol: 1, mg: 1, shotgun: 1, sniper: 1, cannon: 1, boom: 1, bigboom: 1, rocket: 1, whiz: 1, clang: 1, splat: 1, crack: 1, crush: 1 };
+/* the music's drums: a sound layer's tone and noise voices */
+function thump(out, now, f0, f1, t, v, drive) { sfxVoice(AU, Object.assign({}, SFXK.t, { f: f0, f2: f1, s: 0.8, t, dr: drive || 2.2 }), out, now, v, 1); }
+function burst(out, now, o) { sfxVoice(AU, Object.assign({}, SFXK.n, { ft: o.ft || 'lowpass', f: o.f, f2: o.f2 || 0, q: o.q || 0.7, a: o.att || 0.002, t: o.t }), out, now, o.v, 1); }
+/* a preset sound (1c_sfx.js): false when there's none for this name, so the classic set plays it */
 function sfx2(name, x, y, mul) {
-  const h = x === undefined ? { v: 1, p: 0 } : hear(x, y), v = h.v * (mul || 1) * (M && M.demo ? 0.35 : 1);
+  const P = SFXU[name] && !SFXU[name].e ? SFXU[name] : CFG.sound !== 'classic' && SFXD[name]; if (!P) return false;
+  const h = x === undefined || P.nd ? { v: 1, p: x === undefined ? 0 : hear(x, y).p } : hear(x, y), v = (P.nd ? 1 : h.v) * (mul || 1) * (M && M.demo ? 0.35 : 1);
   if (v < 0.02) return true;
-  const c = AU.ctx, now = c.currentTime, G = GUN2[name];
-  if (G) {
-    if (G[10] && !thr('g2' + name, G[10])) return true;
-    const out = chain2(h, G[9]);
-    burst(out, now, { ft: 'highpass', f: 2400, t: 0.03, v: G[0] * v });
-    thump(out, now, G[1], G[2], G[3], G[4] * v, 2.6);
-    burst(out, now, { f: G[5], f2: G[6], t: G[7], v: G[8] * v, q: 0.6 });
-    if (name === 'sniper') { burst(out, now + 0.32, { f: 900, f2: 150, t: 0.5, v: 0.22 * v }); burst(out, now + 0.78, { f: 600, f2: 120, t: 0.6, v: 0.1 * v }); }
-    if (name === 'shotgun') { burst(out, now + 0.42, { ft: 'bandpass', f: 2200, q: 4, t: 0.03, v: 0.18 * v }); burst(out, now + 0.52, { ft: 'bandpass', f: 1600, q: 4, t: 0.04, v: 0.2 * v }); }
-    SND.int = Math.min(1, SND.int + 0.012 * h.v);
-    return true;
-  }
-  switch (name) {
-    case 'cannon': { const out = chain2(h, 1); burst(out, now, { ft: 'highpass', f: 1800, t: 0.05, v: 0.8 * v }); thump(out, now, 72, 20, 1.0, 1.25 * v, 3); burst(out, now, { f: 1800, f2: 60, t: 1.3, v: 0.95 * v, q: 0.5 }); crackle(out, now + 0.05, 10, 0.7, 0.2 * v); SND.int = Math.min(1, SND.int + 0.1 * h.v); return true; }
-    case 'boom': case 'bigboom': {
-      if (!thr('g2boom', 45)) return true;
-      const big = name === 'bigboom', out = chain2(h, big ? 1.2 : 1);
-      burst(out, now, { ft: 'highpass', f: 1500, t: 0.06, v: 0.8 * v });
-      thump(out, now, big ? 52 : 66, big ? 15 : 19, big ? 1.7 : 1.15, 1.3 * v, 3.2);
-      if (big) thump(out, now + 0.07, 40, 14, 1.4, 0.8 * v, 2.4);
-      burst(out, now, { f: big ? 1700 : 2400, f2: 40, t: big ? 2.3 : 1.5, v: 1.0 * v, q: 0.45 });
-      crackle(out, now + 0.04, big ? 26 : 14, big ? 1.4 : 0.9, 0.28 * v);
-      SND.int = Math.min(1, SND.int + (big ? 0.2 : 0.13) * h.v); return true;
-    }
-    case 'rocket': { const out = chain2(h, 0.5); thump(out, now, 150, 60, 0.14, 0.6 * v, 2); burst(out, now, { ft: 'bandpass', f: 500, f2: 3200, q: 0.9, t: 0.5, v: 0.75 * v, att: 0.03 }); return true; }
-    case 'whiz': { if (!thr('g2whiz', 80)) return true; const out = chain2({ v: 1, p: h.p }, 0); burst(out, now, { ft: 'highpass', f: 4200, t: 0.025, v: 0.4 }); burst(out, now, { ft: 'bandpass', f: 5200, f2: 1400, q: 3, t: 0.13, v: 0.22 }); return true; }
-    case 'clang': { if (!thr('g2clang', 70)) return true; const out = chain2(h, 0.3); metal(out, now, 0.3 * v); burst(out, now, { ft: 'highpass', f: 3000, t: 0.02, v: 0.45 * v }); return true; }
-    case 'splat': { if (!thr('g2splat', 40)) return true; const out = chain2(h, 0.2); thump(out, now, 130, 45, 0.18, 0.5 * v, 1.6); burst(out, now, { f: 900, f2: 140, t: 0.22, v: 0.35 * v }); return true; }
-    case 'crack': { const out = chain2(h, 0.5); burst(out, now, { ft: 'bandpass', f: 900, f2: 180, q: 1.4, t: 0.5, v: 0.45 * v }); crackle(out, now, 8, 0.4, 0.2 * v); return true; }
-    case 'crush': { if (!thr('g2crush', 80)) return true; const out = chain2(h, 0.2); thump(out, now, 90, 35, 0.25, 0.6 * v, 2.5); burst(out, now, { f: 700, f2: 90, t: 0.35, v: 0.4 * v }); return true; }
-  }
-  return false;
+  if (P.th && !thr('p' + name, P.th)) return true;
+  sfxRun(AU, P, sfxOut(AU, P, h.v, h.p, AU.sfx, AU.verbIn), AU.ctx.currentTime, v);
+  if (P.in) SND.int = Math.min(1, SND.int + P.in * h.v);
+  return true;
 }
 /* blasts close to a player: hearing muffles and a high whine rings for a couple of seconds */
 function earRing(x, y, r) {
@@ -109,30 +60,14 @@ function loopsKillAll() { for (const L of SND.loops.values()) { try { L.s.stop()
 /* engines: tanks get a two-oscillator growl, a track clatter tied to speed, and a sub-bass you feel as they close in */
 function engineUpdate2(v) {
   engineStop(v);
-  const driven = v.active && !v.dead && v.T.drive && v.seats[0], c = AU.ctx, now = c.currentTime, tank = v.type === 'tank';
-  if (driven && !v.eng2) {
-    const out = c.createGain(); out.gain.value = 0; out.connect(AU.sfx);
-    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = tank ? 240 : 900; lp.Q.value = 2; lp.connect(out);
-    const o1 = c.createOscillator(); o1.type = 'sawtooth'; const o2 = c.createOscillator(); o2.type = 'square'; o1.connect(lp); const g2 = c.createGain(); g2.gain.value = 0.5; o2.connect(g2); g2.connect(lp);
-    const sub = c.createOscillator(); sub.type = 'sine'; sub.frequency.value = tank ? 31 : 48; const sg = c.createGain(); sg.gain.value = 0; sub.connect(sg); sg.connect(AU.sfx);
-    const ns = c.createBufferSource(); ns.buffer = AU.noise; ns.loop = true; const nb = c.createBiquadFilter(); nb.type = 'bandpass'; nb.frequency.value = tank ? 480 : 1400; nb.Q.value = 1.8;
-    const ng = c.createGain(); ng.gain.value = 0; const lfo = c.createOscillator(); lfo.type = 'square'; lfo.frequency.value = 6; const lg = c.createGain(); lg.gain.value = 0; lfo.connect(lg); lg.connect(ng.gain);
-    ns.connect(nb); nb.connect(ng); ng.connect(out);
-    for (const n of [o1, o2, sub, lfo]) n.start(now); ns.start(now, Math.random());
-    v.eng2 = { out, lp, o1, o2, sub, sg, ns, ng, lfo, lg };
-  }
+  const driven = v.active && !v.dead && v.T.drive && v.seats[0], key = v.type === 'tank' ? 'eng_tank' : 'eng_car';
+  if (driven && !v.eng2) v.eng2 = engBuild(AU, SFXU[key] && SFXU[key].e ? SFXU[key] : ENGD[key], AU.sfx);
   if (!driven && v.eng2) { engineStop2(v); return; }
   if (!v.eng2) return;
-  const E = v.eng2, sp = Math.min(1, Math.abs(v.spd) / v.T.maxF), h = hear(v.x, v.y), on = AU.sfxOn ? 1 : 0, demo = M.demo ? 0.35 : 1, base = tank ? 34 : 64;
   let dn = 1e9; for (const s of localSols()) dn = Math.min(dn, Math.hypot(s.x - v.x, s.y - v.y));
-  const near = Math.pow(clamp(1 - dn / 420, 0, 1), 2);
-  E.o1.frequency.setTargetAtTime(base + sp * base * 1.5, now, 0.1); E.o2.frequency.setTargetAtTime((base + sp * base * 1.5) * 1.51, now, 0.1);
-  E.lp.frequency.setTargetAtTime((tank ? 200 : 700) + sp * (tank ? 380 : 1400), now, 0.1);
-  E.out.gain.setTargetAtTime((tank ? 0.13 : 0.07) * (0.45 + sp) * h.v * on * demo, now, 0.1);
-  E.sg.gain.setTargetAtTime(tank ? (0.12 + 0.55 * near) * (0.4 + sp) * on * demo * Math.max(h.v, near) : 0.05 * near * on, now, 0.12);
-  E.lfo.frequency.setTargetAtTime(3 + sp * 16, now, 0.1); E.lg.gain.setTargetAtTime((tank ? 0.5 : 0.15) * sp, now, 0.1); E.ng.gain.setTargetAtTime((tank ? 0.45 : 0.1) * sp, now, 0.1);
+  engSet(v.eng2, Math.min(1, Math.abs(v.spd) / v.T.maxF), hear(v.x, v.y).v, Math.pow(clamp(1 - dn / 420, 0, 1), 2), (AU.sfxOn ? 1 : 0) * (M.demo ? 0.35 : 1));
 }
-function engineStop2(v) { const E = v.eng2; if (!E) return; const now = AU.ctx.currentTime; try { E.out.gain.setTargetAtTime(0, now, 0.06); E.sg.gain.setTargetAtTime(0, now, 0.06); for (const n of [E.o1, E.o2, E.sub, E.lfo, E.ns]) n.stop(now + 0.4); } catch (e) { } v.eng2 = null; }
+function engineStop2(v) { if (v.eng2) engStop(v.eng2); v.eng2 = null; }
 /* ---------- music: a heartbeat that drives the fight ---------- */
 /* drum voices: the sfx thump and noise burst, on the music bus */
 const m2kick = (t, f0, f1, d, v) => thump(AU.mus, t, f0, f1, d, v, 1.8);

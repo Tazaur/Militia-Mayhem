@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Militia Mayhem · Sound Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* the Sound Lab: design the game's synthesized sounds by ear. Plays them with the game's own code (../src/1c_sfx.js). */
+:root{
+  --bg:#0d120b;--panel:#1a2316;--panel2:#212c1c;--line:#2f3c28;--line2:#3d4d34;
+  --ink:#ece4c8;--dim:#a49f86;--faint:#6f725f;--acc:#e0b72c;--acc2:#f5d670;--blue:#4c8dff;--red:#ef5a44;--green:#7ddc6a;--cyan:#5fd3d0;--violet:#b48cff;--orange:#ff9a3c;
+  --fd:'Black Ops One',system-ui;--fb:'Chakra Petch',system-ui,sans-serif;--fm:'JetBrains Mono',ui-monospace,monospace;color-scheme:dark
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--fb);font-size:15px;line-height:1.4;-webkit-tap-highlight-color:transparent}
+button,select,input,textarea{font:inherit;color:inherit}
+header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:8px;padding:calc(8px + env(safe-area-inset-top)) 16px 8px;background:var(--bg);border-bottom:1px solid var(--line)}
+header h1{font-family:var(--fd);font-weight:400;font-size:18px;margin:0;flex:1;min-width:0;line-height:1.1}
+header h1 small{display:block;font-family:var(--fb);font-size:11px;color:var(--dim);letter-spacing:1.5px;text-transform:uppercase;margin-top:2px}
+main{max-width:760px;margin:0 auto;padding:10px 16px 110px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;padding:0 11px;border:1px solid var(--line2);border-radius:10px;background:var(--panel);cursor:pointer;font-weight:600;font-size:13px;letter-spacing:.4px;white-space:nowrap}
+.btn:disabled{opacity:.4}
+.btn.on{background:var(--acc);color:#1a1405;border-color:var(--acc)}
+.btn.sm{min-height:30px;padding:0 8px;font-size:12px;border-radius:8px}
+.btn.ic{width:36px;padding:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin:10px 0}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.row>select{flex:1;min-width:0}
+select,input[type=text],textarea{height:36px;border-radius:9px;border:1px solid var(--line2);background:var(--panel2);padding:0 8px;min-width:0}
+textarea{height:auto;width:100%;padding:8px;font-family:var(--fm);font-size:12px;resize:vertical}
+h2{font-family:var(--fd);font-weight:400;font-size:15px;letter-spacing:.5px;margin:0 0 8px;color:var(--acc2);display:flex;align-items:center;gap:8px}
+h2 .sp{flex:1}
+.muted{color:var(--dim);font-size:12.5px}
+.tag{font-family:var(--fm);font-size:11px;padding:2px 6px;border-radius:6px;background:var(--panel2);color:var(--dim)}
+.tag.g{color:var(--green)}
+/* sliders: label · track · value */
+.sl{display:grid;grid-template-columns:118px 1fr 78px;align-items:center;gap:8px;min-height:34px}
+.sl label{font-size:13px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sl label input{vertical-align:-2px;margin:0 4px 0 0}
+.sl .val{height:28px;width:100%;text-align:right;font-family:var(--fm);font-size:12px;border:1px solid transparent;background:transparent;border-radius:6px;padding:0 4px}
+.sl .val:focus{border-color:var(--line2);background:var(--panel2);outline:none}
+.sl select{height:30px;grid-column:2 / 4}
+.sl.off input[type=range]{opacity:.3}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:30px;background:transparent;margin:0}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:var(--line2)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--acc);margin-top:-8px;border:2px solid var(--bg)}
+input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:var(--line2)}
+input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--acc);border:2px solid var(--bg)}
+details>summary{cursor:pointer;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--faint);padding:6px 0;list-style:none}
+details>summary::before{content:'▸ '}
+details[open]>summary::before{content:'▾ '}
+.grp{font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--faint);margin:8px 0 2px}
+/* layers */
+.ly{border-left:3px solid var(--c,var(--acc))}
+.ly.mute{opacity:.5}
+.lh{display:flex;align-items:center;gap:6px;margin:-2px 0 4px}
+.lh b{font-family:var(--fd);font-weight:400;font-size:14px;color:var(--c)}
+.lh .sum{flex:1;min-width:0;font-family:var(--fm);font-size:11px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
+/* the scope */
+#wave{display:block;width:100%;height:96px;border-radius:10px;background:var(--panel2);cursor:pointer;touch-action:manipulation}
+/* bottom bar: always in reach of a thumb */
+.bar{position:fixed;left:0;right:0;bottom:0;z-index:6;background:color-mix(in srgb,var(--bg) 92%,transparent);border-top:1px solid var(--line);padding:8px 16px calc(8px + env(safe-area-inset-bottom));backdrop-filter:blur(6px)}
+.bar .in{max-width:760px;margin:0 auto;display:flex;gap:8px;align-items:center}
+#play{flex:1;min-height:52px;font-family:var(--fd);font-size:20px;font-weight:400;background:var(--acc);color:#1a1405;border-color:var(--acc);letter-spacing:1px}
+#play.run{background:var(--red);border-color:var(--red);color:#fff}
+.menu{position:absolute;right:16px;top:calc(100% + 4px);background:var(--panel);border:1px solid var(--line2);border-radius:12px;padding:6px;display:none;flex-direction:column;min-width:230px;box-shadow:0 8px 30px #0008}
+.menu.open{display:flex}
+.menu button{background:none;border:0;text-align:left;padding:9px 10px;border-radius:8px;cursor:pointer;font-size:14px}
+.menu button:active,.menu button:hover{background:var(--panel2)}
+.menu hr{border:0;border-top:1px solid var(--line);margin:4px 0}
+dialog{background:var(--panel);color:var(--ink);border:1px solid var(--line2);border-radius:14px;width:min(640px,calc(100vw - 32px));padding:14px}
+dialog::backdrop{background:#000a}
+#toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line2);border-radius:10px;padding:8px 14px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
+#toast.on{opacity:1}
+@media (max-width:420px){.sl{grid-template-columns:100px 1fr 72px;gap:6px}.btn.sm{padding:0 7px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Sound Lab<small>Militia Mayhem · synth presets</small></h1>
+  <button class="btn ic" id="undo" title="Undo">↶</button><button class="btn ic" id="redo" title="Redo">↷</button>
+  <button class="btn ic" id="mbtn" title="More">⋯</button>
+  <div class="menu" id="menu">
+    <button data-m="import">Import presets…</button>
+    <button data-m="export">Export all for the game…</button>
+    <button data-m="backup">Download library backup</button>
+    <button data-m="restore">Open library backup…</button>
+    <hr>
+    <button data-m="sendall">Send all changed to game</button>
+    <button data-m="clear">Remove all from game</button>
+    <hr>
+    <button data-m="reset">Reset library</button>
+  </div>
+</header>
+<main id="main"></main>
+<div class="bar"><div class="in">
+  <button class="btn" id="auto" title="Play on every change">AUTO</button>
+  <button class="btn" id="loop" title="Repeat">LOOP</button>
+  <button class="btn" id="play">▶ PLAY</button>
+  <button class="btn" id="vary" title="Nudge every setting a little">VARY</button>
+</div></div>
+<dialog id="dlg"><h2 id="dt"></h2><p class="muted" id="dd"></p><textarea id="dx" rows="12" spellcheck="false"></textarea>
+  <div class="row" style="margin-top:10px;justify-content:flex-end"><button class="btn" id="dcopy">Copy</button><button class="btn" id="dok">OK</button><button class="btn" id="dno">Close</button></div></dialog>
+<input type="file" id="file" accept=".json,application/json,text/plain" hidden>
+<div id="toast"></div>
+<script src="../src/1c_sfx.js"></script>
+<script>
+'use strict';
+const $ = s => document.querySelector(s), esc = t => String(t).replace(/[&<>"']/g, c => '&#' + c.charCodeAt(0) + ';');
+const clone = o => JSON.parse(JSON.stringify(o)), r4 = x => +(+x).toPrecision(4);
+const toast = t => { const e = $('#toast'); e.textContent = t; e.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('on'), 1600); };
+
+/* ---------- what can be edited ---------- */
+const CATS = [['gun', 'Gunshots'], ['blast', 'Explosions & impacts'], ['metal', 'Metal'], ['engine', 'Engines'], ['horn', 'Horns'], ['ui', 'UI & pickups'], ['misc', 'Other']];
+const GAME = ['rifle', 'br', 'pistol', 'mg', 'shotgun', 'sniper', 'cannon', 'whiz', 'boom', 'bigboom', 'rocket', 'crack', 'crush', 'crumble', 'splat', 'clang', 'clink', 'ting', 'glass', 'horn', 'ui', 'join', 'leave', 'ping', 'pickup', 'points', 'cap', 'lost', 'win', 'spawn', 'beep', 'hit', 'heal', 'reload', 'empty', 'throw', 'hurt', 'door', 'shuffle', 'rustle', 'torch', 'splash', 'drop', 'heat', 'jump', 'knife', 'thud'];
+const ENGS = ['eng_tank', 'eng_car'];
+const WAVES = ['sine', 'triangle', 'square', 'sawtooth'], FILTS = ['lowpass', 'highpass', 'bandpass', 'notch', 'peaking'];
+// [label, min, max, log, unit, int] or [label, 'sel', options] / [label, 'chk']
+const F = {
+  d: ['Delay', 0, 2, 0, 's'], v: ['Level', 0, 1.5, 0, ''], a: ['Attack', 0.001, 1, 1, 's'], t: ['Decay', 0.005, 4, 1, 's'], dr: ['Distortion', 0, 8, 0, ''],
+  n: ['Repeats', 1, 12, 0, '×', 1], dt: ['Repeat gap', 0.01, 1, 1, 's'], pm: ['Pitch / repeat', 0.5, 2, 1, '×'], vm: ['Level / repeat', 0.2, 1.5, 0, '×'], r: ['Random pitch', 0, 0.5, 0, '±'],
+  w: ['Wave', 'sel', WAVES], f: ['Frequency', 20, 12000, 1, 'Hz'], f2: ['Sweep to', 10, 12000, 1, 'Hz', 0, 'sweep'], s: ['Sweep time', 0.05, 1.5, 0, '×'],
+  ft: ['Filter', 'sel', [''].concat(FILTS)], fc: ['Filter cutoff', 20, 16000, 1, 'Hz'], q: ['Resonance', 0.1, 20, 1, ''],
+  mr: ['FM ratio', 0.1, 12, 1, '×'], mi: ['FM depth', 0, 20, 0, ''], mi2: ['FM depth end', 0, 20, 0, ''],
+  c: ['Grains', 1, 60, 0, '', 1], sp: ['Spread', 0.05, 3, 1, 's'], tr: ['Grain random', 0, 0.2, 0, 's']
+};
+const FX = {     // per layer type: label changes
+  n: { f: ['Cutoff', 20, 16000, 1, 'Hz'], f2: ['Sweep cutoff', 10, 16000, 1, 'Hz', 0, 'sweep'], ft: ['Filter', 'sel', FILTS] },
+  c: { f: ['Band low', 100, 12000, 1, 'Hz'], f2: ['Band high', 100, 12000, 1, 'Hz'], t: ['Grain length', 0.005, 0.2, 1, 's'] }
+};
+const G = {
+  v: ['Volume', 0, 2, 0, ''], p: ['Pitch', 0.25, 4, 1, '×'], pr: ['Pitch random', 0, 0.3, 0, '±'], rv: ['Reverb', 0, 2, 0, ''], bs: ['Bass', -18, 18, 0, 'dB'],
+  lp: ['Tone (cutoff)', 200, 20000, 1, 'Hz'], th: ['Throttle', 0, 300, 0, 'ms', 1], in: ['Music intensity', 0, 0.3, 0, ''], nd: ['Ignore distance', 'chk']
+};
+const E = {
+  v: ['Volume', 0, 0.4, 0, ''], b: ['Idle pitch', 15, 200, 1, 'Hz'], sm: ['Rev range', 0, 4, 0, '×'], w1: ['Wave 1', 'sel', WAVES], w2: ['Wave 2', 'sel', WAVES], r2: ['Wave 2 ratio', 0.25, 4, 1, '×'], g2: ['Wave 2 level', 0, 1.5, 0, ''],
+  lp: ['Filter idle', 50, 4000, 1, 'Hz'], lps: ['Filter opens by', 0, 4000, 0, 'Hz'], q: ['Resonance', 0.1, 20, 1, ''], dr: ['Distortion', 0, 8, 0, ''],
+  sub: ['Sub freq', 15, 120, 1, 'Hz'], s0: ['Sub level', 0, 1, 0, ''], s1: ['Sub up close', 0, 1.5, 0, ''], ss: ['Sub follows speed', 0, 1, 0, ''],
+  nf: ['Clatter band', 100, 6000, 1, 'Hz'], nq: ['Clatter Q', 0.1, 20, 1, ''], ng: ['Clatter level', 0, 1, 0, ''], l0: ['Clatter rate', 0.5, 30, 1, 'Hz'], l1: ['Rate + speed', 0, 40, 0, 'Hz'], lg: ['Clatter chop', 0, 1, 0, '']
+};
+const X = { dist: ['Distance', 0, 1, 0, ''], pan: ['Pan', -1, 1, 0, ''], sp: ['Speed', 0, 1, 0, ''], near: ['Player close', 0, 1, 0, ''] };
+const LT = {   // layer types: name, colour, groups
+  t: ['Tone', 'var(--acc)', [['', ['w', 'f', 'f2', 's', 'v', 'a', 't', 'dr']], ['Filter', ['ft', 'fc', 'q']], ['Timing & repeats', ['d', 'n', 'dt', 'pm', 'vm', 'r']]]],
+  n: ['Noise', 'var(--cyan)', [['', ['ft', 'f', 'f2', 's', 'q', 'v', 'a', 't', 'dr']], ['Timing & repeats', ['d', 'n', 'dt', 'pm', 'vm', 'r']]]],
+  f: ['FM', 'var(--violet)', [['', ['w', 'f', 'f2', 's', 'mr', 'mi', 'mi2', 'v', 'a', 't', 'dr']], ['Filter', ['ft', 'fc', 'q']], ['Timing & repeats', ['d', 'n', 'dt', 'pm', 'vm', 'r']]]],
+  c: ['Crackle', 'var(--orange)', [['', ['c', 'sp', 'f', 'f2', 'q', 't', 'tr', 'v', 'd']]]]
+};
+const EG = [['Motor', ['v', 'b', 'sm', 'w1', 'w2', 'r2', 'g2']], ['Filter', ['lp', 'lps', 'q', 'dr']], ['Sub bass', ['sub', 's0', 's1', 'ss']], ['Track clatter', ['nf', 'nq', 'ng', 'l0', 'l1', 'lg']]];
+const NEWL = { t: { k: 't', f: 220, f2: 80, s: 0.8, t: 0.2, v: 0.5 }, n: { k: 'n', f: 2000, f2: 200, t: 0.25, v: 0.4 }, f: { k: 'f', f: 600, mr: 1.41, mi: 4, mi2: 0, t: 0.5, v: 0.3 }, c: { k: 'c', c: 10, sp: 0.5, v: 0.2 } };
+
+/* ---------- starting points: the game's own presets, plus the classic set's UI sounds and FM ideas ---------- */
+const NAMES = { rifle: 'Rifle', br: 'Battle rifle', pistol: 'Pistol', mg: 'Machine gun', shotgun: 'Shotgun', sniper: 'Sniper', cannon: 'Tank cannon', whiz: 'Bullet whiz', boom: 'Explosion', bigboom: 'Big explosion', rocket: 'Rocket launch', crack: 'Wall crack', crush: 'Crush', splat: 'Hit splat', clang: 'Ricochet clang', eng_tank: 'Tank engine', eng_car: 'Vehicle engine' };
+const CATOF = { rifle: 'gun', br: 'gun', pistol: 'gun', mg: 'gun', shotgun: 'gun', sniper: 'gun', cannon: 'gun', whiz: 'gun', boom: 'blast', bigboom: 'blast', rocket: 'blast', crack: 'blast', crush: 'blast', crumble: 'blast', splat: 'blast', clang: 'metal', clink: 'metal', ting: 'metal', glass: 'metal', horn: 'horn', eng_tank: 'engine', eng_car: 'engine', ui: 'ui', join: 'ui', leave: 'ui', ping: 'ui', pickup: 'ui', points: 'ui', cap: 'ui', lost: 'ui', win: 'ui', spawn: 'ui', beep: 'ui', hit: 'ui', heal: 'ui' };
+const sq = (f, t, v, d, f2) => Object.assign({ k: 't', w: 'square', f, t, v, a: 0.005 }, d ? { d } : {}, f2 ? { f2 } : {});
+const TPL = [
+  ['Horn (classic)', 'horn', 'horn', { L: [sq(392, 0.28, 0.09), sq(494, 0.28, 0.07)] }],
+  ['Air horn', 'horn', 'horn', { rv: 0.4, L: [{ k: 't', w: 'sawtooth', f: 220, a: 0.03, t: 0.7, v: 0.16, ft: 'lowpass', fc: 1800, q: 2, dr: 1.4 }, { k: 't', w: 'sawtooth', f: 277, a: 0.03, t: 0.7, v: 0.12, ft: 'lowpass', fc: 1800, q: 2, dr: 1.4 }] }],
+  ['Truck horn (FM)', 'horn', 'horn', { rv: 0.3, L: [{ k: 'f', w: 'sawtooth', f: 165, mr: 1, mi: 1.5, mi2: 0.8, a: 0.02, t: 0.6, v: 0.2, ft: 'lowpass', fc: 1400, q: 3 }] }],
+  ['Menu click', 'ui', 'ui', { L: [sq(700, 0.04, 0.05, 0, 1000)] }],
+  ['Player join', 'ui', 'join', { L: [sq(440, 0.08, 0.08), sq(880, 0.14, 0.08, 0.07)] }],
+  ['Player leave', 'ui', 'leave', { L: [sq(600, 0.12, 0.07, 0, 300)] }],
+  ['Ping', 'ui', 'ping', { L: [{ k: 't', f: 1568, t: 0.12, v: 0.06 }, { k: 't', f: 2093, t: 0.18, v: 0.05, d: 0.08 }] }],
+  ['Pickup', 'ui', 'pickup', { L: [{ k: 't', f: 660, t: 0.12, v: 0.12 }, { k: 't', f: 880, t: 0.12, v: 0.12, d: 0.06 }, { k: 't', f: 1320, t: 0.12, v: 0.12, d: 0.12 }] }],
+  ['Flag captured', 'ui', 'cap', { L: [sq(523, 0.14, 0.08), sq(659, 0.14, 0.08, 0.12), sq(784, 0.14, 0.08, 0.24), sq(1047, 0.5, 0.08, 0.36)] }],
+  ['Round won', 'ui', 'win', { L: [sq(392, 0.3, 0.08), sq(523, 0.3, 0.08, 0.15), { k: 't', w: 'square', f: 659, a: 0.005, t: 0.3, v: 0.08, d: 0.3, n: 2, dt: 0.15, pm: 1.19 }, sq(659, 0.3, 0.08, 0.6), sq(784, 0.3, 0.08, 0.75)] }],
+  ['Hit marker', 'ui', 'hit', { L: [sq(1400, 0.03, 0.06, 0, 900)] }],
+  ['Heal', 'ui', 'heal', { L: [{ k: 't', f: 880, f2: 1320, t: 0.15, v: 0.05 }] }],
+  ['Reload', 'misc', 'reload', { L: [sq(900, 0.03, 0.06), sq(600, 0.04, 0.07, 0.25), sq(1100, 0.03, 0.07, 1)] }],
+  ['Glass break', 'metal', 'glass', { th: 70, L: [{ k: 'n', ft: 'highpass', f: 4200, t: 0.22, v: 0.22 }, { k: 't', w: 'triangle', f: 3900, f2: 2400, t: 0.05, v: 0.06, n: 4, dt: 0.035, r: 0.33 }] }],
+  ['Metal ping (FM)', 'metal', 'ting', { rv: 0.3, th: 45, L: [{ k: 'f', f: 2400, mr: 1.41, mi: 2.5, mi2: 0, a: 0.001, t: 0.5, v: 0.22, r: 0.04 }, { k: 'n', ft: 'highpass', f: 5000, t: 0.012, v: 0.2 }] }],
+  ['Heavy clang (FM)', 'metal', 'clang', { rv: 0.4, th: 70, L: [{ k: 'f', f: 520, mr: 2.76, mi: 6, mi2: 0.5, a: 0.001, t: 0.8, v: 0.3, r: 0.03 }, { k: 'f', f: 1310, mr: 1.41, mi: 3, a: 0.001, t: 0.4, v: 0.18, r: 0.03 }, { k: 'n', ft: 'highpass', f: 3000, t: 0.02, v: 0.45 }] }],
+  ['Bell (FM)', 'metal', 'ping', { rv: 0.6, L: [{ k: 'f', f: 880, mr: 3.5, mi: 4, mi2: 0, a: 0.002, t: 1.5, v: 0.15 }] }],
+  ['Blank', 'misc', 'beep', { L: [{ k: 't', f: 440, t: 0.2, v: 0.3 }] }]
+];
+const builtin = b => clone(SFXD[b] || ENGD[b]);
+function seed() {
+  const lib = [];
+  for (const b of Object.keys(SFXD).concat(ENGS)) lib.push({ id: 'g_' + b, nm: NAMES[b] || b, cat: CATOF[b] || 'misc', gn: b, b, P: builtin(b) });
+  for (const [nm, cat, gn, P] of TPL) lib.push(mk(nm, cat, gn, clone(P)));
+  return lib;
+}
+function uid() { return 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+/* ---------- state, kept in this browser across visits ---------- */
+const KEY = 'mmsfx.lab';
+let S = null;
+try { S = JSON.parse(localStorage.getItem(KEY)); } catch (e) { }
+if (!S || !Array.isArray(S.lib)) S = { lib: seed(), cur: 'g_rifle', cmp: '', auto: true, loop: false, X: { dist: 0, pan: 0, sp: 0.5, near: 0 } };
+for (const b of Object.keys(SFXD).concat(ENGS)) if (!S.lib.some(p => p.b === b)) S.lib.push({ id: 'g_' + b, nm: NAMES[b] || b, cat: CATOF[b] || 'misc', gn: b, b, P: builtin(b) });   // new in the game since last visit
+let pinB = null;                 // a snapshot to compare against (this visit only)
+const cur = () => S.lib.find(p => p.id === S.cur) || S.lib[0];
+const save = () => { clearTimeout(save.t); save.t = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast('Could not save: storage full?'); } }, 250); };
+/* undo: snapshots of the library */
+const H = { a: [], i: -1 };
+function commit() { const s = JSON.stringify({ lib: S.lib, cur: S.cur }); if (H.a[H.i] === s) return; H.a.length = H.i + 1; H.a.push(s); if (H.a.length > 80) H.a.shift(); H.i = H.a.length - 1; save(); undoUI(); }
+function hist(d) { const i = H.i + d; if (i < 0 || i >= H.a.length) return; H.i = i; const o = JSON.parse(H.a[i]); S.lib = o.lib; S.cur = o.cur; engOff(); render(); save(); undoUI(); }
+const undoUI = () => { $('#undo').disabled = H.i <= 0; $('#redo').disabled = H.i >= H.a.length - 1; };
+
+/* ---------- compact form: defaults dropped, numbers to 4 digits, studio-only keys gone ---------- */
+function pack(P) {
+  const o = {}, D = P.e ? SFXK.e : SFXK.P;
+  for (const k in P) if (k !== 'L' && k[0] !== '_' && P[k] !== D[k] && (k !== 'e' || P.e)) o[k] = typeof P[k] === 'number' ? r4(P[k]) : P[k];
+  if (P.e) { o.e = 1; return o; }
+  o.L = P.L.filter(L => !L.m).map(L => { const d = SFXK[L.k], q = { k: L.k }; for (const k in L) if (k !== 'k' && k !== 'm' && k[0] !== '_' && L[k] !== d[k]) q[k] = typeof L[k] === 'number' ? r4(L[k]) : L[k]; return q; });
+  return o;
+}
+const lit = v => Array.isArray(v) ? '[' + v.map(lit).join(', ') + ']' : v && typeof v === 'object' ? '{ ' + Object.keys(v).map(k => k + ': ' + lit(v[k])).join(', ') + ' }' : typeof v === 'string' ? "'" + v + "'" : String(v);
+const code = p => (/^[a-z_]\w*$/.test(p.gn) ? p.gn : "'" + p.gn + "'") + ': ' + lit(pack(p.P));
+const same = (a, b) => JSON.stringify(pack(a)) === JSON.stringify(pack(b));
+const changed = p => p.b ? !same(p.P, builtin(p.b)) : JSON.stringify(pack(p.P)) !== p.o;
+function mk(nm, cat, gn, P) { return { id: uid(), nm, cat, gn, b: '', P, o: JSON.stringify(pack(P)) }; }
+/* what's been sent to the game (same browser: the game reads it at start and live in another tab) */
+const GKEY = 'mmgl.sfxlab';
+const gameGet = () => { try { return JSON.parse(localStorage.getItem(GKEY)) || {}; } catch (e) { return {}; } };
+const gameSet = o => { try { if (Object.keys(o).length) localStorage.setItem(GKEY, JSON.stringify(o)); else localStorage.removeItem(GKEY); } catch (e) { } };
+
+/* ---------- audio: the game's chain (soft compressor + limiter, the effects bus at full volume, the shared reverb) ---------- */
+let A = null;
+function audio() {
+  if (A) { if (A.ctx.state === 'suspended') A.ctx.resume(); return A; }
+  const C = window.AudioContext || window.webkitAudioContext, c = new C(), B = auBufs(c);
+  const comp = c.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 5; comp.connect(c.destination);
+  const lim = c.createDynamicsCompressor(); lim.threshold.value = -4; lim.ratio.value = 14; lim.attack.value = 0.002; lim.release.value = 0.12; lim.connect(comp);
+  const master = c.createGain(); master.gain.value = 0.85; master.connect(lim);
+  const sfx = c.createGain(); sfx.gain.value = 0.75; sfx.connect(master);
+  const verb = c.createConvolver(); verb.buffer = B.ir; const verbIn = c.createGain(); verbIn.gain.value = 0.6; verbIn.connect(verb); verb.connect(master);
+  A = { ctx: c, noise: B.noise, curve: B.curve, sfx, verbIn };
+  return A;
+}
+const hv = () => 1 - S.X.dist;
+function soloed(P) { if (P.e || !P.L.some(L => L._s)) return P; const Q = clone(P); Q.L.forEach(L => { if (!L._s) L.m = 1; }); return Q; }
+function fire(P, at) { const a = audio(), h = P.nd ? 1 : hv(); sfxRun(a, P, sfxOut(a, P, h, S.X.pan, a.sfx, a.verbIn), at || a.ctx.currentTime + 0.02, P.nd ? 1 : h); }
+let ENG = null, rev = 0;
+function engOn(P) { const a = audio(); engOff(); ENG = engBuild(a, P, a.sfx); engTick(); playUI(); }
+function engOff() { if (ENG) engStop(ENG); ENG = null; rev = 0; playUI(); }
+/* engine edits while it runs: most settings apply live, distortion rebuilds it */
+function engLive(k) {
+  if (!ENG) return; const P = cur().P; if (k === 'dr') { engOn(P); return; }
+  const N = ENG, e = N.E = Object.assign({}, SFXK.e, P);
+  N.o1.type = e.w1; N.o2.type = e.w2; N.g2.gain.value = e.g2; N.lp.Q.value = e.q; N.sub.frequency.value = e.sub; N.nb.frequency.value = e.nf; N.nb.Q.value = e.nq; engTick();
+}
+function engTick() { if (ENG) engSet(ENG, S.X.sp, hv(), S.X.near, 1); }
+let loopT = 0;
+function play(P) {
+  P = P || cur().P;
+  if (P.e) { ENG ? engOff() : engOn(soloed(P)); return; }
+  fire(soloed(P));
+  clearTimeout(loopT); if (S.loop) loopT = setTimeout(() => play(), Math.max(600, (sfxLen(P) + 0.5) * 1000));
+}
+function playUI() { const b = $('#play'), e = cur().P.e; b.classList.toggle('run', !!ENG); b.textContent = e ? (ENG ? '■ STOP' : '▶ RUN ENGINE') : '▶ PLAY'; }
+/* compare: A is the preset, B the pinned snapshot or another preset */
+const cmpP = () => S.cmp === '#pin' ? pinB : (S.lib.find(p => p.id === S.cmp) || {}).P;
+function playB() { const B = cmpP(); if (!B) return toast('Pick something to compare'); if (B.e) { engOff(); engOn(B); } else fire(B); }
+function playAB() { const a = cur().P, b = cmpP(); if (!b || a.e || b.e) return; play(a); setTimeout(() => fire(b), Math.max(500, (sfxLen(a) + 0.4) * 1000)); }
+
+/* ---------- the scope: render offline with the same code and draw it ---------- */
+const OC = window.OfflineAudioContext || window.webkitOfflineAudioContext, SR = 22050;
+let OB = null, waveT = 0, waveN = 0;
+function wave() { clearTimeout(waveT); waveT = setTimeout(drawWave, 120); }
+async function render1(P) {
+  if (!OC || !P) return null;
+  const len = P.e ? 1.5 : Math.min(8, sfxLen(P) + (P.rv ? 0.9 : 0.1)), c = new OC(1, Math.ceil(SR * len), SR);
+  if (!OB) OB = auBufs(c);
+  const a = { ctx: c, noise: OB.noise, curve: OB.curve }, out = c.createGain(); out.gain.value = 0.75 * 0.85; out.connect(c.destination);
+  const vb = c.createConvolver(); vb.buffer = OB.ir; const vi = c.createGain(); vi.gain.value = 0.6; vi.connect(vb); vb.connect(out);
+  if (P.e) { const N = engBuild(a, P, out); engSet(N, S.X.sp, hv(), S.X.near, 1); }
+  else { const h = P.nd ? 1 : hv(); sfxRun(a, soloed(P), sfxOut(a, P, h, 0, out, vi), 0.005, P.nd ? 1 : h); }
+  return c.startRendering ? await new Promise((ok, no) => { const r = c.startRendering(); if (r && r.then) r.then(ok, no); else c.oncomplete = e => ok(e.renderedBuffer); }) : null;
+}
+async function drawWave() {
+  const cv = $('#wave'); if (!cv) return;
+  const n = ++waveN, P = cur().P, B = S.cmp ? cmpP() : null;
+  let ba, bb; try { ba = await render1(P); bb = B ? await render1(B) : null; } catch (e) { return; }
+  if (n !== waveN || !ba) return;
+  const d = Math.min(2, devicePixelRatio || 1), W = cv.clientWidth * d, Hh = cv.clientHeight * d; cv.width = W; cv.height = Hh;
+  const g = cv.getContext('2d'), dur = Math.max(ba.duration, bb ? bb.duration : 0), mid = Hh / 2;
+  g.fillStyle = '#2f3c28'; for (let s = 0.1; s < dur; s += dur > 2 ? 0.5 : 0.1) g.fillRect(s / dur * W | 0, 0, 1, Hh);
+  g.fillRect(0, mid, W, 1);
+  let peak = 0;
+  const one = (buf, col, al) => {
+    const x = buf.getChannelData(0), per = buf.duration / dur * x.length / W; g.fillStyle = col; g.globalAlpha = al;
+    for (let i = 0; i < W; i++) { let lo = 0, hi = 0; const a0 = (i * per) | 0, a1 = Math.min(x.length, ((i + 1) * per) | 0); for (let j = a0; j < a1; j++) { const v = x[j]; if (v < lo) lo = v; if (v > hi) hi = v; } if (a1 <= a0) continue; if (buf === ba) peak = Math.max(peak, hi, -lo); g.fillRect(i, mid - Math.min(1, hi) * mid, 1, Math.max(1, (hi - lo) * mid)); }
+    g.globalAlpha = 1;
+  };
+  if (bb) one(bb, '#4c8dff', 0.55);
+  one(ba, '#e0b72c', 0.9);
+  const db = peak > 0 ? 20 * Math.log10(peak) : -99;
+  $('#stats').innerHTML = (P.e ? 'engine · speed ' + S.X.sp.toFixed(2) : sfxLen(P).toFixed(2) + ' s') + ' · peak <span style="color:' + (db > -1 ? 'var(--red)' : 'inherit') + '">' + db.toFixed(1) + ' dB</span>' + (db > -1 ? ' (the limiter squashes it)' : '') + (bb ? ' · <span style="color:var(--blue)">B</span>' : '');
+}
+
+/* ---------- controls ---------- */
+const toPos = (v, s) => s[3] ? Math.log(Math.max(v, s[1]) / s[1]) / Math.log(s[2] / s[1]) * 1000 : (v - s[1]) / (s[2] - s[1]) * 1000;
+const fromPos = (x, s) => { const v = s[3] ? s[1] * Math.pow(s[2] / s[1], x / 1000) : s[1] + (s[2] - s[1]) * x / 1000; return s[5] ? Math.round(v) : r4(v); };
+const fmt = v => Math.abs(v) >= 10000 ? r4(v / 1000) + 'k' : Math.abs(v) >= 1000 ? Math.round(v) + '' : Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(Math.abs(v) < 0.1 && v !== 0 ? 3 : 2);
+function ctl(path, k, s, val) {
+  const at = `data-p="${path}" data-k="${k}"`;
+  if (s[1] === 'sel') return `<div class="sl"><label>${s[0]}</label><select ${at}>${s[2].map(o => `<option value="${o}"${o === val ? ' selected' : ''}>${o || 'none'}</option>`).join('')}</select></div>`;
+  if (s[1] === 'chk') return `<div class="sl"><label><input type="checkbox" ${at}${val ? ' checked' : ''}>${s[0]}</label></div>`;
+  const sw = s[6] === 'sweep', off = sw && !val, v = off ? 0 : val;
+  return `<div class="sl${off ? ' off' : ''}"><label>${sw ? `<input type="checkbox" data-sw="${path}" ${off ? '' : 'checked'}>` : ''}${s[0]}</label><input type="range" min="0" max="1000" step="1" ${at} value="${off ? 0 : toPos(v, s)}"${off ? ' disabled' : ''}><input class="val" inputmode="decimal" ${at} value="${off ? 'off' : fmt(v) + (s[4] ? ' ' + s[4] : '')}"${off ? ' disabled' : ''}></div>`;
+}
+const spec = (p, k, L) => p === 'P' ? (cur().P.e ? E : G)[k] : p === 'X' ? X[k] : (FX[L.k] && FX[L.k][k]) || F[k];
+function obj(p) { if (p === 'P') return cur().P; if (p === 'X') return S.X; return cur().P.L[+p.slice(1)]; }
+function dflt(p, k) { if (p === 'X') return 0; const o = obj(p); if (p === 'P') return (o.e ? SFXK.e : SFXK.P)[k]; return SFXK[o.k][k]; }
+const get = (p, k) => { const o = obj(p); return o[k] !== undefined ? o[k] : dflt(p, k); };
+function summary(L) {
+  const l = Object.assign({}, SFXK[L.k], L), hz = f => f >= 1000 ? (f / 1000).toFixed(1) + 'k' : Math.round(f) + '';
+  if (L.k === 'c') return `${l.c} grains · ${hz(l.f)}–${hz(l.f2)} Hz · ${l.sp}s`;
+  return `${L.k === 'n' ? l.ft + ' ' : L.k === 't' ? l.w + ' ' : 'fm ×' + l.mr + ' '}${hz(l.f)}${l.f2 ? '→' + hz(l.f2) : ''} Hz · ${(l.a + l.t).toFixed(2)}s${l.d ? ' @' + l.d : ''}${l.n > 1 ? ' ×' + l.n : ''}`;
+}
+function layerCard(L, i, n) {
+  const T = LT[L.k], p = 'L' + i;
+  const body = T[2].map(([g, ks], j) => { const h = ks.map(k => ctl(p, k, spec(p, k, L), get(p, k))).join(''); return j === 0 ? h : `<details${L['_o' + j] ? ' open' : ''} data-o="${i}:${j}"><summary>${g}</summary>${h}</details>`; }).join('');
+  return `<div class="card ly${L.m ? ' mute' : ''}" style="--c:${T[1]}"><div class="lh"><b>${T[0]}</b><span class="sum" data-tog="${i}">${esc(summary(L))}</span>
+    <button class="btn sm ic" data-l="play" data-i="${i}" title="Play this layer alone">▶</button>
+    <button class="btn sm${L._s ? ' on' : ''}" data-l="solo" data-i="${i}" title="Solo">S</button>
+    <button class="btn sm${L.m ? ' on' : ''}" data-l="mute" data-i="${i}" title="Mute">M</button>
+    <button class="btn sm ic" data-l="menu" data-i="${i}" title="Layer actions">⋯</button></div>
+    ${L._a ? `<div class="row" style="margin:0 0 6px"><button class="btn sm" data-l="dupL" data-i="${i}">Duplicate</button><button class="btn sm" data-l="up" data-i="${i}"${i ? '' : ' disabled'}>↑ Up</button><button class="btn sm" data-l="down" data-i="${i}"${i < n - 1 ? '' : ' disabled'}>↓ Down</button><button class="btn sm" data-l="delL" data-i="${i}"${n > 1 ? '' : ' disabled'}>Delete</button><select data-type="${i}">${Object.keys(LT).map(k => `<option value="${k}"${k === L.k ? ' selected' : ''}>${LT[k][0]}</option>`).join('')}</select></div>` : ''}
+    ${L._c ? '' : body}</div>`;
+}
+function render() {
+  const p = cur(), P = p.P, game = gameGet(), inGame = game[p.gn] && JSON.stringify(game[p.gn]) === JSON.stringify(pack(P));
+  const opts = sel => CATS.map(([c, nm]) => { const l = S.lib.filter(q => q.cat === c); return l.length ? `<optgroup label="${nm}">${l.map(q => `<option value="${q.id}"${q.id === sel ? ' selected' : ''}>${esc(q.nm)}${changed(q) && q.b ? ' •' : ''}</option>`).join('')}</optgroup>` : ''; }).join('');
+  const targets = (P.e ? ENGS : GAME).map(g => `<option${g === p.gn ? ' selected' : ''}>${g}</option>`).join('');
+  let h = `<div class="card"><div class="row"><select id="pick">${opts(p.id)}</select>
+      <select id="newp" title="New sound"><option value="">＋ New…</option><optgroup label="Start from">${S.lib.map(q => `<option value="${q.id}">${esc(q.nm)}</option>`).join('')}</optgroup></select></div>
+    <div class="row" style="margin-top:8px"><button class="btn sm" id="dup">Duplicate</button><button class="btn sm" id="ren">Rename</button>
+      ${p.b ? `<button class="btn sm" id="rev"${changed(p) ? '' : ' disabled'}>Revert to game</button>` : `<button class="btn sm" id="del">Delete</button>`}
+      <span class="sp" style="flex:1"></span>${p.b ? '<span class="tag">game sound</span>' : ''}${inGame ? '<span class="tag g">in game</span>' : ''}</div></div>
+  <div class="card"><canvas id="wave" title="Tap to play"></canvas><div class="row" style="margin-top:6px"><span class="muted" id="stats" style="flex:1">…</span></div>
+    <div class="row" style="margin-top:6px"><span class="muted">Compare</span><select id="cmp"><option value="">—</option><option value="#pin"${S.cmp === '#pin' ? ' selected' : ''}${pinB ? '' : ' disabled'}>Pinned snapshot</option>${opts(S.cmp)}</select>
+      <button class="btn sm" id="pin" title="Remember this version to compare against">Pin</button><button class="btn sm" id="pb">▶ B</button>${P.e ? '' : '<button class="btn sm" id="pab">A → B</button>'}</div></div>
+  <div class="card"><h2>${P.e ? 'Engine' : 'Sound'}<span class="sp"></span></h2>
+    <div class="row" style="margin-bottom:6px"><span class="muted">Plays as</span><select id="gn">${targets}</select><select id="cat">${CATS.map(([c, nm]) => `<option value="${c}"${c === p.cat ? ' selected' : ''}>${nm}</option>`).join('')}</select></div>`;
+  if (P.e) h += EG.map(([g, ks]) => `<div class="grp">${g}</div>` + ks.map(k => ctl('P', k, E[k], get('P', k))).join('')).join('');
+  else h += ['v', 'p', 'pr', 'rv', 'bs', 'lp'].map(k => ctl('P', k, G[k], get('P', k))).join('') + `<details${S._og ? ' open' : ''} data-o="g"><summary>In the game</summary>${['th', 'in', 'nd'].map(k => ctl('P', k, G[k], get('P', k))).join('')}</details>`;
+  h += `<div class="grp">Preview (not saved)</div>` + (P.e ? ['sp', 'near', 'dist'] : ['dist', 'pan']).map(k => ctl('X', k, X[k], S.X[k])).join('') + (P.e ? '<div class="row" style="margin-top:6px"><button class="btn sm" id="rev2">Rev up &amp; down</button></div>' : '') + '</div>';
+  if (!P.e) h += P.L.map((L, i) => layerCard(L, i, P.L.length)).join('') + `<div class="row" style="margin:10px 0"><span class="muted">Add layer</span>${Object.keys(LT).map(k => `<button class="btn sm" data-add="${k}">＋ ${LT[k][0]}</button>`).join('')}</div>`;
+  h += `<div class="card"><h2>Export<span class="sp"></span></h2><textarea id="code" rows="3" readonly>${esc(code(p))},</textarea>
+    <div class="row" style="margin-top:8px"><button class="btn sm" id="cp">Copy</button><button class="btn sm" id="send">Send to game</button>${game[p.gn] ? '<button class="btn sm" id="unsend">Remove from game</button>' : ''}</div>
+    <p class="muted" style="margin:8px 0 0"><b>Send to game</b> makes the game (in this browser, same site) play this for <b>${esc(p.gn)}</b> right away. To make it permanent for everyone, copy the line into <code>SFXD</code>${P.e ? '/<code>ENGD</code>' : ''} in <code>src/1c_sfx.js</code> (or send it to Claude).</p></div>`;
+  $('#main').innerHTML = h;
+  $('#auto').classList.toggle('on', S.auto); $('#loop').classList.toggle('on', S.loop);
+  playUI(); wave();
+}
+
+/* ---------- events ---------- */
+const main = $('#main');
+function setVal(el, v, live) {
+  const p = el.dataset.p, k = el.dataset.k, o = obj(p);
+  o[k] = v;
+  if (p === 'X') engTick(); else if (cur().P.e) engLive(k);
+  const row = el.closest('.sl'), s = spec(p, k, o), r = row && row.querySelector('input[type=range]'), t = row && row.querySelector('.val');
+  if (r && el !== r && typeof v === 'number') r.value = toPos(v, s);
+  if (t && el !== t && typeof v === 'number') t.value = fmt(v) + (s[4] ? ' ' + s[4] : '');
+  if (p[0] === 'L') { const card = el.closest('.ly'), sm = card && card.querySelector('.sum'); if (sm) sm.textContent = summary(o); }
+  if (!live) { $('#code').value = code(cur()) + ','; }
+  wave();
+}
+function done(fromUser) { commit(); if (fromUser && S.auto && !cur().P.e) play(); }
+main.addEventListener('input', e => {
+  const el = e.target; if (!el.dataset.k) return;
+  if (el.type === 'range') setVal(el, fromPos(+el.value, spec(el.dataset.p, el.dataset.k, obj(el.dataset.p))), true);
+});
+main.addEventListener('change', e => {
+  const el = e.target;
+  if (el.dataset.sw) { const p = el.dataset.sw, o = obj(p); o.f2 = el.checked ? r4((o.f || SFXK[o.k].f) * 0.4) : 0; render(); done(true); return; }
+  if (el.id === 'pick') { engOff(); S.cur = el.value; render(); commit(); return; }
+  if (el.id === 'newp') { const src = S.lib.find(q => q.id === el.value); if (src) addPreset(src, ' copy'); return; }
+  if (el.id === 'cmp') { S.cmp = el.value; save(); wave(); return; }
+  if (el.id === 'gn') { cur().gn = el.value; if (!cur().b) cur().cat = CATOF[el.value] || cur().cat; render(); commit(); return; }
+  if (el.dataset.type) return retype(+el.dataset.type, el.value);
+  if (el.id === 'cat') { cur().cat = el.value; render(); commit(); return; }
+  if (!el.dataset.k) return;
+  const s = spec(el.dataset.p, el.dataset.k, obj(el.dataset.p));
+  if (el.type === 'checkbox') setVal(el, el.checked ? 1 : 0);
+  else if (el.tagName === 'SELECT') { setVal(el, el.value); if (el.dataset.p[0] === 'L') render(); }
+  else if (el.type === 'range') setVal(el, fromPos(+el.value, s));
+  else { const v = parseFloat(el.value) * (/\dk/i.test(el.value) ? 1000 : 1); if (!isFinite(v)) { render(); return; } setVal(el, s[5] ? Math.round(v) : r4(v)); }
+  if (el.dataset.p === 'X') { save(); if (S.auto && !cur().P.e) play(); return; }
+  done(true);
+});
+main.addEventListener('toggle', e => { const o = e.target.dataset && e.target.dataset.o; if (!o) return; if (o === 'g') S._og = e.target.open; else { const [i, j] = o.split(':'); cur().P.L[+i]['_o' + j] = e.target.open; } save(); }, true);
+main.addEventListener('focusin', e => { if (e.target.classList.contains('val')) setTimeout(() => e.target.select(), 0); });
+main.addEventListener('click', e => {
+  const b = e.target.closest('button,canvas,.sum'); if (!b) return;
+  const P = cur().P, i = +b.dataset.i;
+  if (b.id === 'wave') return play();
+  if (b.dataset.tog !== undefined) { const L = P.L[+b.dataset.tog]; L._c = !L._c; render(); save(); return; }
+  if (b.dataset.add) { P.L.push(clone(NEWL[b.dataset.add])); render(); done(true); return; }
+  switch (b.dataset.l) {
+    case 'play': { const Q = clone(P); Q.L.forEach((L, j) => { L.m = j === i ? 0 : 1; }); fire(Q); return; }
+    case 'solo': P.L[i]._s = !P.L[i]._s; render(); save(); if (S.auto) play(); return;
+    case 'mute': P.L[i].m = P.L[i].m ? 0 : 1; render(); done(true); return;
+    case 'menu': P.L[i]._a = !P.L[i]._a; render(); save(); return;
+    case 'dupL': P.L.splice(i + 1, 0, Object.assign(clone(P.L[i]), { _a: 0, _s: 0 })); render(); done(true); return;
+    case 'up': P.L.splice(i - 1, 0, P.L.splice(i, 1)[0]); render(); commit(); return;
+    case 'down': P.L.splice(i + 1, 0, P.L.splice(i, 1)[0]); render(); commit(); return;
+    case 'delL': P.L.splice(i, 1); render(); done(true); return;
+  }
+  switch (b.id) {
+    case 'dup': return addPreset(cur(), ' copy');
+    case 'ren': { const n = prompt('Name', cur().nm); if (n) { cur().nm = n.trim() || cur().nm; render(); commit(); } return; }
+    case 'del': { if (!confirm('Delete "' + cur().nm + '"?')) return; engOff(); S.lib = S.lib.filter(q => q !== cur()); S.cur = S.lib[0].id; render(); commit(); return; }
+    case 'rev': { if (!confirm('Put "' + cur().nm + '" back to the game\'s version?')) return; engOff(); cur().P = builtin(cur().b); render(); done(true); return; }
+    case 'pin': pinB = clone(P); S.cmp = '#pin'; render(); toast('Pinned: compare your edits against it with ▶ B'); return;
+    case 'pb': return playB();
+    case 'pab': return playAB();
+    case 'rev2': return revUp();
+    case 'cp': return copy(code(cur()) + ',');
+    case 'send': { const g = gameGet(); g[cur().gn] = pack(P); gameSet(g); render(); toast('The game now plays this for ' + cur().gn); return; }
+    case 'unsend': { const g = gameGet(); delete g[cur().gn]; gameSet(g); render(); toast('Removed: the game plays its own ' + cur().gn); return; }
+  }
+});
+function addPreset(src, suf) { const q = mk(src.nm + suf, src.cat, src.gn, clone(src.P)); S.lib.splice(S.lib.indexOf(src) + 1, 0, q); engOff(); S.cur = q.id; render(); commit(); toast('Made "' + q.nm + '"'); }
+/* a layer changed to another type keeps its timing, level and pitch */
+function retype(i, k) { const P = cur().P, L = P.L[i], keep = { d: L.d, v: L.v, _a: 1 }; if (k !== 'c' && L.k !== 'c') Object.assign(keep, { f: L.f, f2: L.f2, a: L.a, t: L.t }); P.L[i] = Object.assign(clone(NEWL[k]), JSON.parse(JSON.stringify(keep))); render(); done(true); }
+function revUp() { if (!ENG) engOn(cur().P); const t0 = performance.now(); rev = t0; const st = () => { if (rev !== t0 || !ENG) return; const u = (performance.now() - t0) / 3000; if (u >= 1) { S.X.sp = 0.05; engTick(); render(); return; } S.X.sp = r4(Math.sin(u * Math.PI)); engTick(); requestAnimationFrame(st); }; st(); }
+/* nudge every number a little: quick variations to try */
+function vary() {
+  const p = cur(), P = p.P, nud = (o, D, sp, keys) => { for (const k of keys) { const s = sp(k); if (!s || typeof s[1] !== 'number' || s[5]) continue; const v = o[k] !== undefined ? o[k] : D[k]; if (typeof v !== 'number' || v === 0) continue; o[k] = r4(Math.max(s[1], Math.min(s[2], v * (1 + (Math.random() * 2 - 1) * 0.15)))); } };
+  if (P.e) nud(P, SFXK.e, k => E[k], Object.keys(E));
+  else for (const L of P.L) nud(L, SFXK[L.k], k => (FX[L.k] && FX[L.k][k]) || F[k], Object.keys(SFXK[L.k]).filter(k => !['d', 'n', 'c'].includes(k)));
+  render(); commit(); if (!P.e) play();
+}
+async function copy(t) { try { await navigator.clipboard.writeText(t); toast('Copied'); } catch (e) { dlg('Copy this', '', t); } }
+
+/* ---------- dialogs and the ⋯ menu ---------- */
+function dlg(title, desc, text, ok) {
+  const d = $('#dlg'); $('#dt').textContent = title; $('#dd').textContent = desc; $('#dx').value = text || ''; $('#dx').readOnly = !ok;
+  $('#dok').style.display = ok ? '' : 'none'; $('#dcopy').style.display = ok ? 'none' : '';
+  $('#dok').onclick = () => { if (ok($('#dx').value) !== false) d.close(); };
+  d.showModal ? d.showModal() : d.setAttribute('open', '');
+}
+$('#dno').onclick = () => $('#dlg').close(); $('#dcopy').onclick = () => copy($('#dx').value);
+/* reads presets from: a library backup, { name: preset, … }, or lines "name: { … }," as exported */
+function parseAny(t) {
+  t = t.trim().replace(/,\s*$/, '');
+  try { return JSON.parse(t); } catch (e) { }
+  if (!/^[{\w'"]/.test(t)) throw new Error('not presets');
+  return Function('"use strict";return (' + (t[0] === '{' ? t : '{' + t + '}') + ')')();
+}
+function importPresets(t) {
+  let o; try { o = parseAny(t); } catch (e) { toast('Could not read that'); return false; }
+  if (o && Array.isArray(o.lib)) { S.lib = o.lib; S.cur = o.lib[0].id; engOff(); render(); commit(); toast('Library opened'); return; }
+  let n = 0;
+  for (const gn in o) { const P = o[gn]; if (!P || (!P.e && !Array.isArray(P.L))) continue; const q = mk((NAMES[gn] || gn) + ' (imported)', P.e ? 'engine' : CATOF[gn] || 'misc', gn, P); q.o = ''; S.lib.push(q); S.cur = q.id; n++; }
+  if (!n) { toast('No presets in that'); return false; }
+  engOff(); render(); commit(); toast(n + ' imported');
+}
+$('#mbtn').onclick = e => { e.stopPropagation(); $('#menu').classList.toggle('open'); };
+document.addEventListener('click', () => $('#menu').classList.remove('open'));
+$('#menu').addEventListener('click', e => {
+  const m = e.target.dataset.m; if (!m) return;
+  const ch = S.lib.filter(changed);
+  if (m === 'import') dlg('Import presets', 'Paste exported lines (name: { … },) or JSON.', '', importPresets);
+  if (m === 'export') { const per = {}; for (const p of ch) per[p.gn] = p; const L = Object.values(per); dlg('Changed sounds, ready for the game', L.length ? 'One line per game sound (if two presets play as the same sound, the last one). Paste into SFXD / ENGD in src/1c_sfx.js, or send to Claude.' : 'Nothing differs from the game yet.', L.map(p => code(p) + ',').join('\n')); }
+  if (m === 'backup') { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify({ lab: 1, lib: S.lib })], { type: 'application/json' })); a.download = 'sound-lab-' + new Date().toISOString().slice(0, 10) + '.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
+  if (m === 'restore') $('#file').click();
+  if (m === 'sendall') { const g = gameGet(); for (const p of ch) g[p.gn] = pack(p.P); gameSet(g); render(); toast(ch.length + ' sent to the game'); }
+  if (m === 'clear') { gameSet({}); render(); toast('The game plays its own sounds again'); }
+  if (m === 'reset' && confirm('Reset the library to the game\'s sounds? Your presets are lost (undo still works this visit).')) { engOff(); S.lib = seed(); S.cur = 'g_rifle'; S.cmp = ''; render(); commit(); }
+  $('#menu').classList.remove('open');
+});
+$('#file').onchange = async e => { const f = e.target.files[0]; if (f) importPresets(await f.text()); e.target.value = ''; };
+$('#undo').onclick = () => hist(-1); $('#redo').onclick = () => hist(1);
+$('#play').onclick = () => play();
+$('#auto').onclick = () => { S.auto = !S.auto; $('#auto').classList.toggle('on', S.auto); save(); };
+$('#loop').onclick = () => { S.loop = !S.loop; $('#loop').classList.toggle('on', S.loop); save(); if (S.loop) play(); else clearTimeout(loopT); };
+$('#vary').onclick = vary;
+addEventListener('keydown', e => { if (e.target.closest('input,textarea,select')) return; if (e.code === 'Space') { e.preventDefault(); play(); } if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') { e.preventDefault(); hist(e.shiftKey ? 1 : -1); } });
+addEventListener('resize', wave);
+document.addEventListener('visibilitychange', () => { if (document.hidden) { engOff(); clearTimeout(loopT); } });
+render(); commit();
+</script>
+</body>
+</html>

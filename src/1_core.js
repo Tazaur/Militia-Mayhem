@@ -371,12 +371,8 @@ function audioInit() {
     // game sounds go through AU.muf, a lowpass that closes while a menu is up (audioTick); menu clicks skip it (AU.ui)
     AU.muf = c.createBiquadFilter(); AU.muf.type = 'lowpass'; AU.muf.frequency.value = 20000; AU.muf.Q.value = 0.6; AU.muf.connect(master);
     AU.sfx = c.createGain(); AU.sfx.connect(AU.muf); AU.ui = c.createGain(); AU.ui.connect(master); AU.mus = c.createGain(); AU.mus.connect(master);
-    const b = c.createBuffer(1, c.sampleRate * 2, c.sampleRate), d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; AU.noise = b;
-    // generated reverb tail (outdoor slap + long decay) and a soft-clip curve for punchy transients
-    const L = Math.floor(c.sampleRate * 2.2), ir = c.createBuffer(2, L, c.sampleRate);
-    for (let ch = 0; ch < 2; ch++) { const q = ir.getChannelData(ch); for (let i = 0; i < L; i++) { const t = i / c.sampleRate; q[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / L, 3.2) * (t < 0.09 ? 0.35 : 1) + (Math.abs(t - 0.11 - ch * 0.013) < 0.004 ? (Math.random() - 0.5) * 1.6 : 0); } }
-    AU.verb = c.createConvolver(); AU.verb.buffer = ir; AU.verbIn = c.createGain(); AU.verbIn.gain.value = 0.6; AU.verbIn.connect(AU.verb); AU.verb.connect(AU.muf);
-    const cur = new Float32Array(1024); for (let i = 0; i < 1024; i++) { const x = i / 511.5 - 1; cur[i] = Math.tanh(x * 3.2) / Math.tanh(3.2); } AU.curve = cur;
+    const B = auBufs(c); AU.noise = B.noise; AU.curve = B.curve;     // shared with the Sound Lab (1c_sfx.js)
+    AU.verb = c.createConvolver(); AU.verb.buffer = B.ir; AU.verbIn = c.createGain(); AU.verbIn.gain.value = 0.6; AU.verbIn.connect(AU.verb); AU.verb.connect(AU.muf);
     applyMute(); Music.start();
   } catch (e) { AU.ctx = null; }
 }
@@ -435,7 +431,7 @@ function sfx(name, x, y, mul) {
 function sfx1(name, x, y, mul) {
   if (NET.role === 'host' && x !== undefined && NETSFX_I[name] !== undefined) netEv('s', NETSFX_I[name], x | 0, y | 0, Math.round((mul || 1) * 10));
   if (!AU.ctx || !AU.sfxOn) return;
-  if (CFG.sound !== 'classic' && SFX2[name] && sfx2(name, x, y, mul)) return;
+  if (sfx2(name, x, y, mul)) return;
   const h = x === undefined ? { v: 1, p: 0 } : hear(x, y); const v = h.v * (mul || 1) * (M && M.demo ? 0.35 : 1); if (v < 0.03) return;
   const out = outNode(h.p);
   switch (name) {

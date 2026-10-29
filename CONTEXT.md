@@ -743,3 +743,9 @@ Art drop (drop.py): atlas.png: hull4, tur_dead; atlas_m.png: tur_dead, sol_leg0,
 ## Build 253
 - drawSkirt's dashed map edge stroked only where it's in the box (each side its visible part, lineDashOffset from strokeRect's run round the edge so the dashes don't move): it built every dash round the whole map, twice a frame (the world and FOG_OUT), whenever the view reached past an edge. Laptop 0.22 → 0.065 ms; applyFog 0.35 → 0.23.
 - Measured and skipped: caching the statics' sun heights (sunHeights is 0.12 ms on the laptop, ~5 static boxes in view; the cost is the units' parts, which move).
+
+## Build 254: Sound Lab (sound/index.html) and data-driven sounds (src/1c_sfx.js)
+- The modern sound set is now data: SFXD (one-shots) and ENGD (engines) in src/1c_sfx.js, played by sfxRun / sfxOut / sfxVoice and engBuild / engSet / engStop. Same recipes as before (GUN2, the sfx2 switch, metal(), crackle() and engineUpdate2's numbers were translated 1:1; the car's sub is now also scaled by hearing).
+- A preset is { v, p, pr, rv, bs, lp, th, in, nd, L: [layers] }; a layer is a tone (t), noise (n), FM (f) or crackle (c) voice; keys left out take SFXK's defaults. The header comment in 1c_sfx.js lists every key.
+- sfx2(name) plays SFXU[name] (sent from the Sound Lab, localStorage mmgl.sfxlab, any name, either sound mix) else SFXD[name] (modern mix), else returns false → classic code. Engines: SFXU.eng_tank / eng_car else ENGD. The music's thump / burst are sfxVoice calls now.
+- sound/index.html loads ../src/1c_sfx.js directly, so the lab plays exactly the game's code. Library, undo, A/B compare, offline-rendered waveform, autosave (localStorage mmsfx.lab). Export lines "name: { … }," paste straight into SFXD / ENGD.
