@@ -452,7 +452,7 @@ etFail(code)` shows a persistent panel with a trace (candidate counts H/S/R per 
 
 ## Build 166
 - `PIPE` hook (1_core): `pipe(k, o)` calls `PIPE` when set; no-op otherwise. Hooks across drawWorld (queue entries carry `k` labels via `AK`), drawSun (mask, heights lists, HT/HTS/MT, each sweep pass, light, GC maps, composites) and fogOverlay (copy/shade/hole/draw).
-- `pipeline/index.html`: step-through viewer of one real frame. Loads `../index.html` in a hidden same-origin iframe, stops its rAF loop, pins a scene (map 1: player above the building, jeep half hidden, bot hidden behind it), sets `PIPE` and calls `render()` once, snapshotting the canvas and reading back GPU buffers per step. Plain-language text, SVG diagrams, sightNear decisions. Served at /Militia-Mayhem/pipeline/.
+- `guide/`: the field manual (phone-first): `index.html` (system map, one-frame timeline, code browser), `art.js` (loads ../atlas.png, atlas_m.png, atlas.json; the layers stack and HEIGHTS view, part stacking ported from 5e_light), `sys.js` (19 system pages with live demos, variables and formulas), `data.js` (1099 top-level definitions with comments and cross-references, generated from src at build 231). A snapshot, not kept in sync. Served at /Militia-Mayhem/guide/.
 
 ## Build 167
 - `sightNear(vw, o)`: per drawn part (`sightParts`: partsOf → a circle round the whole sprite, shadow length = its top / tan(sun el)), swept from the sun, tested with `circleSeen` (circle vs sight polygon: inside or within r of an edge). Replaces collision circles + eye-ward point, which culled vehicles still poking past a corner. SIGHT_SHADOW gone.

@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0d120b">
+<title>Militia Mayhem Field Manual</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0d120b;--bg2:#141b11;--panel:#1a2316;--panel2:#212c1c;--line:#2f3c28;--line2:#3d4d34;
+  --ink:#ece4c8;--dim:#a49f86;--faint:#6f725f;--acc:#e0b72c;--acc2:#f5d670;--blue:#4c8dff;--red:#ef5a44;--green:#7ddc6a;--cyan:#5fd3d0;--violet:#b48cff;--orange:#ff9a3c;
+  --fd:'Black Ops One',system-ui,sans-serif;--fb:'Chakra Petch',system-ui,sans-serif;--fm:'JetBrains Mono',ui-monospace,monospace;
+  --safe-b:env(safe-area-inset-bottom,0px);--safe-t:env(safe-area-inset-top,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--fb);font-size:15px;line-height:1.45;overflow:hidden;overscroll-behavior:none}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+#app{position:fixed;inset:0;display:grid;grid-template-rows:auto 1fr auto}
+header{padding:calc(8px + var(--safe-t)) 16px 8px;display:flex;align-items:center;gap:10px;background:linear-gradient(#141b11,#0f150d);border-bottom:1px solid var(--line)}
+header h1{font-family:var(--fd);font-weight:400;font-size:18px;letter-spacing:.5px;margin:0;line-height:1.1;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header h1 small{display:block;font-family:var(--fb);font-size:11px;color:var(--dim);letter-spacing:1.5px;text-transform:uppercase;margin-top:2px}
+.chip{font-family:var(--fm);font-size:11px;padding:3px 7px;border:1px solid var(--line2);border-radius:20px;color:var(--acc2);white-space:nowrap}
+main{position:relative;overflow:hidden}
+.view{position:absolute;inset:0;display:none;flex-direction:column}
+.view.on{display:flex}
+nav{display:grid;grid-template-columns:repeat(5,1fr);background:#10160e;border-top:1px solid var(--line);padding-bottom:var(--safe-b)}
+nav button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0 7px;font-size:10.5px;letter-spacing:1.2px;color:var(--faint);font-weight:600;position:relative}
+nav button svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+nav button.on{color:var(--acc)}
+nav button.on::before{content:'';position:absolute;top:0;left:28%;right:28%;height:2px;background:var(--acc);border-radius:0 0 2px 2px}
+/* toolbars inside views */
+.bar{display:flex;gap:8px;padding:10px 16px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--line);background:var(--bg2)}
+.seg{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:3px;gap:2px}
+.seg button{padding:6px 11px;border-radius:7px;font-size:12px;font-weight:600;letter-spacing:.8px;color:var(--dim)}
+.seg button.on{background:var(--acc);color:#1b1607}
+.hint{font-size:12px;color:var(--dim)}
+.grow{flex:1}
+.scroll{overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1;overscroll-behavior:contain}
+/* bottom sheet */
+#scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:opacity .2s;z-index:20}
+#scrim.on{opacity:1;pointer-events:auto}
+#sheet{position:fixed;left:0;right:0;bottom:0;max-height:78%;z-index:21;background:var(--panel);border-top:1px solid var(--line2);border-radius:16px 16px 0 0;transform:translateY(105%);transition:transform .28s cubic-bezier(.2,.8,.2,1);display:flex;flex-direction:column;padding-bottom:var(--safe-b);max-width:760px;margin:0 auto}
+#sheet.on{transform:none}
+#sheet .grab{width:44px;height:5px;border-radius:3px;background:var(--line2);margin:8px auto 2px}
+#sheet .sh-head{display:flex;align-items:flex-start;gap:12px;padding:8px 16px 10px;border-bottom:1px solid var(--line)}
+#sheet .sh-head h2{margin:0;font-family:var(--fd);font-weight:400;font-size:20px;line-height:1.15}
+#sheet .sh-head .sub{font-size:12px;color:var(--dim);letter-spacing:1px;text-transform:uppercase}
+#sheet .x{margin-left:auto;width:34px;height:34px;border-radius:50%;background:var(--panel2);display:grid;place-items:center;flex:none}
+#sheet .sh-body{padding:12px 16px 20px;overflow-y:auto}
+/* full screen page (systems detail) */
+#page{position:fixed;inset:0;z-index:15;background:var(--bg);display:flex;flex-direction:column;transform:translateX(100%);transition:transform .28s cubic-bezier(.2,.8,.2,1)}
+#page.on{transform:none}
+#page .pg-head{display:flex;align-items:center;gap:10px;padding:calc(8px + var(--safe-t)) 12px 8px;border-bottom:1px solid var(--line);background:var(--bg2)}
+#page .back{width:38px;height:38px;border-radius:10px;background:var(--panel);display:grid;place-items:center;flex:none}
+#page .pg-head h2{margin:0;font-family:var(--fd);font-weight:400;font-size:19px;line-height:1.1;flex:1;min-width:0}
+#page .pg-head h2 small{display:block;font-family:var(--fb);font-size:11px;color:var(--dim);letter-spacing:1.4px;text-transform:uppercase}
+#page .pg-nav{display:flex;gap:6px}
+#page .pg-nav button{width:38px;height:38px;border-radius:10px;background:var(--panel);display:grid;place-items:center}
+#page .pg-body{padding:14px 16px calc(28px + var(--safe-b));max-width:760px;margin:0 auto;width:100%}
+/* content blocks */
+h3{font-family:var(--fd);font-weight:400;font-size:16px;letter-spacing:.4px;margin:22px 0 8px;color:var(--acc2)}
+h3:first-child{margin-top:4px}
+p{margin:0 0 10px}
+.lead{font-size:15.5px;color:var(--ink)}
+.muted{color:var(--dim)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;margin:0 0 12px}
+.demo{background:#0a0f08;border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:0 0 12px;position:relative}
+.demo canvas{display:block;width:100%;touch-action:none}
+.demo .cap{font-size:12px;color:var(--dim);padding:8px 10px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.demo .ctl{display:flex;gap:8px;padding:8px 10px;border-top:1px solid var(--line);flex-wrap:wrap;align-items:center}
+.btn{background:var(--panel2);border:1px solid var(--line2);padding:7px 12px;border-radius:9px;font-size:12.5px;font-weight:600;letter-spacing:.6px}
+.btn.on{background:var(--acc);color:#1b1607;border-color:var(--acc)}
+.range{display:flex;align-items:center;gap:8px;width:100%;font-size:12.5px}
+.range label{width:92px;color:var(--dim);flex:none}
+.range input{flex:1;accent-color:var(--acc);min-width:0}
+.range output{font-family:var(--fm);font-size:12px;width:56px;text-align:right;color:var(--acc2);flex:none}
+.math{font-family:var(--fm);font-size:12px;background:#0a0f08;border:1px solid var(--line);border-left:3px solid var(--acc);border-radius:8px;padding:10px 12px;margin:0 0 12px;white-space:pre-wrap;word-break:break-word;line-height:1.55;color:#f3ecd2}
+.math .c{color:var(--faint)}
+.math .k{color:var(--cyan)}
+.math .n{color:var(--orange)}
+table.vars{width:100%;border-collapse:collapse;font-size:13px;margin:0 0 12px}
+table.vars td,table.vars th{padding:6px 6px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}
+table.vars th{font-size:11px;letter-spacing:1px;color:var(--dim);font-weight:600;text-transform:uppercase}
+table.vars td:first-child{font-family:var(--fm);font-size:12px;color:var(--acc2);white-space:nowrap}
+table.vars td.v{font-family:var(--fm);font-size:12px;color:var(--cyan);white-space:nowrap}
+table.vars td.m{font-size:12.5px;color:var(--dim);padding-top:0;font-family:var(--fb);white-space:normal}
+table.vars tr:has(+tr td.m) td{border-bottom:0}
+.tw{overflow-x:auto;margin:0 0 12px}.tw table{margin:0}
+code,.mono{font-family:var(--fm);font-size:.88em;color:var(--acc2)}
+.pill{display:inline-block;font-size:11px;padding:2px 7px;border-radius:12px;border:1px solid var(--line2);color:var(--dim);margin:0 4px 4px 0;letter-spacing:.4px}
+.kv{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 0 12px}
+.kv div{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.kv b{display:block;font-family:var(--fm);font-size:17px;color:var(--acc2);font-weight:600}
+.kv span{font-size:11px;color:var(--dim);letter-spacing:.8px;text-transform:uppercase}
+ul.flow{list-style:none;margin:0 0 12px;padding:0;counter-reset:f}
+ul.flow li{position:relative;padding:8px 10px 8px 40px;border-left:2px solid var(--line2);margin-left:14px}
+ul.flow li::before{counter-increment:f;content:counter(f);position:absolute;left:-14px;top:7px;width:26px;height:26px;border-radius:50%;background:var(--panel2);border:1px solid var(--line2);display:grid;place-items:center;font-family:var(--fm);font-size:12px;color:var(--acc2)}
+ul.flow li b{color:var(--ink)}
+.links{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+.links button{font-size:12px;padding:5px 9px;border-radius:8px;background:var(--panel2);border:1px solid var(--line2)}
+/* map view */
+#mapSvg{width:100%;display:block;touch-action:none}
+.node rect{fill:var(--panel);stroke:var(--line2);stroke-width:1.2}
+.node.hot rect{stroke:var(--acc);stroke-width:2}
+.node text{fill:var(--ink);font-family:var(--fb);font-size:11px;font-weight:600;pointer-events:none}
+.node text.t{font-family:var(--fd);font-size:12.5px;font-weight:400}
+.node text.f{fill:var(--faint);font-family:var(--fm);font-size:8.5px;font-weight:400}
+.edge{fill:none;stroke-linecap:round}
+.elab{font-family:var(--fb);font-size:9px;font-weight:600;fill:var(--acc2);pointer-events:none;paint-order:stroke;stroke:#0d120b;stroke-width:3px;stroke-linejoin:round}
+.grp{font-family:var(--fb);font-size:8px;letter-spacing:1px;fill:var(--faint);font-weight:600}
+#mapCard{margin:0 10px 10px;background:rgba(26,35,22,.96);border:1px solid var(--line2);border-radius:14px;padding:10px 12px;display:none;gap:10px;align-items:center;box-shadow:0 8px 30px rgba(0,0,0,.5)}
+#mapCard.on{display:flex}
+#mapCard b{font-family:var(--fd);font-weight:400;font-size:15px;display:block}
+#mapCard span{font-size:12px;color:var(--dim);display:block;line-height:1.3}
+/* frame view */
+#frameList{padding:8px 0 24px}
+.step{display:flex;gap:10px;padding:9px 16px 9px 0;position:relative;align-items:flex-start}
+.step .rail{width:46px;flex:none;position:relative;align-self:stretch}
+.step .rail::before{content:'';position:absolute;left:23px;top:-9px;bottom:-9px;width:2px;background:var(--line)}
+.step .dot{position:absolute;left:16px;top:6px;width:16px;height:16px;border-radius:50%;background:var(--bg);border:2px solid var(--line2);z-index:1;transition:all .15s}
+.step.sub .rail::after{content:'';position:absolute;left:24px;top:14px;width:14px;height:2px;background:var(--line)}
+.step.sub .dot{left:36px;top:8px;width:11px;height:11px}
+.step.sub .bd{padding-left:14px}
+.step .bd{flex:1;min-width:0}
+.step .nm{font-weight:700;font-size:14px;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.step .nm code{font-size:12px;font-weight:400}
+.step .ds{font-size:12.8px;color:var(--dim);margin-top:2px}
+.step .fl{font-family:var(--fm);font-size:10.5px;color:var(--faint);margin-left:auto}
+.step.cur .dot{background:var(--acc);border-color:var(--acc);box-shadow:0 0 0 5px rgba(224,183,44,.18)}
+.step.cur .nm{color:var(--acc2)}
+.step.done .dot{border-color:var(--acc);background:#3b3215}
+.phase{font-family:var(--fd);font-size:13px;letter-spacing:1px;color:var(--acc);padding:16px 16px 4px 16px}
+/* layers view */
+#stage{flex:1;position:relative;overflow:hidden;touch-action:none;perspective:900px;perspective-origin:50% 35%}
+#stack{position:absolute;left:50%;top:52%;width:0;height:0;transform-style:preserve-3d}
+.lay{position:absolute;transform-style:preserve-3d;transition:transform .45s cubic-bezier(.2,.8,.2,1),opacity .3s}
+.lay canvas{display:block;border-radius:3px}
+.lay .tag{position:absolute;left:100%;top:0;margin-left:8px;white-space:nowrap;font-size:10px;font-weight:700;letter-spacing:1px;color:var(--ink);background:rgba(13,18,11,.85);border:1px solid var(--line2);padding:2px 6px;border-radius:6px;transform-origin:left center}
+.lay.sel canvas{outline:2px solid var(--acc)}
+.lay.dim{opacity:.18}
+#layInfo{border-top:1px solid var(--line);background:var(--bg2);padding:10px 16px;min-height:96px;max-height:34%;overflow-y:auto}
+#layInfo h4{margin:0 0 2px;font-family:var(--fd);font-weight:400;font-size:15px;color:var(--acc2)}
+#layInfo .z{font-family:var(--fm);font-size:11px;color:var(--cyan)}
+/* systems grid */
+.sgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;padding:14px 16px 24px}
+.scard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px 10px 12px;text-align:left;display:flex;flex-direction:column;gap:6px;min-height:132px;position:relative;overflow:hidden}
+.scard canvas{width:100%;height:58px;display:block}
+.scard b{font-family:var(--fd);font-weight:400;font-size:14.5px;line-height:1.1}
+.scard span{font-size:11.5px;color:var(--dim);line-height:1.3}
+.scard i{position:absolute;top:8px;right:9px;font-style:normal;font-family:var(--fm);font-size:10px;color:var(--faint)}
+.sec-t{grid-column:1/-1;font-family:var(--fd);font-size:13px;color:var(--acc);letter-spacing:1px;margin:8px 0 -2px}
+/* code view */
+.mods{padding:10px 16px 24px}
+.mod{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:10px 12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-bottom:8px;width:100%;text-align:left}
+.mod b{font-weight:700}
+.mod .meta{font-family:var(--fm);font-size:11px;color:var(--faint)}
+.mod .barv{grid-column:1/-1;height:5px;background:var(--bg);border-radius:3px;overflow:hidden;margin-top:4px}
+.mod .barv i{display:block;height:100%;background:var(--acc)}
+.search{flex:1;min-width:0;background:var(--panel);border:1px solid var(--line2);border-radius:10px;padding:9px 12px;color:var(--ink);font:inherit;font-size:14px}
+.def{padding:10px 16px;border-bottom:1px solid var(--line)}
+.def .h{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.def .h b{font-family:var(--fm);font-size:13.5px;color:var(--acc2);font-weight:600;word-break:break-all}
+.def .h .a{font-family:var(--fm);font-size:11.5px;color:var(--faint);word-break:break-all}
+.def .h .k{font-size:10px;letter-spacing:1px;color:var(--cyan);border:1px solid var(--line2);border-radius:5px;padding:0 4px}
+.def .c{font-size:12.8px;color:var(--dim);margin-top:3px;overflow-wrap:anywhere}
+.def .u{margin-top:6px;display:flex;flex-wrap:wrap;gap:4px}
+.def .u button{font-family:var(--fm);font-size:11px;padding:2px 6px;border-radius:6px;background:var(--panel2);color:var(--ink)}
+.def .u button.x{color:var(--cyan)}
+#heat{width:100%;display:block}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:var(--dim);padding:0 16px 8px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+@media (min-width:700px){.sgrid{grid-template-columns:repeat(3,1fr)}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Militia Mayhem<small>Field manual · how the game runs</small></h1>
+    <span class="chip" id="buildChip">BUILD 231</span>
+  </header>
+  <main>
+    <!-- 1 SYSTEM MAP -->
+    <section class="view on" id="v-map">
+      <div class="bar">
+        <div class="seg" id="mapMode"><button class="on" data-m="flow">DATA FLOW</button><button data-m="code">CODE LINKS</button></div>
+        <span class="hint grow" id="mapHint">Tap a module</span>
+      </div>
+      <div style="flex:1;min-height:0;display:flex;flex-direction:column"><svg id="mapSvg" style="flex:1;min-height:0" viewBox="0 0 360 600" preserveAspectRatio="xMidYMid meet"></svg><div id="mapCard"></div></div>
+    </section>
+    <!-- 2 FRAME -->
+    <section class="view" id="v-frame">
+      <div class="bar">
+        <button class="btn on" id="fPlay">❚❚ PAUSE</button>
+        <button class="btn" id="fStep">STEP ›</button>
+        <span class="hint grow" style="text-align:right">one frame, start to finish</span>
+      </div>
+      <div class="scroll" id="frameScroll"><div id="frameList"></div></div>
+    </section>
+    <!-- 3 LAYERS -->
+    <section class="view" id="v-layers">
+      <div class="bar">
+        <div class="seg" id="layMode"><button class="on" data-m="stack">DRAW STACK</button><button data-m="relief">HEIGHTS</button></div>
+        <div class="seg" id="layExp"><button data-e="0">FLAT</button><button class="on" data-e="1">EXPLODE</button></div>
+      </div>
+      <div id="stage"><div id="stack"></div><canvas id="relief" style="position:absolute;inset:0;width:100%;height:100%;display:none;touch-action:none"></canvas></div>
+      <div id="layInfo"></div>
+    </section>
+    <!-- 4 SYSTEMS -->
+    <section class="view" id="v-sys"><div class="scroll"><div class="sgrid" id="sgrid"></div></div></section>
+    <!-- 5 CODE -->
+    <section class="view" id="v-code">
+      <div class="bar">
+        <div class="seg" id="codeMode"><button class="on" data-m="mods">MODULES</button><button data-m="matrix">MATRIX</button><button data-m="find">FIND</button></div>
+      </div>
+      <div class="scroll" id="codeBody"></div>
+    </section>
+  </main>
+  <nav id="tabs">
+    <button class="on" data-v="map"><svg viewBox="0 0 24 24"><circle cx="5" cy="6" r="2.4"/><circle cx="19" cy="6" r="2.4"/><circle cx="12" cy="18" r="2.4"/><path d="M7.2 6.8 10.6 16M16.8 6.8 13.4 16M7.4 6h9.2"/></svg>MAP</button>
+    <button data-v="frame"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2.2"/></svg>FRAME</button>
+    <button data-v="layers"><svg viewBox="0 0 24 24"><path d="m12 3 9 4.5-9 4.5-9-4.5z"/><path d="m3 12 9 4.5 9-4.5M3 16.5 12 21l9-4.5"/></svg>LAYERS</button>
+    <button data-v="sys"><svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>SYSTEMS</button>
+    <button data-v="code"><svg viewBox="0 0 24 24"><path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/></svg>CODE</button>
+  </nav>
+</div>
+<div id="scrim"></div>
+<div id="sheet"><div class="grab"></div><div class="sh-head"><div><div class="sub" id="shSub"></div><h2 id="shTitle"></h2></div><button class="x" id="shX" aria-label="Close">✕</button></div><div class="sh-body" id="shBody"></div></div>
+<div id="page"><div class="pg-head"><button class="back" id="pgBack" aria-label="Back">‹</button><h2 id="pgTitle"></h2><div class="pg-nav"><button id="pgPrev" aria-label="Previous">↑</button><button id="pgNext" aria-label="Next">↓</button></div></div><div class="scroll" id="pgScroll"><div class="pg-body" id="pgBody"></div></div></div>
+
+<script src="data.js"></script>
+<script>
+/* ============ shared helpers ============ */
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const TAU = Math.PI * 2, clamp = (v, a, b) => v < a ? a : v > b ? b : v, lerp = (a, b, t) => a + (b - a) * t;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const CSSV = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const COL = { acc: '#e0b72c', acc2: '#f5d670', blue: '#4c8dff', red: '#ef5a44', green: '#7ddc6a', cyan: '#5fd3d0', violet: '#b48cff', orange: '#ff9a3c', ink: '#ece4c8', dim: '#a49f86', faint: '#6f725f', line: '#2f3c28', line2: '#3d4d34', panel: '#1a2316', bg: '#0d120b' };
+fetch('../version.json?' + Date.now()).then(r => r.json()).then(v => { if (v && v.build) $('#buildChip').textContent = 'BUILD ' + v.build; }).catch(() => { });
+/* a canvas sized to its box at device resolution; returns its 2D context with CSS-px units */
+function fitCanvas(c, h) {
+  const r = c.parentElement.getBoundingClientRect(), w = Math.max(10, r.width), H = h || c._h || Math.round(w * 0.62), d = Math.min(2, devicePixelRatio || 1);
+  c._h = H; c.style.height = H + 'px'; c.width = Math.round(w * d); c.height = Math.round(H * d);
+  const g = c.getContext('2d'); g.setTransform(d, 0, 0, d, 0, 0); g.W = w; g.H = H; return g;
+}
+/* animation loops that only run while their canvas is on screen */
+const LOOPS = new Set();
+function loop(c, fn) { const L = { c, fn, t0: performance.now() }; LOOPS.add(L); return L; }
+(function tick(now) {
+  for (const L of LOOPS) { if (!L.c.isConnected) { LOOPS.delete(L); continue; } const r = L.c.getBoundingClientRect(); if (r.bottom < 0 || r.top > innerHeight || !r.width || L.c.offsetParent === null) continue; const dt = Math.min(0.05, (now - (L.last || now)) / 1000); L.last = now; try { L.fn(dt, (now - L.t0) / 1000); } catch (e) { console.error(e); LOOPS.delete(L); } }
+  requestAnimationFrame(tick);
+})(performance.now());
+
+/* ============ tabs ============ */
+const VIEWS = {};
+function showView(v) {
+  $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  $$('.view').forEach(s => s.classList.toggle('on', s.id === 'v-' + v));
+  if (VIEWS[v] && !VIEWS[v].done) { VIEWS[v].done = 1; VIEWS[v].init(); }
+  if (VIEWS[v] && VIEWS[v].show) VIEWS[v].show();
+  try { localStorage.setItem('mmguide.v', v); } catch (e) { }
+}
+$('#tabs').onclick = e => { const b = e.target.closest('button'); if (b) showView(b.dataset.v); };
+
+/* ============ bottom sheet ============ */
+function openSheet(sub, title, html, after) {
+  $('#shSub').textContent = sub; $('#shTitle').textContent = title; $('#shBody').innerHTML = html; $('#shBody').scrollTop = 0;
+  $('#sheet').classList.add('on'); $('#scrim').classList.add('on'); if (after) after($('#shBody'));
+}
+function closeSheet() { $('#sheet').classList.remove('on'); $('#scrim').classList.remove('on'); if (window.onSheetClose) window.onSheetClose(); }
+$('#shX').onclick = closeSheet; $('#scrim').onclick = closeSheet;
+(() => { let y0 = null; const s = $('#sheet'); s.addEventListener('touchstart', e => { if ($('#shBody').scrollTop <= 0) y0 = e.touches[0].clientY; }, { passive: true }); s.addEventListener('touchmove', e => { if (y0 !== null && e.touches[0].clientY - y0 > 70) { y0 = null; closeSheet(); } }, { passive: true }); s.addEventListener('touchend', () => y0 = null); })();
+
+/* ============ full page (system detail) ============ */
+let PG = { list: [], i: -1 };
+function openPage(list, i) {
+  PG.list = list; PG.i = i; const it = list[i];
+  $('#pgTitle').innerHTML = esc(it.title) + '<small>' + esc(it.sub || '') + '</small>';
+  const body = $('#pgBody'); body.innerHTML = ''; $('#pgScroll').scrollTop = 0;
+  it.render(body);
+  $('#page').classList.add('on');
+  $('#pgPrev').style.visibility = i > 0 ? 'visible' : 'hidden'; $('#pgNext').style.visibility = i < list.length - 1 ? 'visible' : 'hidden';
+}
+$('#pgBack').onclick = () => { $('#page').classList.remove('on'); setTimeout(() => { if (!$('#page').classList.contains('on')) $('#pgBody').innerHTML = ''; }, 320); };
+$('#pgPrev').onclick = () => PG.i > 0 && openPage(PG.list, PG.i - 1);
+$('#pgNext').onclick = () => PG.i < PG.list.length - 1 && openPage(PG.list, PG.i + 1);
+addEventListener('popstate', () => { });
+
+/* ============ module facts (hand-written from the source) ============ */
+const MODS = {
+  '0_gx': { t: 'GX RENDERER', g: 'platform', c: COL.violet, d: 'The Canvas 2D drawing API rebuilt on WebGL2. Every world draw call (drawImage, fill, stroke, text, gradients, clips, blend modes) is turned into triangles and batched into one vertex buffer, so the old 2D code runs on the GPU unchanged. <code>?2d</code> in the address (or no WebGL2) falls back to the plain 2D canvas.', own: ['GSurf / mkG (GL surfaces)', 'batch: 9 floats / vertex', '6 texture slots + gradient ramp', 'blend modes incl. dodge / multiply', 'stencil paths & clips', 'text cache', 'lightComp, fadeAlpha, blur shaders'] },
+  '1_core': { t: 'CORE', g: 'platform', c: COL.violet, d: 'Everything else stands on this: maths helpers, the data tables (weapons, kits, modes, skill), canvas setup and transforms, the sprite atlas and team recolouring, the audio graph and classic sounds, and input from keyboard, mouse, gamepads and touch.', own: ['WPN · KITS · MODES · SKILL', 'CFG settings (saved)', 'atlas IMG + tinted / vehSkin', 'worldT() transform', 'AudioContext bus', 'devState(): kb / pad / touch'] },
+  '1b_audio2': { t: 'AUDIO', g: 'platform', c: COL.violet, d: 'The experimental (default) sound set. No audio files: every gunshot, blast, engine and the adaptive music is synthesised live from oscillators and filtered noise, with distance turning into muffling and reverb.', own: ['GUN2 shot recipes', 'thump / burst / crackle / metal', 'earRing tinnitus', 'engine + track loops', 'music2 (intensity → tempo)'] },
+  '2_maps': { t: 'WORLD', g: 'world', c: COL.green, d: 'Builds the five battlefields from a seed (always the same on every client), paints the ground once into a world-sized canvas, keeps decals and footprints that fade, and owns the navigation grids and A* pathfinding.', own: ['buildMap (5 maps, mirrored)', 'ground / decals / prints canvases', 'statics hash · rectsIn grid', 'navS / navV grids', 'astar + string pulling'] },
+  '3_sim': { t: 'SIMULATION', g: 'sim', c: COL.red, d: 'The rules of the battle. Soldiers, stances and weapons; vehicles, seats, driving and collisions; projectiles with height; damage, explosions and wrecks; gadgets; the smoke field; line of sight; flags, tickets and co-op waves.', own: ['M (the match state)', 'VT vehicle table', 'controlSoldier / vehDrive', 'updateProjectiles', 'explosion()', 'smoke field CA', 'sees() / softOcc'] },
+  '4_ai': { t: 'BOTS & LOOP', g: 'sim', c: COL.red, d: 'Turns brains and hands into the same input object I: bots think 3–4 times a second (targets, goals, cover, vehicles) and humans are read from their devices with aim assist. Also the match update order and the cameras.', own: ['botControl → I', 'humanInput → I', 'visibleTo (light-aware)', 'updateMatch order', 'cameras & split screen'] },
+  '5_ui': { t: 'RENDERER', g: 'view', c: COL.blue, d: 'Draws one view: the ground, then a draw queue of everything sorted by its real height, then the light, then what glows over it, then fog, smoke, tags, weather. Also the whole HUD, deploy screen and touch controls.', own: ['drawWorld(vw)', 'DRAWQ (height-sorted)', 'drawVehicle / drawSoldier', 'particles by kind', 'HUD · deploy · touch'] },
+  '5a_icons': { t: 'ICONS', g: 'view', c: COL.blue, d: 'Vector HUD glyphs, controller button prompts and the tactical map.', own: ['artIcon', 'button badges', 'tactical map'] },
+  '5b_fog': { t: 'VISION FOG', g: 'view', c: COL.blue, d: 'Fog of war by line of sight: exact visibility polygons from every eye, a half-resolution memory of what you last saw, and a soft mask for smoke and windows.', own: ['visPoly (exact)', 'fog memory (FOGK .5)', 'softMask', 'fogOverlay / fogLook'] },
+  '5c_net': { t: 'ONLINE', g: 'net', c: COL.cyan, d: 'Host-authoritative online play over direct WebRTC links, introduced through public ntfy relays. The host sends compact base-64 snapshots and an event log; joiners send input, predict their own soldier, and the host rewinds time to judge their shots.', own: ['netSnap (base-64)', 'event log ×4 resend', 'lag compensation', 'client prediction', 'error codes 101–303'] },
+  '5d_dev': { t: 'DEV & TILED', g: 'tools', c: COL.orange, d: 'The dev test yard and the tile system behind OUTSKIRTS: generated houses with breakable wall sections, windows, falling roofs, bot posts. Plus dummies, the TTK log, the day cycle and the GPU stage profiler.', own: ['genHouse', 'wall sections & damage', 'roof cascades', 'posts (bot camping)', 'GPU timers (pipe)'] },
+  '5e_light': { t: 'LIGHTING', g: 'view', c: COL.blue, d: 'Real lights, never painted glows. By day a GPU height buffer of every solid thing (from the material atlas) gives slope shading and shadows as long as things are tall; at night shader point lights with height-aware shadows. Heights also set the draw order.', own: ['height buffer HT', 'sun sweep shadows', 'channels (hLayers)', 'point lights · lamps', 'litAt() for bots', 'artMax / topOf / partsOf'] },
+  '6_menus': { t: 'MENUS & MAIN LOOP', g: 'shell', c: COL.acc, d: 'Title, online menu, lobby, settings, pause and end screens, and the main loop itself: frame() → update(dt) → render() on every animation frame.', own: ['frame(now)', 'update: state machine', 'render()', 'lobby & settings', 'end screen & awards'] }
+};
+const GROUPS = { platform: 'PLATFORM', world: 'WORLD', sim: 'SIMULATION', view: 'PRESENTATION', net: 'NETWORK', tools: 'TOOLS', shell: 'SHELL' };
+/* data flow: what actually travels between the modules each frame */
+const FLOWS = [
+  ['6_menus', '4_ai', 'update(dt) → updateMatch', 'The main loop calls updateMatch every frame while a match (or the title screen\'s demo battle) runs.'],
+  ['1_core', '4_ai', 'device state', 'devState(dev) reads keyboard + mouse, a gamepad (deadzones, Battlefield layout) or the touch sticks into one plain state object.'],
+  ['4_ai', '3_sim', 'input I', 'Every soldier, human or bot, is driven by the same input object I: {mx, my, aimA, fire, alt, sprint, enter, …}. controlSoldier / controlSeated apply it.'],
+  ['2_maps', '4_ai', 'A* paths', 'Bots ask astar(navS or navV) for a path to their goal, re-planned every 2.5–4 s, then string-pulled to straight runs.'],
+  ['3_sim', '2_maps', 'decals · nav dirty', 'Footprints, blood, treads and craters are painted into the world canvases; anything that changes the ground for pathing sets navDirty.'],
+  ['5e_light', '4_ai', 'litAt(x, y)', 'How lit a spot is (sun, flashes, fires, lamps). Bots see a standing man 10 000 px by day but 150 px in the dark.'],
+  ['3_sim', '5_ui', 'M (match state)', 'The renderer reads the match object M: soldiers, vehicles, projectiles, particles, corpses, wrecks, items, flags.'],
+  ['5b_fog', '5_ui', 'sight polygons', 'applyFog returns what each view can see; what\'s outside shows the remembered map.'],
+  ['5_ui', '5e_light', 'heights · light()', 'Every drawn thing has a height; drawSun / drawLights light the frame. Muzzle flashes and fires call light().'],
+  ['5_ui', '0_gx', 'Canvas2D calls', 'All world drawing is ordinary Canvas2D code, executed by GX on WebGL2 in big batches.'],
+  ['5e_light', '0_gx', 'shader passes', 'Height buffer, sun sweep and the light composite (shade × , dodge highlights, + glow) are GL passes sharing GX\'s context.'],
+  ['3_sim', '1b_audio2', 'sfx(name, x, y)', 'Shots, blasts, engines: hear(x, y) turns distance to the camera into volume, pan, muffling and reverb.'],
+  ['3_sim', '5c_net', 'snapshots · events', 'Host: up to ~30 snapshots a second (33 ms gate) of every soldier, vehicle and shell, plus an event log (blasts, kills, sounds) each sent 4 times.'],
+  ['5c_net', '3_sim', 'joiner input · shots', 'Joiners send their input and own movement; the host replays it a little behind and judges their shots at the moment they saw (lagAt).'],
+  ['5d_dev', '2_maps', 'tiled houses', 'OUTSKIRTS and the dev yard: genHouse → wall sections in MAP.buildings, so collision, bullets and paths need nothing new.'],
+  ['5a_icons', '5_ui', 'glyphs · map', 'HUD icons, button prompts and the tactical map.']
+];
+/* layout (viewBox 360 x 600) */
+const NPOS = { '6_menus': [180, 44], '1_core': [70, 128], '1b_audio2': [290, 128], '4_ai': [180, 205], '2_maps': [62, 292], '3_sim': [180, 312], '5c_net': [298, 292], '5d_dev': [62, 392], '5b_fog': [62, 488], '5_ui': [180, 452], '5e_light': [298, 404], '5a_icons': [298, 500], '0_gx': [180, 556] };
+const NW = 92, NH = 46;
+
+/* ============ VIEW 1: system map ============ */
+VIEWS.map = {
+  init() {
+    const svg = $('#mapSvg'), NS = 'http://www.w3.org/2000/svg', el = (t, a, p) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); (p || svg).appendChild(e); return e; };
+    let mode = 'flow', sel = null; const C = window.GAME_CODE;
+    const defs = el('defs', {});
+    defs.innerHTML = '<marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#6f725f"/></marker><marker id="arA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#e0b72c"/></marker>';
+    const gE = el('g', {}), gD = el('g', {}), gN = el('g', {});
+    // edge from a node box border to another
+    const port = (a, b) => { const [x0, y0] = NPOS[a], [x1, y1] = NPOS[b], dx = x1 - x0, dy = y1 - y0, kx = (NW / 2 + 3) / Math.abs(dx || 1e-6), ky = (NH / 2 + 3) / Math.abs(dy || 1e-6), k = Math.min(kx, ky); return [x0 + dx * k, y0 + dy * k]; };
+    let edges = [];
+    function build() {
+      gE.innerHTML = ''; gD.innerHTML = ''; edges = [];
+      const list = mode === 'flow' ? FLOWS.map(f => ({ a: f[0], b: f[1], lab: f[2], txt: f[3], w: 1.6 })) : C.edges.filter(e => e[2] >= 8).map(e => ({ a: e[0], b: e[1], n: e[2], w: 0.6 + Math.sqrt(e[2]) * 0.32 }));
+      for (const e of list) {
+        const [x0, y0] = port(e.a, e.b), [x1, y1] = port(e.b, e.a), mx = (x0 + x1) / 2, my = (y0 + y1) / 2, nx = -(y1 - y0), ny = x1 - x0, L = Math.hypot(nx, ny) || 1, bend = mode === 'flow' ? 14 : 10, cx = mx + nx / L * bend, cy = my + ny / L * bend;
+        const d = `M${x0},${y0} Q${cx},${cy} ${x1},${y1}`;
+        const p = el('path', { d, class: 'edge', stroke: mode === 'flow' ? '#4a5a3e' : '#3a4a32', 'stroke-width': e.w, 'marker-end': 'url(#ar)' }, gE);
+        e.p = p; e.len = p.getTotalLength(); e.mid = p.getPointAtLength(e.len / 2);
+        if (mode === 'flow') { const t = el('text', { x: e.mid.x, y: e.mid.y - 3, 'text-anchor': 'middle', class: 'elab' }, gE); t.textContent = e.lab; e.t = t; }
+        edges.push(e);
+        const nd = mode === 'flow' ? 2 : Math.min(4, 1 + (e.n / 80 | 0));
+        e.dots = []; for (let i = 0; i < nd; i++) e.dots.push(el('circle', { r: mode === 'flow' ? 2.6 : 1.8, fill: mode === 'flow' ? MODS[e.a].c : '#8c8a70' }, gD));
+      }
+      paint();
+    }
+    // group labels
+    [['BASE', COL.violet], ['WORLD', COL.green], ['SIM', COL.red], ['VIEW', COL.blue], ['NET', COL.cyan], ['TOOLS', COL.orange], ['SHELL', COL.acc]].forEach(([t, c], i) => { const x = 14 + i * 49; el('rect', { x, y: 590, width: 7, height: 7, rx: 1.5, fill: c }, gN); const e = el('text', { x: x + 10, y: 597, class: 'grp' }, gN); e.textContent = t; });
+    const nodes = {};
+    for (const [m, [x, y]] of Object.entries(NPOS)) {
+      const g = el('g', { class: 'node', transform: `translate(${x - NW / 2},${y - NH / 2})`, role: 'button', tabindex: 0 }, gN);
+      el('rect', { width: NW, height: NH, rx: 9 }, g); el('rect', { width: 4, height: NH - 16, x: 0, y: 8, rx: 2, style: `fill:${MODS[m].c};stroke:none` }, g);
+      const t = el('text', { x: 11, y: 19, class: 't' }, g); t.textContent = MODS[m].t.length > 12 ? MODS[m].t.split(' ')[0] : MODS[m].t;
+      const f = el('text', { x: 11, y: 34, class: 'f' }, g); f.textContent = m + '.js · ' + C.files[m].lines;
+      g.addEventListener('click', () => pick(m)); nodes[m] = g;
+    }
+    function paint() {
+      for (const e of edges) {
+        if (e.t && sel && (e.a === sel || e.b === sel)) gE.appendChild(e.t);
+        const on = !sel || e.a === sel || e.b === sel; e.p.style.opacity = on ? 1 : 0.12; if (e.t) e.t.style.opacity = sel && on ? 1 : 0;
+        e.p.setAttribute('stroke', sel && on ? COL.acc : mode === 'flow' ? '#4a5a3e' : '#3a4a32'); e.p.setAttribute('marker-end', sel && on ? 'url(#arA)' : 'url(#ar)');
+                for (const d of e.dots) d.style.opacity = on ? 1 : 0;
+      }
+      for (const [m, g] of Object.entries(nodes)) g.classList.toggle('hot', m === sel);
+    }
+    function pick(m) {
+      sel = sel === m ? null : m; paint(); const card = $('#mapCard'); card.classList.toggle('on', !!sel);
+      if (!sel) return;
+      const fl0 = FLOWS.filter(f => f[0] === m || f[1] === m).length;
+      card.innerHTML = `<div style="flex:1;min-width:0"><b style="color:${MODS[m].c}">${MODS[m].t}</b><span>${m}.js · ${C.files[m].lines} lines · ${fl0} data links shown</span></div><button class="btn on" id="mcD">DETAILS ›</button>`;
+      $('#mcD').onclick = () => details(m);
+    }
+    function details(m) {
+      const M = MODS[m], F = C.files[m], outs = C.edges.filter(e => e[0] === m).sort((a, b) => b[2] - a[2]), ins = C.edges.filter(e => e[1] === m).sort((a, b) => b[2] - a[2]);
+      const fl = FLOWS.filter(f => f[0] === m || f[1] === m);
+      const h = `<p class="lead">${M.d}</p>
+      <div class="kv"><div><b>${F.lines}</b><span>lines</span></div><div><b>${(F.bytes / 1024).toFixed(0)}k</b><span>bytes</span></div><div><b>${F.fns}/${F.vars}</b><span>fns / vars</span></div></div>
+      <h3>Owns</h3><div>${M.own.map(o => `<span class="pill">${o}</span>`).join('')}</div>
+      ${fl.length ? `<h3>Data in &amp; out</h3>${fl.map(f => `<div class="card" style="padding:9px 11px"><b style="color:${f[0] === m ? COL.acc2 : COL.cyan}">${f[0] === m ? '→ ' + MODS[f[1]].t : '← ' + MODS[f[0]].t}</b> · <span class="mono">${esc(f[2])}</span><div class="muted" style="font-size:13px;margin-top:3px">${esc(f[3])}</div></div>`).join('')}` : ''}
+      <h3>Calls into (references)</h3><div class="links">${outs.map(e => `<button data-m="${e[1]}">${MODS[e[1]].t} <span class="mono">${e[2]}</span></button>`).join('') || '<span class="muted">nothing</span>'}</div>
+      <h3>Used by</h3><div class="links">${ins.map(e => `<button data-m="${e[0]}">${MODS[e[0]].t} <span class="mono">${e[2]}</span></button>`).join('') || '<span class="muted">nothing</span>'}</div>
+      <div class="links"><button data-code="${m}" style="border-color:var(--acc);color:var(--acc2)">Browse ${F.fns + F.vars} definitions ›</button></div>`;
+      openSheet(GROUPS[M.g] + ' · ' + m + '.js', M.t, h, b => {
+        b.querySelectorAll('[data-m]').forEach(x => x.onclick = () => { sel = null; pick(x.dataset.m); details(x.dataset.m); });
+        b.querySelector('[data-code]').onclick = () => { closeSheet(); showView('code'); VIEWS.code.openMod(m); };
+      });
+    }
+    svg.addEventListener('click', e => { if (!e.target.closest('.node') && sel) pick(sel); });
+    $('#mapMode').onclick = e => { const b = e.target.closest('button'); if (!b) return; mode = b.dataset.m; $$('#mapMode button').forEach(x => x.classList.toggle('on', x === b)); $('#mapHint').textContent = mode === 'flow' ? 'Tap a module' : 'Width = references'; build(); };
+    build();
+    // moving dots
+    const t0 = performance.now();
+    (function anim(now) {
+      if ($('#v-map').classList.contains('on')) {
+        const t = (now - t0) / 1000;
+        for (const e of edges) e.dots.forEach((d, i) => { const k = ((t * (mode === 'flow' ? 0.32 : 0.22) + i / e.dots.length + (e.len % 7) / 7) % 1), p = e.p.getPointAtLength(k * e.len); d.setAttribute('cx', p.x); d.setAttribute('cy', p.y); });
+      }
+      requestAnimationFrame(anim);
+    })(t0);
+    this.pick = pick;
+  }
+};
+
+/* ============ VIEW 2: one frame ============ */
+const FRAME = [
+  { ph: 'BROWSER' },
+  { n: 'requestAnimationFrame', f: '6_menus', d: 'The browser calls frame(now) about 60 times a second (a hidden host tab keeps simulating on a 40 ms timer so online players aren\'t frozen).' },
+  { n: 'frame(now)', f: '6_menus', d: 'dt = min(0.05, Δt): a long hitch never makes the simulation jump more than 50 ms.', m: 'dt = min(0.05, (now − last) / 1000)' },
+  { ph: 'UPDATE  ·  update(dt)' },
+  { n: 'pollPads · netTick', f: '6_menus · 5c_net', d: 'Gamepads are polled; online links are serviced (snapshots out on the host, in on a joiner).', s: 1 },
+  { n: 'state machine', f: '6_menus', d: 'boot → menu / netmenu / lobby / play / pause / end. Menus run a demo battle behind them. A joiner runs netClientUpdate instead of the simulation.', s: 1 },
+  { n: 'updateMatch(dt)', f: '4_ai', d: 'The simulation step. After the match ends time slows: sdt = dt · max(.25, 1 − .5·slowT).' },
+  { n: 'nav rebuild if dirty', f: '2_maps', d: 'A destroyed sandbag, a moved wreck or a fallen wall marks navDirty; the walk and drive grids are rebuilt once.', s: 1 },
+  { n: 'spotting (every 0.5 s)', f: '3_sim', d: 'Recon soldiers mark visible enemies within 520 px for their team.', s: 1 },
+  { n: 'each soldier → input I', f: '4_ai', d: 'Dead: respawn timer / deploy screen. Alive: humanInput, netInputHost or botControl produces I, then controlSoldier applies it.', s: 1 },
+  { n: 'soldier separation', f: '4_ai', d: 'Overlapping soldiers are pushed 13 px apart (a joiner who placed themselves doesn\'t move; the other steps aside).', s: 1 },
+  { n: 'updateVehicle × N', f: '3_sim', d: 'Driving (vehDrive), turret / MG slew, run-overs, burning, engine sound. Seated crew are then placed on their seats.', s: 1 },
+  { n: 'lagRecord (host)', f: '3_sim', d: 'The host remembers the last ~0.6 s of everyone\'s positions to judge joiners\' shots fairly.', s: 1 },
+  { n: 'updateProjectiles', f: '3_sim', d: 'Each bullet, shell, rocket and grenade sweeps its segment this frame against ground, walls, cover, soldiers and vehicles, at its height.', s: 1 },
+  { n: 'items · objectives · waves · bounds', f: '3_sim', d: 'Med / ammo boxes, mines; flag capture and ticket bleed; co-op waves; out-of-bounds timers.', s: 1 },
+  { n: 'fxTick', f: '4_ai', d: 'Purely visual: layer fading, audio loops, flung bodies, the smoke field (10 Hz), corpses, wreck smoke, particles.', s: 1 },
+  { n: 'updateCams', f: '4_ai', d: 'Each view eases toward its target: k = 1 − e^(−4.5·dt) for position, 1 − e^(−3·dt) for zoom.', s: 1 },
+  { ph: 'RENDER  ·  render()' },
+  { n: 'gxFrame', f: '0_gx', d: 'GX starts a frame on the WebGL2 canvas (#g, under the 2D canvas #c).' },
+  { n: 'drawWorld(vw) per view', f: '5_ui', d: 'Up to 4 split-screen views, each drawn whole:' },
+  { n: 'camera + fog', f: '5_ui · 5b_fog', d: 'Offset snapped to whole device pixels so pixel art never crawls; applyFog builds the sight polygons.', s: 1 },
+  { n: 'ground', f: '2_maps', d: 'ground + decals + prints in one stacked draw; water shimmer; flags.', s: 1 },
+  { n: 'draw queue, low → high', f: '5_ui', d: 'Everything on the ground pushed with its height and sorted: bodies, items, crates, soldiers, sandbags, trees, vehicles, shots, roofs.', s: 1 },
+  { n: 'the light', f: '5e_light', d: 'Day: drawSun (height buffer → sweep shadows, shading). Night: shader point lights.', s: 1 },
+  { n: 'over the light', f: '5_ui', d: 'Fire, flashes, sparks and smoke puffs (glows are added on top so they aren\'t shaded).', s: 1 },
+  { n: 'soft fog · lasers · smoke', f: '5b_fog · 3_sim', d: 'Smoke and windows dim what\'s inside sight; the smoke field\'s puffs; the remembered world over what is out of sight.', s: 1 },
+  { n: 'tags · reticles · weather · grade', f: '5_ui', d: 'Names, aim reticles, rain / snow, and the grit look (multiply, film grain, vignette).', s: 1 },
+  { n: 'HUD on the 2D canvas', f: '5_ui · 6_menus', d: 'Per-view HUD, global HUD, scoreboard, pause, touch controls, dev panel, end screen, FPS, settings.' },
+  { n: 'gxFlush', f: '0_gx', d: 'The last batch goes to the GPU.' },
+  { ph: 'AFTER' },
+  { n: 'devTime · audioTick', f: '5d_dev · 1_core', d: 'Frame timings for the FPS counter; the music scheduler queues notes up to 120 ms ahead.' },
+  { n: 'endInputFrame', f: '1_core', d: 'Edge-triggered presses (pressed this frame) are cleared, then the next frame is requested.' }
+];
+VIEWS.frame = {
+  init() {
+    const L = $('#frameList'); let html = '', idx = [];
+    FRAME.forEach((s, i) => {
+      if (s.ph) { html += `<div class="phase">${s.ph}</div>`; return; }
+      idx.push(i);
+      html += `<div class="step${s.s ? ' sub' : ''}" data-i="${i}"><div class="rail"><div class="dot"></div></div><div class="bd"><div class="nm">${esc(s.n)}<span class="fl">${s.f}</span></div><div class="ds">${esc(s.d)}</div>${s.m ? `<div class="math" style="margin:6px 0 0">${esc(s.m)}</div>` : ''}</div></div>`;
+    });
+    L.innerHTML = html;
+    const steps = $$('#frameList .step'); let cur = 0, play = true, acc = 0;
+    const set = k => { cur = (k + steps.length) % steps.length; steps.forEach((e, j) => { e.classList.toggle('cur', j === cur); e.classList.toggle('done', j < cur); }); const e = steps[cur], sc = $('#frameScroll'), r = e.getBoundingClientRect(), R = sc.getBoundingClientRect(); if (r.top < R.top + 40 || r.bottom > R.bottom - 40) sc.scrollTo({ top: sc.scrollTop + r.top - R.top - R.height * 0.35, behavior: 'smooth' }); };
+    set(0);
+    steps.forEach((e, j) => e.onclick = () => { set(j); setPlay(false); });
+    const setPlay = p => { play = p; $('#fPlay').textContent = p ? '❚❚ PAUSE' : '▶ PLAY'; $('#fPlay').classList.toggle('on', p); };
+    $('#fPlay').onclick = () => setPlay(!play); $('#fStep').onclick = () => { setPlay(false); set(cur + 1); };
+    let last = performance.now();
+    (function a(now) { const dt = (now - last) / 1000; last = now; if (play && $('#v-frame').classList.contains('on')) { acc += dt; if (acc > 1.6) { acc = 0; set(cur + 1); } } requestAnimationFrame(a); })(last);
+  }
+};
+
+/* ============ VIEW 5: code ============ */
+VIEWS.code = {
+  init() {
+    const C = window.GAME_CODE, body = $('#codeBody'), files = Object.keys(C.files), maxL = Math.max(...files.map(f => C.files[f].lines));
+    const KIND = ['fn', '=>', 'class', 'var'];
+    const defHTML = (n, D) => {
+      const [f, k, l, nl, a, c0, inl, calls] = D, c = (c0 || '').replace(/[=\-*_~#]{4,}/g, ' ').replace(/\s+/g, ' ').trim(), cross = calls.filter(x => C.defs[x] && C.defs[x][0] !== f), same = calls.filter(x => C.defs[x] && C.defs[x][0] === f);
+      const by = (VIEWS.code.rev[n] || []);
+      return `<div class="def" id="d-${esc(n)}"><div class="h"><b>${esc(n)}</b>${k < 3 && a ? `<span class="a">(${esc(a)})</span>` : ''}<span class="k">${KIND[k]}</span><span class="a" style="margin-left:auto">${f}:${l} · ${nl} ln</span></div>${c || inl ? `<div class="c">${esc(c || inl)}${c && inl ? ' <i>— ' + esc(inl) + '</i>' : ''}</div>` : ''}
+      ${calls.length || by.length ? `<div class="u">${cross.slice(0, 18).map(x => `<button class="x" data-d="${esc(x)}">${esc(x)}</button>`).join('')}${same.slice(0, 14).map(x => `<button data-d="${esc(x)}">${esc(x)}</button>`).join('')}${by.length ? `<span class="hint" style="width:100%;margin-top:2px">used by ${by.length}: ${by.slice(0, 8).map(esc).join(', ')}${by.length > 8 ? '…' : ''}</span>` : ''}</div>` : ''}</div>`;
+    };
+    const rev = {}; for (const [n, D] of Object.entries(C.defs)) for (const x of D[7]) (rev[x] || (rev[x] = [])).push(n);
+    this.rev = rev;
+    const mods = () => {
+      body.innerHTML = `<div class="mods"><p class="muted" style="font-size:13px">13 source files, concatenated in this order by <code>build.py</code> into one inline script in <code>index.html</code> (with the atlas PNGs as data URIs). Tap one for its definitions.</p>${files.map(f => { const F = C.files[f]; return `<button class="mod" data-f="${f}"><b><span style="color:${MODS[f].c}">■</span> ${f}.js <span class="muted" style="font-weight:500">· ${MODS[f].t.toLowerCase()}</span></b><span class="meta">${F.lines} ln</span><span class="meta">${F.fns} functions · ${F.vars} values · ${(F.bytes / 1024).toFixed(1)} KB</span><span></span><div class="barv"><i style="width:${F.lines / maxL * 100}%;background:${MODS[f].c}"></i></div></button>`; }).join('')}</div>`;
+      body.querySelectorAll('.mod').forEach(b => b.onclick = () => openMod(b.dataset.f));
+    };
+    const bindDefs = root => root.querySelectorAll('[data-d]').forEach(b => b.onclick = () => showDef(b.dataset.d));
+    const openMod = f => {
+      setMode('mods', true);
+      const list = Object.entries(C.defs).filter(([, D]) => D[0] === f).sort((a, b) => a[1][2] - b[1][2]);
+      body.innerHTML = `<div class="bar" style="position:sticky;top:0;z-index:2"><button class="btn" id="cBack">‹ FILES</button><b>${f}.js</b><span class="hint">${list.length} definitions</span></div><p class="muted" style="padding:10px 16px 0;margin:0;font-size:13px">${MODS[f].d}</p><div class="legend" style="padding-top:8px"><span><i style="background:var(--cyan)"></i>uses another file</span><span><i style="background:var(--ink)"></i>same file</span></div>${list.map(([n, D]) => defHTML(n, D)).join('')}`;
+      body.scrollTop = 0; $('#cBack').onclick = mods; bindDefs(body);
+    };
+    const showDef = n => { const D = C.defs[n]; if (!D) return; openSheet(D[0] + '.js · line ' + D[2], n, defHTML(n, D).replace('class="def"', 'class="def" style="padding:0;border:0"'), b => bindDefs(b)); };
+    const matrix = () => {
+      body.innerHTML = `<div style="padding:12px 16px 4px"><p class="muted" style="font-size:13px;margin:0 0 8px">How many top-level names each file (row) uses from another (column). The core is used by everything; the simulation sits in the middle.</p></div><div style="padding:0 10px"><canvas id="heat"></canvas></div><div class="legend" style="padding-top:8px">tap a cell</div>`;
+      const c = $('#heat'), g = fitCanvas(c, Math.min(560, Math.round(c.parentElement.getBoundingClientRect().width * 1.08))), n = files.length, pad = 66, cs = (g.W - pad - 4) / n, M = {}; let mx = 1;
+      for (const [a, b, v] of C.edges) { M[a + '|' + b] = v; mx = Math.max(mx, v); }
+      g.font = '600 9.5px Chakra Petch'; g.textBaseline = 'middle';
+      files.forEach((f, i) => { g.fillStyle = MODS[f].c; g.textAlign = 'right'; g.fillText(f, pad - 6, pad + cs * i + cs / 2); g.save(); g.translate(pad + cs * i + cs / 2, pad - 6); g.rotate(-Math.PI / 2.6); g.textAlign = 'left'; g.fillText(f, 0, 0); g.restore(); });
+      files.forEach((a, i) => files.forEach((b, j) => { const v = M[a + '|' + b] || 0, k = Math.sqrt(v / mx); g.fillStyle = i === j ? '#141b11' : v ? `rgba(224,183,44,${0.08 + 0.92 * k})` : '#121810'; g.fillRect(pad + cs * j + 1, pad + cs * i + 1, cs - 2, cs - 2); if (v && cs > 20) { g.fillStyle = k > 0.5 ? '#1b1607' : '#d8cfa8'; g.font = '9px JetBrains Mono'; g.textAlign = 'center'; g.fillText(v, pad + cs * j + cs / 2, pad + cs * i + cs / 2); } }));
+      c.onclick = e => { const r = c.getBoundingClientRect(), j = Math.floor((e.clientX - r.left - pad) / cs), i = Math.floor((e.clientY - r.top - pad) / cs); if (i < 0 || j < 0 || i >= n || j >= n || i === j) return; const a = files[i], b = files[j], names = new Set(); for (const [nm, D] of Object.entries(C.defs)) if (D[0] === a) for (const x of D[7]) if (C.defs[x] && C.defs[x][0] === b) names.add(x); openSheet(a + ' → ' + b, (M[a + '|' + b] || 0) + ' references', `<p class="muted">Names from <code>${b}.js</code> that <code>${a}.js</code> uses:</p><div class="def" style="padding:0;border:0"><div class="u">${[...names].sort().map(x => `<button data-d="${esc(x)}">${esc(x)}</button>`).join('') || '—'}</div></div>`, bb => bindDefs(bb)); };
+    };
+    const find = () => {
+      body.innerHTML = `<div class="bar" style="position:sticky;top:0;z-index:2"><input class="search" id="q" placeholder="search ${Object.keys(C.defs).length} names and comments…" autocomplete="off"></div><div id="qr"></div>`;
+      const q = $('#q'), run = () => { const s = q.value.trim().toLowerCase(); if (s.length < 2) { $('#qr').innerHTML = '<p class="muted" style="padding:12px 16px">Try <code>sun</code>, <code>smoke</code>, <code>bot</code>, <code>snapshot</code>, <code>explosion</code>…</p>'; return; } const hits = Object.entries(C.defs).map(([n, D]) => [n, D, n.toLowerCase().includes(s) ? 2 : (D[5] + ' ' + D[6]).toLowerCase().includes(s) ? 1 : 0]).filter(h => h[2]).sort((a, b) => b[2] - a[2]).slice(0, 80); $('#qr').innerHTML = hits.map(([n, D]) => defHTML(n, D)).join('') || '<p class="muted" style="padding:12px 16px">nothing</p>'; bindDefs($('#qr')); };
+      q.oninput = run; run();
+    };
+    const setMode = (m, quiet) => { $$('#codeMode button').forEach(b => b.classList.toggle('on', b.dataset.m === m)); if (quiet) return; ({ mods, matrix, find })[m](); };
+    $('#codeMode').onclick = e => { const b = e.target.closest('button'); if (b) setMode(b.dataset.m); };
+    this.openMod = openMod; mods();
+  },
+  openMod(f) { if (!this.done) { this.done = 1; this.init(); } this.openMod(f); }
+};
+</script>
+<script src="art.js"></script>
+<script src="sys.js"></script>
+<script>
+(() => { let v = 'map'; try { v = localStorage.getItem('mmguide.v') || 'map'; } catch (e) { } showView(VIEWS[v] ? v : 'map'); })();
+</script>
+</body>
+</html>
