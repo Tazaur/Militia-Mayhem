@@ -808,3 +808,8 @@ Art drop (drop.py): atlas.png: hull4, tur_dead; atlas_m.png: tur_dead, sol_leg0,
 - Rects may carry `b.f` (frame): x/y/w/h are then local. Use `rectPts`/`rectBox`/`rectNear`/`toF`/`fromF` (1_core); `inRect`, `segRect`, `pushCircleRect`, `bounceRect` are frame-aware. Never read b.x/b.w as world coords without checking `b.f`.
 - Roofs: painted per house into `H.rc`, laid rotated into ROOF_C (`roofLay`); `roofBlit(H)` re-lays all houses touching H's box; dirty via `H.rdirty`, blitted once per tick.
 - Outskirts/dev yard: houses + mirrored copy (a+π). `MAP.tiled` is gone: test `MAP.houses.length`.
+
+## Build 270: editor bars and locks
+- No outlines on unselected shapes (View "Outlines" toggle removed).
+- `lock: 1` on a stamp or object: map taps pass through it (pointerdown loop / objAt skip it); the ☰ lists toggle it per row (`lockBtn`/`lockTap`) and still select it.
+- Selection actions (order, hide, lock, duplicate, branch, − point, delete; edge's Whole map) live in the floating `#ctx` bar over the map; `bars(h, ctx)` pads the bottom bar to 3 rows so its height never changes. One click handler `onBar` serves both bars.
