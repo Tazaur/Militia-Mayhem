@@ -830,3 +830,7 @@ Art drop (drop.py): atlas.png: hull4, tur_dead; atlas_m.png: tur_dead, sol_leg0,
 - 2d_house.js (shared with mapedit/, no game globals): SUB, C_*, ROOM_*, DIRS, the wall sheet table (WT, WALL_BY_MASK...), `houseTile(g, img, at, i, j, seed, broke)` (paintCell uses it) and genHouse. gRng(seed*7919+13) == mulberry(seed*7919+13), so the editor's layouts are the game's.
 - Editor object `{k:'house', x, y, a, seed, mw, mh}`; once cells are painted also `W, H, cells` (one digit a cell). Details tab: place (new seed), drag, turn (handle / slider, 1°), 🎲 new layout, ▦ Cells: brush Wall / Window / Floor-door / Empty, tap or drag on the house. Wall art from ../art/walls16.png.
 - Game: buildMap g: maps mkHouse each house object (cells → g), tiledFinish; paintGround paints houses over the stamped ground; nav NC = SUB when the map has houses. With houses placed and no detail objects, no auto trees/crescents.
+
+## One road system
+- MAP.roads on every map = path stamps (2b_ground.js). Built-in maps make theirs with `roadOf(l, w, side, style)` (asphalt → street with pavement `side`, dirt → dirt track); editor maps: their path stamps. paintGround bakes them with `gBake({w, h, stamps: MAP.roads}, gx)` (no base) where the old rect painting was: pavements, markings, junction crosswalks as in the editor.
+- `onRoad(x, y, pad)` = within wd/2 + pavement + pad of any segment; `roadInRect(r, pad)` for placing. roadRect is gone.

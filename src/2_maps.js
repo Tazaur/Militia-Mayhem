@@ -8,11 +8,22 @@ const ground = mkG(WW, WH); const gx = ground.getContext('2d');
 const mirrorPt = (x, y) => [WW - x, WH - y];
 const mirrorRect = r => ({ ...r, x: WW - r.x - r.w, y: WH - r.y - r.h });
 
-function roadRect(rd, pad) {
-  const [x1, y1, x2, y2] = rd.l, hw = rd.w / 2 + (rd.side || 0) + pad;
-  return y1 === y2 ? { x: x1, y: y1 - hw, w: x2 - x1, h: hw * 2 } : { x: x1 - hw, y: y1, w: hw * 2, h: y2 - y1 };
+/* roads: the map editor's (2b_ground.js path stamps: lines l, width wd, type rt with its pavement); the built-in maps' straight
+   [x1, y1, x2, y2] ones made the same (roadOf), so every map's roads are painted, joined and crossed one way (gBake) */
+const roadOf = (l, w, side, style) => style === 'dirt' ? { k: 'path', t: 'dirt', rt: 'dirt', soft: 6, r: 0, wd: w, l: [l] } : { k: 'path', t: 'asphalt', rt: 'street', sw: side, soft: 2, r: 0, wd: w, l: [l] };
+/* the road (pavement included) within pad of (x, y), or null */
+function onRoad(x, y, pad) {
+  for (const rd of MAP.roads) { const e = rd.wd / 2 + gSW(rd) + (pad || 0); for (const p of rd.l) for (let i = 0; i + 3 < p.length; i += 2) if (gSegNear(p, i, x, y)[0] < e) return rd; }
+  return null;
 }
-function onRoad(x, y, pad) { for (const rd of MAP.roads) if (inRect(x, y, roadRect(rd, pad || 0))) return rd; return null; }
+/* a road (pavement included) within pad of rect r: the rect's points against every segment (sampled, for placing) */
+function roadInRect(r, pad) {
+  for (const rd of MAP.roads) { const e = rd.wd / 2 + gSW(rd) + pad; for (const p of rd.l) for (let i = 0; i + 3 < p.length; i += 2) {
+    const n = Math.max(1, Math.ceil(Math.hypot(p[i + 2] - p[i], p[i + 3] - p[i + 1]) / 8));
+    for (let k = 0; k <= n; k++) { const x = p[i] + (p[i + 2] - p[i]) * k / n, y = p[i + 1] + (p[i + 3] - p[i + 1]) * k / n; if (x > r.x - e && x < r.x + r.w + e && y > r.y - e && y < r.y + r.h + e) return true; }
+  } }
+  return false;
+}
 function inWater(x, y) { for (const w of MAP.water) if (inRect(x, y, w)) return true; return false; }
 function onIce(x, y) { for (const w of MAP.ice) if (inRect(x, y, w)) return true; return false; }
 const SNOWY = () => MAP && MAP.id === 'snowfield';
@@ -77,7 +88,7 @@ function buildMap(id) {
   };
   const rectFree = (r, gap) => {
     if (r.x < 60 || r.y < 60 || r.x + r.w > WW - 60 || r.y + r.h > WH - 60) return false;
-    for (const rd of m.roads) { const q = roadRect(rd, 10); if (r.x < q.x + q.w && r.x + r.w > q.x && r.y < q.y + q.h && r.y + r.h > q.y) return false; }
+    if (roadInRect(r, 10)) return false;
     for (const w of m.water) if (r.x < w.x + w.w + 20 && r.x + r.w > w.x - 20 && r.y < w.y + w.h + 20 && r.y + r.h > w.y - 20) return false;
     for (const w of m.ice) if (r.x < w.x + w.w + 30 && r.x + r.w > w.x - 30 && r.y < w.y + w.h + 30 && r.y + r.h > w.y - 30) return false;
     for (const b of m.buildings) if (r.x < b.x + b.w + gap && r.x + r.w > b.x - gap && r.y < b.y + b.h + gap && r.y + r.h > b.y - gap) return false;
@@ -120,7 +131,7 @@ function buildMap(id) {
   const tree = (x, y, mi) => addStatic({ type: 'tree', x, y, r: 10, v: Math.floor(R() * 4), sc: 0.75 + R() * 0.45, a: R() * TAU, alive: true, pine: id === 'snowfield' }, mi);
 
   if (id === 'crossroads') {
-    m.roads = [[0, 1000, 3000, 1000], [900, 0, 900, 2000], [2100, 0, 2100, 2000], [1500, 420, 1500, 1580], [900, 420, 3000, 420], [0, 1580, 2100, 1580]].map(l => ({ l, w: 72, side: 14, style: 'asphalt' }));
+    m.roads = [[0, 1000, 3000, 1000], [900, 0, 900, 2000], [2100, 0, 2100, 2000], [1500, 420, 1500, 1580], [900, 420, 3000, 420], [0, 1580, 2100, 1580]].map(l => roadOf(l, 72, 14, 'asphalt'));
     m.flags = [{ name: 'A', x: 720, y: 1400 }, { name: 'B', x: 1500, y: 1000 }, { name: 'C', x: 2280, y: 600 }];
     const B = [[980, 1100, 180, 130], [1180, 1290, 200, 160], [1000, 560, 200, 150], [1250, 760, 150, 150], [560, 620, 170, 150], [380, 1680, 200, 140], [1100, 1700, 220, 150], [300, 300, 180, 160], [560, 1180, 120, 110], [1240, 180, 160, 140]];
     const roofs = ['tar', 'brick', 'metal', 'concrete'];
@@ -130,7 +141,7 @@ function buildMap(id) {
     scatter(13, 120, 40, (x, y) => crescent(x, y, R() * TAU, true));
     scatter(46, 44, 26, (x, y) => tree(x, y, true));
   } else if (id === 'farmlands') {
-    m.roads = [[0, 1000, 3000, 1000], [1000, 0, 1000, 2000], [2000, 0, 2000, 2000]].map(l => ({ l, w: 58, side: 0, style: 'dirt' }));
+    m.roads = [[0, 1000, 3000, 1000], [1000, 0, 1000, 2000], [2000, 0, 2000, 2000]].map(l => roadOf(l, 58, 0, 'dirt'));
     m.flags = [{ name: 'A', x: 620, y: 1480 }, { name: 'B', x: 1500, y: 1000 }, { name: 'C', x: 2380, y: 520 }];
     const F = [{ x: 60, y: 60, w: 880, h: 520, crop: 'wheat' }, { x: 1060, y: 60, w: 400, h: 860, crop: 'corn' }, { x: 420, y: 1060, w: 520, h: 300, crop: 'plow' }, { x: 1060, y: 1340, w: 420, h: 600, crop: 'wheat' }];
     for (const f of F) sym(m.fields, f, q => ({ ...mirrorRect(q), crop: q.crop }));
@@ -138,7 +149,7 @@ function buildMap(id) {
     placeBuildings(6, 1380, ['barn', 'tin', 'thatch'], [110, 220], [90, 160]);
     // fences along the roads, with gates
     for (const rd of m.roads) {
-      const [x1, y1, x2, y2] = rd.l;
+      const [x1, y1, x2, y2] = rd.l[0];
       if (y1 === y2) { for (const sd of [-1, 1]) for (let x = 60; x < WW / 2; x += 14) { if ((Math.floor(x / 160) % 3) === 2) continue; const y = y1 + sd * 42; if (blockedFor(x, y, 2) || onRoad(x, y, 0)) continue; if (m.buildings.some(b => inRect(x, y, b, 6))) continue; addStatic({ type: 'fence', x, y, a: 0, r: 5, alive: true }, true); } }
       else if (x1 < WW / 2) { for (const sd of [-1, 1]) for (let y = 60; y < WH - 60; y += 14) { if ((Math.floor(y / 150) % 3) === 1) continue; const x = x1 + sd * 42; if (onRoad(x, y, 0)) continue; if (m.flags.some(f => Math.hypot(f.x - x, f.y - y) < 130)) continue; if (m.buildings.some(b => inRect(x, y, b, 6))) continue; addStatic({ type: 'fence', x, y, a: Math.PI / 2, r: 5, alive: true }, true); } }
     }
@@ -153,7 +164,7 @@ function buildMap(id) {
     scatter(16, 46, 24, (x, y) => tree(x, y, true));
   } else if (id === 'snowfield') {
     // snowfield: packed-snow tracks, a frozen lake around the centre flag, cabins and pine forest
-    m.roads = [[0, 1000, 3000, 1000], [850, 0, 850, 2000], [2150, 0, 2150, 2000]].map(l => ({ l, w: 60, side: 0, style: 'dirt' }));
+    m.roads = [[0, 1000, 3000, 1000], [850, 0, 850, 2000], [2150, 0, 2150, 2000]].map(l => roadOf(l, 60, 0, 'dirt'));
     m.ice = [{ x: 1250, y: 830, w: 500, h: 340 }, { x: 520, y: 260, w: 230, h: 150 }, { x: WW - 520 - 230, y: WH - 260 - 150, w: 230, h: 150 }];
     m.flags = [{ name: 'A', x: 640, y: 1460 }, { name: 'B', x: 1500, y: 1000 }, { name: 'C', x: 2360, y: 540 }];
     placeBuildings(8, 1400, ['cabin', 'bunker', 'cabin'], [100, 200], [90, 150]);
@@ -165,7 +176,7 @@ function buildMap(id) {
   } else if (id === 'outskirts') {
     // outskirts: a bigger town of tiled houses (the dev yard's: walls that break, windows to shoot and vault through,
     // roofs) around a road cross. Each house is placed on the left and mirrored; its lot holds the space while placing
-    m.roads = [[0, WH / 2, WW, WH / 2], [860, 0, 860, WH], [WW - 860, 0, WW - 860, WH]].map(l => ({ l, w: 64, side: 12, style: 'asphalt' }));
+    m.roads = [[0, WH / 2, WW, WH / 2], [860, 0, 860, WH], [WW - 860, 0, WW - 860, WH]].map(l => roadOf(l, 64, 12, 'asphalt'));
     m.flags = [{ name: 'A', x: 600, y: WH / 2 + 480 }, { name: 'B', x: WW / 2, y: WH / 2 }, { name: 'C', x: WW - 600, y: WH / 2 - 480 }];
     const sc = WW / SUB, sr = WH / SUB;
     for (let n = 0, k = 0; n < 60 && k < 12; n++) {
@@ -185,7 +196,7 @@ function buildMap(id) {
     scatter(34, 44, 26, (x, y) => tree(x, y, true));
     scatter(8, 60, 24, (x, y) => addStatic({ type: 'hay', x, y, r: 13, a: R() * TAU, alive: true }, true));
   } else if (id.startsWith('g:')) {     // a map editor map (2b_ground.js): its stamped ground and placed objects (objs); a kind with none placed is placed as the other maps' are
-    m.gmap = JSON.parse(JSON.stringify(gMapOf(id))); BOUNDM = gBoundsMask(m.gmap);
+    m.gmap = JSON.parse(JSON.stringify(gMapOf(id))); BOUNDM = gBoundsMask(m.gmap); m.roads = m.gmap.stamps.filter(q => q.l && gOk(q));
     const O = m.gmap.objs || [], of = (...k) => O.filter(o => k.includes(o.k));
     for (const o of of('house')) { const H = mkHouse({ ...o, g: o.cells && [...o.cells].map(Number) }, m.houses.length); if (H) m.houses.push(H); }     // placed houses (tiledFinish, below)
     if (m.houses.length) tiledFinish();
@@ -205,7 +216,7 @@ function buildMap(id) {
     }
   } else {
     // river town
-    m.roads = [[0, 350, 3000, 350], [0, 1000, 3000, 1000], [0, 1650, 3000, 1650], [700, 0, 700, 2000], [2300, 0, 2300, 2000]].map(l => ({ l, w: 72, side: 14, style: 'asphalt' }));
+    m.roads = [[0, 350, 3000, 350], [0, 1000, 3000, 1000], [0, 1650, 3000, 1650], [700, 0, 700, 2000], [2300, 0, 2300, 2000]].map(l => roadOf(l, 72, 14, 'asphalt'));
     const rx = 1420, rw = 160, cuts = [350, 1000, 1650], hw = 50;
     let y0 = 0; for (const c of cuts) { m.water.push({ x: rx, y: y0, w: rw, h: c - hw - y0 }); m.bridges.push({ x: rx - 18, y: c - hw, w: rw + 36, h: hw * 2 }); y0 = c + hw; } m.water.push({ x: rx, y: y0, w: rw, h: WH - y0 });
     m.flags = [{ name: 'A', x: 1060, y: 680 }, { name: 'B', x: 1500, y: 1000 }, { name: 'C', x: 1940, y: 1320 }];
@@ -364,43 +375,15 @@ function paintGround() {
     gx.globalAlpha = 1; gx.font = `40px ${FD}`; gx.textAlign = 'center'; gx.textBaseline = 'middle'; gx.fillStyle = 'rgba(255,255,255,0.16)';
     gx.save(); gx.translate(p.x + p.w / 2, p.y + p.h / 2); gx.rotate(b.team === 0 ? -Math.PI / 2 : Math.PI / 2); gx.fillText(TEAMNAME[b.team] + ' BASE', 0, 0); gx.restore();
   }
-  // roads
-  const side = pattern(16, 16, (g, w, h) => { g.fillStyle = P.side; g.fillRect(0, 0, w, h); g.fillStyle = P.sideL; g.fillRect(0, 0, w, 1); g.fillRect(0, 0, 1, h); for (let i = 0; i < 14; i++) { g.fillStyle = R() < 0.5 ? P.sideL : P.side; g.fillRect((R() * w) | 0, (R() * h) | 0, 1, 1); } });
-  const asph = pattern(64, 64, (g, w, h) => { g.fillStyle = P.asph; g.fillRect(0, 0, w, h); for (let i = 0; i < 500; i++) { g.fillStyle = R() < 0.5 ? P.aA : P.aB; g.fillRect((R() * w) | 0, (R() * h) | 0, 1, 1); } });
-  const dirt = pattern(48, 48, (g, w, h) => { g.fillStyle = P.dirt; g.fillRect(0, 0, w, h); for (let i = 0; i < 300; i++) { g.fillStyle = R() < 0.5 ? P.dA : P.dB; g.fillRect((R() * w) | 0, (R() * h) | 0, 1 + (R() < 0.3), 1); } });
-  for (const rd of MAP.roads) if (rd.style === 'asphalt') { const r = roadRect(rd, 0); gx.fillStyle = P.sideE; gx.fillRect(r.x - 2, r.y - 2, r.w + 4, r.h + 4); gx.fillStyle = side; gx.fillRect(r.x, r.y, r.w, r.h); }
-  for (const rd of MAP.roads) {
-    const r = roadRect(rd, -(rd.side || 0));
-    if (rd.style === 'dirt') {
-      gx.fillStyle = dirt; gx.fillRect(r.x, r.y, r.w, r.h);
-      // ragged edges + ruts
-      const horiz = rd.l[1] === rd.l[3];
-      for (let s = 0; s < (horiz ? r.w : r.h); s += 6) { const e = R() * 8; gx.fillStyle = P.dirt; if (horiz) { gx.fillRect(r.x + s, r.y - e, 6, e); gx.fillRect(r.x + s, r.y + r.h, 6, R() * 8); } else { gx.fillRect(r.x - e, r.y + s, e, 6); gx.fillRect(r.x + r.w, r.y + s, R() * 8, 6); } }
-      gx.fillStyle = P.dA; if (horiz) { gx.fillRect(r.x, r.y + r.h * 0.28, r.w, 4); gx.fillRect(r.x, r.y + r.h * 0.66, r.w, 4); } else { gx.fillRect(r.x + r.w * 0.28, r.y, 4, r.h); gx.fillRect(r.x + r.w * 0.66, r.y, 4, r.h); }
-    } else { gx.fillStyle = asph; gx.fillRect(r.x, r.y, r.w, r.h); }
-  }
-  const inter = [];
-  for (const a of MAP.roads) for (const b of MAP.roads) { const A = a.l, Bl = b.l; if (A[1] === A[3] && Bl[0] === Bl[2] && Bl[0] >= A[0] && Bl[0] <= A[2] && A[1] >= Bl[1] && A[1] <= Bl[3]) inter.push([Bl[0], A[1]]); }
-  gx.fillStyle = P.dash;
-  for (const rd of MAP.roads) {
-    if (rd.style !== 'asphalt') continue;
-    const [x1, y1, x2, y2] = rd.l, horiz = y1 === y2, len = horiz ? x2 - x1 : y2 - y1;
-    for (let s = 0; s < len; s += 34) {
-      const px = horiz ? x1 + s : x1, py = horiz ? y1 : y1 + s;
-      if (inter.some(([ix, iy]) => Math.abs(px - ix) < 62 && Math.abs(py - iy) < 62)) continue;
-      if (grit && R() < 0.25) continue;
-      if (horiz) gx.fillRect(px, py - 1.5, 18, 3); else gx.fillRect(px - 1.5, py, 3, 18);
-    }
-  }
-  gx.fillStyle = grit ? 'rgba(160,155,140,0.35)' : 'rgba(235,235,230,0.55)';
-  for (const [ix, iy] of inter) { const rd = MAP.roads[0]; if (rd.style !== 'asphalt') break; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) for (let k = -30; k < 32; k += 9) { if (dx) gx.fillRect(ix + dx * 44 - 4, iy + k, 8, 5); else gx.fillRect(ix + k, iy + dy * 44 - 4, 5, 8); } }
+  // roads: baked as the editor's are (pavements, markings, junctions)
+  gBake({ w: WW, h: WH, stamps: MAP.roads }, gx, null, null);
   // bridges: railings over the water
   for (const b of MAP.bridges) { gx.fillStyle = P.rail; gx.fillRect(b.x, b.y - 4, b.w, 6); gx.fillRect(b.x, b.y + b.h - 2, b.w, 6); for (let x = b.x; x < b.x + b.w; x += 16) { gx.fillStyle = P.bridge; gx.fillRect(x, b.y - 3, 3, 4); gx.fillRect(x, b.y + b.h - 1, 3, 4); } }
   // grit: cracks, potholes, oil, old craters
   if (grit) {
     for (let i = 0; i < 260; i++) {
       const x = R() * WW, y = R() * WH; const rd = onRoad(x, y, 0);
-      if (rd && rd.style === 'asphalt') { gx.strokeStyle = 'rgba(15,15,12,0.5)'; gx.lineWidth = 1; gx.beginPath(); gx.moveTo(x, y); let a = R() * TAU, cx = x, cy = y; for (let k = 0; k < 5; k++) { a += rnd(-0.8, 0.8); cx += Math.cos(a) * 9; cy += Math.sin(a) * 9; gx.lineTo(cx, cy); } gx.stroke(); if (R() < 0.3) { gx.fillStyle = 'rgba(20,20,18,0.55)'; gx.beginPath(); gx.ellipse(x, y, 6 + R() * 6, 4 + R() * 4, R() * 3, 0, TAU); gx.fill(); } }
+      if (rd && rd.rt !== 'dirt') { gx.strokeStyle = 'rgba(15,15,12,0.5)'; gx.lineWidth = 1; gx.beginPath(); gx.moveTo(x, y); let a = R() * TAU, cx = x, cy = y; for (let k = 0; k < 5; k++) { a += rnd(-0.8, 0.8); cx += Math.cos(a) * 9; cy += Math.sin(a) * 9; gx.lineTo(cx, cy); } gx.stroke(); if (R() < 0.3) { gx.fillStyle = 'rgba(20,20,18,0.55)'; gx.beginPath(); gx.ellipse(x, y, 6 + R() * 6, 4 + R() * 4, R() * 3, 0, TAU); gx.fill(); } }
     }
     for (let i = 0; i < 26; i++) { const x = 100 + R() * (WW - 200), y = 100 + R() * (WH - 200); if (MAP.buildings.some(b => inRect(x, y, b, 20))) continue; scorch(x, y, 25 + R() * 30); }
   }
