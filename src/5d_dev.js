@@ -65,7 +65,7 @@ const DEV_LOTS = [[12, 4, 24, 20], [56, 4, 24, 20], [28, 38, 26, 22]];
 
 /* ---------------- the tile sheet ---------------- */
 const WALL_IMG = new Image();
-WALL_IMG.onload = () => { if (typeof MAP !== 'undefined' && MAP && MAP.tiled) paintGround(); };
+WALL_IMG.onload = () => { if (typeof MAP !== 'undefined' && MAP && MAP.houses && MAP.houses.length) paintGround(); };
 WALL_IMG.src = WALLS_SRC;
 /* sheet cell [col,row] and the sides each piece joins, as drawn (bits: 1 up, 2 right, 4 down, 8 left) */
 const WT = { corner: [0, 0, 2 | 4], straight: [1, 0, 8 | 2], tee: [0, 1, 8 | 2 | 1], cross: [1, 1, 15], end: [0, 2, 8] };
@@ -183,47 +183,63 @@ function genHouse(R, maxW, maxH) {
   return null;
 }
 
-/* ---------------- the yard ---------------- */
-/* a tiled map's grids, w x h px; seed: the roofs' and rubble's randomness (fixed per map, so online clients build the same) */
-function newTiled(w, h, seed) {
-  const sc = w / SUB, sr = h / SUB;
-  return { cols: w / TILE, rows: h / TILE, sc, sr, seed, cell: new Uint8Array(sc * sr), bld: new Int8Array(sc * sr).fill(-1), sec: new Int16Array(sc * sr).fill(-1), secs: [], houses: [] };
+/* ---------------- houses: each its own grid, placed and turned freely ----------------
+   A house (MAP.houses) is a W x H grid of SUB cells (C_*) with its own place: x, y its centre, a its turn (any angle).
+   seed, mw, mh: what genHouse made it from (re-rolling is a new seed); g: its cells as edited (the map editor), else
+   genHouse's. Its frame f = {ox, oy, c, s, a}: local (0, 0) is the grid's top-left corner, local px = cell x SUB.
+   Everything about a house is kept in its frame: wall rects (MAP.buildings, b.f), sight runs, roof, posts. */
+function mkHouse(o, i) {
+  let W = o.W, H = o.H, g = o.g;
+  if (!g) { const h = genHouse(mulberry(o.seed * 7919 + 13), o.mw || 24, o.mh || 20); if (!h) return null; W = h.W; H = h.H; g = h.g; }
+  const a = o.a || 0, c = Math.cos(a), s = Math.sin(a), hw = W * SUB / 2, hh = H * SUB / 2;
+  const f = { a, c, s, ox: o.x - hw * c + hh * s, oy: o.y - hw * s - hh * c };
+  const P = [fromF(f, 0, 0), fromF(f, W * SUB, 0), fromF(f, W * SUB, H * SUB), fromF(f, 0, H * SUB)], xs = P.map(p => p[0]), ys = P.map(p => p[1]);
+  return { i, x: o.x, y: o.y, a, seed: o.seed, mw: o.mw, mh: o.mh, W, H, cell: Uint8Array.from(g), sec: new Int16Array(W * H).fill(-1), f, pts: P, bb: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] };
 }
-/* a genHouse house into the grids with its top-left at SUB cell (ox, oy); mir: the copy turned half round the map centre */
-function stampHouse(TL, h, ox, oy, mir) {
-  const hi = TL.houses.length;
-  TL.houses.push({ x: mir ? TL.sc - ox - h.W : ox, y: mir ? TL.sr - oy - h.H : oy, w: h.W, h: h.H, rooms: h.rooms });
-  for (let y = 0; y < h.H; y++) for (let x = 0; x < h.W; x++) {
-    const v = h.g[y * h.W + x]; if (v === C_OUT) continue;
-    const k = mir ? (TL.sr - 1 - oy - y) * TL.sc + TL.sc - 1 - ox - x : (oy + y) * TL.sc + ox + x; TL.cell[k] = v; TL.bld[k] = hi;
+/* the house cell under a world point: [house, i, j] (only cells of the house, not C_OUT), or null */
+function houseAt(x, y, pad) {
+  pad = pad || 0;
+  for (const H of MAP.houses) {
+    if (x < H.bb[0] - pad || x > H.bb[2] + pad || y < H.bb[1] - pad || y > H.bb[3] + pad) continue;
+    const [lx, ly] = toF(H.f, x, y), i = Math.floor(lx / SUB), j = Math.floor(ly / SUB);
+    if (i >= 0 && j >= 0 && i < H.W && j < H.H && H.cell[j * H.W + i] !== C_OUT) return [H, i, j];
   }
+  return null;
 }
-/* houses stamped: wall sections, roofs, posts */
-function tiledFinish() { DEV.roofQ.length = 0; devSections(); devRoof(); tiledPosts(); }
+const hcell = (H, i, j) => i < 0 || j < 0 || i >= H.W || j >= H.H ? C_OUT : H.cell[j * H.W + i];
+/* a cell's centre in the world */
+const cellW = (H, i, j) => fromF(H.f, (i + 0.5) * SUB, (j + 0.5) * SUB);
+/* houses placed: wall sections, roofs, sight, posts */
+function tiledFinish() {
+  DEV.roofQ.length = 0; MAP.secs = [];
+  MAP.houses.forEach((H, i) => { H.i = i; houseSections(H); houseRoof(H); });
+  devSight(); tiledPosts();
+}
 /* nothing placed earlier (trees, sandbags) stands inside a house; a sandbag crescent that lost a bag goes */
 function tiledClear(m) {
-  const TL = m.tiled; m.statics = m.statics.filter(s => { const i = (s.x / SUB) | 0, j = (s.y / SUB) | 0; return i < 0 || j < 0 || i >= TL.sc || j >= TL.sr || TL.bld[j * TL.sc + i] < 0; });
+  m.statics = m.statics.filter(s => !houseAt(s.x, s.y));
   m.arcs = m.arcs.filter(A => A.bags.every(b => m.statics.includes(b)));
 }
 /* posts: where a bot holds a house from inside - the floor cell just in from each window and outside doorway cell,
    a: facing out */
 function tiledPosts() {
-  const TL = MAP.tiled, { sc, sr } = TL, t = (x, y) => x < 0 || y < 0 || x >= sc || y >= sr ? C_OUT : TL.cell[y * sc + x], P = MAP.posts = [];
-  for (let y = 0; y < sr; y++) for (let x = 0; x < sc; x++) {
-    const v = t(x, y); if ((v !== C_WIN && v !== C_FLOOR) || TL.bld[y * sc + x] < 0) continue;
+  const P = MAP.posts = [];
+  for (const H of MAP.houses) for (let y = 0; y < H.H; y++) for (let x = 0; x < H.W; x++) {
+    const v = hcell(H, x, y); if (v !== C_WIN && v !== C_FLOOR) continue;
     for (const [dx, dy] of DIRS) {
-      if (t(x + dx, y + dy) !== C_OUT || t(x - dx, y - dy) !== C_FLOOR) continue;
-      const px = (x - dx + 0.5) * SUB, py = (y - dy + 0.5) * SUB;
-      if (!P.some(p => Math.hypot(p.x - px, p.y - py) < 24)) P.push({ x: px, y: py, a: Math.atan2(dy, dx), door: v === C_FLOOR });
+      if (hcell(H, x + dx, y + dy) !== C_OUT || hcell(H, x - dx, y - dy) !== C_FLOOR) continue;
+      const [px, py] = cellW(H, x - dx, y - dy);
+      if (!P.some(p => Math.hypot(p.x - px, p.y - py) < 24)) P.push({ x: px, y: py, a: Math.atan2(dy, dx) + H.a, door: v === C_FLOOR });
     }
   }
 }
 function buildDevMap() {
-  const TL = newTiled(DEV_COLS * TILE, DEV_ROWS * TILE, DEV.seed);
-  const m = { id: 'devyard', tiled: TL, arcs: [], roads: [], buildings: [], water: [], bridges: [], statics: [], flags: [], bases: [], crateSpots: [], vehSpawns: [], ffaSpawns: [], fields: [], fwd: [], ice: [] };
-  MAP = m;
-  const R = mulberry(DEV.seed * 7919 + 13);
-  for (const [ox, oy, mw, mh] of DEV_LOTS) { const h = genHouse(R, mw, mh); if (h) stampHouse(TL, h, ox, oy, false); }
+  const m = { id: 'devyard', houses: [], secs: [], arcs: [], roads: [], buildings: [], water: [], bridges: [], statics: [], flags: [], bases: [], crateSpots: [], vehSpawns: [], ffaSpawns: [], fields: [], fwd: [], ice: [] };
+  MAP = m; BOUNDM = null;
+  DEV_LOTS.forEach(([ox, oy, mw, mh], k) => {     // each lot: a house in its top-left corner
+    const seed = DEV.seed * 101 + k, h = genHouse(mulberry(seed * 7919 + 13), mw, mh); if (!h) return;
+    m.houses.push(mkHouse({ x: (ox + h.W / 2) * SUB, y: (oy + h.H / 2) * SUB, a: 0, seed, mw, mh }, m.houses.length));
+  });
   tiledFinish();
   const pad = { x: 0, y: 0, w: 0, h: 0 };
   m.bases = [{ team: 0, x: tileC(3), y: tileC(16), pad }, { team: 1, x: tileC(44), y: tileC(16), pad }];
@@ -237,35 +253,32 @@ function buildDevMap() {
   tiledClear(m);
   buildHash();
 }
-/* wall and window cells -> sections: straight runs (corners and junctions join the run along their row),
-   cut into pieces of at most SEC_MAX cells. Also rebuilds MAP.sight: whole runs of standing wall, for the fog. */
-function wallRuns(TL, ok) {
-  const { sc, sr } = TL, used = new Uint8Array(sc * sr), out = [];
-  const t = (x, y) => x < 0 || y < 0 || x >= sc || y >= sr ? -1 : TL.cell[y * sc + x];
-  for (let y = 0; y < sr; y++) for (let x = 0; x < sc; x++) {
-    const v = t(x, y); if (!ok(v, x, y) || used[y * sc + x]) continue;
-    let w = 1; while (t(x + w, y) === v && ok(v, x + w, y) && !used[y * sc + x + w]) w++;
+/* a house's wall and window cells -> straight runs (corners and junctions join the run along their row) */
+function wallRuns(H, ok) {
+  const used = new Uint8Array(H.W * H.H), out = [], t = (x, y) => x < 0 || y < 0 || x >= H.W || y >= H.H ? -1 : H.cell[y * H.W + x];
+  for (let y = 0; y < H.H; y++) for (let x = 0; x < H.W; x++) {
+    const v = t(x, y); if (!ok(v) || used[y * H.W + x]) continue;
+    let w = 1; while (t(x + w, y) === v && !used[y * H.W + x + w]) w++;
     let h = 1;
-    if (w === 1) while (t(x, y + h) === v && ok(v, x, y + h) && !used[(y + h) * sc + x] && t(x - 1, y + h) !== v && t(x + 1, y + h) !== v) h++;
-    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) used[(y + j) * sc + x + i] = 1;
+    if (w === 1) while (t(x, y + h) === v && !used[(y + h) * H.W + x] && t(x - 1, y + h) !== v && t(x + 1, y + h) !== v) h++;
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) used[(y + j) * H.W + x + i] = 1;
     out.push({ x, y, w, h, v });
   }
   return out;
 }
-function devSections() {
-  const TL = MAP.tiled, sc = TL.sc; TL.secs = []; TL.sec.fill(-1);
-  const t = (x, y) => x < 0 || y < 0 || x >= sc || y >= TL.sr ? C_OUT : TL.cell[y * sc + x];
-  // a section: one or more rects (s.bs, each in MAP.buildings) of cells; cx..ch is their bounding box, n the cell count
+/* a house's structural sections: wall runs cut into pieces of at most SEC_MAX cells, each a solid rect in its frame
+   (MAP.buildings); a section is in MAP.secs too (s.i, what the net calls it by) */
+function houseSections(H) {
+  const secs = []; H.secs = secs; H.sec.fill(-1);
   const hpOf = s => s.glass ? 20 : 30 + 20 * s.n;
   const rect = (s, cx, cy, cw, ch) => {
-    const b = { x: cx * SUB, y: cy * SUB, w: cw * SUB, h: ch * SUB, glass: s.glass, sec: s }; s.bs.push(b); MAP.buildings.push(b);
-    for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) TL.sec[(cy + j) * sc + cx + i] = s.i;
+    const b = { x: cx * SUB, y: cy * SUB, w: cw * SUB, h: ch * SUB, glass: s.glass, sec: s, f: H.f }; s.bs.push(b);
+    for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) H.sec[(cy + j) * H.W + cx + i] = s.li;
     const x1 = Math.max(s.cx + s.cw, cx + cw), y1 = Math.max(s.cy + s.ch, cy + ch); s.cx = Math.min(s.cx, cx); s.cy = Math.min(s.cy, cy); s.cw = x1 - s.cx; s.ch = y1 - s.cy;
     s.n += cw * ch; s.hp = s.mhp = hpOf(s);
   };
-  const add = (cx, cy, cw, ch, glass) => { const s = { cx, cy, cw, ch, n: 0, bs: [], i: TL.secs.length, glass, alive: true, hitT: 0 }; TL.secs.push(s); rect(s, cx, cy, cw, ch); };
-  // straight runs (corners, tees and crosses go with the run along their row), cut to at most SEC_MAX cells
-  for (const r of wallRuns(TL, v => v === C_WALL || v === C_WIN)) {
+  const add = (cx, cy, cw, ch, glass) => { const s = { h: H, cx, cy, cw, ch, n: 0, bs: [], li: secs.length, glass, alive: true, hitT: 0 }; secs.push(s); rect(s, cx, cy, cw, ch); };
+  for (const r of wallRuns(H, v => v === C_WALL || v === C_WIN)) {
     const len = Math.max(r.w, r.h), n = Math.ceil(len / SEC_MAX);
     for (let k = 0; k < n; k++) {
       const a = Math.round(k * len / n), b = Math.round((k + 1) * len / n), glass = r.v === C_WIN;
@@ -273,60 +286,70 @@ function devSections() {
     }
   }
   // no wall cell stands alone: a one-cell section joins the smallest wall section next to it
-  for (const s of TL.secs.slice()) {
+  for (const s of secs.slice()) {
     if (s.glass || s.n !== 1) continue; let best = null;
-    for (const [dx, dy] of DIRS) { const q = t(s.cx + dx, s.cy + dy) === C_WALL && TL.secs[TL.sec[(s.cy + dy) * sc + s.cx + dx]]; if (q && q !== s && q.alive && (!best || q.n < best.n)) best = q; }
+    for (const [dx, dy] of DIRS) { const q = hcell(H, s.cx + dx, s.cy + dy) === C_WALL && secs[H.sec[(s.cy + dy) * H.W + s.cx + dx]]; if (q && q !== s && q.alive && (!best || q.n < best.n)) best = q; }
     if (!best) continue;
-    s.alive = false; MAP.buildings.splice(MAP.buildings.indexOf(s.bs[0]), 1); rect(best, s.cx, s.cy, 1, 1);
+    s.alive = false; rect(best, s.cx, s.cy, 1, 1);
   }
-  TL.secs = TL.secs.filter(s => s.alive); TL.sec.fill(-1);
-  TL.secs.forEach((s, i) => { s.i = i; for (const b of s.bs) for (let y = b.y / SUB; y < (b.y + b.h) / SUB; y++) for (let x = b.x / SUB; x < (b.x + b.w) / SUB; x++) TL.sec[y * sc + x] = i; });
-  devSight();
+  H.secs = secs.filter(s => s.alive); H.sec.fill(-1);
+  H.secs.forEach((s, li) => { s.li = li; s.i = MAP.secs.length; MAP.secs.push(s); for (const b of s.bs) { MAP.buildings.push(b); for (let y = b.y / SUB; y < (b.y + b.h) / SUB; y++) for (let x = b.x / SUB; x < (b.x + b.w) / SUB; x++) H.sec[y * H.W + x] = li; } });
 }
-/* sight walls (hard) and windows (soft, GLASS_OCC) */
+/* sight walls (hard) and windows (soft, GLASS_OCC), in their houses' frames */
 function devSight() {
-  const TL = MAP.tiled, px = r => ({ x: r.x * SUB, y: r.y * SUB, w: r.w * SUB, h: r.h * SUB });
-  MAP.sight = wallRuns(TL, v => v === C_WALL).map(px); if (M && M.gsf) M.gsf.dirty = 1;      // the grid smoke's walls too
-  MAP.glass = TL.secs.filter(s => s.glass && s.alive && s.hp >= s.mhp).flatMap(s => s.bs);     // only intact windows dim sight
+  MAP.sight = MAP.houses.flatMap(H => wallRuns(H, v => v === C_WALL).map(r => ({ x: r.x * SUB, y: r.y * SUB, w: r.w * SUB, h: r.h * SUB, f: H.f }))); if (M && M.gsf) M.gsf.dirty = 1;      // the grid smoke's walls too
+  MAP.glass = MAP.secs.filter(s => s.glass && s.alive && s.hp >= s.mhp).flatMap(s => s.bs);     // only intact windows dim sight
 }
 
 /* ---------------- roofs ---------------- */
 /* every floor cell in a house gets a roof tile, held up by one wall section: a shortest-path flood out from all the
    wall cells at once, with a random cost per cell. Each section's patch is joined to that section through its own
-   tiles, so nothing is left floating when a neighbouring patch falls, and the borders between patches are ragged. */
+   tiles, so nothing is left floating when a neighbouring patch falls, and the borders between patches are ragged.
+   Painted in the house's own canvas (H.rc, its frame), laid turned into the map-sized ROOF_C (roofBlit) */
 const ROOF_C = document.createElement('canvas'), ROOF_V = document.createElement('canvas');
-function devRoof() {
-  const TL = MAP.tiled, { sc, sr } = TL, N = sc * sr, R = mulberry(TL.seed * 31 + 7);
-  TL.roof = new Uint8Array(N); TL.rsec = new Int16Array(N).fill(-1); TL.rdist = new Uint8Array(N);    // rdist: tiles from the holding wall
-  const w = new Float32Array(N), cost = new Float32Array(N).fill(1e9), H = [];
-  const up = i => { while (i) { const p = (i - 1) >> 1; if (H[p][0] <= H[i][0]) break; [H[p], H[i]] = [H[i], H[p]]; i = p; } };
-  const pop = () => { const top = H[0], last = H.pop(); if (H.length) { H[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < H.length && H[l][0] < H[m][0]) m = l; if (r < H.length && H[r][0] < H[m][0]) m = r; if (m === i) break; [H[m], H[i]] = [H[i], H[m]]; i = m; } } return top; };
+function houseRoof(H) {
+  const N = H.W * H.H, R = mulberry(H.seed * 31 + 7);
+  H.roof = new Uint8Array(N); H.rsec = new Int16Array(N).fill(-1); H.rdist = new Uint8Array(N);    // rsec: the holding section (H.secs index); rdist: tiles from it
+  const w = new Float32Array(N), cost = new Float32Array(N).fill(1e9), Q = [];
+  const up = i => { while (i) { const p = (i - 1) >> 1; if (Q[p][0] <= Q[i][0]) break; [Q[p], Q[i]] = [Q[i], Q[p]]; i = p; } };
+  const pop = () => { const top = Q[0], last = Q.pop(); if (Q.length) { Q[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < Q.length && Q[l][0] < Q[m][0]) m = l; if (r < Q.length && Q[r][0] < Q[m][0]) m = r; if (m === i) break; [Q[m], Q[i]] = [Q[i], Q[m]]; i = m; } } return top; };
   for (let k = 0; k < N; k++) {
-    if (TL.bld[k] < 0 || TL.cell[k] === C_OUT) continue;
-    TL.roof[k] = 1; w[k] = 1 + R() * 1.6;                     // the roof covers the whole house, walls and windows too
-    if (TL.cell[k] === C_WALL && TL.sec[k] >= 0) { cost[k] = 0; TL.rsec[k] = TL.sec[k]; H.push([0, k]); up(H.length - 1); }   // a wall holds the roof over itself
+    if (H.cell[k] === C_OUT) continue;
+    H.roof[k] = 1; w[k] = 1 + R() * 1.6;                     // the roof covers the whole house, walls and windows too
+    if (H.cell[k] === C_WALL && H.sec[k] >= 0) { cost[k] = 0; H.rsec[k] = H.sec[k]; Q.push([0, k]); up(Q.length - 1); }   // a wall holds the roof over itself
   }
-  while (H.length) {
-    const [c, k] = pop(); if (c > cost[k]) continue; const x = k % sc, y = (k / sc) | 0;
+  while (Q.length) {
+    const [c, k] = pop(); if (c > cost[k]) continue; const x = k % H.W, y = (k / H.W) | 0;
     for (const [dx, dy] of DIRS) {
-      const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= sc || ny >= sr) continue; const n = ny * sc + nx;
-      if (TL.roof[n] && c + w[n] < cost[n]) { cost[n] = c + w[n]; TL.rsec[n] = TL.rsec[k]; TL.rdist[n] = Math.min(255, TL.rdist[k] + 1); H.push([cost[n], n]); up(H.length - 1); }
+      const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= H.W || ny >= H.H) continue; const n = ny * H.W + nx;
+      if (H.roof[n] && c + w[n] < cost[n]) { cost[n] = c + w[n]; H.rsec[n] = H.rsec[k]; H.rdist[n] = Math.min(255, H.rdist[k] + 1); Q.push([cost[n], n]); up(Q.length - 1); }
     }
   }
 }
+const roofAt = (x, y) => { const q = houseAt(x, y); return q ? q[0].roof[q[2] * q[0].W + q[1]] : 0; };
 function paintRoof() {
-  const TL = MAP.tiled; if (!TL.roof) return;
   ROOF_C.width = WW; ROOF_C.height = WH;
-  for (let j = 0; j < TL.sr; j++) for (let i = 0; i < TL.sc; i++) if (TL.roof[j * TL.sc + i] === 1) roofCell(i, j);
+  for (const H of MAP.houses) { H.rc = document.createElement('canvas'); H.rc.width = H.W * SUB; H.rc.height = H.H * SUB; for (let j = 0; j < H.H; j++) for (let i = 0; i < H.W; i++) roofCell(H, i, j); }
+  const g = ROOF_C.getContext('2d'); for (const H of MAP.houses) roofLay(g, H);
 }
-/* one cell repainted after the roof changed: only it goes up to the GPU again (gxPart) */
-function paintRoofCell(i, j) { gxPart(ROOF_C, i * SUB, j * SUB, SUB, SUB, () => roofCell(i, j)); }
-/* shingles, a dark edge wherever the roof stops */
-function roofCell(i, j) {
-  const TL = MAP.tiled, k = j * TL.sc + i, x = i * SUB, y = j * SUB;
+/* a house's roof canvas laid into ROOF_C, turned */
+function roofLay(g, H) { g.save(); g.setTransform(H.f.c, H.f.s, -H.f.s, H.f.c, H.f.ox, H.f.oy); g.imageSmoothingEnabled = true; g.drawImage(H.rc, 0, 0); g.restore(); }
+/* a house's roof changed: its box in ROOF_C is cleared and every roof touching the box laid in again (clipped to it), and
+   only that box goes up to the GPU again (gxPart) */
+function roofBlit(H) {
+  const x = Math.max(0, Math.floor(H.bb[0]) - 1), y = Math.max(0, Math.floor(H.bb[1]) - 1), w = Math.min(WW, Math.ceil(H.bb[2]) + 1) - x, h = Math.min(WH, Math.ceil(H.bb[3]) + 1) - y; if (w <= 0 || h <= 0) return;
+  gxPart(ROOF_C, x, y, w, h, () => {
+    const g = ROOF_C.getContext('2d'); g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(x, y, w, h); g.beginPath(); g.rect(x, y, w, h); g.clip();
+    for (const o of MAP.houses) if (o.bb[0] < x + w && o.bb[2] > x && o.bb[1] < y + h && o.bb[3] > y) roofLay(g, o);
+    g.restore();
+  });
+}
+/* shingles, a dark edge wherever the roof stops (in the house's canvas) */
+function roofCell(H, i, j) {
+  const k = j * H.W + i, x = i * SUB, y = j * SUB;
   const t = ((Math.imul(i, 2654435761) ^ Math.imul(j, 40503)) >>> 0) % 7 - 3;
-  const open = (a, b) => { if (a < 0 || b < 0 || a >= TL.sc || b >= TL.sr) return true; return TL.roof[b * TL.sc + a] !== 1; };
-  const g = ROOF_C.getContext('2d'); g.clearRect(x, y, SUB, SUB); if (TL.roof[k] !== 1) return;
+  const open = (a, b) => a < 0 || b < 0 || a >= H.W || b >= H.H || H.roof[b * H.W + a] !== 1;
+  const g = H.rc.getContext('2d'); g.clearRect(x, y, SUB, SUB); if (H.roof[k] !== 1) return;
   g.fillStyle = `rgb(${112 + t * 3},${72 + t * 2},${56 + t * 2})`; g.fillRect(x, y, SUB, SUB);
   g.fillStyle = 'rgba(40,22,16,0.45)';
   for (let r = 0; r < 4; r++) { g.fillRect(x, y + r * 4 + 3, SUB, 1); for (let sx = (r % 2) * 4; sx < SUB; sx += 8) g.fillRect(x + sx, y + r * 4, 1, 3); }
@@ -334,27 +357,29 @@ function roofCell(i, j) {
   if (open(i, j - 1)) g.fillRect(x, y, SUB, 2); if (open(i + 1, j)) g.fillRect(x + SUB - 2, y, 2, SUB);
   if (open(i, j + 1)) g.fillRect(x, y + SUB - 2, SUB, 2); if (open(i - 1, j)) g.fillRect(x, y, 2, SUB);
 }
-function repaintRoofAround(cells) {
-  const TL = MAP.tiled, done = new Set();
-  for (const k of cells) { const i = k % TL.sc, j = (k / TL.sc) | 0; for (let b = j - 1; b <= j + 1; b++) for (let a = i - 1; a <= i + 1; a++) { const n = b * TL.sc + a; if (a < 0 || b < 0 || a >= TL.sc || b >= TL.sr || done.has(n)) continue; done.add(n); paintRoofCell(a, b); } }
+/* cells (H-local indices) whose roof changed: they and their neighbours repainted; the house laid in again next tick */
+function repaintRoofAround(H, cells) {
+  const done = new Set();
+  for (const k of cells) { const i = k % H.W, j = (k / H.W) | 0; for (let b = j - 1; b <= j + 1; b++) for (let a = i - 1; a <= i + 1; a++) { const n = b * H.W + a; if (a < 0 || b < 0 || a >= H.W || b >= H.H || done.has(n)) continue; done.add(n); roofCell(H, a, b); } }
+  H.rdirty = 1;
 }
 /* a wall section fell: its roof comes down as a cascade, each tile ROOF_STEP s later per tile it is from the wall */
 const ROOF_STEP = 0.07;
 function devRoofFall(sec) {
-  const TL = MAP.tiled; if (!TL.roof) return 0; const fall = { hit: new Set() }; let n = 0;
-  for (let k = 0; k < TL.roof.length; k++) if (TL.roof[k] === 1 && TL.rsec[k] === sec.i) { DEV.roofQ.push({ k, at: M.time + TL.rdist[k] * ROOF_STEP, fall }); n++; }
+  const H = sec.h; if (!H.roof) return 0; const fall = { hit: new Set() }; let n = 0;
+  for (let k = 0; k < H.roof.length; k++) if (H.roof[k] === 1 && H.rsec[k] === sec.li) { DEV.roofQ.push({ H, k, at: M.time + H.rdist[k] * ROOF_STEP, fall }); n++; }
   if (n) devLog(`ROOF ${n} TILES DOWN`, '#ffb060');
   return n;
 }
 /* one roof tile lands: collapse dust (even row + even column only), debris, a shake nearby, and whoever is under it is hurt (once per fall) */
-function devRoofTile(k, fall) {
-  const TL = MAP.tiled; if (TL.roof[k] !== 1) return; TL.roof[k] = 2;
-  const i = k % TL.sc, j = (k / TL.sc) | 0, cx = (i + 0.5) * SUB, cy = (j + 0.5) * SUB;
-  paintCell(i, j); repaintRoofAround([k]);
+function devRoofTile(H, k, fall) {
+  if (H.roof[k] !== 1) return; H.roof[k] = 2;
+  const i = k % H.W, j = (k / H.W) | 0, [cx, cy] = cellW(H, i, j);
+  paintCell(H, i, j); repaintRoofAround(H, [k]);
   if (i % 2 === 0 && j % 2 === 0) devDust(cx, cy);          // dust from roof tiles on an even row and even column
   { const a = rnd(0, TAU), sp = rnd(30, 120); part({ k: 'debris', x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rnd(0.4, 0.9), max: 0.9, sz: rnd(2, 4), rot: rnd(0, TAU), vr: rnd(-12, 12), drag: 3 }); }
   shakeAt(cx, cy, 2.5, 420); ev('roof.fall', cx, cy);
-  const under = (x, y) => ((y / SUB) | 0) * TL.sc + ((x / SUB) | 0) === k;
+  const under = (x, y) => { const q = houseAt(x, y); return !!q && q[0] === H && q[2] * H.W + q[1] === k; };
   if (NET.role === 'client') return;          // online: the host's roof does the hurting
   for (const s of M.sol) if (s.alive && !s.veh && !fall.hit.has(s) && under(s.x, s.y)) { fall.hit.add(s); hurtSoldier(s, s.mhp * rnd(0.5, 0.75), null, 'roof', 0, 0, 'ROOF'); }
   for (const v of M.vehicles) if (v.active && !v.dead && !fall.hit.has(v) && vehCircles(v, _vc).some(([x, y]) => under(x, y))) { fall.hit.add(v); hurtVehicle(v, v.type === 'tank' ? 40 : 120, null); }
@@ -366,11 +391,11 @@ function devRoofTile(k, fall) {
    (rv.x, rv.y, rv.w, rv.h) drawn in sight above units and walls. (Out of sight the memory holds the whole roof: applyFog) */
 const ROOF_NEAR = 100, ROOF_FAR = 200, ROOF_CAP = 0.7, roofOp = d => d <= ROOF_NEAR ? 0 : ROOF_CAP * Math.min(1, (d - ROOF_NEAR) / (ROOF_FAR - ROOF_NEAR));
 function roofView(vw, x0, y0, x1, y1) {
-  const TL = MAP.tiled; if (!TL || !TL.roof) return null;
+  if (!MAP.houses.length) return null;
   const x = Math.max(0, Math.floor(x0)), y = Math.max(0, Math.floor(y0)), w = Math.min(WW, Math.ceil(x1)) - x, h = Math.min(WH, Math.ceil(y1)) - y; if (w <= 0 || h <= 0) return null;
   if (ROOF_V.width < w || ROOF_V.height < h) { ROOF_V.width = Math.max(ROOF_V.width, w); ROOF_V.height = Math.max(ROOF_V.height, h); }
   const g = ROOF_V.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, w, h); g.drawImage(ROOF_C, x, y, w, h, 0, 0, w, h);
-  const eyes = viewSols(vw).map(posOf), inside = CFG.clearLos !== false || eyes.some(o => TL.roof[((o.y / SUB) | 0) * TL.sc + ((o.x / SUB) | 0)] === 1);
+  const eyes = viewSols(vw).map(posOf), inside = CFG.clearLos !== false || eyes.some(o => roofAt(o.x, o.y) === 1);
   const dt = Math.min(0.1, Math.max(0, M.time - (vw.rfT ?? M.time))); vw.rfT = M.time; vw.rf = clamp((vw.rf || 0) + (inside ? dt : -dt) * 4, 0, 1);
   const f = vw.rf; if (f <= 0) return { c: ROOF_V, x, y, w, h };
   g.globalCompositeOperation = 'destination-out'; g.setTransform(1, 0, 0, 1, -x, -y);
@@ -391,45 +416,47 @@ function paintDevGround() {
   SKIRT_PAT = '#3c4232';
   paintTiled();
 }
-/* a tiled map's houses (and their roofs) over whatever ground is painted */
+/* the houses (and their roofs) over whatever ground is painted */
 function paintTiled() {
-  const TL = MAP.tiled; gx.setTransform(1, 0, 0, 1, 0, 0); gx.imageSmoothingEnabled = false;
-  for (let j = 0; j < TL.sr; j++) for (let i = 0; i < TL.sc; i++) if (TL.cell[j * TL.sc + i] !== C_OUT) paintCell(i, j);
+  for (const H of MAP.houses) for (let j = 0; j < H.H; j++) for (let i = 0; i < H.W; i++) if (H.cell[j * H.W + i] !== C_OUT) paintCell(H, i, j);
+  gx.setTransform(1, 0, 0, 1, 0, 0);
   paintRoof();
 }
-/* one SUB cell: floor, rubble, a window, or a wall piece picked from which neighbours are wall */
-function paintCell(i, j) {
-  const TL = MAP.tiled, t = (x, y) => x < 0 || y < 0 || x >= TL.sc || y >= TL.sr ? C_OUT : TL.cell[y * TL.sc + x], v = t(i, j), x = i * SUB, y = j * SUB;
-  const inside = TL.bld[j * TL.sc + i] >= 0;
-  gx.fillStyle = inside ? '#6e5c46' : '#5b6248'; gx.fillRect(x, y, SUB, SUB);
+/* one SUB cell of a house, in its frame: floor, rubble, a window, or a wall piece picked from which neighbours are wall */
+function paintCell(H, i, j) {
+  const v = hcell(H, i, j), x = i * SUB, y = j * SUB; if (v === C_OUT) return;
+  gx.setTransform(H.f.c, H.f.s, -H.f.s, H.f.c, H.f.ox, H.f.oy); gx.imageSmoothingEnabled = false;
+  gx.fillStyle = '#6e5c46'; gx.fillRect(x, y, SUB, SUB);
   if (v === C_FLOOR) { gx.fillStyle = '#62513d'; gx.fillRect(x, y + (i % 2 ? 7 : 15), SUB, 1); }      // planks
-  if (!WALL_IMG.complete || !WALL_IMG.width || (v === C_FLOOR && !(TL.roof && TL.roof[j * TL.sc + i] === 2))) return;
+  if (!WALL_IMG.complete || !WALL_IMG.width || (v === C_FLOOR && !(H.roof && H.roof[j * H.W + i] === 2))) return;
   let c, k, flip = false;
-  if (v === C_RUB || v === C_FLOOR) { const h = Math.imul(i, 73856093) ^ Math.imul(j, 19349663) ^ (TL.seed * 83492791); c = RUB_T; k = h & 3; flip = !!(h & 4); }   // rubble: same tile, turned / flipped per cell
-  else if (v === C_WIN) { const s = TL.secs[TL.sec[j * TL.sc + i]]; c = s && s.hp < s.mhp ? WIN_BROKE : WIN_T; k = t(i - 1, j) === C_WIN || t(i + 1, j) === C_WIN ? 0 : 1; }   // windows only ever use the middle piece
+  if (v === C_RUB || v === C_FLOOR) { const h = Math.imul(i, 73856093) ^ Math.imul(j, 19349663) ^ (H.seed * 83492791); c = RUB_T; k = h & 3; flip = !!(h & 4); }   // rubble: same tile, turned / flipped per cell
+  else if (v === C_WIN) { const s = H.secs[H.sec[j * H.W + i]]; c = s && s.hp < s.mhp ? WIN_BROKE : WIN_T; k = hcell(H, i - 1, j) === C_WIN || hcell(H, i + 1, j) === C_WIN ? 0 : 1; }   // windows only ever use the middle piece
   else {
     let m = 0, n = 0, rub = -1;
-    for (let d = 0; d < 4; d++) { const o = t(i + DIRS[d][0], j + DIRS[d][1]); if (o === C_WALL) { m |= 1 << d; n++; } else if (o === C_RUB) rub = d; }
+    for (let d = 0; d < 4; d++) { const o = hcell(H, i + DIRS[d][0], j + DIRS[d][1]); if (o === C_WALL) { m |= 1 << d; n++; } else if (o === C_RUB) rub = d; }
     if (n <= 1 && rub >= 0) { c = CRUMB_T; k = WALL_BY_MASK[n ? m : 1 << ((rub + 2) % 4)][1]; }    // beside a fallen wall: the broken end, jagged side away from what still stands
     else { const q = WALL_BY_MASK[m]; c = WT[q[0]]; k = q[1]; }          // a window beside a wall gives it an end
   }
-  gx.save(); gx.translate(x + SUB / 2, y + SUB / 2); gx.rotate(k * Math.PI / 2); if (flip) gx.scale(-1, 1);
-  gx.drawImage(WALL_IMG, c[0] * SUB, c[1] * SUB, SUB, SUB, -SUB / 2, -SUB / 2, SUB, SUB); gx.restore();
+  gx.translate(x + SUB / 2, y + SUB / 2); gx.rotate(k * Math.PI / 2); if (flip) gx.scale(-1, 1);
+  gx.drawImage(WALL_IMG, c[0] * SUB, c[1] * SUB, SUB, SUB, -SUB / 2, -SUB / 2, SUB, SUB);
+  gx.setTransform(1, 0, 0, 1, 0, 0);
 }
 
 /* ---------------- structure damage ---------------- */
 /* the point of a section nearest (x, y), and how far: [nx, ny, d] */
 function secNear(sec, x, y) {
   let best = null;
-  for (const b of sec.bs) { const nx = clamp(x, b.x, b.x + b.w), ny = clamp(y, b.y, b.y + b.h), d = Math.hypot(nx - x, ny - y); if (!best || d < best[2]) best = [nx, ny, d]; }
+  for (const b of sec.bs) { const q = rectNear(b, x, y); if (!best || q[2] < best[2]) best = q; }
   return best;
 }
-/* the cells of a section */
-function secCells(sec, f) { const TL = MAP.tiled; for (let j = sec.cy; j < sec.cy + sec.ch; j++) for (let i = sec.cx; i < sec.cx + sec.cw; i++) if (TL.sec[j * TL.sc + i] === sec.i) f(i, j); }
+/* the cells of a section (in its house) */
+function secCells(sec, f) { const H = sec.h; for (let j = sec.cy; j < sec.cy + sec.ch; j++) for (let i = sec.cx; i < sec.cx + sec.cw; i++) if (H.sec[j * H.W + i] === sec.li) f(i, j); }
 function devBlast(x, y, r, dmg) {
   const R = r * 0.6, k = STRUCT_K[r] || 1;
-  for (const sec of MAP.tiled.secs) {
+  for (const sec of MAP.secs) {
     if (!sec.alive) continue;
+    const H = sec.h; if (x < H.bb[0] - R || x > H.bb[2] + R || y < H.bb[1] - R || y > H.bb[3] + R) continue;
     const [nx, ny, d] = secNear(sec, x, y); if (d > R) continue;
     devDamage(sec, dmg * k * clamp(1 - d / R, 0.3, 1), nx, ny);
   }
@@ -445,8 +472,8 @@ function devDamage(sec, v, x, y, net) {
 /* a shot, a grenade or a vaulting soldier through an intact window: it cracks */
 function devGlass(sec, x, y) { if (sec.alive && sec.hp >= sec.mhp) devDamage(sec, 1, x, y); }
 function devRepaint(sec, pad) {
-  const TL = MAP.tiled;
-  for (let j = sec.cy - pad; j < sec.cy + sec.ch + pad; j++) for (let i = sec.cx - pad; i < sec.cx + sec.cw + pad; i++) if (i >= 0 && j >= 0 && i < TL.sc && j < TL.sr && TL.cell[j * TL.sc + i] !== C_OUT) paintCell(i, j);
+  const H = sec.h;
+  for (let j = sec.cy - pad; j < sec.cy + sec.ch + pad; j++) for (let i = sec.cx - pad; i < sec.cx + sec.cw + pad; i++) if (hcell(H, i, j) !== C_OUT) paintCell(H, i, j);
 }
 /* a vehicle driving into wall sections (host / offline): from vehicleCollide, before it is pushed back.
    A section that falls is gone before the push, so a tank carries on through, slowed. */
@@ -455,7 +482,7 @@ function devRams(v) {
   const P = RAM[v.type]; if (!P) return;
   const sp = Math.abs(v.spd); if (sp < P.go) return;
   _ram.length = 0; vehCircles(v, _vc);
-  for (const [cx, cy, r] of _vc) for (const b of rectsIn(MAP.buildings, cx - r - 1, cy - r - 1, cx + r + 1, cy + r + 1, _rb)) if (b.sec && !_ram.includes(b.sec) && Math.hypot(clamp(cx, b.x, b.x + b.w) - cx, clamp(cy, b.y, b.y + b.h) - cy) < r + 1) _ram.push(b.sec);
+  for (const [cx, cy, r] of _vc) for (const b of rectsIn(MAP.buildings, cx - r - 1, cy - r - 1, cx + r + 1, cy + r + 1, _rb)) if (b.sec && !_ram.includes(b.sec) && rectNear(b, cx, cy)[2] < r + 1) _ram.push(b.sec);
   const cd = v.ramCd || (v.ramCd = {});
   for (const sec of _ram) {
     if ((cd[sec.i] || 0) > M.time) continue; cd[sec.i] = M.time + 0.25;
@@ -469,20 +496,21 @@ function devRams(v) {
 /* collapse dust: a smoke grenade's cloud, brown in a random shade, half opacity, 6-15 s */
 function devDust(x, y) { popSmoke(x, y, { dust: true, T: rnd(6, 15), quiet: true }); }
 function devCollapse(sec) {
-  const TL = MAP.tiled; sec.alive = false; sec.hp = 0;
+  const H = sec.h; sec.alive = false; sec.hp = 0;
   for (const b of sec.bs) { const bi = MAP.buildings.indexOf(b); if (bi >= 0) MAP.buildings.splice(bi, 1); }
   secCells(sec, (i, j) => {
-    TL.cell[j * TL.sc + i] = C_RUB;
-    const cx = (i + 0.5) * SUB, cy = (j + 0.5) * SUB;
+    H.cell[j * H.W + i] = C_RUB;
+    const [cx, cy] = cellW(H, i, j);
     if (!sec.glass && (i + j) % 2 === 0) devDust(cx, cy);    // dust from wall cells on a checkerboard
     if (!sec.glass) for (let q = 0; q < 3; q++) part({ k: 'dust', x: cx + rnd(-6, 6), y: cy + rnd(-6, 6), vx: rnd(-40, 40), vy: rnd(-40, 40), life: rnd(1.4, 2.4), max: 2.4, sz: rnd(14, 26), drag: 1.2 });
     for (let q = 0; q < (sec.glass ? 3 : 5); q++) { const a = rnd(0, TAU), sp = rnd(40, 190); part({ k: 'debris', x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rnd(0.4, 1), max: 1, sz: rnd(2, sec.glass ? 3 : 5), rot: rnd(0, TAU), vr: rnd(-12, 12), drag: 3 }); }
   });
   // the cells and everything around them (neighbouring walls may become crumbled ends), then the roof it held up
   devRepaint(sec, 1);
-  if (!sec.glass && TL.roof) { const ks = []; secCells(sec, (i, j) => ks.push(j * TL.sc + i)); repaintRoofAround(ks); devRoofFall(sec); }
+  if (!sec.glass && H.roof) { const ks = []; secCells(sec, (i, j) => ks.push(j * H.W + i)); repaintRoofAround(H, ks); devRoofFall(sec); }
   devSight(); navDirty = 1;          // the fog's memory isn't reset: out of sight you keep seeing it standing until you look
-  ev('wall.collapse', (sec.cx + sec.cw / 2) * SUB, (sec.cy + sec.ch / 2) * SUB, { glass: sec.glass ? 1 : 0 });
+  const [mx, my] = fromF(H.f, (sec.cx + sec.cw / 2) * SUB, (sec.cy + sec.ch / 2) * SUB);
+  ev('wall.collapse', mx, my, { glass: sec.glass ? 1 : 0 });
   devLog(sec.glass ? 'WINDOW BROKEN' : `WALL ${sec.n} CELL${sec.n > 1 ? 'S' : ''} DOWN`, '#ffb060');
 }
 
@@ -548,8 +576,9 @@ function devHeal() { const p = devPlayer(); if (!p) return; const s = p.sol; s.h
 
 /* every frame on a tiled map (the dev yard, OUTSKIRTS; host and clients): hit flashes wear off, roof tiles come down */
 function tiledTick(dt) {
-  for (const sec of MAP.tiled.secs) if (sec.hitT > 0) sec.hitT -= dt;
-  if (DEV.roofQ.length) { for (const q of DEV.roofQ) if (q.at <= M.time) devRoofTile(q.k, q.fall); prune(DEV.roofQ, q => q.at > M.time); }
+  for (const sec of MAP.secs) if (sec.hitT > 0) sec.hitT -= dt;
+  if (DEV.roofQ.length) { for (const q of DEV.roofQ) if (q.at <= M.time) devRoofTile(q.H, q.k, q.fall); prune(DEV.roofQ, q => q.at > M.time); }
+  for (const H of MAP.houses) if (H.rdirty) { H.rdirty = 0; roofBlit(H); }     // roofs that changed this tick, laid in once
 }
 /* every frame of a dev match */
 function devTick(dt) {
@@ -572,7 +601,7 @@ function devTick(dt) {
 function devSightDbg(vw, x0, y0, x1, y1) {
   const eyes = viewSols(vw).map(posOf), box = sightBox(x0, y0, x1, y1, eyes), k = 1 / VZ;
   for (const o of eyes) {
-    const P = visPoly(o.x, o.y, box, null, MAP.tiled ? SUB / 2 : 5);
+    const P = visPoly(o.x, o.y, box, null, MAP.houses.length ? SUB / 2 : 5);
     ctx.lineWidth = 2 * k; ctx.beginPath();
     for (const q of P.faces) if (q[4]) { ctx.moveTo(q[0], q[1]); ctx.lineTo(q[2], q[3]); }
     ctx.strokeStyle = 'rgba(255,150,40,0.9)'; ctx.stroke();
@@ -600,28 +629,28 @@ function devSmokeDbg(vw) {
   }
 }
 function devDrawWorld(vw) {
-  const TL = MAP.tiled; worldT();
-  if (TL && DEV.grid) {
-    ctx.lineWidth = 1 / VZ;
-    for (const [step, al] of [[SUB, 0.06], [TILE, 0.15]]) {        // 16 px wall grid, 32 px tile grid
-      ctx.strokeStyle = `rgba(255,255,255,${al})`; ctx.beginPath();
-      for (let x = 0; x <= WW; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, WH); }
-      for (let y = 0; y <= WH; y += step) { ctx.moveTo(0, y); ctx.lineTo(WW, y); }
-      ctx.stroke();
-    }
-  }
+  worldT();
   const bar = (cx, cy, w, f) => { ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(cx - w / 2 - 1, cy - 3, w + 2, 6); ctx.fillStyle = f > 0.5 ? '#7dff7a' : f > 0.25 ? '#ffe08a' : '#ff5a45'; ctx.fillRect(cx - w / 2, cy - 2, w * clamp(f, 0, 1), 4); };
-  if (TL && DEV.secs) for (const sec of TL.secs) {
-    if (!sec.alive) continue;
-    ctx.strokeStyle = sec.hitT > 0 ? '#ff6040' : sec.glass ? 'rgba(120,200,255,0.8)' : 'rgba(255,224,138,0.7)'; ctx.lineWidth = 1.5 / VZ;
-    secCells(sec, (i, j) => {     // its outline: the cell edges that face another section or nothing
-      const o = (a, c) => MAP.tiled.sec[c * MAP.tiled.sc + a] !== sec.i || a < 0 || c < 0 || a >= MAP.tiled.sc || c >= MAP.tiled.sr, x = i * SUB, y = j * SUB, e = 1.5, S = SUB; ctx.beginPath();
-      if (o(i, j - 1)) { ctx.moveTo(x, y + e); ctx.lineTo(x + S, y + e); } if (o(i, j + 1)) { ctx.moveTo(x, y + S - e); ctx.lineTo(x + S, y + S - e); }
-      if (o(i - 1, j)) { ctx.moveTo(x + e, y); ctx.lineTo(x + e, y + S); } if (o(i + 1, j)) { ctx.moveTo(x + S - e, y); ctx.lineTo(x + S - e, y + S); }
-      ctx.stroke();
-    });
-    const b = sec.bs.reduce((a, q) => q.w * q.h > a.w * a.h ? q : a);     // bar on its biggest rect
-    if (sec.hp < sec.mhp) { bar(b.x + b.w / 2, b.y + b.h / 2, Math.max(14, Math.min(b.w, 40)), sec.hp / sec.mhp); stxt(String(Math.ceil(sec.hp)), b.x + b.w / 2, b.y + b.h / 2 - 9, 8, '#fff', 'center', 'middle', FD); }
+  for (const H of MAP.houses) {     // in each house's frame
+    if (!DEV.grid && !DEV.secs) break;
+    ctx.save(); ctx.transform(H.f.c, H.f.s, -H.f.s, H.f.c, H.f.ox, H.f.oy); ctx.lineWidth = 1 / VZ;
+    if (DEV.grid) { ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.beginPath(); for (let x = 0; x <= H.W; x++) { ctx.moveTo(x * SUB, 0); ctx.lineTo(x * SUB, H.H * SUB); } for (let y = 0; y <= H.H; y++) { ctx.moveTo(0, y * SUB); ctx.lineTo(H.W * SUB, y * SUB); } ctx.stroke(); }
+    if (DEV.secs) for (const sec of H.secs) {
+      if (!sec.alive) continue;
+      ctx.strokeStyle = sec.hitT > 0 ? '#ff6040' : sec.glass ? 'rgba(120,200,255,0.8)' : 'rgba(255,224,138,0.7)'; ctx.lineWidth = 1.5 / VZ;
+      secCells(sec, (i, j) => {     // its outline: the cell edges that face another section or nothing
+        const o = (a, c) => a < 0 || c < 0 || a >= H.W || c >= H.H || H.sec[c * H.W + a] !== sec.li, x = i * SUB, y = j * SUB, e = 1.5, S = SUB; ctx.beginPath();
+        if (o(i, j - 1)) { ctx.moveTo(x, y + e); ctx.lineTo(x + S, y + e); } if (o(i, j + 1)) { ctx.moveTo(x, y + S - e); ctx.lineTo(x + S, y + S - e); }
+        if (o(i - 1, j)) { ctx.moveTo(x + e, y); ctx.lineTo(x + e, y + S); } if (o(i + 1, j)) { ctx.moveTo(x + S - e, y); ctx.lineTo(x + S - e, y + S); }
+        ctx.stroke();
+      });
+    }
+    ctx.restore();
+    if (DEV.secs) for (const sec of H.secs) {
+      if (!sec.alive || sec.hp >= sec.mhp) continue;
+      const b = sec.bs.reduce((a, q) => q.w * q.h > a.w * a.h ? q : a), [cx, cy] = fromF(H.f, b.x + b.w / 2, b.y + b.h / 2);     // bar on its biggest rect
+      bar(cx, cy, Math.max(14, Math.min(b.w, 40)), sec.hp / sec.mhp); stxt(String(Math.ceil(sec.hp)), cx, cy - 9, 8, '#fff', 'center', 'middle', FD);
+    }
   }
   for (const s of M.sol) if (s.dummy && s.alive) { bar(s.x, s.y - 20, 26, s.hp / s.mhp); stxt(String(Math.ceil(s.hp)), s.x, s.y - 28, 8, '#fff', 'center', 'middle', FD); }
   for (const v of M.vehicles) if (v.active && !v.dead) { const y = v.y - (v.T.hw || 16) - 16; bar(v.x, y, 40, v.hp / v.T.hp); stxt(Math.ceil(v.hp) + '/' + v.T.hp, v.x, y - 9, 8, '#fff', 'center', 'middle', FD); }

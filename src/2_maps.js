@@ -51,16 +51,12 @@ function footprint(x, y, a, side, prone) {
 
 function buildMap(id) {
   const R = mulberry(id === 'crossroads' ? 1987 : id === 'farmlands' ? 2311 : id === 'snowfield' ? 6151 : id === 'outskirts' ? 8807 : 4099);
-  const m = { id, arcs: [], roads: [], buildings: [], water: [], bridges: [], statics: [], flags: [], bases: [], crateSpots: [], vehSpawns: [], ffaSpawns: [], fields: [], fwd: [], ice: [] };
+  const m = { id, houses: [], secs: [], arcs: [], roads: [], buildings: [], water: [], bridges: [], statics: [], flags: [], bases: [], crateSpots: [], vehSpawns: [], ffaSpawns: [], fields: [], fwd: [], ice: [] };
   m.bases = [{ team: 0, x: 130, y: WH / 2, pad: { x: 20, y: WH / 2 - 200, w: 340, h: 400 } }, { team: 1, x: WW - 130, y: WH / 2, pad: { x: WW - 360, y: WH / 2 - 200, w: 340, h: 400 } }];
   MAP = m; BOUNDM = null; SKIRT = id.startsWith('g:') ? 0 : 480;
   const sym = (arr, o, mir) => { arr.push(o); arr.push(mir(o)); };
-  /* a tiled house (OUTSKIRTS) within pad of (x, y) */
-  const inHouse = (x, y, pad) => {
-    const TL = m.tiled; if (!TL) return false;
-    for (const [a, b] of [[x, y], [x - pad, y - pad], [x + pad, y - pad], [x - pad, y + pad], [x + pad, y + pad]]) { const i = (a / SUB) | 0, j = (b / SUB) | 0; if (i >= 0 && j >= 0 && i < TL.sc && j < TL.sr && TL.bld[j * TL.sc + i] >= 0) return true; }
-    return false;
-  };
+  /* a house within pad of (x, y) */
+  const inHouse = (x, y, pad) => m.houses.length > 0 && [[x, y], [x - pad, y - pad], [x + pad, y - pad], [x - pad, y + pad], [x + pad, y + pad]].some(([a, b]) => houseAt(a, b));
   /* a stamped map's battlefield edge: o (and its pad) moved to the nearest spot at least d in from it */
   const inside = (o, d) => {
     const ok = (x, y) => !outOfBounds(x, y) && [0, 1, 2, 3, 4, 5, 6, 7].every(k => !outOfBounds(x + Math.cos(k * TAU / 8) * d, y + Math.sin(k * TAU / 8) * d));
@@ -171,13 +167,15 @@ function buildMap(id) {
     // roofs) around a road cross. Each house is placed on the left and mirrored; its lot holds the space while placing
     m.roads = [[0, WH / 2, WW, WH / 2], [860, 0, 860, WH], [WW - 860, 0, WW - 860, WH]].map(l => ({ l, w: 64, side: 12, style: 'asphalt' }));
     m.flags = [{ name: 'A', x: 600, y: WH / 2 + 480 }, { name: 'B', x: WW / 2, y: WH / 2 }, { name: 'C', x: WW - 600, y: WH / 2 - 480 }];
-    const TL = m.tiled = newTiled(WW, WH, 8807);
+    const sc = WW / SUB, sr = WH / SUB;
     for (let n = 0, k = 0; n < 60 && k < 12; n++) {
-      const h = genHouse(R, 24, 20); if (!h) continue;
+      const seed = Math.floor(R() * 1e9), h = genHouse(mulberry(seed * 7919 + 13), 24, 20); if (!h) continue;
       for (let t = 0; t < 150; t++) {
-        const ox = 4 + Math.floor(R() * (TL.sc / 2 + 6 - h.W)), oy = 4 + Math.floor(R() * (TL.sr - 8 - h.H)), r = { x: ox * SUB, y: oy * SUB, w: h.W * SUB, h: h.H * SUB };
+        const ox = 4 + Math.floor(R() * (sc / 2 + 6 - h.W)), oy = 4 + Math.floor(R() * (sr - 8 - h.H)), r = { x: ox * SUB, y: oy * SUB, w: h.W * SUB, h: h.H * SUB };
         if (!rectFree(r, 64)) continue;
-        sym(m.buildings, r, mirrorRect); stampHouse(TL, h, ox, oy, false); stampHouse(TL, h, ox, oy, true); k++; break;
+        sym(m.buildings, r, mirrorRect);     // the lot, held while placing; the house and its copy turned half round the centre
+        const o = { x: r.x + r.w / 2, y: r.y + r.h / 2, a: 0, seed, mw: 24, mh: 20 };
+        m.houses.push(mkHouse(o, m.houses.length), mkHouse({ ...o, x: WW - o.x, y: WH - o.y, a: Math.PI }, m.houses.length + 1)); k++; break;
       }
     }
     m.buildings.length = 0; tiledFinish();
@@ -249,7 +247,7 @@ function buildMap(id) {
     m.crateSpots = m.crateSpots.filter(c => !outOfBounds(c.x, c.y)); m.ffaSpawns = m.ffaSpawns.filter(c => !outOfBounds(c.x, c.y));
     for (const o of [...m.vehSpawns, ...m.fwd]) inside(o, 60);
   }
-  if (m.tiled) tiledClear(m);       // tiled: sight and glass are kept as wall runs (devSight)
+  if (m.houses.length) tiledClear(m);       // houses: sight and glass are kept as wall runs (devSight)
   else { m.sight = m.buildings.filter(b => !b.glass); m.glass = m.buildings.filter(b => b.glass); }     // what blocks sight / dims it
   buildHash();
 }
@@ -269,15 +267,15 @@ const _near = [];
 const RB = 128, _rgrid = new WeakMap(), _rb = [], _rq = []; let _rstamp = 0;
 function rectsIn(list, x0, y0, x1, y1, out) {
   out.length = 0;
-  if (list.length < 40) { for (const b of list) if (b.x <= x1 && b.x + b.w >= x0 && b.y <= y1 && b.y + b.h >= y0) out.push(b); return out; }
+  if (list.length < 40) { for (const b of list) { const q = rectBox(b); if (q[0] <= x1 && q[2] >= x0 && q[1] <= y1 && q[3] >= y0) out.push(b); } return out; }
   let g = _rgrid.get(list);
   if (!g || g.n !== list.length || g.ww !== WW || g.wh !== WH) {
     const gw = Math.ceil(WW / RB), gh = Math.ceil(WH / RB), cells = Array.from({ length: gw * gh }, () => []), ci = (v, n) => clamp(Math.floor(v / RB), 0, n - 1);
-    for (const b of list) for (let j = ci(b.y, gh); j <= ci(b.y + b.h, gh); j++) for (let i = ci(b.x, gw); i <= ci(b.x + b.w, gw); i++) cells[j * gw + i].push(b);
+    for (const b of list) { const q = rectBox(b); for (let j = ci(q[1], gh); j <= ci(q[3], gh); j++) for (let i = ci(q[0], gw); i <= ci(q[2], gw); i++) cells[j * gw + i].push(b); }
     g = { n: list.length, ww: WW, wh: WH, gw, gh, cells }; _rgrid.set(list, g);
   }
   const st = ++_rstamp, { gw, gh, cells } = g, ci = (v, n) => clamp(Math.floor(v / RB), 0, n - 1);
-  for (let j = ci(y0, gh); j <= ci(y1, gh); j++) for (let i = ci(x0, gw); i <= ci(x1, gw); i++) for (const b of cells[j * gw + i]) if (b._rs !== st && b.x <= x1 && b.x + b.w >= x0 && b.y <= y1 && b.y + b.h >= y0) { b._rs = st; out.push(b); }
+  for (let j = ci(y0, gh); j <= ci(y1, gh); j++) for (let i = ci(x0, gw); i <= ci(x1, gw); i++) for (const b of cells[j * gw + i]) { if (b._rs === st) continue; const q = rectBox(b); if (q[0] <= x1 && q[2] >= x0 && q[1] <= y1 && q[3] >= y0) { b._rs = st; out.push(b); } }
   return out;
 }
 function rectsOnSeg(list, x0, y0, x1, y1, out) { return rectsIn(list, Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1), out); }
@@ -404,7 +402,7 @@ function paintGround() {
     }
     for (let i = 0; i < 26; i++) { const x = 100 + R() * (WW - 200), y = 100 + R() * (WH - 200); if (MAP.buildings.some(b => inRect(x, y, b, 20))) continue; scorch(x, y, 25 + R() * 30); }
   }
-  if (MAP.tiled) paintTiled(); else buildRoofs(RF, grit);
+  if (MAP.houses.length) paintTiled(); else buildRoofs(RF, grit);
   gx.fillStyle = 'rgba(0,0,0,0.35)'; gx.fillRect(0, 0, WW, 12); gx.fillRect(0, WH - 12, WW, 12); gx.fillRect(0, 0, 12, WH); gx.fillRect(WW - 12, 0, 12, WH);
 }
 /* roofs are separate sprites so they draw ABOVE soldiers and vehicles (height layering) */
@@ -496,11 +494,10 @@ let navS = null, navV = null, navDirty = 0;
 /* navS (on foot): 0 open, 1 blocked, 2 a window (open to a vault, at a cost). navV: vehicles, kept further off */
 function buildNav() {
   navS = new Uint8Array(NGW * NGH); navV = new Uint8Array(NGW * NGH);
-  const TL = MAP.tiled && NC === SUB ? MAP.tiled : null;
-  if (TL) for (let k = 0; k < NGW * NGH; k++) {
-    const c = TL.cell[k]; if (c !== C_WALL && c !== C_WIN) continue;
-    navS[k] = c === C_WALL ? 1 : 2;
-    const i = k % NGW, j = (k / NGW) | 0;
+  const TL = MAP.houses.length > 0;     // houses: each nav cell whose centre is on a wall (1) or window (2) cell; vehicles kept 2 cells off
+  for (const H of MAP.houses) for (let j = Math.max(0, Math.floor(H.bb[1] / NC)); j <= Math.min(NGH - 1, Math.floor(H.bb[3] / NC)); j++) for (let i = Math.max(0, Math.floor(H.bb[0] / NC)); i <= Math.min(NGW - 1, Math.floor(H.bb[2] / NC)); i++) {
+    const [lx, ly] = toF(H.f, (i + 0.5) * NC, (j + 0.5) * NC), c = hcell(H, Math.floor(lx / SUB), Math.floor(ly / SUB)); if (c !== C_WALL && c !== C_WIN) continue;
+    const k = j * NGW + i; navS[k] = c === C_WALL ? 1 : Math.max(navS[k], 2);
     for (let b = Math.max(0, j - 2); b <= Math.min(NGH - 1, j + 2); b++) for (let a = Math.max(0, i - 2); a <= Math.min(NGW - 1, i + 2); a++) navV[b * NGW + a] = 1;
   }
   for (let j = 0; j < NGH; j++) for (let i = 0; i < NGW; i++) {

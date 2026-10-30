@@ -46,7 +46,7 @@ function visPoly(ex, ey, box, walls, pad) {
     for (const f of F) if (f) segs.push(f);
     for (let i = 0; i < n; i++) corners.push([C[i], C[(i + n - 1) % n], C[(i + 1) % n], sid, F[(i + n - 1) % n], F[i]]);
   };
-  for (const b of walls || MAP.sight) if (!(b.x > X1 || b.x + b.w < X0 || b.y > Y1 || b.y + b.h < Y0)) shape([[b.x, b.y], [b.x + b.w, b.y], [b.x + b.w, b.y + b.h], [b.x, b.y + b.h]], pd);
+  for (const b of walls || MAP.sight) { const q = rectBox(b); if (!(q[0] > X1 || q[2] < X0 || q[1] > Y1 || q[3] < Y0)) shape(rectPts(b).map(p => p.slice()), pd); }
   const BC = [[X0, Y0], [X1, Y0], [X1, Y1], [X0, Y1]];
   for (let i = 0; i < 4; i++) { const [ax, ay] = BC[i], [bx, by] = BC[(i + 1) % 4]; segs.push([ax, ay, bx, by, 0, 0, 0, 0]); corners.push([BC[i], null, null, 0, null, null]); }
   const units = [];
@@ -105,10 +105,10 @@ function fogMemory(vw) {
   const key = vw.p ? 'p' + vw.p.id : 'shared';
   let m = M.fogMem[key];
   if (!m) {
-    FOGK = MAP.tiled ? 1 : 0.5;
+    FOGK = MAP.houses.length ? 1 : 0.5;
     const c = mkG(Math.ceil(WW * FOGK), Math.ceil(WH * FOGK)), g = c.getContext('2d');
     g.setTransform(FOGK, 0, 0, FOGK, 0, 0); g.drawImage(ground, 0, 0); g.drawImage(decals, 0, 0);
-    if (MAP.tiled && MAP.tiled.roof) g.drawImage(ROOF_C, 0, 0);      // houses you've never looked into: roofed
+    if (MAP.houses.length) g.drawImage(ROOF_C, 0, 0);      // houses you've never looked into: roofed
     m = M.fogMem[key] = { key, c, g, st: new Map(), arc: new Map() };     // the heights as last seen: the light's (memOf)
   }
   return m;
@@ -131,7 +131,7 @@ function fogCanvases() {
 function applyFog(vw, vis, x0, y0, x1, y1, rv) {
   vw._fog = null;
   const eyes = fogEyes(vw); if (!eyes.length) return null;
-  const box = sightBox(x0, y0, x1, y1, eyes), polys = eyes.map(([x, y]) => visPoly(x, y, box, null, MAP.tiled ? SUB / 2 : 5)), m = fogMemory(vw);   // dev yard: strips half a wall deep, so the wall you look at shows
+  const box = sightBox(x0, y0, x1, y1, eyes), polys = eyes.map(([x, y]) => visPoly(x, y, box, null, MAP.houses.length ? SUB / 2 : 5)), m = fogMemory(vw);   // dev yard: strips half a wall deep, so the wall you look at shows
   // remember what is in sight now, roofs and all
   const bx0 = Math.max(0, Math.floor(x0)), by0 = Math.max(0, Math.floor(y0)), bx1 = Math.min(WW, Math.ceil(x1)), by1 = Math.min(WH, Math.ceil(y1)), bw = bx1 - bx0, bh = by1 - by0;
   if (bw > 0 && bh > 0 && (CFG.fogQ !== 'low' || (vw._fmF = (vw._fmF || 0) + 1) & 1)) {     // FOG QUALITY LOW: every other frame
@@ -140,7 +140,7 @@ function applyFog(vw, vis, x0, y0, x1, y1, rv) {
     if (FOG_NOW.width < bw || FOG_NOW.height < bh) { FOG_NOW.width = Math.max(FOG_NOW.width, bw); FOG_NOW.height = Math.max(FOG_NOW.height, bh); }
     const n = FOG_NOW.getContext('2d'); n.setTransform(1, 0, 0, 1, 0, 0);
     stackImg(n, [ground, decals], bx0, by0, bw, bh, 0, 0, bw, bh);
-    if (MAP.tiled && MAP.tiled.roof) n.drawImage(ROOF_C, bx0, by0, bw, bh, 0, 0, bw, bh);
+    if (MAP.houses.length) n.drawImage(ROOF_C, bx0, by0, bw, bh, 0, 0, bw, bh);
     if (smokeAny() || MAP.glass.length) fogCut(n, eyes, box, bx0, by0, bw, bh);
     pipe('fog-now'); m.g.save(); m.g.setTransform(FOGK, 0, 0, FOGK, 0, 0); polyPath(m.g, polys); m.g.clip();
     m.g.drawImage(FOG_NOW, 0, 0, bw, bh, bx0, by0, bw, bh); m.g.restore();
@@ -153,7 +153,7 @@ function applyFog(vw, vis, x0, y0, x1, y1, rv) {
   const main = ctx; ctx = FOG_OUT.getContext('2d'); ctx.setTransform(1, 0, 0, 1, 0, 0);
   worldT(); ctx.imageSmoothingEnabled = false; drawSkirt(x0, y0, x1, y1);
   if (bw > 0 && bh > 0) { ctx.imageSmoothingEnabled = FOGK < 1; ctx.drawImage(m.c, bx0 * FOGK, by0 * FOGK, bw * FOGK, bh * FOGK, bx0, by0, bw, bh); ctx.imageSmoothingEnabled = false; }
-  if (bw > 0 && bh > 0 && MAP.tiled && MAP.tiled.roof) {
+  if (bw > 0 && bh > 0 && MAP.houses.length) {
     ctx.save(); polyPath(ctx, polys); ctx.clip(); stackImg(ctx, [ground, decals], bx0, by0, bw, bh, bx0, by0, bw, bh);
     if (rv) ctx.drawImage(rv.c, 0, 0, rv.w, rv.h, rv.x, rv.y, rv.w, rv.h);
     ctx.restore(); worldT();
@@ -278,8 +278,8 @@ function softMask(g, ex, ey, box) {
   }
   g.globalAlpha = GLASS_OCC;
   for (const b of MAP.glass) {
-    if (b.x > box[2] || b.x + b.w < box[0] || b.y > box[3] || b.y + b.h < box[1] || inRect(ex, ey, b)) continue; any = true;
-    const C = [[b.x, b.y], [b.x + b.w, b.y], [b.x + b.w, b.y + b.h], [b.x, b.y + b.h]], out = ([x, y]) => { const L = Math.hypot(x - ex, y - ey) || 1; return [x + (x - ex) / L * FAR, y + (y - ey) / L * FAR]; };
+    const q = rectBox(b); if (q[0] > box[2] || q[2] < box[0] || q[1] > box[3] || q[3] < box[1] || inRect(ex, ey, b)) continue; any = true;
+    const C = rectPts(b), out = ([x, y]) => { const L = Math.hypot(x - ex, y - ey) || 1; return [x + (x - ex) / L * FAR, y + (y - ey) / L * FAR]; };
     g.beginPath(); pathPos(g, C);
     for (let i = 0; i < 4; i++) { const a = C[i], q = C[(i + 1) % 4]; if ((ex - a[0]) * (q[1] - a[1]) - (ey - a[1]) * (q[0] - a[0]) > 0) pathPos(g, [a, q, out(q), out(a)]); }   // behind each face turned to the eye
     g.fill();

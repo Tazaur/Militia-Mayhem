@@ -802,3 +802,9 @@ Art drop (drop.py): atlas.png: hull4, tur_dead; atlas_m.png: tur_dead, sol_leg0,
 ## Build 268: one set of prop sprites (game + editor)
 - src/2c_props.js propSprites(grit): trees, pines, the loose sandbag, hay bale (now a sprite), supply crate. applyStyleAssets puts them in SPR; the map editor loads the same file and draws placed objects with them (sandbag wall: atlas bagarc0, vehicles: atlas). No editor-only drawings for props.
 - Loose sandbags (static type 'bag' without an arc: editor "Sandbag") were never drawn in game; now drawn with SPR.bag.
+
+## Build 269: houses at any angle (one house system)
+- `MAP.houses`: each house is `mkHouse({x,y,a,seed,mw,mh,g?}, i)` with its own frame `f`, local cell grid/sections, own roof canvas `rc`. `MAP.secs` = global section list (`sec.i` global id for net 'sd', `sec.li` local, `sec.h` house).
+- Rects may carry `b.f` (frame): x/y/w/h are then local. Use `rectPts`/`rectBox`/`rectNear`/`toF`/`fromF` (1_core); `inRect`, `segRect`, `pushCircleRect`, `bounceRect` are frame-aware. Never read b.x/b.w as world coords without checking `b.f`.
+- Roofs: painted per house into `H.rc`, laid rotated into ROOF_C (`roofLay`); `roofBlit(H)` re-lays all houses touching H's box; dirty via `H.rdirty`, blitted once per tick.
+- Outskirts/dev yard: houses + mirrored copy (a+π). `MAP.tiled` is gone: test `MAP.houses.length`.

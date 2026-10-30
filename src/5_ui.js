@@ -13,7 +13,7 @@ function drawWorld(vw) {
   pipe('clear');     // no fill: the ground and the skirt round the map cover the view
   worldT(); ctx.imageSmoothingEnabled = false;
   SUNNOW = sunOn();
-  const rv = MAP.tiled ? roofView(vw, x0, y0, x1, y1) : null, fogPolys = applyFog(vw, vis, x0, y0, x1, y1, rv), fogged = !!fogPolys; pipe('memory', { fogged });
+  const rv = MAP.houses.length ? roofView(vw, x0, y0, x1, y1) : null, fogPolys = applyFog(vw, vis, x0, y0, x1, y1, rv), fogged = !!fogPolys; pipe('memory', { fogged });
   // ---- layer 0: ground + fading footprints
   drawSkirt(x0, y0, x1, y1);
   const gx0 = Math.max(0, Math.floor(x0)), gy0 = Math.max(0, Math.floor(y0)), gx1 = Math.min(WW, Math.ceil(x1)), gy1 = Math.min(WH, Math.ceil(y1));
@@ -156,7 +156,7 @@ const roofsIn = vis => MAP.buildings.filter(b => b.roofC && vis(b.x + b.w / 2, b
 function drawRoofs(bs) {     // bs: the buildings in view (roofsIn)
   for (const b of bs) ctx.drawImage(b.roofC, b.x, b.y);
   ctx.fillStyle = CFG.style === 'grit' ? 'rgba(0,0,0,0.38)' : 'rgba(0,0,0,0.32)';
-  if (!MAP.tiled && !SUNNOW) for (const b of bs) { ctx.beginPath(); ctx.moveTo(b.x + b.w, b.y); ctx.lineTo(b.x + b.w + 14, b.y + 14); ctx.lineTo(b.x + b.w + 14, b.y + b.h + 14); ctx.lineTo(b.x + 14, b.y + b.h + 14); ctx.lineTo(b.x, b.y + b.h); ctx.lineTo(b.x + b.w, b.y + b.h); ctx.closePath(); ctx.fill(); }
+  if (!MAP.houses.length && !SUNNOW) for (const b of bs) { ctx.beginPath(); ctx.moveTo(b.x + b.w, b.y); ctx.lineTo(b.x + b.w + 14, b.y + 14); ctx.lineTo(b.x + b.w + 14, b.y + b.h + 14); ctx.lineTo(b.x + 14, b.y + b.h + 14); ctx.lineTo(b.x, b.y + b.h); ctx.lineTo(b.x + b.w, b.y + b.h); ctx.closePath(); ctx.fill(); }
 }
 /* the smoke field; around this view's eyes it thins out (SIGHT_NEAR, as the sight rules do) down to SMOKE_KEEP, so you
    can see your feet in smoke */
@@ -211,9 +211,9 @@ function smokeShadows(g, X0, Y0, pw, ph, el, T, col) {
   const quad = P => { g.beginPath(); P.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.fill(); };
   const d = SUNH.wall - SMK_Z, vx = ux * d, vy = uy * d;
   for (const b of MAP.buildings) {     // the box swept down its shadow: its far end and the four sides between
-    if (b.glass || !near(b.x, b.y, b.x + b.w, b.y + b.h)) continue;
-    const C = [[b.x, b.y], [b.x + b.w, b.y], [b.x + b.w, b.y + b.h], [b.x, b.y + b.h]];
-    g.fillRect(b.x + vx, b.y + vy, b.w, b.h); for (let k = 0; k < 4; k++) { const a = C[k], e = C[(k + 1) % 4]; quad([a, e, [e[0] + vx, e[1] + vy], [a[0] + vx, a[1] + vy]]); }
+    if (b.glass || !near(...rectBox(b))) continue;
+    const C = rectPts(b);
+    quad(C.map(([x, y]) => [x + vx, y + vy])); for (let k = 0; k < 4; k++) { const a = C[k], e = C[(k + 1) % 4]; quad([a, e, [e[0] + vx, e[1] + vy], [a[0] + vx, a[1] + vy]]); }
   }
   for (const s of MAP.statics) {     // a crown: from its underside's shadow to its top's
     if (!s.alive || s.type !== 'tree' || !near(s.x - 40, s.y - 40, s.x + 40, s.y + 40)) continue;
@@ -253,7 +253,7 @@ function drawSmokeField(vw, eyes) {
     if (fb > 0.02) { g.globalAlpha = al * k2 * fb; g.drawImage(SPR.puffs.brown[s][v], x - r, y - r, r * 2, r * 2); }
   });
   pipe('smk-puffs'); g.globalAlpha = 1; g.globalCompositeOperation = 'destination-out'; g.beginPath();     // the walls and intact windows: smoke stays out of them, and what's beyond
-  for (const b of MAP.buildings) if (b.x < X0 + pw && b.x + b.w > X0 && b.y < Y0 + ph && b.y + b.h > Y0 && !(b.glass && b.sec && b.sec.hp < b.sec.mhp)) g.rect(b.x, b.y, b.w, b.h);
+  for (const b of MAP.buildings) { const q = rectBox(b); if (q[0] < X0 + pw && q[2] > X0 && q[1] < Y0 + ph && q[3] > Y0 && !(b.glass && b.sec && b.sec.hp < b.sec.mhp)) { const C = rectPts(b); g.moveTo(C[0][0], C[0][1]); for (let k = 1; k < 4; k++) g.lineTo(C[k][0], C[k][1]); g.closePath(); } }
   g.fill(); g.globalCompositeOperation = 'source-over';
   pipe('smk-cut'); gs.globalCompositeOperation = 'copy'; gs.drawImage(SMK_C, 0, 0, pw, ph, 0, 0, pw, ph); gs.globalCompositeOperation = 'source-in'; gs.fillStyle = '#000'; gs.fillRect(0, 0, pw, ph); gs.globalCompositeOperation = 'source-over';
   const ux = -Math.cos(SUN.az), uy = -Math.sin(SUN.az);     // away from the sun

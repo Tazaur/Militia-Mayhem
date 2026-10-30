@@ -129,7 +129,7 @@ function drawLight(l) {
   };
   const hull = (o, hl, hw, h) => { const R = Math.hypot(hl, hw); put(o.x - R, o.y - R, o.x + R, o.y + R, h, (x, y) => { const [lx, ly] = toLocal(o, x, y); return Math.abs(lx) < hl && Math.abs(ly) < hw; }); };
   const near = o => Math.abs(o.x - l.x) < l.r + 60 && Math.abs(o.y - l.y) < l.r + 60;
-  for (const b of rectsIn(MAP.buildings, X0, Y0, X0 + S * lc, Y0 + S * lc, _rb)) if (!b.glass) put(b.x, b.y, b.x + b.w, b.y + b.h, 255);   // glass lets light through
+  for (const b of rectsIn(MAP.buildings, X0, Y0, X0 + S * lc, Y0 + S * lc, _rb)) if (!b.glass) { if (b.f) put(...rectBox(b), 255, (x, y) => inRect(x, y, b)); else put(b.x, b.y, b.x + b.w, b.y + b.h, 255); }   // glass lets light through
   for (const s of staticsNear(l.x, l.y, l.r + 16, _near)) { const h = LH[s.type]; if (!h) continue; const r = s.type === 'tree' ? 6 : s.r; put(s.x - r, s.y - r, s.x + r, s.y + r, h, (x, y) => (x - s.x) ** 2 + (y - s.y) ** 2 < r * r); }
   for (const v of M.vehicles) {
     if (!v.active || v.dead || v === l.skip || !near(v)) continue;
@@ -610,7 +610,7 @@ const shp = (h, n) => { const P = sunP(n), b = P.lift || 0; return [h + b + (P.a
 function sunHeights(vis, hidden, vw) {
   if (GMAT && MAP.gmap) { hq(HL.g, WW / 2, WH / 2, WW / 2, 0, 0, WH / 2, 0, 0, 0, 0, 0, 1, 1, 0, 0.01); HMAX = Math.max(HMAX, GMAX); }     // the map editor's ground: its painted heights (a GL surface: rows bottom up)
   const [wt, wb] = shp(SUNH.wall, 'wall');
-  for (const b of MAP.buildings) if (!b.glass && vis(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h))) hbox(HL.w, b.x + b.w / 2, b.y + b.h / 2, b.w / 2, b.h / 2, 0, 1, wt, wb, 0);
+  for (const b of MAP.buildings) { if (b.glass) continue; const [cx, cy] = b.f ? fromF(b.f, b.x + b.w / 2, b.y + b.h / 2) : [b.x + b.w / 2, b.y + b.h / 2]; if (vis(cx, cy, Math.max(b.w, b.h))) hbox(HL.w, cx, cy, b.w / 2, b.h / 2, b.f ? b.f.a : 0, 1, wt, wb, 0); }
   const [t0, tb] = shp(SUNH.tree[0], 'tree'), t1 = shp(SUNH.tree[1], 'tree')[0], [h0, hb] = shp(SUNH.hay, 'hay'), [ft, fb] = shp(SUNH.fence, 'fence');
   for (const s of MAP.statics) {
     if (!s.alive || !vis(s.x, s.y, 40)) continue;
@@ -624,11 +624,10 @@ function sunHeights(vis, hidden, vw) {
   const [ct, cb] = shp(SUNH.crate, 'crate'); for (const c of M.crates) if (c.live && vis(c.x, c.y, 14)) hbox(HL.u, c.x, c.y, 8, 8, c.a, 1, ct, cb, 0);
   for (const A of MAP.arcs) { if (!vis(A.x, A.y, 50)) continue; const f = A.lost / A.bags.length; hpart(f < 0.25 ? 'bagarc0' : f < 0.75 ? 'bagarc1' : 'bagarc2', A.x, A.y, A.a); }
   for (const w of M.wrecks) if (vis(w.x, w.y, 70) && w.t >= 1) hParts(w);
-  const TL = MAP.tiled;
-  if (TL && TL.roof) for (let j = 0; j < TL.sr; j++) for (let i = 0; i < TL.sc; i++) {     // the roof, a run of cells a quad
-    if (TL.roof[j * TL.sc + i] !== 1) continue; let e = i; while (e + 1 < TL.sc && TL.roof[j * TL.sc + e + 1] === 1) e++;
-    const x0 = i * SUB, x1 = (e + 1) * SUB, y = (j + 0.5) * SUB; i = e;
-    if (vis((x0 + x1) / 2, y, (x1 - x0) / 2 + SUB)) { hbox(HL.t, (x0 + x1) / 2, y, (x1 - x0) / 2, SUB / 2, 0, 1, 0, 64, 1, 0); HMAX = Math.max(HMAX, ROOF_Z[1]); }
+  for (const H of MAP.houses) if (H.roof && vis((H.bb[0] + H.bb[2]) / 2, (H.bb[1] + H.bb[3]) / 2, Math.max(H.bb[2] - H.bb[0], H.bb[3] - H.bb[1]) / 2 + SUB)) for (let j = 0; j < H.H; j++) for (let i = 0; i < H.W; i++) {     // the roof, a run of cells a quad, turned with its house
+    if (H.roof[j * H.W + i] !== 1) continue; let e = i; while (e + 1 < H.W && H.roof[j * H.W + e + 1] === 1) e++;
+    const [cx, cy] = fromF(H.f, (i + e + 1) * SUB / 2, (j + 0.5) * SUB), hw = (e + 1 - i) * SUB / 2; i = e;
+    hbox(HL.t, cx, cy, hw, SUB / 2, H.a, 1, 0, 64, 1, 0); HMAX = Math.max(HMAX, ROOF_Z[1]);
   }
   HLA = HL.u; for (const s of M.sol) if (s.alive && !s.veh && !s.swim && vis(s.x, s.y, 30) && !hidden(s) && sightNear(vw, s)) hParts(s);     // what's out of sight, its shadow too: left out
   const nt = shp(SUNH.nest, 'nest')[0];
@@ -809,7 +808,7 @@ function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory
   gl.uniform2f(CU.S, S.fw, S.fh); gl.uniform2f(CU.P, px, py); gl.uniform1f(CU.V, h); gl.uniform4f(CU.R, ...reg); gl.uniform1f(CU.K, K); gl.uniform2f(CU.G, w, h);
   gl.uniform3f(CU.L, ...Ld); const T = sunTone(); gl.uniform3f(CU.C, ...T.sh); gl.uniform3f(CU.LI, ...T.li); gl.uniform3f(CU.W, ...T.w); gl.uniform3f(CU.SKY, ...T.sky);
   gl.uniform1f(CU.TM, M.time); const rf = CFG.refl !== false; gl.uniform1f(CU.RFL, rf ? 1 : 0); gl.uniform1f(CU.BL, HMAT & 2 && rf ? 0.9 : 0);     // REFLECTIONS off: no sky mirror, glints or glow bloom gl.uniform3f(CU.WX, VOX * k + px, VOY * k + py, VZ * k);
-  const E = MAP.tiled && MAP.tiled.roof ? viewSols(vw).map(posOf).slice(0, 4) : []; S.ev.fill(0); E.forEach((o, i) => { S.ev[i * 2] = o.x; S.ev[i * 2 + 1] = o.y; }); gl.uniform4fv(CU.E, S.ev); gl.uniform1f(CU.EN, E.length); gl.uniform1f(CU.RF, vw.rf || 0); gl.uniform1f(CU.LB, S.pk[0] > 0 ? 1 : 0); gl.uniform1f(CU.LY, ly ? 1 : 0);
+  const E = MAP.houses.length ? viewSols(vw).map(posOf).slice(0, 4) : []; S.ev.fill(0); E.forEach((o, i) => { S.ev[i * 2] = o.x; S.ev[i * 2 + 1] = o.y; }); gl.uniform4fv(CU.E, S.ev); gl.uniform1f(CU.EN, E.length); gl.uniform1f(CU.RF, vw.rf || 0); gl.uniform1f(CU.LB, S.pk[0] > 0 ? 1 : 0); gl.uniform1f(CU.LY, ly ? 1 : 0);
   const add = S.pk[0] > 0 || (HMAT && rf) || M.rain, maps = SUNDBG ? [[3, 0, 1, 2, 4, 5, 6][SUNDBG - 1]] : add ? [0, 1, 2] : [0, 1];
   const at = n => [(n & 1) * w + rx, (n >> 1) * h + ry];     // map n's view in GC (canvas pixels): 0 1 / 2 3
   const map = (q, n) => { const o = (n & 1) * w, oy = (1 - (n >> 1)) * h; gl.viewport(o, oy, w, h); gl.scissor(o + rx, oy + h - ry - rh, rw, rh); gl.uniform2f(CU.O, o, oy); gl.uniform1f(CU.Q, q); gl.drawArrays(gl.TRIANGLES, 0, 3); pipe('gpu-map', { q, o }); };

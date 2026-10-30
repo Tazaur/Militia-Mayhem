@@ -396,7 +396,7 @@ function fxTick(sdt, dt) {
     if (f.t >= f.T) { f.done = true; if (inWater(f.x, f.y)) { ev('body.land', f.x, f.y, { water: 1 }); part({ k: 'ripple', x: f.x, y: f.y, vx: 0, vy: 0, life: 1, max: 1, sz: 24, drag: 0 }); } else { addCorpse(f.color, f.dark, f.x, f.y, f.rot); for (let i = 0; i < 5; i++) blood(f.x, f.y, f.vx, f.vy); ev('body.land', f.x, f.y, { water: 0 }); } }
   }
   prune(M.flings, f => !f.done);
-  updateSmokeField(dt); if (MAP.tiled) tiledTick(sdt);
+  updateSmokeField(dt); if (MAP.houses.length) tiledTick(sdt);
   updateCorpses(dt);
   for (const w of M.wrecks) { if (w.burn > 0 && Math.random() < sdt * 18) { part({ k: 'smoke', z: topOf(w), x: w.x + rnd(-20, 20), y: w.y + rnd(-15, 15), vx: rnd(-8, 8) + 6, vy: rnd(-8, 8) - 4, life: 2.2, max: 2.2, sz: rnd(12, 22), drag: 0.8 }); if (Math.random() < 0.5) part({ k: 'fire', x: w.x + rnd(-20, 20), y: w.y + rnd(-12, 12), vx: rnd(-6, 6), vy: rnd(-6, 6), life: 0.5, max: 0.5, sz: rnd(10, 20), drag: 1 }); } }
   for (const q of M.parts) {

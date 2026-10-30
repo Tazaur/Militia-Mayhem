@@ -375,7 +375,7 @@ function explosion(x, y, r, dmgS, dmgV, src, team, big, kind, cause) {
   for (const s of _near) if (Math.hypot(s.x - x, s.y - y) < r * (s.type === 'tree' ? 0.35 : 0.55)) destroyStatic(s);
   for (const c of M.crates) if (c.live && Math.hypot(c.x - x, c.y - y) < r * 0.5) { c.live = false; c.t = 25; }
   for (const it of M.items) if (it.k === 'mine' && it.armed !== false && Math.hypot(it.x - x, it.y - y) < r * 0.6 && !it.boom) { it.boom = true; it.t = 0; }
-  if (MAP.tiled) devBlast(x, y, r, dmgS);
+  if (MAP.secs.length) devBlast(x, y, r, dmgS);
 }
 /* everything you see and hear of a blast (online clients replay this from the host's events) */
 const EVBOOM = ['grenade', 'rocket', 'shell', 'mine', 'vehicle'];
@@ -415,6 +415,10 @@ function part(o) { if (M.parts.length < 1400) M.parts.push(o); }
 
 /* ---------------- collision ---------------- */
 function pushCircleRect(o, r, b) {
+  if (b.f) {     // in its frame
+    const [lx, ly] = toF(b.f, o.x, o.y), q = { x: lx, y: ly }; if (!pushCircleRect(q, r, { x: b.x, y: b.y, w: b.w, h: b.h })) return false;
+    [o.x, o.y] = fromF(b.f, q.x, q.y); return true;
+  }
   if (o.x + r < b.x || o.x - r > b.x + b.w || o.y + r < b.y || o.y - r > b.y + b.h) return false;
   const nx = clamp(o.x, b.x, b.x + b.w), ny = clamp(o.y, b.y, b.y + b.h); let dx = o.x - nx, dy = o.y - ny; const d2 = dx * dx + dy * dy;
   if (d2 >= r * r) return false;
@@ -476,7 +480,7 @@ function shove(o, cx, cy, px, py, local) {
 }
 function vehicleCollide(v, local, auth) {
   let hit = 0, hitV = 0; const solid = (dx, dy) => { v.x += dx; v.y += dy; hit = 1; };     // pushed back by something solid
-  if (MAP.tiled && !local) devRams(v);
+  if (MAP.secs.length && !local) devRams(v);
   for (let pass = 0; pass < 2; pass++) {
     vehCircles(v, _vc);
     for (const [cx, cy, r] of _vc) {
@@ -697,7 +701,13 @@ function smokeField() {
 function smokeSolid(f) {
   f.S.fill(0); f.dirty = 0;
   for (const b of MAP.buildings) {
-    const v = b.glass && b.sec && b.sec.hp < b.sec.mhp ? 2 : 1, i1 = Math.min(f.W, Math.ceil((b.x + b.w - GS / 2) / GS) + SMK_OUT), j1 = Math.min(f.H, Math.ceil((b.y + b.h - GS / 2) / GS) + SMK_OUT);
+    const v = b.glass && b.sec && b.sec.hp < b.sec.mhp ? 2 : 1;
+    if (b.f) {     // a turned rect: the tiles whose centre is in it
+      const [X0, Y0, X1, Y1] = rectBox(b);
+      for (let j = Math.max(0, Math.floor(Y0 / GS) + SMK_OUT); j < Math.min(f.H, Math.ceil(Y1 / GS) + SMK_OUT); j++) for (let i = Math.max(0, Math.floor(X0 / GS) + SMK_OUT); i < Math.min(f.W, Math.ceil(X1 / GS) + SMK_OUT); i++) if (inRect((i - SMK_OUT + 0.5) * GS, (j - SMK_OUT + 0.5) * GS, b, 2)) f.S[j * f.W + i] = v;
+      continue;
+    }
+    const i1 = Math.min(f.W, Math.ceil((b.x + b.w - GS / 2) / GS) + SMK_OUT), j1 = Math.min(f.H, Math.ceil((b.y + b.h - GS / 2) / GS) + SMK_OUT);
     for (let j = Math.max(0, Math.round(b.y / GS) + SMK_OUT); j < j1; j++) for (let i = Math.max(0, Math.round(b.x / GS) + SMK_OUT); i < i1; i++) f.S[j * f.W + i] = v;
   }
   const { W, H, S } = f, R = f.R || (f.R = new Uint8Array(W * H));     // distance to the nearest solid tile, two passes (capped at 4), less one
@@ -937,6 +947,7 @@ function updateItems(dt) {
 
 /* segment tests */
 function segRect(x0, y0, x1, y1, b, pad) {
+  if (b.f) { [x0, y0] = toF(b.f, x0, y0); [x1, y1] = toF(b.f, x1, y1); }
   const l = b.x - pad, r = b.x + b.w + pad, t = b.y - pad, bt = b.y + b.h + pad, dx = x1 - x0, dy = y1 - y0;
   let t0 = 0, t1 = 1;
   for (const [p, d, mn, mx] of [[x0, dx, l, r], [y0, dy, t, bt]]) {
@@ -1070,11 +1081,17 @@ function lagAt(e, T) {
   _lag.x = h[1]; _lag.y = h[2]; _lag.a = h[3]; return _lag;
 }
 function sparks(x, y, n) { for (let i = 0; i < n; i++) { const a = rnd(0, TAU), s = rnd(60, 200); part({ k: 'spark', x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rnd(0.08, 0.2), max: 0.2, sz: 1.5, drag: 6 }); } }
+/* a grenade off a wall: the side it was beside (in the wall's frame) turns its speed back, halved */
+function bounceRect(p, b) {
+  const f = b.f, [x, y] = f ? toF(f, p.x, p.y) : [p.x, p.y]; let vx = f ? p.vx * f.c + p.vy * f.s : p.vx, vy = f ? p.vy * f.c - p.vx * f.s : p.vy;
+  if (x < b.x - 2 || x > b.x + b.w + 2) vx *= -0.5; else vy *= -0.5;
+  if (f) { p.vx = vx * f.c - vy * f.s; p.vy = vx * f.s + vy * f.c; } else { p.vx = vx; p.vy = vy; }
+}
 function updateNade(p, dt) {
   p.vh -= 700 * dt; p.h = Math.max(0, p.h + p.vh * dt); if (p.h === 0 && p.vh < 0) { p.vh = -p.vh * 0.35; if (Math.abs(p.vh) > 40) ev('nade.bounce', p.x, p.y, { wall: 0 }); p.vx *= 0.6; p.vy *= 0.6; }
   const nx = p.x + p.vx * dt, ny = p.y + p.vy * dt;
   let bounced = false;
-  for (const b of rectsIn(MAP.buildings, nx - 3, ny - 3, nx + 3, ny + 3, _rb)) if (inRect(nx, ny, b, 3)) { if (b.glass) { if (b.sec) devGlass(b.sec, nx, ny); continue; } if (p.x < b.x - 2 || p.x > b.x + b.w + 2) p.vx *= -0.5; else p.vy *= -0.5; bounced = true; }
+  for (const b of rectsIn(MAP.buildings, nx - 3, ny - 3, nx + 3, ny + 3, _rb)) if (inRect(nx, ny, b, 3)) { if (b.glass) { if (b.sec) devGlass(b.sec, nx, ny); continue; } bounceRect(p, b); bounced = true; }
   if (p.h < 14) { staticsNear(nx, ny, 16, _near); for (const s of _near) if (s.type !== 'fence' && Math.hypot(nx - s.x, ny - s.y) < s.r + 3) { const dx = nx - s.x, dy = ny - s.y, d = Math.hypot(dx, dy) || 1, dot = (p.vx * dx + p.vy * dy) / d; p.vx -= 1.6 * dot * dx / d; p.vy -= 1.6 * dot * dy / d; bounced = true; } }
   if (bounced) ev('nade.bounce', p.x, p.y, { wall: 1 }); else { p.x = nx; p.y = ny; }
   p.x = clamp(p.x, 10 - SKIRT, WW + SKIRT - 10); p.y = clamp(p.y, 10 - SKIRT, WH + SKIRT - 10);

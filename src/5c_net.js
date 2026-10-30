@@ -872,7 +872,7 @@ function netDoEv(a, t) {
     case 't': { M.toasts.push({ txt: String(a[1]), c: String(a[2]), t: +a[3] || 2.5 }); break; }
     case 'pp': if (NET.me && a[1] === NET.me.id && NET.me.sol) { const s = NET.me.sol; s.pops.unshift({ txt: String(a[2]), t: 1.8 }); if (s.pops.length > 4) s.pops.length = 4; ev('points', undefined, undefined, { s, n: parseInt(String(a[2]).slice(1)) || 0 }); } break;
     case 'sm': popSmoke(a[1], a[2], {}); break;
-    case 'sd': { const sec = MAP.tiled && MAP.tiled.secs[a[1]]; if (sec) devDamage(sec, sec.hp - a[2] / 10, a[3], a[4], true); break; }     // a wall section's hp
+    case 'sd': { const sec = MAP.secs[a[1]]; if (sec) devDamage(sec, sec.hp - a[2] / 10, a[3], a[4], true); break; }     // a wall section's hp
   }
 }
 function netKillFx(a, t) {

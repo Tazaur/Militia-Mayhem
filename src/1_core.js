@@ -24,7 +24,26 @@ let UID = 0;
 /* the pipeline viewer (pipeline/): when set, called at every step of drawing a frame (step name, details) */
 let PIPE = null;
 const pipe = (k, o) => { if (PIPE) PIPE(k, o || {}); };
-function inRect(x, y, r, pad) { pad = pad || 0; return x > r.x - pad && x < r.x + r.w + pad && y > r.y - pad && y < r.y + r.h + pad; }
+/* a rect in a frame (r.f: a house's {ox, oy, c, s, a}, its local origin in the world and its turn): x, y, w, h are in
+   the frame. Every rect test takes a world point into the rect's frame first (toF); fromF goes back */
+const toF = (f, x, y) => { const dx = x - f.ox, dy = y - f.oy; return [dx * f.c + dy * f.s, dy * f.c - dx * f.s]; };
+const fromF = (f, x, y) => [f.ox + x * f.c - y * f.s, f.oy + x * f.s + y * f.c];
+/* a rect's corners in the world, and its world box [x0, y0, x1, y1] (a framed rect's are kept: rects never move) */
+function rectPts(b) {
+  if (!b.f) return [[b.x, b.y], [b.x + b.w, b.y], [b.x + b.w, b.y + b.h], [b.x, b.y + b.h]];
+  return b._p || (b._p = [fromF(b.f, b.x, b.y), fromF(b.f, b.x + b.w, b.y), fromF(b.f, b.x + b.w, b.y + b.h), fromF(b.f, b.x, b.y + b.h)]);
+}
+function rectBox(b) {
+  if (!b.f) return [b.x, b.y, b.x + b.w, b.y + b.h];
+  if (!b._b) { const P = rectPts(b), xs = P.map(p => p[0]), ys = P.map(p => p[1]); b._b = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]; }
+  return b._b;
+}
+/* the point of a rect nearest (x, y), in the world, and how far: [nx, ny, d] */
+function rectNear(b, x, y) {
+  const [lx, ly] = b.f ? toF(b.f, x, y) : [x, y], nx = clamp(lx, b.x, b.x + b.w), ny = clamp(ly, b.y, b.y + b.h), d = Math.hypot(nx - lx, ny - ly);
+  return b.f ? [...fromF(b.f, nx, ny), d] : [nx, ny, d];
+}
+function inRect(x, y, r, pad) { if (r.f) [x, y] = toF(r.f, x, y); pad = pad || 0; return x > r.x - pad && x < r.x + r.w + pad && y > r.y - pad && y < r.y + r.h + pad; }
 function mk(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
 function stackImg(g, imgs, ...a) { if (g.drawStack) g.drawStack(imgs, ...a); else for (const o of imgs) g.drawImage(o, ...a); }     // layers each over the last (GL: one pass)
 function rr(g, x, y, w, h, r) { g.beginPath(); if (g.roundRect) g.roundRect(x, y, w, h, r); else g.rect(x, y, w, h); }
