@@ -458,7 +458,7 @@ function soldierCollide(s) {
   for (const w of M.wrecks) pushOutWreck(s, s.r, w);
   staticsNear(s.x, s.y, 30, _near);
   for (const o of _near) { if (s.jumpT > 0.04 && LOW[o.type]) continue; const dx = s.x - o.x, dy = s.y - o.y, d = Math.hypot(dx, dy), m = s.r + o.r; if (d < m && d > 0.01) { s.x = o.x + dx / d * m; s.y = o.y + dy / d * m; } }
-  s.x = clamp(s.x, 20 - SKIRT, WW + SKIRT - 20); s.y = clamp(s.y, 20 - SKIRT, WH + SKIRT - 20);
+  s.x = clamp(s.x, 20, WW - 20); s.y = clamp(s.y, 20, WH - 20);
 }
 /* the vehicle's hit circles in the world; o: another pose to place them at (a lag-compensated {x, y, a}) */
 function vehCircles(v, out, o) { o = o || v; out.length = 0; const c = Math.cos(o.a), s = Math.sin(o.a); for (const [ox, oy, r] of v.T.circles) out.push([o.x + ox * c - oy * s, o.y + ox * s + oy * c, r]); return out; }
@@ -521,7 +521,7 @@ function vehicleCollide(v, local, auth) {
     }
   }
   if (hitV && !auth) v.spd *= 1 - 0.05 * hitV;
-  const m = 30 - SKIRT; if (v.x < m) solid(m - v.x, 0); if (v.x > WW - m) solid(WW - m - v.x, 0); if (v.y < m) solid(0, m - v.y); if (v.y > WH - m) solid(0, WH - m - v.y);
+  const m = 30; if (v.x < m) solid(m - v.x, 0); if (v.x > WW - m) solid(WW - m - v.x, 0); if (v.y < m) solid(0, m - v.y); if (v.y > WH - m) solid(0, WH - m - v.y);
   if (hit) {
     const sp = Math.abs(v.spd);
     if (sp > 120 && v.crashCd <= 0 && !local) { v.crashCd = 0.6; ev('veh.crash', v.x, v.y, { with: 'wall', spd: sp | 0, veh: v.type }); if (v.type === 'jeep' && sp > CRASH_V) hurtVehicle(v, JEEP_CRASH * (sp - CRASH_V) ** 2, null); }
@@ -601,7 +601,7 @@ function exitVehicle(s, forced) {
   else if (s.player) s.msg = { t: 1, txt: 'NO ROOM TO EXIT' };
 }
 function solidAtExit(x, y, self) {
-  if (x < 20 - SKIRT || y < 20 - SKIRT || x > WW + SKIRT - 20 || y > WH + SKIRT - 20) return true;
+  if (x < 20 || y < 20 || x > WW - 20 || y > WH - 20) return true;
   for (const b of rectsIn(MAP.buildings, x - 8, y - 8, x + 8, y + 8, _rq)) if (inRect(x, y, b, 8)) return true;
   for (const v of M.vehicles) if (v !== self && v.active && !v.dead) { const [lx, ly] = toLocal(v, x, y); if (Math.abs(lx) < v.T.hl + 6 && Math.abs(ly) < v.T.hw + 6) return true; }
   staticsNear(x, y, 20, _near); for (const s of _near) if (Math.hypot(s.x - x, s.y - y) < s.r + 6) return true;
@@ -1052,7 +1052,7 @@ function updateProjectiles(dt) {
       continue;
     }
     p.x = x1; p.y = y1; p.life -= dt; p.z = z1;
-    if (p.x < -SKIRT || p.y < -SKIRT || p.x > WW + SKIRT || p.y > WH + SKIRT) p.life = 0;
+    if (p.x < 0 || p.y < 0 || p.x > WW || p.y > WH) p.life = 0;
     if (p.life <= 0 && BLAST[p.k]) { const B = BLAST[p.k]; explosion(p.x, p.y, B.r, B.s, B.v, p.src, p.team, B.big, undefined, p.k); }
     if (p.life <= 0 && p.k === 'bullet' && inWater(p.x, p.y)) part({ k: 'steam', x: p.x, y: p.y, vx: 0, vy: 0, life: 0.4, max: 0.4, sz: 4, drag: 0 });
   }
@@ -1094,7 +1094,7 @@ function updateNade(p, dt) {
   for (const b of rectsIn(MAP.buildings, nx - 3, ny - 3, nx + 3, ny + 3, _rb)) if (inRect(nx, ny, b, 3)) { if (b.glass) { if (b.sec) devGlass(b.sec, nx, ny); continue; } bounceRect(p, b); bounced = true; }
   if (p.h < 14) { staticsNear(nx, ny, 16, _near); for (const s of _near) if (s.type !== 'fence' && Math.hypot(nx - s.x, ny - s.y) < s.r + 3) { const dx = nx - s.x, dy = ny - s.y, d = Math.hypot(dx, dy) || 1, dot = (p.vx * dx + p.vy * dy) / d; p.vx -= 1.6 * dot * dx / d; p.vy -= 1.6 * dot * dy / d; bounced = true; } }
   if (bounced) ev('nade.bounce', p.x, p.y, { wall: 1 }); else { p.x = nx; p.y = ny; }
-  p.x = clamp(p.x, 10 - SKIRT, WW + SKIRT - 10); p.y = clamp(p.y, 10 - SKIRT, WH + SKIRT - 10);
+  p.x = clamp(p.x, 10, WW - 10); p.y = clamp(p.y, 10, WH - 10);
   if (p.h === 0) { p.vx *= Math.exp(-dt * 3); p.vy *= Math.exp(-dt * 3); }
   p.rot += dt * 12; p.life -= dt;
   if (p.life <= 0) { if (p.smoke) popSmoke(p.x, p.y); else explosion(p.x, p.y, 88, 150, 90, p.src, p.team, false, undefined, 'grenade'); }

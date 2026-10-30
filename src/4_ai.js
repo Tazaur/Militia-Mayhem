@@ -474,7 +474,6 @@ function updateCams(dt) {
     const k = 1 - Math.exp(-dt * (vw.p && vw.p.sol && !vw.p.sol.alive && vw.p.sol.deathT > 0 ? 7 : 4.5));
     vw.cam.x = lerp(vw.cam.x, tx, k); vw.cam.y = lerp(vw.cam.y, ty, k); vw.cam.z = lerp(vw.cam.z, tz, 1 - Math.exp(-dt * 3));
     const hw = vw.w / 2 / vw.cam.z, hh = vw.h / 2 / vw.cam.z;
-    const EW = WW + SKIRT * 2, EH = WH + SKIRT * 2;           // the camera may follow you into the out-of-bounds band
-    vw.cam.x = hw * 2 > EW ? WW / 2 : clamp(vw.cam.x, hw - SKIRT, WW + SKIRT - hw); vw.cam.y = hh * 2 > EH ? WH / 2 : clamp(vw.cam.y, hh - SKIRT, WH + SKIRT - hh);
+    vw.cam.x = hw * 2 > WW ? WW / 2 : clamp(vw.cam.x, hw, WW - hw); vw.cam.y = hh * 2 > WH ? WH / 2 : clamp(vw.cam.y, hh, WH - hh);     // the out-of-bounds band is inside the world (the battlefield edge)
   }
 }

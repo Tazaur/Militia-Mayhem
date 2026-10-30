@@ -1140,7 +1140,7 @@ function netBullets(dt) {
       const [ax, ay] = toLocal(v, x0, y0), [bx, by] = toLocal(v, x1, y1), t = segRect(ax, ay, bx, by, { x: -v.T.hl, y: -v.T.hw, w: v.T.hl * 2, h: v.T.hw * 2 }, 0); if (t >= 0 && t < bt) { bt = t; hit = 2; }
     }
     if (hit) { const hx = lerp(x0, x1, bt), hy = lerp(y0, y1, bt); p.life = 0; if (hit === 1) sparks(hx, hy, 2); else if (hit === 2) { ev('bullet.veh', hx, hy, {}); sparks(hx, hy, 3); } continue; }
-    p.x = x1; p.y = y1; p.life -= dt; if (p.x < -SKIRT || p.y < -SKIRT || p.x > WW + SKIRT || p.y > WH + SKIRT) p.life = 0;
+    p.x = x1; p.y = y1; p.life -= dt; if (p.x < 0 || p.y < 0 || p.x > WW || p.y > WH) p.life = 0;
   }
   prune(NET.bul, p => p.life > 0);
 }

@@ -64,7 +64,7 @@ function buildMap(id) {
   const R = mulberry(id === 'crossroads' ? 1987 : id === 'farmlands' ? 2311 : id === 'snowfield' ? 6151 : id === 'outskirts' ? 8807 : 4099);
   const m = { id, houses: [], secs: [], arcs: [], roads: [], buildings: [], water: [], bridges: [], statics: [], flags: [], bases: [], crateSpots: [], vehSpawns: [], ffaSpawns: [], fields: [], fwd: [], ice: [] };
   m.bases = [{ team: 0, x: 130, y: WH / 2, pad: { x: 20, y: WH / 2 - 200, w: 340, h: 400 } }, { team: 1, x: WW - 130, y: WH / 2, pad: { x: WW - 360, y: WH / 2 - 200, w: 340, h: 400 } }];
-  MAP = m; BOUNDM = null; SKIRT = id.startsWith('g:') ? 0 : 480;
+  MAP = m; BOUNDM = null;
   const sym = (arr, o, mir) => { arr.push(o); arr.push(mir(o)); };
   /* a house within pad of (x, y) */
   const inHouse = (x, y, pad) => m.houses.length > 0 && [[x, y], [x - pad, y - pad], [x + pad, y - pad], [x - pad, y + pad], [x + pad, y + pad]].some(([a, b]) => houseAt(a, b));
@@ -248,6 +248,19 @@ function buildMap(id) {
     if (!bad && !m.ffaSpawns.some(p => Math.hypot(p.x - x, p.y - y) < 300)) m.ffaSpawns.push({ x, y });
   }
   m.fwd = [{ x: m.flags[0].x - 60, y: m.flags[0].y }, { x: m.flags[m.flags.length - 1].x + 60, y: m.flags[m.flags.length - 1].y }];
+  if (!m.gmap) {     // the built-in maps' battlefield edge (as the editor's): the world grows E all round (base ground; roads and the river run on out to it), the old map inside the edge
+    const E = 400, W0 = WW, H0 = WH, out = (v, n) => v <= 0 ? -E : v >= n ? n + E : v;
+    for (const rd of m.roads) rd.l = rd.l.map(p => p.map((v, i) => out(v, i % 2 ? H0 : W0) + E));
+    for (const r of [...m.water, ...m.bridges, ...m.ice, ...m.fields, ...m.buildings]) { const x1 = out(r.x + r.w, W0), y1 = out(r.y + r.h, H0); r.x = out(r.x, W0); r.y = out(r.y, H0); r.w = x1 - r.x; r.h = y1 - r.y; r.x += E; r.y += E; }
+    for (const o of [...m.statics, ...m.arcs, ...m.flags, ...m.bases, ...m.crateSpots, ...m.vehSpawns, ...m.ffaSpawns, ...m.fwd]) { o.x += E; o.y += E; }
+    for (const b of m.bases) { b.pad.x += E; b.pad.y += E; }
+    m.houses = m.houses.map((H, i) => mkHouse({ ...H, x: H.x + E, y: H.y + E, g: H.cell }, i));
+    setWorld(W0 + 2 * E, H0 + 2 * E, NC);
+    m.edge = { p: [E, E, WW - E, E, WW - E, WH - E, E, WH - E], r: 0 };
+    const q = 8, w = Math.ceil(WW / q) + 1, h = Math.ceil(WH / q) + 1, A = new Uint8Array(w * h);     // its mask (a rect: no canvas needed)
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) A[j * w + i] = (i + 0.5) * q > E && (i + 0.5) * q < WW - E && (j + 0.5) * q > E && (j + 0.5) * q < WH - E ? 1 : 0;
+    BOUNDM = { s: q, w, h, a: A };
+  }
   if (m.gmap) {     // an editor map's placed gameplay objects stand in for the ones placed above
     const O = m.gmap.objs || [], of = k => O.filter(o => o.k === k), V = of('veh'), C = of('crate'), D = of('drop');
     if (V.length) m.vehSpawns = V.map(o => ({ type: o.type || 'tank', x: o.x, y: o.y, a: o.a || 0, team: o.team === undefined ? 0 : o.team, resp: o.resp }));
@@ -302,27 +315,6 @@ const PALS = {
 PALS.snow = Object.assign({}, PALS.classic, { grass: '#e6edf2', gA: '#d8e2ea', gB: '#f4f8fb', gC: '#c8d4de', patch: ['150,170,195', '255,255,255'], mud: 'rgba(120,135,150,0.16)', dirt: '#b9bec4', dA: '#a2a8b0', dB: '#c8ccd0', pad: '#8d9298', padA: '#83888e', padB: '#979ca2', padL: '#767b80', ice: '#9cc8de', iceL: '#d4ecf6', iceD: '#6fa2bf' });
 PALS.snowGrit = Object.assign({}, PALS.grit, { grass: '#c6cac6', gA: '#b8bdb9', gB: '#d2d5d0', gC: '#a9aea9', patch: ['90,95,90', '225,228,224'], mud: 'rgba(80,80,72,0.3)', dirt: '#8f8e86', dA: '#7b7a72', dB: '#9c9b93', pad: '#6a6b68', padA: '#626360', padB: '#727370', padL: '#585956', ice: '#8aa2aa', iceL: '#b4c6cc', iceD: '#64808a' });
 function pattern(w, h, fn) { const c = mk(w, h), g = c.getContext('2d'); fn(g, w, h); return gx.createPattern(c, 'repeat'); }
-let SKIRT_PAT = null;
-/* the out-of-bounds ring: same grass, tinted, with a dashed line marking the battlefield edge */
-function drawSkirt(x0, y0, x1, y1) {
-  if (x0 >= 0 && y0 >= 0 && x1 <= WW && y1 <= WH) return;
-  ctx.fillStyle = SKIRT_PAT || '#2a3a1e';
-  const rs = [[x0, y0, x1 - x0, -y0], [x0, WH, x1 - x0, y1 - WH], [x0, 0, -x0, WH], [WW, 0, x1 - WW, WH]];
-  for (const r of rs) if (r[2] > 0 && r[3] > 0) ctx.fillRect(r[0], r[1], r[2], r[3]);
-  ctx.fillStyle = 'rgba(40,6,2,0.38)';
-  for (const r of rs) if (r[2] > 0 && r[3] > 0) ctx.fillRect(r[0], r[1], r[2], r[3]);
-  // the map's dashed edge, only where it's in the box (x0..y1): each side its part, dashed on from where strokeRect's
-  // one run round the edge would have it (the same dashes as the camera moves)
-  ctx.save(); ctx.strokeStyle = 'rgba(255,90,60,0.55)'; ctx.lineWidth = 3; ctx.setLineDash([18, 12]);
-  const L = WW + 4, Hh = WH + 4, m = 4;
-  for (const [ax, ay, dx, dy, n, o] of [[-2, -2, 1, 0, L, 0], [WW + 2, -2, 0, 1, Hh, L], [WW + 2, WH + 2, -1, 0, L, L + Hh], [-2, WH + 2, 0, -1, Hh, 2 * L + Hh]]) {
-    const ex = ax + dx * n, ey = ay + dy * n; if (Math.max(ax, ex) < x0 - m || Math.min(ax, ex) > x1 + m || Math.max(ay, ey) < y0 - m || Math.min(ay, ey) > y1 + m) continue;
-    const lo = dx ? (dx > 0 ? x0 - m - ax : ax - x1 - m) : (dy > 0 ? y0 - m - ay : ay - y1 - m), hi = dx ? (dx > 0 ? x1 + m - ax : ax - x0 + m) : (dy > 0 ? y1 + m - ay : ay - y0 + m);
-    const t0 = Math.max(0, lo), t1 = Math.min(n, hi); if (t1 <= t0) continue;
-    ctx.lineDashOffset = o + t0; ctx.beginPath(); ctx.moveTo(ax + dx * t0, ay + dy * t0); ctx.lineTo(ax + dx * t1, ay + dy * t1); ctx.stroke();
-  }
-  ctx.restore();
-}
 function paintGround() {
   const grit = CFG.style === 'grit', P = SNOWY() ? (grit ? PALS.snowGrit : PALS.snow) : (PALS[CFG.style] || PALS.classic);
   px_.setTransform(1, 0, 0, 1, 0, 0); px_.clearRect(0, 0, WW, WH); dgx.setTransform(1, 0, 0, 1, 0, 0); dgx.clearRect(0, 0, WW, WH); if (typeof M !== 'undefined' && M) M.fogMem = null;
@@ -330,7 +322,7 @@ function paintGround() {
   GMAT = null; if (MAP.gmap) { paintStamped(); if (MAP.houses.length) paintTiled(); return; }
   const R = mulberry(4242);
   gx.setTransform(1, 0, 0, 1, 0, 0); gx.globalAlpha = 1; gx.globalCompositeOperation = 'source-over';
-  gx.fillStyle = SKIRT_PAT = pattern(96, 96, (g, w, h) => {
+  gx.fillStyle = pattern(96, 96, (g, w, h) => {
     g.fillStyle = P.grass; g.fillRect(0, 0, w, h);
     for (let i = 0; i < 900; i++) { g.fillStyle = R() < 0.5 ? P.gA : P.gB; g.fillRect((R() * w) | 0, (R() * h) | 0, 1 + (R() < 0.3), 1); }
     for (let i = 0; i < 60; i++) { g.fillStyle = P.gC; g.fillRect((R() * w) | 0, (R() * h) | 0, 1, 2); }
@@ -385,7 +377,7 @@ function paintGround() {
     for (let i = 0; i < 26; i++) { const x = 100 + R() * (WW - 200), y = 100 + R() * (WH - 200); if (MAP.buildings.some(b => inRect(x, y, b, 20))) continue; scorch(x, y, 25 + R() * 30); }
   }
   if (MAP.houses.length) paintTiled();
-  gx.fillStyle = 'rgba(0,0,0,0.35)'; gx.fillRect(0, 0, WW, 12); gx.fillRect(0, WH - 12, WW, 12); gx.fillRect(0, 0, 12, WH); gx.fillRect(WW - 12, 0, 12, WH);
+  if (MAP.edge) gOob(gx, { bounds: MAP.edge }, { x: 0, y: 0, w: WW, h: WH });     // outside the edge tinted, the edge dashed (the editor maps' look)
 }
 function gStamp(n, x, y, a, s, al) {
   const m = ATLAS[n]; if (!m) return;
@@ -484,7 +476,7 @@ function markStatic(s) {
   }
 }
 let ASG = new Float32Array(NGW * NGH), ASF = new Int32Array(NGW * NGH), ASS = new Uint32Array(NGW * NGH), ASC = new Uint32Array(NGW * NGH);   // cost, came-from, seen stamp, closed stamp
-/* world size (the normal maps are 3000x2000, OUTSKIRTS 3072x2048, the dev yard smaller) and nav cell size; canvases and path grids follow */
+/* world size (the normal maps are 3000x2000, OUTSKIRTS 3072x2048, each then 400 more all round for its battlefield edge: buildMap; the dev yard smaller) and nav cell size; canvases and path grids follow */
 function setWorld(w, h, nc) {
   nc = nc || 30; if (w === WW && h === WH && nc === NC) return;
   if (w !== WW || h !== WH) { WW = w; WH = h; for (const c of [ground, prints, decals]) { c.width = w; c.height = h; } }

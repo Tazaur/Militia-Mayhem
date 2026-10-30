@@ -151,7 +151,7 @@ function applyFog(vw, vis, x0, y0, x1, y1, rv) {
   // the remembered world goes into an offscreen layer, so smoke can reuse it later
   fogCanvases();
   const main = ctx; ctx = FOG_OUT.getContext('2d'); ctx.setTransform(1, 0, 0, 1, 0, 0);
-  worldT(); ctx.imageSmoothingEnabled = false; drawSkirt(x0, y0, x1, y1);
+  worldT(); ctx.imageSmoothingEnabled = false;
   if (bw > 0 && bh > 0) { ctx.imageSmoothingEnabled = FOGK < 1; ctx.drawImage(m.c, bx0 * FOGK, by0 * FOGK, bw * FOGK, bh * FOGK, bx0, by0, bw, bh); ctx.imageSmoothingEnabled = false; }
   if (bw > 0 && bh > 0 && MAP.houses.length) {
     ctx.save(); polyPath(ctx, polys); ctx.clip(); stackImg(ctx, [ground, decals], bx0, by0, bw, bh, bx0, by0, bw, bh);

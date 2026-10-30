@@ -265,7 +265,6 @@ function paintStamped() {
   const G = MAP.gmap;
   if (typeof GL !== 'undefined' && GL) { if (!GMAT || GMAT.width !== WW || GMAT.height !== WH) GMAT = mkG(WW, WH); } else GMAT = null;
   GMAX = gBake(G, gx, GMAT && GMAT.getContext('2d'), null);
-  const B = gTex(G.base); SKIRT_PAT = gx.createPattern(B.c, 'repeat');
   if (!gReady(IMG) || (typeof MIMG !== 'undefined' && MIMG && !gReady(MIMG))) for (const im of [IMG, typeof MIMG !== 'undefined' ? MIMG : null]) if (im && !gReady(im)) im.addEventListener('load', () => { if (MAP && MAP.gmap === G) paintGround(); }, { once: true });     // the atlas came late: again with the real textures
 }
 /* one more stamp, baked over only its box (destruction later: a crater, scorch) */

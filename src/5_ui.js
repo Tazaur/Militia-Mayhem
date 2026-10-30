@@ -15,7 +15,6 @@ function drawWorld(vw) {
   SUNNOW = sunOn();
   const rv = MAP.houses.length ? roofView(vw, x0, y0, x1, y1) : null, fogPolys = applyFog(vw, vis, x0, y0, x1, y1, rv), fogged = !!fogPolys; pipe('memory', { fogged });
   // ---- layer 0: ground + fading footprints
-  drawSkirt(x0, y0, x1, y1);
   const gx0 = Math.max(0, Math.floor(x0)), gy0 = Math.max(0, Math.floor(y0)), gx1 = Math.min(WW, Math.ceil(x1)), gy1 = Math.min(WH, Math.ceil(y1));
   if (gx1 > gx0 && gy1 > gy0) stackImg(ctx, [ground, decals, prints], gx0, gy0, gx1 - gx0, gy1 - gy0, gx0, gy0, gx1 - gx0, gy1 - gy0);
   pipe('ground');

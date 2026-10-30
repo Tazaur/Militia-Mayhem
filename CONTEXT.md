@@ -837,3 +837,6 @@ Art drop (drop.py): atlas.png: hull4, tur_dead; atlas_m.png: tur_dead, sol_leg0,
 
 ## One building system (build 274)
 Every built-in map's buildings are the tiled houses (breakable walls, windows, roofs); the rect roof buildings (ROOFS, buildRoofs, roofC, drawRoofs) are gone. buildMap: `house(mw, mh, at)` makes one (genHouse, then a lot from at) and its copy turned half round the centre; `houseLots(B)` puts houses on given lots (crossroads list, farmlands barn, rivertown square), `placeHouses(n, xmax, wr, hr, gap)` anywhere (outskirts too). Lots hold the space in m.buildings while placing, then go (tiledFinish at the end). genHouse takes a smallest size (minW, minH; under 15 wide one room is fine). Every built-in map paths on the SUB grid.
+
+## Battlefield edge on every map (build 275)
+The skirt is gone (SKIRT, drawSkirt, SKIRT_PAT). Built-in maps are built in their old coordinates, then buildMap grows the world 400 px all round (everything shifted; roads and water touching the old edge run on out), sets MAP.edge (a rect polygon) and BOUNDM (made directly, no canvas), and paintGround tints outside it and dashes it (gOob), as editor maps do. The camera and all clamps stop at the world edge.

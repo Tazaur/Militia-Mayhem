@@ -294,7 +294,6 @@ function roofView(vw, x0, y0, x1, y1) {
 function paintDevGround() {
   gx.setTransform(1, 0, 0, 1, 0, 0); gx.globalAlpha = 1; gx.globalCompositeOperation = 'source-over'; gx.imageSmoothingEnabled = false;
   gx.fillStyle = '#5b6248'; gx.fillRect(0, 0, WW, WH);
-  SKIRT_PAT = '#3c4232';
   paintTiled();
 }
 /* the houses (and their roofs) over whatever ground is painted */
