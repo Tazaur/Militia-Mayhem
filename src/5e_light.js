@@ -451,7 +451,7 @@ void main() { vec2 p = gl_FragCoord.xy; gl_FragColor = vec4(sunIn(texture2D(B, (
   return _sun;
 }
 /* this frame's height quads: a (MAX blended), w (walls, written over: what's there is inside them) then t (trees, MAX) */
-const HQ = 20, hbuf = () => ({ f: new Float32Array(HQ * 256), n: 0 }), HL = { a: hbuf(), u: hbuf(), w: hbuf(), t: hbuf(), m: hbuf(), f: hbuf(), x: hbuf(), k: hbuf() };     // u: what the memory doesn't keep (units, crates, items...); m: materials only (water...); f: floating parts waiting for their channel (hLayers); x: the channels past the first, k: the kept ones of those (the memory's)
+const HQ = 20, hbuf = () => ({ f: new Float32Array(HQ * 256), n: 0 }), HL = { a: hbuf(), u: hbuf(), w: hbuf(), t: hbuf(), m: hbuf(), f: hbuf(), x: hbuf(), k: hbuf(), g: hbuf() };     // g: the stamped ground's materials (one quad, GMAT); u: what the memory doesn't keep (units, crates, items...); m: materials only (water...); f: floating parts waiting for their channel (hLayers); x: the channels past the first, k: the kept ones of those (the memory's)
 let HMAT = 0, HMAX = 0;     // this frame: 1 something reflective in view, 2 something glowing; the tallest top in view
 function hgrow(L) { if ((L.n + 1) * HQ > L.f.length) { const g = new Float32Array(L.f.length * 2); g.set(L.f); L.f = g; } return L.n++ * HQ; }
 function hq(L, cx, cy, ux, uy, vx, vy, k, p0, p1, p2, u0, v0, u1, v1, z, w, R) {
@@ -608,6 +608,7 @@ function hLayers() {
 const shp = (h, n) => { const P = sunP(n), b = P.lift || 0; return [h + b + (P.add || 0), b]; };
 /* everything solid, as heights (the same things, and the same hidden ones left out, as the frame draws) */
 function sunHeights(vis, hidden, vw) {
+  if (GMAT && MAP.gmap) { hq(HL.g, WW / 2, WH / 2, WW / 2, 0, 0, WH / 2, 0, 0, 0, 0, 0, 1, 1, 0, 0.01); HMAX = Math.max(HMAX, GMAX); }     // the map editor's ground: its painted heights (a GL surface: rows bottom up)
   const [wt, wb] = shp(SUNH.wall, 'wall');
   for (const b of MAP.buildings) if (!b.glass && vis(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h))) hbox(HL.w, b.x + b.w / 2, b.y + b.h / 2, b.w / 2, b.h / 2, 0, 1, wt, wb, 0);
   const [t0, tb] = shp(SUNH.tree[0], 'tree'), t1 = shp(SUNH.tree[1], 'tree')[0], [h0, hb] = shp(SUNH.hay, 'hay'), [ft, fb] = shp(SUNH.fence, 'fence');
@@ -653,13 +654,14 @@ function hKept(S) { const { gl, MX } = S; gl.blendEquation(MX.MAX_EXT); gl.enabl
    and the materials MT (depth: the highest top wins); fog: into the memory's heights where you see, then read back for
    out of sight (HTS) */
 function sunDrawHeights(S, X, box, fog, vw) {
-  const { gl, MX } = S, lists = ['a', 'u', 'w', 't', 'm', 'x'], draw = n => hDraw(S, n);     // x: the channels past the first, into HT after the frame's sweep (sunLayers)
-  hBegin(S, X, [S.fw, S.fh]); hUp(S, [...lists, 'k']);
+  const { gl, MX } = S, lists = ['a', 'u', 'w', 't', 'm', 'x'], draw = n => hDraw(S, n);
+  const ground = () => { if (!HL.g.n || !GMAT.tex) return; gxFlushIf(GMAT); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, GMAT.tex); hDraw(S, 'g'); gl.bindTexture(gl.TEXTURE_2D, S.AT); gl.activeTexture(gl.TEXTURE0); };     // the stamped ground: its own material map where the atlas is     // x: the channels past the first, into HT after the frame's sweep (sunLayers)
+  hBegin(S, X, [S.fw, S.fh]); hUp(S, [...lists, 'k', 'g']);
   gl.viewport(0, 0, S.fw, S.fh); gl.scissor(...box); gl.clearColor(0, 0, 0, 0);
   gl.bindFramebuffer(gl.FRAMEBUFFER, S.FB); gl.clear(gl.COLOR_BUFFER_BIT);
-  gl.blendEquation(MX.MAX_EXT); gl.enable(gl.BLEND); draw('a'); pipe('gpu-h', { l: 'a' }); draw('u'); pipe('gpu-h', { l: 'u' }); gl.disable(gl.BLEND); draw('w'); pipe('gpu-h', { l: 'w' }); gl.enable(gl.BLEND); draw('t'); gl.disable(gl.BLEND); pipe('gpu-h', { l: 't' });
+  gl.blendEquation(MX.MAX_EXT); gl.enable(gl.BLEND); ground(); draw('a'); pipe('gpu-h', { l: 'a' }); draw('u'); pipe('gpu-h', { l: 'u' }); gl.disable(gl.BLEND); draw('w'); pipe('gpu-h', { l: 'w' }); gl.enable(gl.BLEND); draw('t'); gl.disable(gl.BLEND); pipe('gpu-h', { l: 't' });
   gl.bindFramebuffer(gl.FRAMEBUFFER, S.FM); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); gl.uniform1f(S.HU.MM, 1);
-  gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS); for (const n of lists) draw(n); gl.disable(gl.DEPTH_TEST); pipe('gpu-mat');
+  gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS); ground(); for (const n of lists) draw(n); gl.disable(gl.DEPTH_TEST); pipe('gpu-mat');
   if (fog) { memStamp(S, vw); memRecall(S, vw, X, box); pipe('gpu-hs'); }     // the remembered things alone
   hInst(S, 0);
   if (M.dev) DEV.nq = lists.reduce((a, n) => a + HL[n].n, 0);

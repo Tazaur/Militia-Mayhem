@@ -178,6 +178,13 @@ function buildMap(id) {
     scatter(8, 110, 40, (x, y) => crescent(x, y, R() * TAU, true));
     scatter(34, 44, 26, (x, y) => tree(x, y, true));
     scatter(8, 60, 24, (x, y) => addStatic({ type: 'hay', x, y, r: 13, a: R() * TAU, alive: true }, true));
+  } else if (id.startsWith('g:')) {     // a map editor map (2b_ground.js): its stamped ground; flags, cover and trees placed as the others' (objects: later, in the editor)
+    m.gmap = JSON.parse(JSON.stringify(gMapOf(id)));
+    m.flags = [{ name: 'A', x: WW * 0.22, y: WH * 0.72 }, { name: 'B', x: WW / 2, y: WH / 2 }, { name: 'C', x: WW * 0.78, y: WH * 0.28 }];
+    for (const f of m.flags) for (let k = 0; k < 3; k++) { const c = k * TAU / 3 + 0.4; crescent(f.x + Math.cos(c) * 110, f.y + Math.sin(c) * 110, c, false); }
+    crescent(400, WH / 2 - 120, 0, true); crescent(400, WH / 2 + 120, 0, true);
+    scatter(6, 110, 40, (x, y) => crescent(x, y, R() * TAU, true));
+    scatter(20, 44, 26, (x, y) => tree(x, y, true));
   } else {
     // river town
     m.roads = [[0, 350, 3000, 350], [0, 1000, 3000, 1000], [0, 1650, 3000, 1650], [700, 0, 700, 2000], [2300, 0, 2300, 2000]].map(l => ({ l, w: 72, side: 14, style: 'asphalt' }));
@@ -282,6 +289,7 @@ function paintGround() {
   const grit = CFG.style === 'grit', P = SNOWY() ? (grit ? PALS.snowGrit : PALS.snow) : (PALS[CFG.style] || PALS.classic), RF = ROOFS[CFG.style] || ROOFS.classic;
   px_.setTransform(1, 0, 0, 1, 0, 0); px_.clearRect(0, 0, WW, WH); dgx.setTransform(1, 0, 0, 1, 0, 0); dgx.clearRect(0, 0, WW, WH); if (typeof M !== 'undefined' && M) M.fogMem = null;
   if (MAP.id === 'devyard') { paintDevGround(); return; }
+  GMAT = null; if (MAP.gmap) { paintStamped(); return; }
   const R = mulberry(4242);
   gx.setTransform(1, 0, 0, 1, 0, 0); gx.globalAlpha = 1; gx.globalCompositeOperation = 'source-over';
   gx.fillStyle = SKIRT_PAT = pattern(96, 96, (g, w, h) => {

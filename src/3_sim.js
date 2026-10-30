@@ -41,7 +41,8 @@ function newMatch(cfg, demo) {
   TEAMNAME = teamNames(cfg, demo, ffa, teamColor);
   buildRings();
   const mapId = MAPNAMES[cfg.map % MAPNAMES.length][0], town = !cfg.dev && mapId === 'outskirts';      // tiled maps path on the wall grid
-  setWorld(cfg.dev ? DEV_COLS * TILE : town ? 3072 : 3000, cfg.dev ? DEV_ROWS * TILE : town ? 2048 : 2000, cfg.dev || town ? SUB : 30);
+  const gm = !cfg.dev && mapId.startsWith('g:') && gMapOf(mapId);     // a map from the map editor (2b_ground.js)
+  setWorld(cfg.dev ? DEV_COLS * TILE : town ? 3072 : gm ? gm.w : 3000, cfg.dev ? DEV_ROWS * TILE : town ? 2048 : gm ? gm.h : 2000, cfg.dev || town ? SUB : 30);
   if (cfg.dev) buildDevMap(); else buildMap(mapId);
   paintGround(); buildNav();
   MAP.statics.forEach((s, i) => s.idx = i);

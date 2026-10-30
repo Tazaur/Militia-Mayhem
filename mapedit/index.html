@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Militia Mayhem · Map Editor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* the map editor: a map's ground as a base texture and polygons stamped over it (../src/2b_ground.js bakes it, here and in the game) */
+:root{
+  --bg:#0d120b;--panel:#1a2316;--panel2:#212c1c;--line:#2f3c28;--line2:#3d4d34;
+  --ink:#ece4c8;--dim:#a49f86;--faint:#6f725f;--acc:#e0b72c;--acc2:#f5d670;--red:#ef5a44;--green:#7ddc6a;--cyan:#5fd3d0;
+  --fd:'Black Ops One',system-ui;--fb:'Chakra Petch',system-ui,sans-serif;--fm:'JetBrains Mono',ui-monospace,monospace;color-scheme:dark
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;background:var(--bg);color:var(--ink);font-family:var(--fb);font-size:14px;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+body{display:flex;flex-direction:column;position:fixed;inset:0}
+button,select,input{font:inherit;color:inherit}
+.bar{flex:none;display:flex;align-items:center;gap:6px;padding:6px 10px;background:var(--panel);border-bottom:1px solid var(--line);min-height:48px}
+#top{padding-top:calc(6px + env(safe-area-inset-top))}
+#name{flex:1;min-width:0;font-family:var(--fd);font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.4px}
+#wrap{flex:1;position:relative;min-height:0;background:#070a06}
+#cv{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block}
+#hint{position:absolute;left:10px;top:8px;right:10px;font-size:12px;color:var(--dim);pointer-events:none;text-shadow:0 1px 2px #000}
+#zoom{position:absolute;right:10px;bottom:10px;display:flex;flex-direction:column;gap:6px}
+.btm{flex:none;background:var(--panel);border-top:1px solid var(--line);padding:6px 10px calc(6px + env(safe-area-inset-bottom))}
+.btm .r{display:flex;align-items:center;gap:6px;min-height:42px}
+.btm .r+.r{border-top:1px solid var(--line);margin-top:4px;padding-top:4px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:38px;min-width:38px;padding:0 10px;border:1px solid var(--line2);border-radius:10px;background:var(--panel2);cursor:pointer;font-weight:600;font-size:13px;white-space:nowrap}
+.btn:disabled{opacity:.35}
+.btn.on{background:var(--acc);color:#1a1405;border-color:var(--acc)}
+.btn.red{color:var(--red)}
+.btn.ic{padding:0;width:38px;font-size:16px}
+.sp{flex:1}
+.sw{width:22px;height:22px;border-radius:5px;border:1px solid var(--line2);image-rendering:pixelated;flex:none;background-size:44px 44px}
+.sl{display:flex;align-items:center;gap:8px;flex:1;min-width:0}
+.sl span{font-size:12px;color:var(--dim)}
+.sl b{font-family:var(--fm);font-size:12px;min-width:34px;text-align:right;font-weight:400}
+input[type=range]{-webkit-appearance:none;appearance:none;flex:1;min-width:60px;height:34px;background:transparent;margin:0}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:var(--line2)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--acc);margin-top:-9px;border:2px solid var(--bg)}
+input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:var(--line2)}
+input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:var(--acc);border:2px solid var(--bg)}
+.muted{color:var(--dim);font-size:12px}
+/* menus and sheets: over everything, a backdrop to tap away */
+#veil{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:20;display:none}
+#veil.on{display:block}
+.menu{position:fixed;z-index:21;background:var(--panel);border:1px solid var(--line2);border-radius:12px;padding:6px;min-width:200px;max-width:calc(100vw - 20px);max-height:70vh;overflow:auto;box-shadow:0 10px 30px rgba(0,0,0,.5);display:none}
+.menu.on{display:block}
+.menu button.it{display:flex;align-items:center;gap:10px;width:100%;min-height:42px;padding:0 10px;border:0;border-radius:8px;background:none;text-align:left;cursor:pointer;font-size:14px}
+.menu button.it:active,.menu button.it.on{background:var(--panel2)}
+.menu button.it .k{margin-left:auto;color:var(--faint);font-size:12px}
+.menu hr{border:0;border-top:1px solid var(--line);margin:4px 2px}
+.menu h3{font-family:var(--fd);font-weight:400;font-size:13px;color:var(--acc2);margin:4px 8px 6px;letter-spacing:.5px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:6px;padding:2px}
+.grid button{display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 4px;border:1px solid var(--line2);border-radius:10px;background:var(--panel2);cursor:pointer;font-size:11px}
+.grid button.on{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc) inset}
+.grid .sw{width:48px;height:48px;background-size:96px 96px}
+.form{display:grid;grid-template-columns:auto 1fr;gap:8px 10px;align-items:center;padding:4px 8px 8px}
+.form input,.form select{height:38px;border-radius:9px;border:1px solid var(--line2);background:var(--panel2);padding:0 8px;min-width:0}
+.form .full{grid-column:1/3;display:flex;gap:6px;justify-content:flex-end}
+.lay{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;padding:0 8px;border:0;border-radius:8px;background:none;cursor:pointer;text-align:left}
+.lay.on{background:var(--panel2);box-shadow:0 0 0 1px var(--acc) inset}
+.lay .n{flex:1;font-size:13px}
+.lay .m{font-family:var(--fm);font-size:11px;color:var(--faint)}
+#toast{position:fixed;left:50%;bottom:120px;transform:translateX(-50%);background:var(--acc);color:#1a1405;font-weight:700;padding:8px 14px;border-radius:10px;z-index:30;opacity:0;transition:opacity .2s;pointer-events:none;font-size:13px;white-space:nowrap}
+#toast.on{opacity:1}
+</style>
+</head>
+<body>
+<div class="bar" id="top">
+  <button class="btn" id="bMap" aria-label="Map menu">☰ Map</button>
+  <div id="name">…</div>
+  <button class="btn ic" id="bUndo" aria-label="Undo">↶</button>
+  <button class="btn ic" id="bRedo" aria-label="Redo">↷</button>
+  <button class="btn" id="bView" aria-label="View menu">View ▾</button>
+</div>
+<div id="wrap">
+  <canvas id="cv"></canvas>
+  <div id="hint"></div>
+  <div id="zoom"><button class="btn ic" id="bZin" aria-label="Zoom in">＋</button><button class="btn ic" id="bZout" aria-label="Zoom out">－</button><button class="btn ic" id="bFit" aria-label="Fit map" style="font-size:13px">⤢</button></div>
+</div>
+<div class="btm" id="btm"></div>
+<div id="veil"></div>
+<div class="menu" id="menu"></div>
+<div id="toast"></div>
+<input type="file" id="file" accept=".json,application/json" hidden>
+<script>
+/* the game's atlas: textures are its tex_<name> sprites (colour + the material atlas's heights), read by 2b_ground.js */
+let ATLAS = {};
+const IMG = new Image(), MIMG = new Image();
+</script>
+<script src="../src/2b_ground.js"></script>
+<script>
+'use strict';
+const $ = s => document.querySelector(s), cv = $('#cv'), cx = cv.getContext('2d');
+const SKEY = 'mmgl.mapedit', LKEY = 'mmgl.maplab';
+const SIZES = [[3000, 2000], [2000, 1400], [4000, 2600], [1600, 1600]];
+/* ---------- state: every map (by id), the open one, the view, the selection, the tool ---------- */
+const S = (() => { try { return JSON.parse(localStorage.getItem(SKEY)) || {}; } catch (e) { return {}; } })();
+S.maps = S.maps || {}; S.view = S.view || 'col'; S.lines = S.lines !== false;
+const save = () => { try { localStorage.setItem(SKEY, JSON.stringify(S)); } catch (e) { toast('Storage full: export your maps'); } };
+let G = null;                                   // the open map
+const V = { x: 0, y: 0, z: 0.3 };               // view: screen = (world - x, y) * z (CSS px)
+let sel = -1, selV = -1, tool = 'select', draft = null;     // selected stamp, its selected vertex; draft: the polygon being drawn
+const UNDO = [], REDO = [];
+const slug = n => (n || 'map').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'map';
+function newMap(name, w, h, base) {
+  let id = slug(name), k = 2; while (S.maps[id]) id = slug(name) + '_' + k++;
+  return { v: 1, id, name, w, h, base, stamps: [] };
+}
+function open(id) {
+  G = S.maps[id]; S.cur = id; sel = -1; selV = -1; draft = null; UNDO.length = REDO.length = 0;
+  bakeAll(); fit(); ui(); save();
+}
+/* a change: undo keeps the map before it */
+function snap() { UNDO.push(JSON.stringify({ base: G.base, stamps: G.stamps })); if (UNDO.length > 100) UNDO.shift(); REDO.length = 0; }
+function restore(from, to) {
+  if (!from.length) return; to.push(JSON.stringify({ base: G.base, stamps: G.stamps }));
+  const o = JSON.parse(from.pop()); G.base = o.base; G.stamps = o.stamps; sel = Math.min(sel, G.stamps.length - 1); selV = -1; bakeAll(); save(); ui();
+}
+
+/* ---------- the bake: the map at full size (colour, and the material map when it's shown), only what changed ---------- */
+const BK = { c: null, m: null, dirty: null, t: 0 };
+function bakeAll() {
+  if (!BK.c) BK.c = document.createElement('canvas');
+  if (BK.c.width !== G.w || BK.c.height !== G.h) { BK.c.width = G.w; BK.c.height = G.h; }
+  if (S.view === 'mat') { if (!BK.m) BK.m = document.createElement('canvas'); BK.m.width = G.w; BK.m.height = G.h; } else BK.m = null;
+  BK.dirty = null; BK.h = gBake(G, BK.c.getContext('2d'), BK.m && BK.m.getContext('2d'), null); draw();
+}
+const boxU = (a, b) => !a ? b : !b ? a : { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.max(a.x + a.w, b.x + b.w) - Math.min(a.x, b.x), h: Math.max(a.y + a.h, b.y + b.h) - Math.min(a.y, b.y) };
+function dirty(b) { BK.dirty = boxU(BK.dirty, b); }
+function bakeDirty() {
+  const b = BK.dirty; if (!b) return; BK.dirty = null;
+  const x = Math.max(0, b.x), y = Math.max(0, b.y), r = { x, y, w: Math.min(G.w, b.x + b.w) - x, h: Math.min(G.h, b.y + b.h) - y }; if (r.w <= 0 || r.h <= 0) return;
+  gBake(G, BK.c.getContext('2d'), BK.m && BK.m.getContext('2d'), r); BK.t = performance.now();
+}
+
+/* ---------- drawing the view ---------- */
+let W = 0, H = 0, DPR = 1, raf = 0;
+function resize() { DPR = Math.min(2, devicePixelRatio || 1); const r = cv.getBoundingClientRect(); W = r.width; H = r.height; cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR); draw(); }
+function draw() { if (!raf) raf = requestAnimationFrame(frame); }
+function frame() {
+  raf = 0; if (!G) return;
+  if (BK.dirty && (!drag || performance.now() - BK.t > 70)) bakeDirty();
+  if (BK.dirty) draw();
+  cx.setTransform(DPR, 0, 0, DPR, 0, 0); cx.fillStyle = '#070a06'; cx.fillRect(0, 0, W, H);
+  cx.setTransform(DPR * V.z, 0, 0, DPR * V.z, -V.x * V.z * DPR, -V.y * V.z * DPR); cx.imageSmoothingEnabled = V.z < 1;
+  cx.drawImage(S.view === 'mat' && BK.m ? BK.m : BK.c, 0, 0);
+  const k = 1 / V.z;
+  cx.lineWidth = 2 * k; cx.strokeStyle = 'rgba(255,90,60,.6)'; cx.setLineDash([10 * k, 8 * k]); cx.strokeRect(0, 0, G.w, G.h); cx.setLineDash([]);
+  if (S.lines) G.stamps.forEach((s, i) => { if (i === sel) return; gPath(cx, s); cx.lineWidth = 1.5 * k; cx.strokeStyle = s.off ? 'rgba(255,255,255,.18)' : 'rgba(255,255,255,.45)'; cx.setLineDash(s.off ? [6 * k, 6 * k] : []); cx.stroke(); cx.setLineDash([]); });
+  if (sel >= 0) {
+    const s = G.stamps[sel], p = s.p;
+    if (s.r > 0) { gPath(cx, { p }); cx.lineWidth = 1 * k; cx.strokeStyle = 'rgba(245,214,112,.35)'; cx.setLineDash([4 * k, 5 * k]); cx.stroke(); cx.setLineDash([]); }     // the points' cage
+    gPath(cx, s); cx.lineWidth = 2.5 * k; cx.strokeStyle = '#000'; cx.stroke(); cx.lineWidth = 1.5 * k; cx.strokeStyle = '#f5d670'; cx.stroke();
+    if (s.soft > 0) { cx.lineWidth = s.soft; cx.strokeStyle = 'rgba(245,214,112,.12)'; cx.stroke(); }     // the blend zone
+    if (tool === 'select') for (let i = 0; i < p.length; i += 2) {
+      const j = (i + 2) % p.length; cx.fillStyle = 'rgba(95,211,208,.85)'; cx.beginPath(); cx.arc((p[i] + p[j]) / 2, (p[i + 1] + p[j + 1]) / 2, 5 * k, 0, 7); cx.fill();     // + midpoints: drag to add a point
+    }
+    if (tool === 'select') for (let i = 0; i < p.length; i += 2) { cx.fillStyle = i / 2 === selV ? '#ef5a44' : '#f5d670'; cx.strokeStyle = '#000'; cx.lineWidth = 2 * k; cx.beginPath(); cx.arc(p[i], p[i + 1], 8 * k, 0, 7); cx.fill(); cx.stroke(); }
+  }
+  if (draft) {
+    const p = draft.p; cx.beginPath(); for (let i = 0; i < p.length; i += 2) cx.lineTo(p[i], p[i + 1]);
+    if (p.length >= 6) { cx.closePath(); cx.fillStyle = cx.createPattern(gTex(draft.t).c, 'repeat'); cx.globalAlpha = 0.7; cx.fill(); cx.globalAlpha = 1; }
+    cx.lineWidth = 2 * k; cx.strokeStyle = '#5fd3d0'; cx.stroke();
+    for (let i = 0; i < p.length; i += 2) { cx.fillStyle = i === 0 ? '#7ddc6a' : '#5fd3d0'; cx.beginPath(); cx.arc(p[i], p[i + 1], (i === 0 ? 10 : 7) * k, 0, 7); cx.fill(); }
+  }
+}
+const toWorld = (sx, sy) => [sx / V.z + V.x, sy / V.z + V.y];
+function fit() { const z = Math.min(W / G.w, H / G.h) * 0.94; V.z = z; V.x = G.w / 2 - W / 2 / z; V.y = G.h / 2 - H / 2 / z; draw(); }
+function zoomAt(f, sx, sy) { const [wx, wy] = toWorld(sx, sy); V.z = Math.max(0.05, Math.min(8, V.z * f)); V.x = wx - sx / V.z; V.y = wy - sy / V.z; draw(); }
+
+/* ---------- touch: one finger by tool (select: a handle, a shape, or pan; draw: tap a point, drag pans), two pinch ---------- */
+const PT = new Map(); let drag = null, pinch = null;
+const ox = e => e.clientX - cv.getBoundingClientRect().left, oy = e => e.clientY - cv.getBoundingClientRect().top;     // CSS px in the canvas
+const inPoly = (x, y, p) => { let c = false; for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) { const xi = p[i], yi = p[i + 1], xj = p[j], yj = p[j + 1]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
+cv.addEventListener('pointerdown', e => {
+  try { cv.setPointerCapture(e.pointerId); } catch (x) { } PT.set(e.pointerId, [ox(e), oy(e)]);
+  if (PT.size === 2) { endDrag(true); const [a, b] = [...PT.values()]; pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), c: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] }; return; }
+  if (PT.size > 2) return;
+  const sx = ox(e), sy = oy(e), [wx, wy] = toWorld(sx, sy), R = 18;
+  drag = { sx, sy, wx, wy, moved: false, kind: 'pan', vx: V.x, vy: V.y };
+  if (tool !== 'select') return;
+  if (sel >= 0) {
+    const p = G.stamps[sel].p;
+    for (let i = 0; i < p.length; i += 2) if (Math.hypot((p[i] - V.x) * V.z - sx, (p[i + 1] - V.y) * V.z - sy) < R) { drag.kind = 'vert'; drag.i = i; drag.box = gBox(G.stamps[sel]); drag.snap = true; return; }
+    for (let i = 0; i < p.length; i += 2) { const j = (i + 2) % p.length, mx = (p[i] + p[j]) / 2, my = (p[i + 1] + p[j + 1]) / 2; if (Math.hypot((mx - V.x) * V.z - sx, (my - V.y) * V.z - sy) < R) { drag.kind = 'mid'; drag.i = i; drag.box = gBox(G.stamps[sel]); return; } }
+    if (inPoly(wx, wy, p)) { drag.kind = 'move'; drag.box = gBox(G.stamps[sel]); drag.p0 = p.slice(); return; }
+  }
+  for (let i = G.stamps.length - 1; i >= 0; i--) if (inPoly(wx, wy, G.stamps[i].p)) { drag.kind = 'move'; drag.pick = i; drag.box = gBox(G.stamps[i]); drag.p0 = G.stamps[i].p.slice(); return; }
+});
+cv.addEventListener('pointermove', e => {
+  if (!PT.has(e.pointerId)) return; PT.set(e.pointerId, [ox(e), oy(e)]);
+  if (pinch && PT.size === 2) {
+    const [a, b] = [...PT.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]), c = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    V.x -= (c[0] - pinch.c[0]) / V.z; V.y -= (c[1] - pinch.c[1]) / V.z; zoomAt(d / pinch.d, c[0], c[1]); pinch.d = d; pinch.c = c; return;
+  }
+  if (!drag) return;
+  const dx = ox(e) - drag.sx, dy = oy(e) - drag.sy; if (!drag.moved && Math.hypot(dx, dy) < 7) return;
+  if (!drag.moved) {      // the drag starts: a change to undo, a new point from a midpoint, a shape picked up
+    drag.moved = true;
+    if (drag.kind !== 'pan') snap();
+    if (drag.pick !== undefined) { sel = drag.pick; selV = -1; ui(); }
+    if (drag.kind === 'mid') { const p = G.stamps[sel].p, j = (drag.i + 2) % p.length; p.splice(drag.i + 2, 0, Math.round((p[drag.i] + p[j]) / 2), Math.round((p[drag.i + 1] + p[j + 1]) / 2)); drag.kind = 'vert'; drag.i += 2; selV = drag.i / 2; }
+    if (drag.kind === 'vert') selV = drag.i / 2;
+  }
+  const [wx, wy] = toWorld(ox(e), oy(e));
+  if (drag.kind === 'pan') { V.x = drag.vx - dx / V.z; V.y = drag.vy - dy / V.z; draw(); return; }
+  const s = G.stamps[sel], p = s.p;
+  if (drag.kind === 'vert') { p[drag.i] = Math.round(wx); p[drag.i + 1] = Math.round(wy); }
+  else { const ox = Math.round(wx - drag.wx), oy = Math.round(wy - drag.wy); for (let i = 0; i < p.length; i += 2) { p[i] = drag.p0[i] + ox; p[i + 1] = drag.p0[i + 1] + oy; } }
+  const b = gBox(s); dirty(boxU(drag.box, b)); drag.box = b; draw();
+});
+function endDrag(cancel) {
+  const d = drag; drag = null; if (!d || cancel) return;
+  if (!d.moved) {     // a tap
+    if (tool === 'draw') { addPoint(d.wx, d.wy); return; }
+    if (d.kind === 'vert') { selV = d.i / 2; draw(); ui(); return; }
+    if (d.pick !== undefined) { sel = d.pick; selV = -1; ui(); draw(); return; }
+    if (d.kind === 'pan' && sel >= 0) { sel = -1; selV = -1; ui(); draw(); }
+    return;
+  }
+  if (d.kind !== 'pan') { dirty(d.box); save(); ui(); }
+  draw();
+}
+const up = e => { PT.delete(e.pointerId); if (PT.size < 2) pinch = null; if (PT.size === 0) endDrag(false); else if (drag) drag = null; };
+cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', e => { PT.delete(e.pointerId); pinch = null; endDrag(true); });
+cv.addEventListener('wheel', e => { e.preventDefault(); zoomAt(Math.exp(-e.deltaY * 0.0015), ox(e), oy(e)); }, { passive: false });
+
+/* ---------- drawing a new shape: tap points, Done (or tap the first point) ---------- */
+function addPoint(x, y) {
+  const p = draft.p;
+  if (p.length >= 6 && Math.hypot((p[0] - x) * V.z, (p[1] - y) * V.z) < 20) { finishDraft(); return; }
+  p.push(Math.round(x), Math.round(y)); draw(); ui();
+}
+function finishDraft() {
+  if (draft.p.length < 6) { toast('A shape needs 3 points'); return; }
+  snap(); G.stamps.push({ t: draft.t, soft: draft.soft, p: draft.p }); sel = G.stamps.length - 1; selV = -1;
+  dirty(gBox(G.stamps[sel])); draft = null; tool = 'select'; save(); ui(); draw();
+}
+/* ready-made shapes at the middle of the view: a square, a circle, a blob */
+function addShape(k) {
+  const [cx0, cy0] = toWorld(W / 2, H / 2), r = Math.max(40, Math.round(110 / Math.max(V.z, 0.15) * 0.35 * 3)), p = [];
+  const n = k === 'sq' ? 4 : k === 'circ' ? 20 : 12;
+  for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2 + (k === 'sq' ? Math.PI / 4 : 0), f = k === 'blob' ? 0.7 + Math.random() * 0.5 : 1; p.push(Math.round(cx0 + Math.cos(a) * r * f), Math.round(cy0 + Math.sin(a) * r * f)); }
+  snap(); const last = sel >= 0 ? G.stamps[sel] : null;
+  G.stamps.push({ t: last ? last.t : lastTex(), soft: last ? last.soft : 16, r: last ? last.r || 0 : 0, p }); sel = G.stamps.length - 1; selV = -1; tool = 'select';
+  dirty(gBox(G.stamps[sel])); save(); ui(); draw();
+}
+const lastTex = () => S.tex || gTexNames().find(n => n !== G.base) || 'dirt';
+
+/* ---------- the selection's edits ---------- */
+function edit(fn, b0) { const s = G.stamps[sel]; const before = b0 || gBox(s); fn(s); dirty(boxU(before, gBox(s))); save(); draw(); ui(); }
+function move(d) {      // in the draw order: d -1 down, +1 up, ±99 to the bottom / top
+  const to = Math.max(0, Math.min(G.stamps.length - 1, sel + (Math.abs(d) > 1 ? Math.sign(d) * 1e9 : d))); if (to === sel) return;
+  snap(); const [s] = G.stamps.splice(sel, 1); G.stamps.splice(to, 0, s); sel = to; dirty(gBox(s)); save(); draw(); ui();
+}
+
+/* ---------- menus ---------- */
+const menu = $('#menu'), veil = $('#veil');
+function pop(html, anchor, bind) {
+  menu.innerHTML = html; menu.classList.add('on'); veil.classList.add('on');
+  const r = anchor.getBoundingClientRect(), mw = Math.min(menu.offsetWidth, innerWidth - 20), mh = menu.offsetHeight;
+  menu.style.left = Math.max(10, Math.min(innerWidth - mw - 10, r.left)) + 'px';
+  menu.style.top = (r.bottom + mh + 8 < innerHeight ? r.bottom + 6 : Math.max(10, r.top - mh - 6)) + 'px';
+  if (bind) bind(menu);
+}
+function unpop() { menu.classList.remove('on'); veil.classList.remove('on'); menu.innerHTML = ''; }
+veil.addEventListener('pointerdown', unpop);
+const swatch = n => { const c = gTex(n).c; return `style="background-image:url(${c.toDataURL()})"`; };
+const SWC = new Map(); const sw = n => { const k = n + (gReady(IMG) ? 1 : 0); if (!SWC.has(k)) SWC.set(k, swatch(n)); return SWC.get(k); };
+function texPicker(anchor, cur, pick) {
+  pop(`<h3>Texture</h3><div class="grid">${gTexNames().map(n => `<button data-t="${n}" class="${n === cur ? 'on' : ''}"><span class="sw" ${sw(n)}></span>${n}</button>`).join('')}</div>
+    <p class="muted" style="margin:6px 8px 2px">Textures are the atlas's <b>tex_</b> sprites (heights and materials too). Paint one in the heightmap editor as <b>tex_name</b>; it tiles by world position.</p>`, anchor,
+    m => m.onclick = e => { const b = e.target.closest('[data-t]'); if (b) { unpop(); pick(b.dataset.t); } });
+}
+function mapMenu() {
+  const ids = Object.keys(S.maps), sent = (() => { try { return JSON.parse(localStorage.getItem(LKEY)) || {}; } catch (e) { return {}; } })();
+  pop(`<button class="it" data-a="new">＋ New map…</button><button class="it" data-a="set">⚙ Map settings…</button><button class="it" data-a="dup">⧉ Duplicate</button><hr>
+    <h3>Open</h3>${ids.map(id => `<button class="it${id === G.id ? ' on' : ''}" data-open="${id}">${S.maps[id].name}<span class="k">${S.maps[id].w}×${S.maps[id].h}${sent[id] ? ' · in game' : ''}</span></button>`).join('')}<hr>
+    <button class="it" data-a="send">▶ Send to game <span class="k">this browser</span></button>${sent[G.id] ? '<button class="it" data-a="unsend">Remove from game</button>' : ''}
+    <button class="it" data-a="exp">⇩ Export file (.json)</button><button class="it" data-a="imp">⇧ Import file…</button><hr>
+    <button class="it red" data-a="del" style="color:var(--red)">Delete this map</button>`, $('#bMap'), m => m.onclick = e => {
+    const b = e.target.closest('button'); if (!b) return; const a = b.dataset.a;
+    if (b.dataset.open) { unpop(); open(b.dataset.open); return; }
+    if (a === 'new') return mapForm(true);
+    if (a === 'set') return mapForm(false);
+    unpop();
+    if (a === 'dup') { const c = JSON.parse(JSON.stringify(G)), n = newMap(G.name + ' copy', G.w, G.h, G.base); c.id = n.id; c.name = n.name; S.maps[c.id] = c; open(c.id); toast('Duplicated'); }
+    if (a === 'send') { sent[G.id] = G; localStorage.setItem(LKEY, JSON.stringify(sent)); toast('In the game\'s map list (this browser)'); }
+    if (a === 'unsend') { delete sent[G.id]; localStorage.setItem(LKEY, JSON.stringify(sent)); toast('Removed from the game'); }
+    if (a === 'exp') { const u = URL.createObjectURL(new Blob([JSON.stringify(G)], { type: 'application/json' })), l = document.createElement('a'); l.href = u; l.download = G.id + '.json'; document.body.appendChild(l); l.click(); l.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); }
+    if (a === 'imp') $('#file').click();
+    if (a === 'del') { if (!confirm('Delete "' + G.name + '"?')) return; delete S.maps[G.id]; const n = Object.keys(S.maps)[0]; if (n) open(n); else { const m = newMap('New map', 3000, 2000, 'grass'); S.maps[m.id] = m; open(m.id); } }
+  });
+}
+function mapForm(isNew) {
+  const m = isNew ? { name: 'New map', w: 3000, h: 2000, base: G ? G.base : 'grass' } : G;
+  pop(`<h3>${isNew ? 'New map' : 'Map settings'}</h3><div class="form">
+    <label>Name</label><input id="fN" value="${m.name.replace(/"/g, '&quot;')}">
+    <label>Size</label><select id="fS">${SIZES.map(([w, h]) => `<option value="${w}x${h}"${w === m.w && h === m.h ? ' selected' : ''}>${w} × ${h}</option>`).join('')}${SIZES.some(([w, h]) => w === m.w && h === m.h) ? '' : `<option selected value="${m.w}x${m.h}">${m.w} × ${m.h}</option>`}</select>
+    <label>Base</label><button class="btn" id="fB" type="button"><span class="sw" ${sw(m.base)}></span><span>${m.base}</span> ▾</button>
+    <div class="full"><button class="btn" id="fX">Cancel</button><button class="btn on" id="fO">${isNew ? 'Create' : 'Save'}</button></div></div>`, $('#bMap'), M => {
+    let base = m.base;
+    M.querySelector('#fB').onclick = () => texPicker($('#bMap'), base, t => { base = t; mapFormBack(); });
+    const mapFormBack = () => { const keep = { name: M.querySelector('#fN') ? M.querySelector('#fN').value : m.name }; m.name = keep.name; m.base = base; mapForm(isNew); };
+    M.querySelector('#fX').onclick = unpop;
+    M.querySelector('#fO').onclick = () => {
+      const [w, h] = M.querySelector('#fS').value.split('x').map(Number), name = M.querySelector('#fN').value.trim() || 'Map';
+      unpop();
+      if (isNew) { const n = newMap(name, w, h, base); S.maps[n.id] = n; open(n.id); return; }
+      snap(); G.name = name; G.w = w; G.h = h; G.base = base; bakeAll(); fit(); save(); ui();
+    };
+  });
+}
+function viewMenu() {
+  pop(`<button class="it${S.view === 'col' ? ' on' : ''}" data-v="col">Colour</button><button class="it${S.view === 'mat' ? ' on' : ''}" data-v="mat">Material <span class="k">R height · G shine · B glow</span></button><hr>
+    <button class="it" data-a="lines">${S.lines ? '☑' : '☐'} Shape outlines</button><button class="it" data-a="fit">⤢ Fit map</button>`, $('#bView'), m => m.onclick = e => {
+    const b = e.target.closest('button'); if (!b) return; unpop();
+    if (b.dataset.v) { S.view = b.dataset.v; bakeAll(); save(); ui(); }
+    if (b.dataset.a === 'lines') { S.lines = !S.lines; save(); draw(); }
+    if (b.dataset.a === 'fit') fit();
+  });
+}
+function layersMenu(anchor) {
+  pop(`<h3>Shapes · top first</h3>${G.stamps.length ? '' : '<p class="muted" style="margin:4px 8px">None yet: Draw one, or add a shape.</p>'}${G.stamps.map((s, i) => i).reverse().map(i => { const s = G.stamps[i]; return `<button class="lay${i === sel ? ' on' : ''}" data-i="${i}"><span class="sw" ${sw(s.t)}></span><span class="n">${i + 1}. ${s.t}${s.off ? ' (hidden)' : ''}</span><span class="m">${s.p.length / 2} pts · edge ${s.soft}</span></button>`; }).join('')}
+    <hr><button class="lay" data-i="base"><span class="sw" ${sw(G.base)}></span><span class="n">Base: ${G.base}</span><span class="m">${G.w}×${G.h}</span></button>`, anchor, m => m.onclick = e => {
+    const b = e.target.closest('[data-i]'); if (!b) return; unpop();
+    if (b.dataset.i === 'base') { sel = -1; ui(); draw(); return; }
+    sel = +b.dataset.i; selV = -1; tool = 'select'; focusSel(); ui(); draw();
+  });
+}
+function shapeMenu(anchor) {
+  pop(`<button class="it" data-k="sq">◻ Square</button><button class="it" data-k="circ">◯ Circle</button><button class="it" data-k="blob">☁ Blob</button>`, anchor, m => m.onclick = e => { const b = e.target.closest('[data-k]'); if (b) { unpop(); addShape(b.dataset.k); } });
+}
+function focusSel() { const b = gBox(G.stamps[sel]), [cx0, cy0] = [b.x + b.w / 2, b.y + b.h / 2]; if (cx0 < V.x || cy0 < V.y || cx0 > V.x + W / V.z || cy0 > V.y + H / V.z) { V.x = cx0 - W / 2 / V.z; V.y = cy0 - H / 2 / V.z; } }
+$('#file').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try { const m = JSON.parse(await f.text()); if (!m.stamps || !m.w) throw 0; if (S.maps[m.id] && !confirm('Replace your "' + S.maps[m.id].name + '"?')) m.id = newMap(m.name, 1, 1, '').id; S.maps[m.id] = m; open(m.id); toast('Imported'); }
+  catch (x) { toast('Not a map file'); }
+};
+
+/* ---------- the bottom bar: tools, then what the selection / drawing / map can do ---------- */
+function ui() {
+  if (!G) return;
+  $('#name').textContent = G.name; $('#bUndo').disabled = !UNDO.length; $('#bRedo').disabled = !REDO.length;
+  const s = sel >= 0 ? G.stamps[sel] : null;
+  let r1 = `<div class="r"><button class="btn${tool === 'select' ? ' on' : ''}" data-a="sel">✥ Select</button><button class="btn${tool === 'draw' ? ' on' : ''}" data-a="draw">✎ Draw</button><button class="btn" data-a="shape">＋ Shape ▾</button><span class="sp"></span><button class="btn" data-a="layers">☰ ${G.stamps.length}</button></div>`, r2;
+  if (draft) r2 = `<div class="r"><button class="btn" data-a="dtex"><span class="sw" ${sw(draft.t)}></span>▾</button><span class="muted" style="flex:1">Tap to add points · ${draft.p.length / 2}${draft.p.length >= 6 ? ' · tap the first to close' : ''}</span><button class="btn ic" data-a="dback" ${draft.p.length ? '' : 'disabled'}>⌫</button><button class="btn ic" data-a="dx">✕</button><button class="btn on" data-a="dok" ${draft.p.length >= 6 ? '' : 'disabled'}>✓ Done</button></div>`;
+  else if (s) r2 = `<div class="r"><button class="btn" data-a="tex"><span class="sw" ${sw(s.t)}></span>▾</button><label class="sl"><span>Edge</span><input type="range" id="soft" min="0" max="160" step="1" value="${s.soft}"><b id="softV">${s.soft}</b></label></div>
+    <div class="r"><label class="sl"><span>Round</span><input type="range" id="r" min="0" max="400" step="1" value="${s.r || 0}"><b id="rV">${s.r || 0}</b></label></div>
+    <div class="r"><button class="btn ic" data-a="up" title="Up">▲</button><button class="btn ic" data-a="down" title="Down">▼</button><button class="btn ic" data-a="eye" title="Hide">${s.off ? '◌' : '◉'}</button><button class="btn ic" data-a="dup" title="Duplicate">⧉</button>${selV >= 0 && s.p.length > 6 ? '<button class="btn" data-a="delv">Remove point</button>' : ''}<span class="sp"></span><button class="btn ic red" data-a="del" title="Delete">🗑</button></div>`;
+  else r2 = `<div class="r"><button class="btn" data-a="base"><span class="sw" ${sw(G.base)}></span>Base ▾</button><span class="muted" style="flex:1">${G.w}×${G.h} · tap a shape to edit it</span></div>`;
+  $('#btm').innerHTML = r1 + r2;
+  $('#hint').textContent = draft ? '' : tool === 'select' && s ? 'Drag the shape or its points · drag a blue dot to add a point' : '';
+  for (const k of ['soft', 'r']) {     // sliders: one undo step per drag, the old and new boxes re-baked
+    const sl = $('#' + k); if (!sl) continue; let b0 = null;
+    sl.oninput = () => { if (!b0) { snap(); b0 = gBox(s); } s[k] = +sl.value; $('#' + k + 'V').textContent = sl.value; const b = gBox(s); dirty(boxU(b0, b)); b0 = boxU(b0, b); draw(); };
+    sl.onchange = () => { b0 = null; save(); };
+  }
+}
+$('#btm').addEventListener('click', e => {
+  const b = e.target.closest('button[data-a]'); if (!b) return; const a = b.dataset.a, s = sel >= 0 ? G.stamps[sel] : null;
+  if (a === 'sel') { tool = 'select'; draft = null; }
+  if (a === 'draw') { tool = 'draw'; sel = -1; selV = -1; draft = { t: lastTex(), soft: 16, p: [] }; }
+  if (a === 'shape') return shapeMenu(b);
+  if (a === 'layers') return layersMenu(b);
+  if (a === 'dtex') return texPicker(b, draft.t, t => { draft.t = S.tex = t; save(); ui(); draw(); });
+  if (a === 'dback') draft.p.splice(-2);
+  if (a === 'dx') { draft = null; tool = 'select'; }
+  if (a === 'dok') return finishDraft();
+  if (a === 'tex') return texPicker(b, s.t, t => { snap(); S.tex = t; edit(q => q.t = t); });
+  if (a === 'base') return texPicker(b, G.base, t => { snap(); G.base = t; bakeAll(); save(); ui(); });
+  if (a === 'up') return move(1);
+  if (a === 'down') return move(-1);
+  if (a === 'eye') { snap(); return edit(q => q.off = q.off ? undefined : 1); }
+  if (a === 'dup') { snap(); const c = JSON.parse(JSON.stringify(s)); c.p = c.p.map(v => v + 24); G.stamps.splice(sel + 1, 0, c); sel++; dirty(gBox(c)); save(); }
+  if (a === 'delv') { snap(); edit(q => q.p.splice(selV * 2, 2)); selV = -1; }
+  if (a === 'del') { snap(); const bb = gBox(s); G.stamps.splice(sel, 1); sel = -1; selV = -1; dirty(bb); save(); }
+  ui(); draw();
+});
+$('#bMap').onclick = mapMenu; $('#bView').onclick = viewMenu;
+$('#bUndo').onclick = () => restore(UNDO, REDO); $('#bRedo').onclick = () => restore(REDO, UNDO);
+$('#bZin').onclick = () => zoomAt(1.4, W / 2, H / 2); $('#bZout').onclick = () => zoomAt(1 / 1.4, W / 2, H / 2); $('#bFit').onclick = fit;
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); restore(e.shiftKey ? REDO : UNDO, e.shiftKey ? UNDO : REDO); }
+  if (e.key === 'Delete' && sel >= 0) { snap(); const bb = gBox(G.stamps[sel]); G.stamps.splice(sel, 1); sel = -1; dirty(bb); save(); ui(); draw(); }
+  if (e.key === 'Enter' && draft) finishDraft();
+  if (e.key === 'Escape') { draft = null; tool = 'select'; sel = -1; ui(); draw(); }
+});
+let tt = 0; function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('on'); clearTimeout(tt); tt = setTimeout(() => t.classList.remove('on'), 1800); }
+addEventListener('resize', resize);
+document.addEventListener('gesturestart', e => e.preventDefault());     // iOS: no page zoom
+
+/* ---------- start: the atlas (textures), then the last map or a new one ---------- */
+(async () => {
+  resize();
+  if (!S.cur || !S.maps[S.cur]) { const m = newMap('New map', 3000, 2000, 'grass'); S.maps[m.id] = m; S.cur = m.id; }
+  open(S.cur);
+  try { ATLAS = await (await fetch('../atlas.json')).json(); } catch (e) { }
+  let n = 0; const done = () => { if (++n === 2) { GTX.clear(); SWC.clear(); bakeAll(); ui(); } };
+  for (const [im, src] of [[IMG, '../atlas.png'], [MIMG, '../atlas_m.png']]) { im.onload = done; im.onerror = done; im.src = src; }
+})();
+</script>
+</body>
+</html>

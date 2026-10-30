@@ -14,6 +14,8 @@ mat=base64.b64encode(open('atlas_m.png','rb').read()).decode()
 import glob
 js='\n'.join(open(f,encoding='utf-8').read() for f in sorted(glob.glob('src/*.js')))
 extra=open('atlas_extra.json',encoding='utf-8').read()
+# the map editor's maps (mapedit/ Export → maps/<id>.json): GMAPS (src/2b_ground.js)
+gmaps=json.dumps([json.load(open(f,encoding='utf-8')) for f in sorted(glob.glob('maps/*.json'))],separators=(',',':'))
 # every sprite's art (its opaque px) off its pivot: [x0, x1, y0, y1], so what's sized by the art (vehicles' hit boxes) follows it
 _A=np.array(Image.open('atlas.png').convert('RGBA'))[...,3]; _B={}
 for _n,_r in json.loads(meta).items():
@@ -23,7 +25,7 @@ for _n,_r in json.loads(meta).items():
 bounds=json.dumps(_B,separators=(',',':'))
 # automatic version stamp: the build number goes up by one whenever the game's source or art actually changes
 import hashlib,os,datetime
-h=hashlib.sha1((js+meta+extra+atlas+walls+mat).encode()).hexdigest()     # bounds: made from atlas
+h=hashlib.sha1((js+meta+extra+atlas+walls+mat+gmaps).encode()).hexdigest()     # bounds: made from atlas
 st=json.load(open('version.json')) if os.path.exists('version.json') else {'build':14,'hash':''}
 if st['hash']!=h: st['build']+=1; st['hash']=h; st['date']=datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).strftime('%Y-%m-%d %H:%M')
 json.dump(st,open('version.json','w'))
@@ -51,6 +53,7 @@ html,body{{height:100%;margin:0;background:var(--field);overflow:hidden;overscro
 <script>
 const ATLAS={meta};
 const EXTRA={extra};
+const GMAPS={gmaps};
 const BOUNDS={bounds};
 const ATLAS_SRC="data:image/png;base64,{atlas}";
 const WALLS_SRC="data:image/png;base64,{walls}";
