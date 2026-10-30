@@ -753,3 +753,6 @@ Art drop (drop.py): atlas.png: hull4, tur_dead; atlas_m.png: tur_dead, sol_leg0,
 ## Build 255: crackle fix, Sound Lab scope pinned + live
 - sfxRun's crackle grains lacked k:'n', so they went down the oscillator path and threw (non-finite filter cutoff) — explosions / cannon / wall crack lost their crackle and any layers after it in 254. Fixed.
 - Sound Lab: the waveform sits in the (now one-line) sticky header with length + peak; it redraws while a slider is dragged (one offline render in flight, the latest settings drawn next; B cached).
+
+## Sound Lab: "Plays when" (no game build)
+- sound/index.html PLAYS: per game sound name, when the game plays it (read off every sfx / psfx call in 3_sim, 4_ai, 5c_net, 5d_dev, 6_menus). Shown as a dropdown under "Plays as". Keep it in step when a sound call is added or moved.

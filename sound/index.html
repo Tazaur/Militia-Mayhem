@@ -51,6 +51,8 @@ input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;ba
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--acc);margin-top:-8px;border:2px solid var(--bg)}
 input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:var(--line2)}
 input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--acc);border:2px solid var(--bg)}
+details.plays{background:var(--panel2);border-radius:10px;padding:0 10px 6px;margin:0 0 6px;font-size:13px;line-height:1.5}
+details.plays div{padding-left:2px}
 details>summary{cursor:pointer;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--faint);padding:6px 0;list-style:none}
 details>summary::before{content:'▸ '}
 details[open]>summary::before{content:'▾ '}
@@ -178,6 +180,59 @@ const TPL = [
   ['Bell (FM)', 'metal', 'ping', { rv: 0.6, L: [{ k: 'f', f: 880, mr: 3.5, mi: 4, mi2: 0, a: 0.002, t: 1.5, v: 0.15 }] }],
   ['Blank', 'misc', 'beep', { L: [{ k: 't', f: 440, t: 0.2, v: 0.3 }] }]
 ];
+/* when the game plays each sound (read off its sfx / psfx calls; update with them). "Only you" sounds go to that one
+   player; the rest play at a spot on the map, full volume on screen and fading out beyond it */
+const PLAYS = {
+  rifle: ['Someone fires an M4A1 or SMG (every shot)'],
+  br: ['Someone fires a SCAR, AK-47 or marksman rifle (every shot)'],
+  pistol: ['Someone fires a pistol or machine pistol (every shot)'],
+  mg: ['Someone fires an LMG or heavy MG (every shot)', 'The MG on a tank, jeep or nest fires (every bullet, about 13 a second)'],
+  shotgun: ['Someone fires a shotgun'],
+  sniper: ['Someone fires the .50 cal'],
+  cannon: ['A tank fires its cannon'],
+  rocket: ['Someone fires the bazooka (launch only; the sizzle in flight is a separate loop, not editable yet)'],
+  whiz: ['Only you: an enemy rifle or pistol bullet passes within 30 px of you and misses', 'Once per bullet; MG bullets never whiz', 'Not when you are hit (that is "hurt" and "hit")'],
+  boom: ['A grenade goes off', 'A bazooka rocket hits something or runs out of range', 'Close by, your hearing also muffles and rings (separate effect)'],
+  bigboom: ['A tank shell lands', 'A mine goes off', 'A vehicle is destroyed (tank or jeep)', 'Close by, your hearing also muffles and rings (separate effect)'],
+  crack: ['A tree is destroyed'],
+  crush: ['A hay bale, fence, sandbag or other prop is destroyed', 'Dev yard: a vehicle rams a wall', 'Dev yard: a roof tile falls (60% volume)'],
+  crumble: ['Dev yard: a wall section collapses'],
+  glass: ['Dev yard: a glass pane is first hit', 'Dev yard: a glass section collapses'],
+  splat: ['A soldier dies from a bullet or the knife (falls as a body)', 'A soldier dies from an explosion, mine, fire or being run over: once when flung, again when the body lands'],
+  splash: ['A soldier dies while swimming', 'A flung body lands in water', 'Swimming (random, about 4 a second, half volume)', 'A smoke grenade pops (half volume)'],
+  clang: ['Two vehicles crash (closing speed over 70, at most every 0.5 s)', 'A vehicle hits a wall or the map edge at speed over 120'],
+  ting: ['A bullet hits a vehicle hull (not its crew)'],
+  clink: ['A grenade bounces off the ground (hard bounces only)', 'A grenade bounces off a wall or prop'],
+  hurt: ['A soldier is hit by a bullet or MG fire (not explosions or the knife)', 'Co-op: a player goes down'],
+  hit: ['Only you: your shot, blast or knife damages a soldier or vehicle (the hit marker)'],
+  knife: ['Someone swings the knife'],
+  thud: ['A knife swing connects'],
+  door: ['Someone gets into any vehicle seat', 'Someone gets out of a vehicle'],
+  shuffle: ['Someone switches seats inside a vehicle'],
+  horn: ['A jeep driver presses fire'],
+  reload: ['A reload starts (60% volume)', 'Someone switches weapon (30% volume)'],
+  empty: ['Trigger pulled with an empty magazine'],
+  throw: ['A grenade or smoke grenade is thrown'],
+  rustle: ['Someone changes stance (prone / stand)', 'Crawling while prone (random, about 3 a second, half volume)'],
+  torch: ['An engineer is repairing a vehicle (continuous)'],
+  heat: ['A vehicle or nest MG overheats'],
+  drop: ['A medic drops a med bag, or a support drops an ammo box'],
+  beep: ['A mine is placed', 'A vehicle drives onto a mine (just before it blows)'],
+  heal: ['Only you: a med bag is healing you'],
+  pickup: ['Only you: an ammo box refills you', 'Only you: you pick up an ammo pouch or a supply crate'],
+  ping: ['Only you: you press spot'],
+  points: ['Only you: you earn points (kill, repair, resupply…)'],
+  spawn: ['Only you: you deploy', 'Co-op: you are revived'],
+  jump: ['Someone jumps or vaults'],
+  ui: ['Menus: moving, selecting, changing settings', 'Opening / closing the map', 'Switching grenade type'],
+  join: ['A player joins the lobby', 'A player readies up', 'The match starts'],
+  leave: ['A player leaves the lobby or un-readies', 'A blocked action (lobby full, can\'t start yet)'],
+  cap: ['Your team captures a point', 'Co-op: a wave is cleared'],
+  lost: ['Any other capture or loss of a point', 'A team is low on tickets', 'Co-op: a wave starts', 'Co-op: a teammate goes down'],
+  win: ['The match ends'],
+  eng_tank: ['Runs while a tank has a driver; stops when it is empty or wrecked', 'Pitch, filter and track clatter follow its speed', 'The sub-bass swells as it gets near a player'],
+  eng_car: ['Runs while a jeep has a driver; stops when it is empty or wrecked', 'Pitch, filter and clatter follow its speed']
+};
 const builtin = b => clone(SFXD[b] || ENGD[b]);
 function seed() {
   const lib = [];
@@ -341,7 +396,8 @@ function render() {
   <div class="card"><div class="row"><span class="muted">Compare</span><select id="cmp"><option value="">—</option><option value="#pin"${S.cmp === '#pin' ? ' selected' : ''}${pinB ? '' : ' disabled'}>Pinned snapshot</option>${opts(S.cmp)}</select>
       <button class="btn sm" id="pin" title="Remember this version to compare against">Pin</button><button class="btn sm" id="pb">▶ B</button>${P.e ? '' : '<button class="btn sm" id="pab">A → B</button>'}</div></div>
   <div class="card"><h2>${P.e ? 'Engine' : 'Sound'}<span class="sp"></span></h2>
-    <div class="row" style="margin-bottom:6px"><span class="muted">Plays as</span><select id="gn">${targets}</select><select id="cat">${CATS.map(([c, nm]) => `<option value="${c}"${c === p.cat ? ' selected' : ''}>${nm}</option>`).join('')}</select></div>`;
+    <div class="row" style="margin-bottom:6px"><span class="muted">Plays as</span><select id="gn">${targets}</select><select id="cat">${CATS.map(([c, nm]) => `<option value="${c}"${c === p.cat ? ' selected' : ''}>${nm}</option>`).join('')}</select></div>
+    <details class="plays"${S._ow !== false ? ' open' : ''} data-o="w"><summary>Plays when</summary>${(PLAYS[p.gn] || ['Not played anywhere in the game yet']).map(t => `<div>》${esc(t)}</div>`).join('')}</details>`;
   if (P.e) h += EG.map(([g, ks]) => `<div class="grp">${g}</div>` + ks.map(k => ctl('P', k, E[k], get('P', k))).join('')).join('');
   else h += ['v', 'p', 'pr', 'rv', 'bs', 'lp'].map(k => ctl('P', k, G[k], get('P', k))).join('') + `<details${S._og ? ' open' : ''} data-o="g"><summary>In the game</summary>${['th', 'in', 'nd'].map(k => ctl('P', k, G[k], get('P', k))).join('')}</details>`;
   h += `<div class="grp">Preview (not saved)</div>` + (P.e ? ['sp', 'near', 'dist'] : ['dist', 'pan']).map(k => ctl('X', k, X[k], S.X[k])).join('') + (P.e ? '<div class="row" style="margin-top:6px"><button class="btn sm" id="rev2">Rev up &amp; down</button></div>' : '') + '</div>';
@@ -390,7 +446,7 @@ main.addEventListener('change', e => {
   if (el.dataset.p === 'X') { save(); if (S.auto && !cur().P.e) play(); return; }
   done(true);
 });
-main.addEventListener('toggle', e => { const o = e.target.dataset && e.target.dataset.o; if (!o) return; if (o === 'g') S._og = e.target.open; else { const [i, j] = o.split(':'); cur().P.L[+i]['_o' + j] = e.target.open; } save(); }, true);
+main.addEventListener('toggle', e => { const o = e.target.dataset && e.target.dataset.o; if (!o) return; if (o === 'g') S._og = e.target.open; else if (o === 'w') S._ow = e.target.open; else { const [i, j] = o.split(':'); cur().P.L[+i]['_o' + j] = e.target.open; } save(); }, true);
 main.addEventListener('focusin', e => { if (e.target.classList.contains('val')) setTimeout(() => e.target.select(), 0); });
 main.addEventListener('click', e => {
   const b = e.target.closest('button,canvas,.sum'); if (!b) return;
