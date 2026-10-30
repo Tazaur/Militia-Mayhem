@@ -104,8 +104,8 @@ function fallK(F, d, R) {
    everything muffles to cut Hz (+ far Hz when further off) and a whine rings (f1/v1, f2/v2), recovering over d0 + d1·k s; rm rumble */
 const SEVX = { deafen: { re: 1.6, cut: 260, far: 1600, d0: 1.2, d1: 2.2, f1: 3720, v1: 0.05, f2: 4180, v2: 0.03, rm: 0.8 } };
 function deafen(A, k, E0) {
-  const E = Object.assign({}, SEVX.deafen, E0), c = A.ctx, now = c.currentTime, dur = E.d0 + E.d1 * k, f = A.ear.frequency;
-  f.cancelScheduledValues(now); f.setValueAtTime(Math.max(f.value, 20), now); f.exponentialRampToValueAtTime(Math.max(20, E.cut + (1 - k) * E.far), now + 0.05); f.exponentialRampToValueAtTime(20000, now + dur);
+  const E = Object.assign({}, SEVX.deafen, E0), c = A.ctx, now = sfxT(A), dur = E.d0 + E.d1 * k, f = A.ear.frequency;
+  aHold(f, now); f.exponentialRampToValueAtTime(Math.max(20, E.cut + (1 - k) * E.far), now + 0.05); f.exponentialRampToValueAtTime(20000, now + dur);
   for (const [fq, vv] of [[E.f1, E.v1], [E.f2, E.v2]]) { if (!vv) continue; const o = c.createOscillator(); o.type = 'sine'; o.frequency.value = fq; const g = c.createGain(); g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vv * k), now + 0.12); g.gain.exponentialRampToValueAtTime(0.0001, now + dur); o.connect(g); g.connect(A.master); o.start(now); o.stop(now + dur + 0.1); }
 }
 /* does event context x pass condition C */

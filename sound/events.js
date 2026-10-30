@@ -85,7 +85,7 @@ function rulePlay(r, T) {
   const F = ruleF(r), pos = r.who !== 'pl' && r.who !== 'ui', hv = P0.nd || !pos ? 1 : fallK(F, T.dist || 0, EVR);
   if (hv * v < 0.02) return;
   const P = r.p && r.p !== 1 ? Object.assign({}, P0, { p: (P0.p || 1) * r.p }) : P0;
-  const go = () => sfxRun(a, P, sfxOut(a, P, hv, 0, a.sfx, a.verbIn, pos ? F : null), a.ctx.currentTime + 0.02, hv * v);
+  const go = () => sfxRun(a, P, sfxOut(a, P, hv, 0, a.sfx, a.verbIn, pos ? F : null), sfxT(a), hv * v);
   if (r.dl > 0) setTimeout(go, r.dl * 1000); else go();
 }
 const rulePass = (r, T) => !r.off && sevTest(r.if, T) && (r.who !== 'pl' || +T.me === 1);

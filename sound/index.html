@@ -98,12 +98,31 @@ svg.fc text{font:10px var(--fm);fill:var(--faint)}
 .flds code,p code{font-family:var(--fm);font-size:12px;color:var(--ink)}
 .plays .go{cursor:pointer}
 .plays .go:hover{color:var(--acc2)}
+/* meters (always in the header) */
+#meters{max-width:728px;margin:5px auto 0;display:grid;grid-template-columns:1fr 1fr;gap:3px 10px;font-family:var(--fm);font-size:10px;color:var(--faint)}
+.mrow{display:grid;grid-template-columns:26px 1fr 34px;align-items:center;gap:5px}
+.mrow div{position:relative;height:7px;border-radius:3px;background:var(--panel2);overflow:hidden}
+.mrow i{position:absolute;left:0;top:0;bottom:0;background:var(--green)}
+.mrow i.a{background:var(--acc)}
+.mrow i.r{background:var(--red)}
+.mrow b{position:absolute;top:0;bottom:0;width:2px;background:var(--ink)}
+.mrow u{position:absolute;top:0;bottom:0;left:88.9%;width:1px;background:var(--red);opacity:.7}
+.mrow s{text-decoration:none;text-align:right}
+.lights{grid-column:1/3;display:flex;gap:5px;align-items:center}
+.lights em{font-style:normal;padding:1px 5px;border-radius:4px;background:var(--panel2);color:var(--faint);letter-spacing:.5px}
+.lights em.l-over.on{background:var(--acc);color:#1a1405}
+.lights em.l-ceil.on{background:var(--orange);color:#1a1405}
+.lights em.l-clip.on{background:var(--red);color:#fff}
+.lights .gr{flex:none;white-space:nowrap}
+.lights #stats{flex:1;min-width:0;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right}
+.lights .btn.sm{min-height:20px;font-size:10px;padding:0 6px}
+body.mix #scope,body.mix #auto,body.mix #loop,body.mix #vary{display:none}
 @media (max-width:420px){.sl{grid-template-columns:100px 1fr 72px;gap:6px}.btn.sm{padding:0 7px}}
 </style>
 </head>
 <body>
 <header><div class="hr">
-  <h1>Sound Lab</h1><div class="tabs"><button data-tab="snd">Sounds</button><button data-tab="ev">Events</button></div><span class="muted" id="stats">…</span>
+  <h1>Sound Lab</h1><div class="tabs"><button data-tab="snd">Sounds</button><button data-tab="ev">Events</button><button data-tab="mix">Mix</button></div><span style="flex:1"></span>
   <button class="btn ic" id="undo" title="Undo">↶</button><button class="btn ic" id="redo" title="Redo">↷</button>
   <button class="btn ic" id="mbtn" title="More">⋯</button>
   <div class="menu" id="menu">
@@ -118,6 +137,7 @@ svg.fc text{font:10px var(--fm);fill:var(--faint)}
     <button data-m="reset">Reset library</button>
   </div></div>
   <div id="scope"><canvas id="wave" title="Tap to play"></canvas></div>
+  <div id="meters"></div>
 </header>
 <main id="main"></main>
 <div class="bar"><div class="in">
@@ -133,6 +153,7 @@ svg.fc text{font:10px var(--fm);fill:var(--faint)}
 <script src="../src/1c_sfx.js"></script>
 <script src="../src/1d_sev.js"></script>
 <script src="events.js"></script>
+<script src="mix.js"></script>
 <script>
 'use strict';
 const $ = s => document.querySelector(s), esc = t => String(t).replace(/[&<>"']/g, c => '&#' + c.charCodeAt(0) + ';');
@@ -248,23 +269,17 @@ const GKEY = 'mmgl.sfxlab';
 const gameGet = () => { try { return JSON.parse(localStorage.getItem(GKEY)) || {}; } catch (e) { return {}; } };
 const gameSet = o => { try { if (Object.keys(o).length) localStorage.setItem(GKEY, JSON.stringify(o)); else localStorage.removeItem(GKEY); } catch (e) { } };
 
-/* ---------- audio: the game's chain (soft compressor + limiter, the effects bus at full volume, the shared reverb) ---------- */
+/* ---------- audio: the game's own master chain (auChain, 1c_sfx.js) via labBuild (mix.js): stages switchable, meters ---------- */
 let A = null;
 function audio() {
   if (A) { if (A.ctx.state === 'suspended') A.ctx.resume(); return A; }
-  const C = window.AudioContext || window.webkitAudioContext, c = new C(), B = auBufs(c);
-  const comp = c.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 5; comp.connect(c.destination);
-  const lim = c.createDynamicsCompressor(); lim.threshold.value = -4; lim.ratio.value = 14; lim.attack.value = 0.002; lim.release.value = 0.12; lim.connect(comp);
-  const ear = c.createBiquadFilter(); ear.type = 'lowpass'; ear.frequency.value = 20000; ear.Q.value = 0.5; ear.connect(lim);
-  const master = c.createGain(); master.gain.value = 0.85; master.connect(ear);
-  const sfx = c.createGain(); sfx.gain.value = 0.75; sfx.connect(master);
-  const verb = c.createConvolver(); verb.buffer = B.ir; const verbIn = c.createGain(); verbIn.gain.value = 0.6; verbIn.connect(verb); verb.connect(master);
-  A = { ctx: c, noise: B.noise, curve: B.curve, sfx, verbIn, ear, master };
+  const C = window.AudioContext || window.webkitAudioContext, c = new C();
+  A = labBuild(c); A.la = Math.min(0.05, (c.baseLatency || 0.01) + 0.004); labRoute(A, byp()); meterStart();
   return A;
 }
 const hv = () => 1 - S.X.dist;
 function soloed(P) { if (P.e || !P.L.some(L => L._s)) return P; const Q = clone(P); Q.L.forEach(L => { if (!L._s) L.m = 1; }); return Q; }
-function fire(P, at) { const a = audio(), h = P.nd ? 1 : hv(); sfxRun(a, P, sfxOut(a, P, h, S.X.pan, a.sfx, a.verbIn), at || a.ctx.currentTime + 0.02, P.nd ? 1 : h); }
+function fire(P, at) { const a = audio(), h = P.nd ? 1 : hv(); sfxRun(a, P, sfxOut(a, P, h, S.X.pan, a.sfx, a.verbIn), at || sfxT(a), P.nd ? 1 : h); }
 let ENG = null, rev = 0;
 function engOn(P) { const a = audio(); engOff(); ENG = engBuild(a, P, a.sfx); engTick(); playUI(); }
 function engOff() { if (ENG) engStop(ENG); ENG = null; rev = 0; playUI(); }
@@ -282,7 +297,7 @@ function play(P) {
   fire(soloed(P));
   clearTimeout(loopT); if (S.loop) loopT = setTimeout(() => play(), Math.max(600, (sfxLen(P) + 0.5) * 1000));
 }
-function playUI() { const b = $('#play'), e = cur().P.e; if (S.tab === 'ev') { b.classList.remove('run'); b.textContent = '▶ TEST EVENT'; return; } b.classList.toggle('run', !!ENG); b.textContent = e ? (ENG ? '■ STOP' : '▶ RUN ENGINE') : '▶ PLAY'; }
+function playUI() { const b = $('#play'), e = cur().P.e; if (S.tab === 'ev' || S.tab === 'mix') { b.classList.remove('run'); b.textContent = S.tab === 'ev' ? '▶ TEST EVENT' : '▶ ' + SCENE[S.mixLast || 'fight'][0].toUpperCase(); return; } b.classList.toggle('run', !!ENG); b.textContent = e ? (ENG ? '■ STOP' : '▶ RUN ENGINE') : '▶ PLAY'; }
 /* compare: A is the preset, B the pinned snapshot or another preset */
 const cmpP = () => S.cmp === '#pin' ? pinB : (S.lib.find(p => p.id === S.cmp) || {}).P;
 function playB() { const B = cmpP(); if (!B) return toast('Pick something to compare'); if (B.e) { engOff(); engOn(B); } else fire(B); }
@@ -300,8 +315,8 @@ async function render1(P) {
   if (!OC || !P) return null;
   const len = P.e ? 1.5 : Math.min(8, sfxLen(P) + (P.rv ? 0.9 : 0.1)), c = new OC(1, Math.ceil(SR * len), SR);
   if (!OB) OB = auBufs(c);
-  const a = { ctx: c, noise: OB.noise, curve: OB.curve }, out = c.createGain(); out.gain.value = 0.75 * 0.85; out.connect(c.destination);
-  const vb = c.createConvolver(); vb.buffer = OB.ir; const vi = c.createGain(); vi.gain.value = 0.6; vi.connect(vb); vb.connect(out);
+  const a = { ctx: c, noise: OB.noise, curve: OB.curve, byp: byp() }, out = c.createGain(); out.gain.value = 0.75 * 0.85; out.connect(c.destination);     // the bus level: before the master chain
+  const vb = c.createConvolver(); vb.buffer = OB.ir; const vi = c.createGain(); vi.gain.value = 0.6; const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 180; hp.Q.value = 0.6; vi.connect(hp); hp.connect(vb); vb.connect(out);
   if (P.e) { const N = engBuild(a, P, out); engSet(N, S.X.sp, hv(), S.X.near, 1); }
   else { const h = P.nd ? 1 : hv(); sfxRun(a, soloed(P), sfxOut(a, P, h, 0, out, vi), 0.005, P.nd ? 1 : h); }
   return c.startRendering ? await new Promise((ok, no) => { const r = c.startRendering(); if (r && r.then) r.then(ok, no); else c.oncomplete = e => ok(e.renderedBuffer); }) : null;
@@ -316,15 +331,16 @@ async function drawWave() {
   g.fillStyle = '#2f3c28'; for (let s = 0.1; s < dur; s += dur > 2 ? 0.5 : 0.1) g.fillRect(s / dur * W | 0, 0, 1, Hh);
   g.fillRect(0, mid, W, 1);
   let peak = 0;
+  let overs = 0;
   const one = (buf, col, al) => {
     const x = buf.getChannelData(0), per = buf.duration / dur * x.length / W; g.fillStyle = col; g.globalAlpha = al;
-    for (let i = 0; i < W; i++) { let lo = 0, hi = 0; const a0 = (i * per) | 0, a1 = Math.min(x.length, ((i + 1) * per) | 0); for (let j = a0; j < a1; j++) { const v = x[j]; if (v < lo) lo = v; if (v > hi) hi = v; } if (a1 <= a0) continue; if (buf === ba) peak = Math.max(peak, hi, -lo); g.fillRect(i, mid - Math.min(1, hi) * mid, 1, Math.max(1, (hi - lo) * mid)); }
+    for (let i = 0; i < W; i++) { let lo = 0, hi = 0; const a0 = (i * per) | 0, a1 = Math.min(x.length, ((i + 1) * per) | 0); for (let j = a0; j < a1; j++) { const v = x[j]; if (v < lo) lo = v; if (v > hi) hi = v; } if (a1 <= a0) continue; if (buf === ba) peak = Math.max(peak, hi, -lo); g.fillRect(i, mid - Math.min(1, hi) * mid, 1, Math.max(1, (hi - lo) * mid)); if (buf === ba && (hi > 1 || lo < -1)) { overs++; g.fillStyle = '#ef5a44'; g.fillRect(i, 0, 1, 4); g.fillRect(i, Hh - 4, 1, 4); g.fillStyle = col; } }
     g.globalAlpha = 1;
   };
   if (bb) one(bb, '#4c8dff', 0.55);
   one(ba, '#e0b72c', 0.9);
   const db = peak > 0 ? 20 * Math.log10(peak) : -99;
-  $('#stats').innerHTML = (P.e ? 'speed ' + S.X.sp.toFixed(2) : sfxLen(P).toFixed(2) + ' s') + ' · <span style="color:' + (db > -1 ? 'var(--red)' : 'inherit') + '" title="' + (db > -1 ? 'loud: the limiter squashes it' : 'peak') + '">' + db.toFixed(1) + ' dB</span>' + (bb ? ' · <span style="color:var(--blue)">B</span>' : '');
+  $('#stats').innerHTML = (P.e ? 'speed ' + S.X.sp.toFixed(2) : sfxLen(P).toFixed(2) + ' s') + ' · <span style="color:' + (db > -1 ? 'var(--red)' : 'inherit') + '" title="' + (db > -1 ? 'loud on its own: the master chain has to hold it down' : 'peak, before the master chain') + '">' + db.toFixed(1) + ' dB</span>' + (overs ? ' · <span style="color:var(--red)" title="Red marks: on its own this sound goes past full scale there; the chain has to catch it">over</span>' : '') + (bb ? ' · <span style="color:var(--blue)">B</span>' : '');
 }
 
 /* ---------- controls ---------- */
@@ -359,8 +375,9 @@ function layerCard(L, i, n) {
     ${L._c ? '' : body}</div>`;
 }
 function render() {
-  evInit(); document.body.classList.toggle('ev', S.tab === 'ev'); document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === (S.tab || 'snd')));
+  evInit(); document.body.classList.toggle('ev', S.tab === 'ev'); document.body.classList.toggle('mix', S.tab === 'mix'); document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === (S.tab || 'snd')));
   if (S.tab === 'ev') { renderEv(); playUI(); return; }
+  if (S.tab === 'mix') { renderMix(); playUI(); return; }
   const p = cur(), P = p.P, game = gameGet(), inGame = game[p.gn] && JSON.stringify(game[p.gn]) === JSON.stringify(pack(P));
   const opts = sel => CATS.map(([c, nm]) => { const l = S.lib.filter(q => q.cat === c); return l.length ? `<optgroup label="${nm}">${l.map(q => `<option value="${q.id}"${q.id === sel ? ' selected' : ''}>${esc(q.nm)}${changed(q) && q.b ? ' •' : ''}</option>`).join('')}</optgroup>` : ''; }).join('');
   const tl = P.e ? ENGS : soundNames(); const targets = tl.map(g => `<option${g === p.gn ? ' selected' : ''}>${g}</option>`).join('') + (tl.includes(p.gn) ? '' : `<option selected>${esc(p.gn)}</option>`) + (P.e ? '' : '<option value="#new">＋ Other name…</option>');
@@ -402,11 +419,13 @@ function setVal(el, v, live) {
 function done(fromUser) { commit(); if (fromUser && S.auto && !cur().P.e) play(); }
 main.addEventListener('input', e => {
   if (S.tab === 'ev') return evInput(e);
+  if (S.tab === 'mix') return;
   const el = e.target; if (!el.dataset.k) return;
   if (el.type === 'range') setVal(el, fromPos(+el.value, spec(el.dataset.p, el.dataset.k, obj(el.dataset.p))), true);
 });
 main.addEventListener('change', e => {
   if (S.tab === 'ev') return evChange(e);
+  if (S.tab === 'mix') return mixChange(e);
   const el = e.target;
   if (el.dataset.sw) { const p = el.dataset.sw, o = obj(p); o.f2 = el.checked ? r4((o.f || SFXK[o.k].f) * 0.4) : 0; render(); done(true); return; }
   if (el.id === 'pick') { engOff(); S.cur = el.value; render(); commit(); return; }
@@ -424,10 +443,11 @@ main.addEventListener('change', e => {
   if (el.dataset.p === 'X') { save(); if (S.auto && !cur().P.e) play(); return; }
   done(true);
 });
-main.addEventListener('toggle', e => { if (S.tab === 'ev') return evToggle(e); const o = e.target.dataset && e.target.dataset.o; if (!o) return; if (o === 'g') S._og = e.target.open; else if (o === 'w') S._ow = e.target.open; else { const [i, j] = o.split(':'); cur().P.L[+i]['_o' + j] = e.target.open; } save(); }, true);
+main.addEventListener('toggle', e => { if (S.tab === 'ev') return evToggle(e); if (S.tab === 'mix') return; const o = e.target.dataset && e.target.dataset.o; if (!o) return; if (o === 'g') S._og = e.target.open; else if (o === 'w') S._ow = e.target.open; else { const [i, j] = o.split(':'); cur().P.L[+i]['_o' + j] = e.target.open; } save(); }, true);
 main.addEventListener('focusin', e => { if (e.target.classList.contains('val')) setTimeout(() => e.target.select(), 0); });
 main.addEventListener('click', e => {
   if (S.tab === 'ev') return evClick(e);
+  if (S.tab === 'mix') return mixClick(e);
   const g = e.target.closest('[data-goev]'); if (g) { S.tab = 'ev'; S.ev.cur = g.dataset.goev; engOff(); render(); save(); scrollTo(0, 0); return; }
   const b = e.target.closest('button,canvas,.sum'); if (!b) return;
   const P = cur().P, i = +b.dataset.i;
@@ -509,13 +529,15 @@ $('#menu').addEventListener('click', e => {
 });
 $('#file').onchange = async e => { const f = e.target.files[0]; if (f) importPresets(await f.text()); e.target.value = ''; };
 $('#undo').onclick = () => hist(-1); $('#redo').onclick = () => hist(1);
-$('#play').onclick = () => S.tab === 'ev' ? evFire() : play();
+const go = () => S.tab === 'ev' ? evFire() : S.tab === 'mix' ? scenePlay(S.mixLast || 'fight') : play();
+$('#play').onclick = go;
+$('#meters').innerHTML = meterHTML(); $('#mreset').onclick = meterReset;
 document.querySelector('.tabs').onclick = e => { const t = e.target.dataset.tab; if (!t || t === (S.tab || 'snd')) return; S.tab = t; engOff(); clearTimeout(loopT); render(); save(); scrollTo(0, 0); };
 $('#auto').onclick = () => { S.auto = !S.auto; $('#auto').classList.toggle('on', S.auto); save(); };
 $('#loop').onclick = () => { S.loop = !S.loop; $('#loop').classList.toggle('on', S.loop); save(); if (S.loop) play(); else clearTimeout(loopT); };
 $('#vary').onclick = vary;
 $('#wave').onclick = () => play();
-addEventListener('keydown', e => { if (e.target.closest('input,textarea,select')) return; if (e.code === 'Space') { e.preventDefault(); S.tab === 'ev' ? evFire() : play(); } if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') { e.preventDefault(); hist(e.shiftKey ? 1 : -1); } });
+addEventListener('keydown', e => { if (e.target.closest('input,textarea,select')) return; if (e.code === 'Space') { e.preventDefault(); go(); } if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') { e.preventDefault(); hist(e.shiftKey ? 1 : -1); } });
 addEventListener('resize', wave);
 document.addEventListener('visibilitychange', () => { if (document.hidden) { engOff(); clearTimeout(loopT); } });
 render(); commit();

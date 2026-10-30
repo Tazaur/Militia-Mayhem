@@ -365,28 +365,26 @@ function audioInit() {
   const C = window.AudioContext || window.webkitAudioContext; if (!C) return;
   try {
     const c = new C(); AU.ctx = c;
-    const comp = c.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 5; comp.connect(c.destination);
-    const lim = c.createDynamicsCompressor(); lim.threshold.value = -4; lim.ratio.value = 14; lim.attack.value = 0.002; lim.release.value = 0.12; lim.connect(comp);
-    AU.ear = c.createBiquadFilter(); AU.ear.type = 'lowpass'; AU.ear.frequency.value = 20000; AU.ear.Q.value = 0.5; AU.ear.connect(lim);
-    const master = c.createGain(); master.gain.value = 0.85; master.connect(AU.ear); AU.master = master;
+    const K = auChain(c), B = auBufs(c); AU.K = K; AU.ear = K.ear; AU.master = K.master;     // the shared master chain (1c_sfx.js)
+    AU.la = Math.min(0.05, (c.baseLatency || 0.01) + 0.004);     // sounds start this far ahead (sfxT): one output buffer, so an attack is never in the past
     // game sounds go through AU.muf, a lowpass that closes while a menu is up (audioTick); menu clicks skip it (AU.ui)
-    AU.muf = c.createBiquadFilter(); AU.muf.type = 'lowpass'; AU.muf.frequency.value = 20000; AU.muf.Q.value = 0.6; AU.muf.connect(master);
-    AU.sfx = c.createGain(); AU.sfx.connect(AU.muf); AU.ui = c.createGain(); AU.ui.connect(master); AU.mus = c.createGain(); AU.mus.connect(master);
-    const B = auBufs(c); AU.noise = B.noise; AU.curve = B.curve;     // shared with the Sound Lab (1c_sfx.js)
-    AU.verb = c.createConvolver(); AU.verb.buffer = B.ir; AU.verbIn = c.createGain(); AU.verbIn.gain.value = 0.6; AU.verbIn.connect(AU.verb); AU.verb.connect(AU.muf);
+    AU.muf = c.createBiquadFilter(); AU.muf.type = 'lowpass'; AU.muf.frequency.value = 20000; AU.muf.Q.value = 0.6; AU.muf.connect(K.master);
+    AU.sfx = c.createGain(); AU.sfx.connect(AU.muf); AU.ui = c.createGain(); AU.ui.connect(K.master); AU.mus = c.createGain(); AU.mus.connect(K.master);
+    AU.noise = B.noise; AU.curve = B.curve;     // shared with the Sound Lab (1c_sfx.js)
+    K.verb.buffer = B.ir; K.verb.disconnect(); K.verb.connect(AU.muf); AU.verb = K.verb; AU.verbIn = K.verbIn;
     applyMute(); Music.start();
   } catch (e) { AU.ctx = null; }
 }
 /* the volume sliders (0..100): effects and music, each times master; at 0 nothing is played at all (sfxOn / musOn) */
 const sfxVol = () => 0.75 * CFG.volSfx / 100 * CFG.volMaster / 100;
-function applyMute() { AU.sfxOn = CFG.volSfx > 0 && CFG.volMaster > 0; AU.musOn = CFG.volMus > 0 && CFG.volMaster > 0; if (!AU.ctx) return; AU.sfx.gain.value = !AU.pz ? sfxVol() : 0; AU.ui.gain.value = sfxVol(); AU.mus.gain.value = 0.3 * CFG.volMus / 100 * CFG.volMaster / 100; }
+function applyMute() { AU.sfxOn = CFG.volSfx > 0 && CFG.volMaster > 0; AU.musOn = CFG.volMus > 0 && CFG.volMaster > 0; if (!AU.ctx) return; const t = AU.ctx.currentTime; AU.sfx.gain.setTargetAtTime(!AU.pz ? sfxVol() : 0, t, 0.02); AU.ui.gain.setTargetAtTime(sfxVol(), t, 0.02); AU.mus.gain.setTargetAtTime(0.3 * CFG.volMus / 100 * CFG.volMaster / 100, t, 0.02); }
 /* menus muffle the battle behind them (the demo battle on the title screen, the match under pause / lobby / settings) */
 function audioTick() {
   if (!AU.ctx || !AU.muf) return;
   const menu = SET.open || state !== 'play' || !M || M.demo, f = menu ? 520 : 20000;
   const pz = !!(M && !M.demo && (state === 'pause' || (SET.open && SET.from === 'pause')));   // paused match: battle sounds go quiet, come back on unpause
-  if (AU.pz !== pz) { AU.pz = pz; AU.sfx.gain.cancelScheduledValues(AU.ctx.currentTime); AU.sfx.gain.setTargetAtTime(!pz ? sfxVol() : 0, AU.ctx.currentTime, pz ? 0.04 : 0.1); }
-  if (AU.mufOn !== menu) { AU.mufOn = menu; AU.muf.frequency.cancelScheduledValues(AU.ctx.currentTime); AU.muf.frequency.setTargetAtTime(f, AU.ctx.currentTime, menu ? 0.06 : 0.12); }
+  if (AU.pz !== pz) { AU.pz = pz; aHold(AU.sfx.gain, AU.ctx.currentTime); AU.sfx.gain.setTargetAtTime(!pz ? sfxVol() : 0, AU.ctx.currentTime, pz ? 0.04 : 0.1); }
+  if (AU.mufOn !== menu) { AU.mufOn = menu; aHold(AU.muf.frequency, AU.ctx.currentTime); AU.muf.frequency.setTargetAtTime(f, AU.ctx.currentTime, menu ? 0.06 : 0.12); }
 }
 const UISFX = { ui: 1, join: 1, leave: 1 };
 function rainAudio(on) {
@@ -395,23 +393,23 @@ function rainAudio(on) {
     const c = AU.ctx, s = c.createBufferSource(); s.buffer = AU.noise; s.loop = true;
     const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 3200; f.Q.value = 0.4;
     const g = c.createGain(); g.gain.value = 0.05; s.connect(f); f.connect(g); g.connect(AU.sfx); s.start(); AU.rain = { s, g };
-  } else if (!on && AU.rain) { try { AU.rain.s.stop(); } catch (e) { } AU.rain = null; }
+  } else if (!on && AU.rain) { const t = AU.ctx.currentTime; try { AU.rain.g.gain.setTargetAtTime(0, t, 0.05); AU.rain.s.stop(t + 0.4); } catch (e) { } AU.rain = null; }
 }
 function outNode(pan) { const c = AU.ctx; if (!pan || !c.createStereoPanner) return AU.sfx; const p = c.createStereoPanner(); p.pan.value = clamp(pan, -0.9, 0.9); p.connect(AU.sfx); return p; }
 function tone(o) {
   const c = AU.ctx; if (!c || !AU.sfxOn) return;
-  const t = o.t || 0.1, v = o.v || 0.2, now = c.currentTime + (o.delay || 0);
+  const t = o.t || 0.1, v = o.v || 0.2, now = sfxT(AU) + (o.delay || 0);
   const os = c.createOscillator(); os.type = o.type || 'square'; os.frequency.setValueAtTime(o.f, now);
   if (o.f2) os.frequency.exponentialRampToValueAtTime(Math.max(1, o.f2), now + t);
-  const g = c.createGain(); g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(v, now + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, now + t);
+  const g = c.createGain(); g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(v, now + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, now + t);
   os.connect(g); g.connect(o.out || AU.sfx); os.start(now); os.stop(now + t + 0.03);
 }
 function noise(o) {
   const c = AU.ctx; if (!c || !AU.sfxOn) return;
-  const t = o.t || 0.2, v = o.v || 0.2, now = c.currentTime + (o.delay || 0);
-  const s = c.createBufferSource(); s.buffer = AU.noise;
+  const t = o.t || 0.2, v = o.v || 0.2, now = sfxT(AU) + (o.delay || 0);
+  const s = c.createBufferSource(); s.buffer = AU.noise; s.loop = true;
   const f = c.createBiquadFilter(); f.type = o.ft || 'lowpass'; f.frequency.setValueAtTime(o.f || 1000, now); if (o.f2) f.frequency.exponentialRampToValueAtTime(o.f2, now + t); f.Q.value = o.q || 0.8;
-  const g = c.createGain(); g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(v, now + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, now + t);
+  const g = c.createGain(); g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(v, now + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, now + t);
   s.connect(f); f.connect(g); g.connect(o.out || AU.sfx); s.start(now, Math.random() * 1.5); s.stop(now + t + 0.03);
 }
 function thr(k, ms) { const n = performance.now(); if (AU.last[k] && n - AU.last[k] < ms) return false; AU.last[k] = n; return true; }
@@ -513,12 +511,12 @@ const Music = {
   step: 0, next: 0, timer: null, bpm: 112, mode: 'menu',
   start() { if (this.timer || !AU.ctx) return; this.next = AU.ctx.currentTime + 0.1; this.timer = setInterval(() => this.tick(), 25); },
   tick() {
-    const c = AU.ctx; if (!c) return; if (this.next < c.currentTime - 0.2) this.next = c.currentTime + 0.05;
+    const c = AU.ctx; if (!c) return; if (this.next < c.currentTime + 0.01) this.next = c.currentTime + 0.05;     // fell behind (a long frame): skip ahead rather than play notes whose start is already past
     const sd = 60 / this.bpm / 4;
     while (this.next < c.currentTime + 0.12) { if (AU.musOn) this.play(this.step, this.next); this.next += sd; this.step = (this.step + 1) % 64; }
   },
-  snare(t, v) { const c = AU.ctx, s = c.createBufferSource(); s.buffer = AU.noise; const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 2400; f.Q.value = 0.7; const g = c.createGain(); g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12); s.connect(f); f.connect(g); g.connect(AU.mus); s.start(t, Math.random()); s.stop(t + 0.14); },
-  kick(t, v) { const c = AU.ctx, o = c.createOscillator(), g = c.createGain(); o.frequency.setValueAtTime(120, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.2); g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25); o.connect(g); g.connect(AU.mus); o.start(t); o.stop(t + 0.27); },
+  snare(t, v) { const c = AU.ctx, s = c.createBufferSource(); s.buffer = AU.noise; const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 2400; f.Q.value = 0.7; const g = c.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(v, t + 0.001); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12); s.connect(f); f.connect(g); g.connect(AU.mus); s.start(t, Math.random()); s.stop(t + 0.14); },
+  kick(t, v) { const c = AU.ctx, o = c.createOscillator(), g = c.createGain(); o.frequency.setValueAtTime(120, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.2); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(v, t + 0.001); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25); o.connect(g); g.connect(AU.mus); o.start(t); o.stop(t + 0.27); },
   note(t, f, d, v, type) { const c = AU.ctx, o = c.createOscillator(), g = c.createGain(), fl = c.createBiquadFilter(); o.type = type || 'square'; o.frequency.value = f; fl.type = 'lowpass'; fl.frequency.value = 1800; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + d); o.connect(fl); fl.connect(g); g.connect(AU.mus); o.start(t); o.stop(t + d + 0.05); },
   play(s, t) {
     const st = s % 16, bar = Math.floor(s / 16);

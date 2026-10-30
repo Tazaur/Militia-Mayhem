@@ -6,7 +6,7 @@ const SND = { int: 0, loops: new Map(), rumbleT: 0 };
 /* the Sound Lab's "Send to game": presets saved in this browser replace the built-in ones (any sound name, either sound mix) */
 const SFXU = store.get('sfxlab', {});
 addEventListener('storage', e => { if (e.key !== 'mmgl.sfxlab') return; for (const k in SFXU) delete SFXU[k]; Object.assign(SFXU, store.get('sfxlab', {})); });
-function gainEnv(out, now, v, att, dec) { const g = AU.ctx.createGain(); g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(Math.max(0.0002, v), now + att); g.gain.exponentialRampToValueAtTime(0.0001, now + att + dec); g.connect(out); return g; }
+function gainEnv(out, now, v, att, dec) { const g = AU.ctx.createGain(); g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(v, now + att); g.gain.exponentialRampToValueAtTime(0.0001, now + att + dec); g.connect(out); return g; }
 /* the music's drums: a sound layer's tone and noise voices */
 function thump(out, now, f0, f1, t, v, drive) { sfxVoice(AU, Object.assign({}, SFXK.t, { f: f0, f2: f1, s: 0.8, t, dr: drive || 2.2 }), out, now, v, 1); }
 function burst(out, now, o) { sfxVoice(AU, Object.assign({}, SFXK.n, { ft: o.ft || 'lowpass', f: o.f, f2: o.f2 || 0, q: o.q || 0.7, a: o.att || 0.002, t: o.t }), out, now, o.v, 1); }
@@ -15,10 +15,10 @@ function sfx2(name, x, y, mul, r) {
   let P = SFXU[name] && !SFXU[name].e ? SFXU[name] : CFG.sound !== 'classic' && SFXD[name]; if (!P) return false;
   const F = r && r.F ? Object.assign({}, SEVF, r.F) : SEVF;
   const h = x === undefined || P.nd ? { v: 1, p: x === undefined ? 0 : hear(x, y, F).p } : hear(x, y, F), v = (P.nd ? 1 : h.v) * (mul || 1) * (M && M.demo ? 0.35 : 1);
-  if (v < 0.02) return true;
+  if (v < 0.02 || (AU.nv > 48 && v < 0.4) || AU.nv > 80) return true;
   if (P.th && !thr('p' + name, P.th)) return true;
   if (r && r.p && r.p !== 1) P = Object.assign({}, P, { p: (P.p || 1) * r.p });
-  sfxRun(AU, P, sfxOut(AU, P, h.v, h.p, AU.sfx, AU.verbIn, F), AU.ctx.currentTime, v);
+  sfxRun(AU, P, sfxOut(AU, P, h.v, h.p, AU.sfx, AU.verbIn, F), sfxT(AU), v);
   if (P.in) SND.int = Math.min(1, SND.int + P.in * h.v);
   return true;
 }
@@ -80,13 +80,13 @@ function loopsUpdate(dt) {
     if (p.k !== 'rocket' || p.life <= 0 || SND.loops.has(p)) continue;
     const s = c.createBufferSource(); s.buffer = AU.noise; s.loop = true;
     const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 3800; bp.Q.value = 0.8;
-    const am = c.createGain(); am.gain.value = 0.6; const lfo = c.createOscillator(); lfo.type = 'square'; lfo.frequency.value = 27; const ld = c.createGain(); ld.gain.value = 0.4; lfo.connect(ld); ld.connect(am.gain);
+    const am = c.createGain(); am.gain.value = 0.6; const lfo = c.createOscillator(); lfo.type = 'square'; lfo.frequency.value = 27; const ld = c.createGain(); ld.gain.value = 0.4; const ls = c.createBiquadFilter(); ls.type = 'lowpass'; ls.frequency.value = 160; lfo.connect(ls); ls.connect(ld); ld.connect(am.gain);
     const g = c.createGain(); g.gain.value = 0; const pn = c.createStereoPanner ? c.createStereoPanner() : null;
     s.connect(bp); bp.connect(am); am.connect(g); if (pn) { g.connect(pn); pn.connect(AU.sfx); } else g.connect(AU.sfx);
     s.start(now, Math.random()); lfo.start(now); SND.loops.set(p, { s, lfo, g, pn, bp });
   }
   for (const [p, L] of SND.loops) {
-    if (p.life <= 0 || !M.proj.includes(p)) { try { L.g.gain.setTargetAtTime(0, now, 0.03); L.s.stop(now + 0.2); L.lfo.stop(now + 0.2); } catch (e) { } SND.loops.delete(p); continue; }
+    if (p.life <= 0 || !M.proj.includes(p)) { try { aHold(L.g.gain, now); L.g.gain.setTargetAtTime(0, now, 0.03); L.s.stop(now + 0.2); L.lfo.stop(now + 0.2); } catch (e) { } SND.loops.delete(p); continue; }
     const h = hear(p.x, p.y); L.g.gain.setTargetAtTime(0.32 * h.v * (AU.sfxOn ? 1 : 0), now, 0.03); if (L.pn) L.pn.pan.setTargetAtTime(clamp(h.p, -0.9, 0.9), now, 0.03);
     L.bp.frequency.setTargetAtTime(3200 + Math.random() * 1800, now, 0.02);
   }
@@ -97,7 +97,7 @@ function loopsUpdate(dt) {
     for (const p of LOCALS()) { if (!p.sol || !p.sol.alive) continue; let k = 0; for (const v of M.vehicles) if (v.type === 'tank' && v.active && !v.dead && v.seats[0] && p.sol.veh !== v) k = Math.max(k, (1 - Math.hypot(v.x - p.sol.x, v.y - p.sol.y) / 200) * (0.3 + Math.abs(v.spd) / v.T.maxF)); if (k > 0.05) rumble(p, Math.min(0.7, k * 0.6), 0.3); }
   }
 }
-function loopsKillAll() { for (const L of SND.loops.values()) { try { L.s.stop(); L.lfo.stop(); } catch (e) { } } SND.loops.clear(); }
+function loopsKillAll() { const t = AU.ctx ? AU.ctx.currentTime : 0; for (const L of SND.loops.values()) { try { aHold(L.g.gain, t); L.g.gain.setTargetAtTime(0, t, 0.03); L.s.stop(t + 0.25); L.lfo.stop(t + 0.25); } catch (e) { } } SND.loops.clear(); }
 /* engines: tanks get a two-oscillator growl, a track clatter tied to speed, and a sub-bass you feel as they close in */
 function engineUpdate2(v) {
   engineStop(v);
