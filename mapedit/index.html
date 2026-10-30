@@ -108,6 +108,7 @@ const IMG = new Image(), MIMG = new Image();
 </script>
 <script src="../src/2b_ground.js"></script>
 <script src="../src/2c_props.js"></script>
+<script src="../src/2d_house.js"></script>
 <script>
 'use strict';
 const $ = s => document.querySelector(s), cv = $('#cv'), cx = cv.getContext('2d');
@@ -254,6 +255,7 @@ cv.addEventListener('pointerdown', e => {
   drag = { sx, sy, wx, wy, moved: false, kind: 'pan', vx: V.x, vy: V.y };
   if (tab !== 'ter') {     // objects: the selection's turn handle, an object (to move), else pan / place on a tap
     const o = objs()[osel];
+    if (hed !== null && o && o.k === 'house') { const q = hLocal(o, wx, wy); if (q) { snap(); drag.kind = 'hpaint'; hPaint(o, q); return; } }     // painting its cells (off it: pan)
     if (o && OK[o.k].set.some(q => q[2] === 'ang')) { const [hx, hy] = rotH(o); if (scr(hx, hy) < R + 4) { drag.kind = 'orot'; return; } }
     const i = objAt(wx, wy); if (i >= 0) { const q = objs()[i]; Object.assign(drag, { kind: 'omove', oi: i, ox: q.x - wx, oy: q.y - wy }); }
     return;
@@ -279,15 +281,16 @@ cv.addEventListener('pointermove', e => {
   const dx = ox(e) - drag.sx, dy = oy(e) - drag.sy; if (!drag.moved && Math.hypot(dx, dy) < 7) return;
   if (!drag.moved) {      // the drag starts: a change to undo, a new point from a midpoint, a stamp picked up
     drag.moved = true;
-    if (drag.kind !== 'pan') snap();
+    if (drag.kind !== 'pan' && drag.kind !== 'hpaint') snap();
     if (drag.pick !== undefined) { sel = drag.pick; selV = null; ui(); }
     if (drag.kind === 'mid') { const p = gLines(cur())[drag.li], i = drag.i, j = i + 2 < p.length ? i + 2 : 0; p.splice(i + 2, 0, Math.round((p[i] + p[j]) / 2), Math.round((p[i + 1] + p[j + 1]) / 2)); drag.kind = 'vert'; drag.i += 2; }
     if (drag.kind === 'vert') selV = [drag.li, drag.i];
   }
   const [wx, wy] = toWorld(ox(e), oy(e));
+  if (drag.kind === 'hpaint') { const o = objs()[osel]; hPaint(o, hLocal(o, wx, wy)); return; }
   if (drag.kind === 'pan') { V.x = drag.vx - dx / V.z; V.y = drag.vy - dy / V.z; draw(); return; }
   if (drag.kind === 'omove') { const o = objs()[drag.oi]; if (osel !== drag.oi) { osel = drag.oi; ui(); } o.x = Math.round(Math.max(0, Math.min(G.w, wx + drag.ox))); o.y = Math.round(Math.max(0, Math.min(G.h, wy + drag.oy))); draw(); return; }
-  if (drag.kind === 'orot') { const o = objs()[osel]; o.a = Math.round(Math.atan2(wy - o.y, wx - o.x) / (Math.PI / 36)) * (Math.PI / 36); draw(); return; }     // 5° steps
+  if (drag.kind === 'orot') { const o = objs()[osel], st = Math.PI / (o.k === 'house' ? 180 : 36); o.a = Math.round(Math.atan2(wy - o.y, wx - o.x) / st) * st; draw(); return; }     // 5° steps (houses 1°)
   const s = cur(), L = gLines(s);
   if (drag.kind === 'vert') { const p = L[drag.li]; p[drag.i] = Math.round(wx); p[drag.i + 1] = Math.round(wy); }
   else { const mx = Math.round(wx - drag.wx), my = Math.round(wy - drag.wy); L.forEach((p, li) => { for (let i = 0; i < p.length; i += 2) { p[i] = drag.p0[li][i] + mx; p[i + 1] = drag.p0[li][i + 1] + my; } }); }
@@ -296,6 +299,7 @@ cv.addEventListener('pointermove', e => {
 });
 function endDrag(cancel) {
   const d = drag; drag = null; if (!d || cancel) return;
+  if (d.kind === 'hpaint') { save(); ui(); draw(); return; }
   if (!d.moved) {     // a tap
     if (draft) { addPoint(d.wx, d.wy); return; }
     if (tab !== 'ter') {
@@ -371,6 +375,8 @@ const OK = {
   hay: { tab: 'det', n: 'Hay bale', ic: '🟡', r: () => 13, set: [['a', 'Turn', 'ang']], def: { a: 0 } },
   bags: { tab: 'det', n: 'Sandbag wall', ic: '◠', r: () => 38, set: [['a', 'Faces', 'ang']], def: { a: 0 } },
   bag: { tab: 'det', n: 'Sandbag', ic: '▬', r: () => 9, set: [['a', 'Turn', 'ang']], def: { a: 0 } },
+  house: { tab: 'det', n: 'House', ic: '🏠', r: o => { const h = houseOf(o); return h ? Math.min(h.W, h.H) * SUB / 2 : 60; }, R: o => { const h = houseOf(o); return h ? Math.hypot(h.W, h.H) * SUB / 2 : 60; },
+    hit: (o, x, y) => !!hLocal(o, x, y), set: [['a', 'Turn', 'ang', 1], ['mw', 'Max width', 'num', 15, 40, 1], ['mh', 'Max depth', 'num', 13, 40, 1]], def: { a: 0, mw: 24, mh: 20 } },
   flag: { tab: 'play', n: 'Objective', ic: '⚑', r: o => o.r || 96, set: [['r', 'Capture radius', 'num', 50, 220, 2]], def: { r: 96 } },
   base: { tab: 'play', n: 'Team base', ic: '⌂', r: () => 40, set: [['team', 'Team', 'pick', TEAMS]], def: { team: 0 } },
   camp: { tab: 'play', n: 'Forward camp', ic: '⛺', r: () => 26, set: [['team', 'Team', 'pick', TEAMS]], def: { team: 0 } },
@@ -379,6 +385,36 @@ const OK = {
   crate: { tab: 'play', n: 'Supply crate', ic: '▣', r: () => 14, set: [], def: {} }
 };
 const objs = () => G.objs || (G.objs = []);
+/* houses ({k: 'house', x, y, a, seed, mw, mh; W, H, cells: one digit a cell (C_*) once edited}): the game's generator
+   (2d_house.js, the same numbers as the game's mulberry from gRng) and its wall tiles, drawn once per layout into a canvas */
+const WIMG = new Image(); WIMG.onload = () => { HCV.clear(); draw(); }; WIMG.src = '../art/walls16.png';
+const HCV = new Map();
+function houseOf(o) {
+  const key = o.cells ? o.W + 'x' + o.H + ':' + o.cells : o.seed + '|' + (o.mw || 24) + '|' + (o.mh || 20); let h = HCV.get(key); if (h !== undefined) return h;
+  if (HCV.size > 200) HCV.clear();
+  const q = o.cells ? { W: o.W, H: o.H, g: Uint8Array.from(o.cells, Number) } : genHouse(gRng(o.seed * 7919 + 13), o.mw || 24, o.mh || 20);
+  h = null; if (q) {
+    const c = gCv(q.W * SUB, q.H * SUB), g = c.getContext('2d'), at = (i, j) => i < 0 || j < 0 || i >= q.W || j >= q.H ? C_OUT : q.g[j * q.W + i];
+    for (let j = 0; j < q.H; j++) for (let i = 0; i < q.W; i++) {
+      const v = at(i, j); if (v === C_OUT) continue;
+      g.fillStyle = '#6e5c46'; g.fillRect(i * SUB, j * SUB, SUB, SUB); if (v === C_FLOOR) { g.fillStyle = '#62513d'; g.fillRect(i * SUB, j * SUB + (i % 2 ? 7 : 15), SUB, 1); }     // planks
+      else if (gReady(WIMG)) houseTile(g, WIMG, at, i, j, o.seed || 0, false);
+    }
+    h = { ...q, c };
+  }
+  HCV.set(key, h); return h;
+}
+/* a world point in house o: [i, j] its cell, or null off its grid */
+function hLocal(o, x, y) {
+  const h = houseOf(o); if (!h) return null; const a = o.a || 0, c = Math.cos(a), sn = Math.sin(a), dx = x - o.x, dy = y - o.y;
+  const i = Math.floor((dx * c + dy * sn + h.W * SUB / 2) / SUB), j = Math.floor((-dx * sn + dy * c + h.H * SUB / 2) / SUB);
+  return i >= 0 && j >= 0 && i < h.W && j < h.H ? [i, j] : null;
+}
+let hed = null;     // painting the selected house's cells: the C_* being painted, else null
+function hPaint(o, q) {
+  if (!q) return; const h = houseOf(o); if (!o.cells) { o.W = h.W; o.H = h.H; o.cells = Array.from(h.g).join(''); }
+  const k = q[1] * o.W + q[0]; if (+o.cells[k] === hed) return; o.cells = o.cells.slice(0, k) + hed + o.cells.slice(k + 1); draw();
+}
 const kindsOf = tab => Object.keys(OK).filter(k => OK[k].tab === tab);
 const flagName = o => String.fromCharCode(65 + objs().filter(q => q.k === 'flag').indexOf(o));
 /* drawn over the ground in every tab (dimmed outside their own), true size */
@@ -394,6 +430,14 @@ function drawObjs() {
     else if (o.k === 'hay') spr(PS.hay, o.a);
     else if (o.k === 'bags') { const A = ATLAS.bagarc0; cx.rotate((o.a || 0) + Math.PI); if (A && gReady(IMG)) { cx.imageSmoothingEnabled = true; cx.drawImage(IMG, A[0], A[1], A[2], A[3], -A[4], -A[5], A[2], A[3]); } }
     else if (o.k === 'bag') spr(PS.bag, o.a);
+    else if (o.k === 'house') {
+      const h = houseOf(o); cx.rotate(o.a || 0);
+      if (h) {
+        cx.imageSmoothingEnabled = V.z < 1; cx.drawImage(h.c, -h.c.width / 2, -h.c.height / 2);
+        if (on && hed !== null) { cx.strokeStyle = 'rgba(255,255,255,.18)'; cx.lineWidth = k; cx.beginPath(); for (let i = 0; i <= h.W; i++) { cx.moveTo(i * SUB - h.c.width / 2, -h.c.height / 2); cx.lineTo(i * SUB - h.c.width / 2, h.c.height / 2); } for (let j = 0; j <= h.H; j++) { cx.moveTo(-h.c.width / 2, j * SUB - h.c.height / 2); cx.lineTo(h.c.width / 2, j * SUB - h.c.height / 2); } cx.stroke(); }
+        if (on) { cx.strokeStyle = '#000'; cx.lineWidth = 4 * k; cx.strokeRect(-h.c.width / 2 - 4 * k, -h.c.height / 2 - 4 * k, h.c.width + 8 * k, h.c.height + 8 * k); cx.strokeStyle = '#f5d670'; cx.lineWidth = 2 * k; cx.strokeRect(-h.c.width / 2 - 4 * k, -h.c.height / 2 - 4 * k, h.c.width + 8 * k, h.c.height + 8 * k); }
+      } else { cx.strokeStyle = '#ef5a44'; cx.lineWidth = 3 * k; cx.beginPath(); cx.moveTo(-40, -40); cx.lineTo(40, 40); cx.moveTo(40, -40); cx.lineTo(-40, 40); cx.stroke(); }
+    }
     else if (o.k === 'flag') { const r = o.r || 96; cx.fillStyle = 'rgba(255,255,255,.1)'; cx.beginPath(); cx.arc(0, 0, r, 0, 7); cx.fill(); cx.setLineDash([10 * k, 7 * k]); cx.strokeStyle = 'rgba(255,255,255,.7)'; cx.lineWidth = 2 * k; cx.stroke(); cx.setLineDash([]); label(flagName(o), 0, 0, 22 * k, '#fff'); }
     else if (o.k === 'base') { cx.strokeStyle = tc; cx.lineWidth = 3 * k; cx.setLineDash([12 * k, 8 * k]); cx.strokeRect(-170, -200, 340, 400); cx.setLineDash([]); cx.fillStyle = tc; cx.globalAlpha *= 0.15; cx.fillRect(-170, -200, 340, 400); cx.globalAlpha = mine ? 1 : 0.45; label('BASE', 0, 0, 16 * k, tc); }
     else if (o.k === 'camp') { cx.fillStyle = tc; cx.beginPath(); cx.moveTo(0, -22); cx.lineTo(22, 16); cx.lineTo(-22, 16); cx.closePath(); cx.fill(); label('CAMP', 0, 34, 11 * k, tc); }
@@ -413,21 +457,22 @@ function drawObjs() {
       cx.font = `${12 * k}px system-ui`; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillStyle = '#ece4c8'; cx.fillText(D.ic, o.x, o.y + 0.5 * k); cx.globalAlpha = 1;
     }
     if (on) {
-      const r = Math.max(D.r(o), 14 * k); cx.strokeStyle = '#000'; cx.lineWidth = 4 * k; cx.beginPath(); cx.arc(o.x, o.y, r + 4 * k, 0, 7); cx.stroke(); cx.strokeStyle = '#f5d670'; cx.lineWidth = 2 * k; cx.stroke();
+      const r = Math.max(D.r(o), 14 * k); cx.strokeStyle = '#000'; cx.lineWidth = 4 * k; if (o.k !== 'house') { cx.beginPath(); cx.arc(o.x, o.y, r + 4 * k, 0, 7); cx.stroke(); cx.strokeStyle = '#f5d670'; cx.lineWidth = 2 * k; cx.stroke(); } else { cx.strokeStyle = '#f5d670'; cx.lineWidth = 2 * k; }
       if (D.set.some(s => s[2] === 'ang')) { const [hx, hy] = rotH(o); cx.beginPath(); cx.moveTo(o.x, o.y); cx.lineTo(hx, hy); cx.stroke(); dot(hx, hy, 9 * k, '#5fd3d0', 2 * k); }
     }
   });
 }
 function label(t, x, y, sz, c) { cx.font = `700 ${sz}px Chakra Petch, system-ui`; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.lineWidth = sz / 4; cx.strokeStyle = '#000'; cx.strokeText(t, x, y); cx.fillStyle = c; cx.fillText(t, x, y); }
 /* the turn handle: out along the facing, past the footprint */
-function rotH(o) { const d = Math.max(OK[o.k].r(o), 14 / V.z) + 34 / V.z, a = o.a || 0; return [o.x + Math.cos(a) * d, o.y + Math.sin(a) * d]; }
+function rotH(o) { const d = Math.max((OK[o.k].R || OK[o.k].r)(o), 14 / V.z) + 34 / V.z, a = o.a || 0; return [o.x + Math.cos(a) * d, o.y + Math.sin(a) * d]; }
 function objAt(wx, wy) {     // the topmost object of this tab under (wx, wy)
-  const os = objs(); for (let i = os.length - 1; i >= 0; i--) { const o = os[i], D = OK[o.k]; if (!D || D.tab !== tab || o.lock) continue; if (Math.hypot(o.x - wx, o.y - wy) < Math.max(o.k === 'flag' || o.k === 'base' ? 40 : D.r(o), 16 / V.z)) return i; }
+  const os = objs(); for (let i = os.length - 1; i >= 0; i--) { const o = os[i], D = OK[o.k]; if (!D || D.tab !== tab || o.lock) continue; if (D.hit ? D.hit(o, wx, wy) : Math.hypot(o.x - wx, o.y - wy) < Math.max(o.k === 'flag' || o.k === 'base' ? 40 : D.r(o), 16 / V.z)) return i; }
   return -1;
 }
 function placeObj(k, x, y) {
   snap(); const o = { k, x: Math.round(Math.max(0, Math.min(G.w, x))), y: Math.round(Math.max(0, Math.min(G.h, y))), ...JSON.parse(JSON.stringify(OK[k].def)) };
   const last = S.last && S.last[k]; if (last) Object.assign(o, last);     // the settings last used for this kind
+  if (k === 'house') o.seed = Math.floor(Math.random() * 1e9);
   objs().push(o); osel = objs().length - 1; save(); ui(); draw();
 }
 
@@ -564,17 +609,24 @@ function ui() {
 }
 /* the Details / Gameplay bar: select, or a kind to place (tap the map to put one down); the selection's settings:
    choices as dropdowns, numbers and facing on one slider with chips to pick which, then duplicate / delete */
-const OPROPS = o => OK[o.k].set.filter(q => q[2] !== 'pick');
+const OPROPS = o => OK[o.k].set.filter(q => q[2] !== 'pick' && !(o.cells && (q[0] === 'mw' || q[0] === 'mh')));
+const BRUSH = [[C_WALL, 'Wall'], [C_WIN, 'Window'], [C_FLOOR, 'Floor / door'], [C_OUT, 'Empty']];
 function uiObj() {
-  const os = objs(), mine = os.filter(o => OK[o.k] && OK[o.k].tab === tab).length, o = os[osel] && OK[os[osel].k].tab === tab ? os[osel] : null; if (!o) osel = -1;
+  const os = objs(), mine = os.filter(o => OK[o.k] && OK[o.k].tab === tab).length, o = os[osel] && OK[os[osel].k].tab === tab ? os[osel] : null; if (!o) { osel = -1; hed = null; }
   let ctx = '', h = `<div class="r"><button class="btn${!place ? ' on' : ''}" data-a="osel">✥</button><div class="scr">${kindsOf(tab).map(k => `<button class="btn${place === k ? ' on' : ''}" data-place="${k}">${OK[k].ic} ${OK[k].n}</button>`).join('')}</div><button class="btn" data-a="olist">☰ ${mine}</button></div>`;
   if (o) {
     const D = OK[o.k], picks = D.set.filter(q => q[2] === 'pick'), ps = OPROPS(o);
-    ctx = `<b>${D.ic} ${D.n}${o.k === 'flag' ? ' ' + flagName(o) : ''}</b><button class="btn ic${o.lock ? ' on' : ''}" data-a="olock" title="Lock">${o.lock ? '🔒' : '🔓'}</button><button class="btn ic" data-a="odup" title="Duplicate">⧉</button><button class="btn ic red" data-a="odel" title="Delete">🗑</button>`;
+    if (o.k !== 'house') hed = null;
+    if (hed !== null) {     // painting cells: the brush, then done
+      ctx = `<b>▦ Cells</b><button class="btn on" data-a="ocells">✓ Done</button>`;
+      bars(`${h}<div class="r"><div class="scr">${BRUSH.map(([v, n]) => `<button class="btn${hed === v ? ' on' : ''}" data-a="obrush" data-v="${v}">${n}</button>`).join('')}</div></div>`, ctx);
+      $('#hint').textContent = 'Tap or drag over the house to paint its cells · off the house pans'; return;
+    }
+    ctx = `<b>${D.ic} ${D.n}${o.k === 'flag' ? ' ' + flagName(o) : ''}</b>${o.k === 'house' ? '<button class="btn" data-a="oroll" title="New layout">🎲</button><button class="btn" data-a="ocells">▦ Cells</button>' : ''}<button class="btn ic${o.lock ? ' on' : ''}" data-a="olock" title="Lock">${o.lock ? '🔒' : '🔓'}</button><button class="btn ic" data-a="odup" title="Duplicate">⧉</button><button class="btn ic red" data-a="odel" title="Delete">🗑</button>`;
     h += `<div class="r"><div class="scr">${ps.length > 1 ? ps.map(q => `<button class="btn${q[0] === S.oprop ? ' on' : ''}" data-oprop="${q[0]}">${q[1]}</button>`).join('') : ''}<span class="sp"></span>${picks.map(([f, n, , opts]) => `<select class="sel" data-set="${f}" aria-label="${n}">${opts.map(([v, l]) => `<option value="${v}"${(o[f] ?? D.def[f]) == v ? ' selected' : ''}>${l}</option>`).join('')}</select>`).join('')}</div></div>`;
     if (ps.length) {
       if (!ps.some(q => q[0] === S.oprop)) S.oprop = ps[0][0]; const P = ps.find(q => q[0] === S.oprop), ang = P[2] === 'ang', v = ang ? Math.round(((o.a || 0) * 180 / Math.PI % 360 + 360) % 360) : o[P[0]] ?? D.def[P[0]];
-      h += `<div class="r"><label class="sl"><span>${P[1]}</span><input type="range" id="ov" min="${ang ? 0 : P[3]}" max="${ang ? 359 : P[4]}" step="${ang ? 5 : P[5]}" value="${v}"><b id="ovV">${v}${ang ? '°' : ''}</b></label></div>`;
+      h += `<div class="r"><label class="sl"><span>${P[1]}</span><input type="range" id="ov" min="${ang ? 0 : P[3]}" max="${ang ? 359 : P[4]}" step="${ang ? P[3] || 5 : P[5]}" value="${v}"><b id="ovV">${v}${ang ? '°' : ''}</b></label></div>`;
     }
   } else h += `<div class="r"><span class="muted" style="flex:1">${place ? 'Tap the map to place a ' + OK[place].n.toLowerCase() + ' · ✥ when done' : 'Pick something above to place it, or tap one to edit it'}${tab === 'play' && !os.some(q => q.k === 'flag') ? ' · no objectives yet: the game places A, B, C' : ''}</span></div>`;
   bars(h, ctx);
@@ -604,6 +656,9 @@ const onBar = e => {
     if (a === 'olist') return objList(ob);
     if (a === 'odup' && o) { snap(); const c = JSON.parse(JSON.stringify(o)); c.x += 40; c.y += 40; objs().push(c); osel = objs().length - 1; save(); }
     if (a === 'odel' && o) { snap(); objs().splice(osel, 1); osel = -1; save(); }
+    if (a === 'oroll' && o) { if (!o.cells || confirm('A new layout loses your cell edits')) { snap(); o.seed = Math.floor(Math.random() * 1e9); delete o.cells; delete o.W; delete o.H; save(); } }
+    if (a === 'ocells' && o) hed = hed === null ? C_WALL : null;
+    if (a === 'obrush') hed = +ob.dataset.v;
     if (a === 'olock' && o) { snap(); o.lock = o.lock ? undefined : 1; save(); }
     ui(); draw(); return;
   }

@@ -825,3 +825,8 @@ Art drop (drop.py): atlas.png: hull4, tur_dead; atlas_m.png: tur_dead, sol_leg0,
 ## Junctions (2b_ground.js gJunctions)
 - Found from all road lines each bake: T (a line's end within another's half width) and X (segments crossing); merged within the roads' half widths; < 3 arms = a bend, ignored. Arms {a, wd, s}. Crosswalks auto where a street meets (gCrosswalks, not on dirt arms); markings cut within `cut` of the junction; pavements cut by every other road's body.
 - `G.jx` overrides [{x, y, off | cw: 0/1}], nearest within 40 px. Editor: diamonds on junctions (Terrain, select tool), tap one: Auto / On / Off / No junction. Undo snapshots include jx; dirty boxes pad 80 px (crosswalks on the other road).
+
+## Houses in the editor (src/2d_house.js shared)
+- 2d_house.js (shared with mapedit/, no game globals): SUB, C_*, ROOM_*, DIRS, the wall sheet table (WT, WALL_BY_MASK...), `houseTile(g, img, at, i, j, seed, broke)` (paintCell uses it) and genHouse. gRng(seed*7919+13) == mulberry(seed*7919+13), so the editor's layouts are the game's.
+- Editor object `{k:'house', x, y, a, seed, mw, mh}`; once cells are painted also `W, H, cells` (one digit a cell). Details tab: place (new seed), drag, turn (handle / slider, 1°), 🎲 new layout, ▦ Cells: brush Wall / Window / Floor-door / Empty, tap or drag on the house. Wall art from ../art/walls16.png.
+- Game: buildMap g: maps mkHouse each house object (cells → g), tiledFinish; paintGround paints houses over the stamped ground; nav NC = SUB when the map has houses. With houses placed and no detail objects, no auto trees/crescents.

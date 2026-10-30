@@ -187,6 +187,8 @@ function buildMap(id) {
   } else if (id.startsWith('g:')) {     // a map editor map (2b_ground.js): its stamped ground and placed objects (objs); a kind with none placed is placed as the other maps' are
     m.gmap = JSON.parse(JSON.stringify(gMapOf(id))); BOUNDM = gBoundsMask(m.gmap);
     const O = m.gmap.objs || [], of = (...k) => O.filter(o => k.includes(o.k));
+    for (const o of of('house')) { const H = mkHouse({ ...o, g: o.cells && [...o.cells].map(Number) }, m.houses.length); if (H) m.houses.push(H); }     // placed houses (tiledFinish, below)
+    if (m.houses.length) tiledFinish();
     const fl = of('flag'); m.flags = fl.length ? fl.map((o, i) => ({ name: String.fromCharCode(65 + i), x: o.x, y: o.y, r: o.r })) : [{ name: 'A', x: WW * 0.22, y: WH * 0.72 }, { name: 'B', x: WW / 2, y: WH / 2 }, { name: 'C', x: WW * 0.78, y: WH * 0.28 }];
     for (const o of of('base')) { const b = m.bases[o.team ? 1 : 0]; b.x = o.x; b.y = o.y; b.pad = { x: o.x - 170, y: o.y - 200, w: 340, h: 400 }; b.placed = 1; }
     for (const o of [...(fl.length ? [] : m.flags), ...m.bases.filter(b => !b.placed)]) inside(o, 160);
@@ -195,7 +197,7 @@ function buildMap(id) {
       else if (o.k === 'hay') addStatic({ type: 'hay', x: o.x, y: o.y, r: 13, a: o.a || 0, alive: true });
       else if (o.k === 'bags') crescent(o.x, o.y, o.a || 0, false);
       else if (o.k === 'bag') bag(o.x, o.y, o.a || 0);
-    } else {
+    } else if (!of('house').length) {
       for (const f of m.flags) for (let k = 0; k < 3; k++) { const c = k * TAU / 3 + 0.4; crescent(f.x + Math.cos(c) * 110, f.y + Math.sin(c) * 110, c, false); }
       crescent(400, WH / 2 - 120, 0, true); crescent(400, WH / 2 + 120, 0, true);
       scatter(6, 110, 40, (x, y) => crescent(x, y, R() * TAU, true));
@@ -317,7 +319,7 @@ function paintGround() {
   const grit = CFG.style === 'grit', P = SNOWY() ? (grit ? PALS.snowGrit : PALS.snow) : (PALS[CFG.style] || PALS.classic), RF = ROOFS[CFG.style] || ROOFS.classic;
   px_.setTransform(1, 0, 0, 1, 0, 0); px_.clearRect(0, 0, WW, WH); dgx.setTransform(1, 0, 0, 1, 0, 0); dgx.clearRect(0, 0, WW, WH); if (typeof M !== 'undefined' && M) M.fogMem = null;
   if (MAP.id === 'devyard') { paintDevGround(); return; }
-  GMAT = null; if (MAP.gmap) { paintStamped(); return; }
+  GMAT = null; if (MAP.gmap) { paintStamped(); if (MAP.houses.length) paintTiled(); return; }
   const R = mulberry(4242);
   gx.setTransform(1, 0, 0, 1, 0, 0); gx.globalAlpha = 1; gx.globalCompositeOperation = 'source-over';
   gx.fillStyle = SKIRT_PAT = pattern(96, 96, (g, w, h) => {
