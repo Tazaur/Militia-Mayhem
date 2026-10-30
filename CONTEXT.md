@@ -843,3 +843,6 @@ The skirt is gone (SKIRT, drawSkirt, SKIRT_PAT). Built-in maps are built in thei
 
 ## Roof styles (5d_dev.js roofPaint)
 Each house's whole roof is painted once into H.rf (its frame); roofCell copies tiles from it (a dark torn edge where the roof beside it fell). ROOF_STYLES: shingle, clay (barrels), metal (standing seams), thatch, tar and concrete (flat, parapet). MAP_ROOFS: the styles that fit each map; a house picks by its seed (H.rs overrides), so mirrored pairs match. Pitched roofs are hipped for any shape: each pixel slopes to its nearest eave along its row/column run, faces lit from the top left, ridge lines and caps where faces meet. Things on top: chimneys, vents, skylights, moss (pitched); AC units, hatches, water tanks, planters and potted plants (flat). Snowfield: snow over it, the courses showing through.
+
+## Roofs shared with the editor
+ROOF_STYLES, MAP_ROOFS and roofPaint(H, st, list, snow, grit) live in src/2d_house.js (gRng, gCv only); the game's roofOf(H) passes the map's list, SNOWY and the grit style. Editor houses have a Roof pick (rs: auto or a style; the game's mkHouse keeps it); a house not selected is drawn with its roof, the selected one as its floor plan.

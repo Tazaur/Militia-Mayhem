@@ -376,7 +376,7 @@ const OK = {
   bags: { tab: 'det', n: 'Sandbag wall', ic: '◠', r: () => 38, set: [['a', 'Faces', 'ang']], def: { a: 0 } },
   bag: { tab: 'det', n: 'Sandbag', ic: '▬', r: () => 9, set: [['a', 'Turn', 'ang']], def: { a: 0 } },
   house: { tab: 'det', n: 'House', ic: '🏠', r: o => { const h = houseOf(o); return h ? Math.min(h.W, h.H) * SUB / 2 : 60; }, R: o => { const h = houseOf(o); return h ? Math.hypot(h.W, h.H) * SUB / 2 : 60; },
-    hit: (o, x, y) => !!hLocal(o, x, y), set: [['a', 'Turn', 'ang', 1], ['mw', 'Max width', 'num', 15, 40, 1], ['mh', 'Max depth', 'num', 13, 40, 1]], def: { a: 0, mw: 24, mh: 20 } },
+    hit: (o, x, y) => !!hLocal(o, x, y), set: [['a', 'Turn', 'ang', 1], ['mw', 'Max width', 'num', 15, 40, 1], ['mh', 'Max depth', 'num', 13, 40, 1], ['rs', 'Roof', 'pick', [['auto', 'Roof: auto'], ...Object.keys(ROOF_STYLES).map(k => [k, 'Roof: ' + k])]]], def: { a: 0, mw: 24, mh: 20, rs: 'auto' } },
   flag: { tab: 'play', n: 'Objective', ic: '⚑', r: o => o.r || 96, set: [['r', 'Capture radius', 'num', 50, 220, 2]], def: { r: 96 } },
   base: { tab: 'play', n: 'Team base', ic: '⌂', r: () => 40, set: [['team', 'Team', 'pick', TEAMS]], def: { team: 0 } },
   camp: { tab: 'play', n: 'Forward camp', ic: '⛺', r: () => 26, set: [['team', 'Team', 'pick', TEAMS]], def: { team: 0 } },
@@ -390,7 +390,7 @@ const objs = () => G.objs || (G.objs = []);
 const WIMG = new Image(); WIMG.onload = () => { HCV.clear(); draw(); }; WIMG.src = '../art/walls16.png';
 const HCV = new Map();
 function houseOf(o) {
-  const key = o.cells ? o.W + 'x' + o.H + ':' + o.cells : o.seed + '|' + (o.mw || 24) + '|' + (o.mh || 20); let h = HCV.get(key); if (h !== undefined) return h;
+  const key = (o.cells ? o.W + 'x' + o.H + ':' + o.cells : o.seed + '|' + (o.mw || 24) + '|' + (o.mh || 20)) + '|' + o.seed + '|' + (o.rs || ''); let h = HCV.get(key); if (h !== undefined) return h;
   if (HCV.size > 200) HCV.clear();
   const q = o.cells ? { W: o.W, H: o.H, g: Uint8Array.from(o.cells, Number) } : genHouse(gRng(o.seed * 7919 + 13), o.mw || 24, o.mh || 20);
   h = null; if (q) {
@@ -433,7 +433,8 @@ function drawObjs() {
     else if (o.k === 'house') {
       const h = houseOf(o); cx.rotate(o.a || 0);
       if (h) {
-        cx.imageSmoothingEnabled = V.z < 1; cx.drawImage(h.c, -h.c.width / 2, -h.c.height / 2);
+        if (!on && !h.rf) h.rf = roofPaint({ W: h.W, H: h.H, roof: Uint8Array.from(h.g, v => v === C_OUT ? 0 : 1), seed: o.seed || 0 }, o.rs, MAP_ROOFS.outskirts, false, false);
+        cx.imageSmoothingEnabled = V.z < 1; cx.drawImage(on ? h.c : h.rf, -h.c.width / 2, -h.c.height / 2);
         if (on && hed !== null) { cx.strokeStyle = 'rgba(255,255,255,.18)'; cx.lineWidth = k; cx.beginPath(); for (let i = 0; i <= h.W; i++) { cx.moveTo(i * SUB - h.c.width / 2, -h.c.height / 2); cx.lineTo(i * SUB - h.c.width / 2, h.c.height / 2); } for (let j = 0; j <= h.H; j++) { cx.moveTo(-h.c.width / 2, j * SUB - h.c.height / 2); cx.lineTo(h.c.width / 2, j * SUB - h.c.height / 2); } cx.stroke(); }
         if (on) { cx.strokeStyle = '#000'; cx.lineWidth = 4 * k; cx.strokeRect(-h.c.width / 2 - 4 * k, -h.c.height / 2 - 4 * k, h.c.width + 8 * k, h.c.height + 8 * k); cx.strokeStyle = '#f5d670'; cx.lineWidth = 2 * k; cx.strokeRect(-h.c.width / 2 - 4 * k, -h.c.height / 2 - 4 * k, h.c.width + 8 * k, h.c.height + 8 * k); }
       } else { cx.strokeStyle = '#ef5a44'; cx.lineWidth = 3 * k; cx.beginPath(); cx.moveTo(-40, -40); cx.lineTo(40, 40); cx.moveTo(40, -40); cx.lineTo(-40, 40); cx.stroke(); }
