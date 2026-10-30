@@ -110,10 +110,73 @@ function gStampCv(s, b, M, k) {
   g.globalCompositeOperation = 'destination-in'; g.imageSmoothingEnabled = true; g.drawImage(M.c, 0, 0, M.c.width, M.c.height, 0, 0, M.c.width / M.q, M.c.height / M.q); g.globalCompositeOperation = 'source-over';
   return c;
 }
+/* junctions: wherever road lines meet or cross (any roads: one stamp's branches, separate stamps). Found from the lines'
+   points (not their rounding): a line's end on another line is a T, two segments crossing an X; ones closer than the
+   roads' half widths are one. Each: { x, y, r (half the widest road there), arms: [{ a: angle out, wd, s }], cw (crosswalks),
+   cut (markings cleared within) }. A junction with under 3 arms is a bend, not a junction. G.jx: the editor's overrides,
+   [{ x, y, off: 1 (no junction), cw: 0 / 1 (crosswalks off / on; none: on where a street meets it) }], the nearest within 40 px */
+function gJunctions(G) {
+  const L = []; for (const s of G.stamps) if (s.l && gOk(s)) for (const p of s.l) if (p.length >= 4) L.push({ s, p, wd: s.wd || 1, n: p.length });
+  const J = [], ang = a => Math.atan2(Math.sin(a), Math.cos(a));
+  const armsOf = (A, i, x, y, only) => {     // arms of line A through (x, y) on its segment i: both ways, less a way it ends right there
+    const a = Math.atan2(A.p[i + 3] - A.p[i + 1], A.p[i + 2] - A.p[i]), e = A.wd / 2, out = [];
+    if (only !== -1 && Math.hypot(A.p[A.n - 2] - x, A.p[A.n - 1] - y) > e) out.push({ a, wd: A.wd, s: A.s });
+    if (only !== 1 && Math.hypot(A.p[0] - x, A.p[1] - y) > e) out.push({ a: ang(a + Math.PI), wd: A.wd, s: A.s });
+    return out;
+  };
+  const add = (x, y, arms) => {
+    const r = Math.max(...arms.map(q => q.wd / 2)); let j = J.find(q => Math.hypot(q.x - x, q.y - y) < Math.max(q.r, r));
+    if (!j) J.push(j = { x, y, r, arms: [] }); j.r = Math.max(j.r, r);
+    for (const q of arms) if (!j.arms.some(b => Math.abs(ang(b.a - q.a)) < 0.6)) j.arms.push(q);
+  };
+  for (const E of L) for (const end of [0, 1]) {     // T: a line's end on another line
+    const k = end ? E.n - 2 : 0, x = E.p[k], y = E.p[k + 1], ia = end ? E.n - 4 : 0;
+    let b = null; for (const A of L) { if (A === E) continue; for (let i = 0; i + 3 < A.n; i += 2) { const [d, px, py] = gSegNear(A.p, i, x, y); if (d < A.wd / 2 + 4 && (!b || d < b[0])) b = [d, px, py, A, i]; } }
+    if (!b) continue;
+    const ain = end ? Math.atan2(E.p[ia + 1] - y, E.p[ia] - x) : Math.atan2(E.p[3] - y, E.p[2] - x);
+    add(b[1], b[2], [{ a: ain, wd: E.wd, s: E.s }, ...armsOf(b[3], b[4], b[1], b[2])]);
+  }
+  for (let u = 0; u < L.length; u++) for (let v = u + 1; v < L.length; v++) {     // X: two lines crossing
+    const A = L[u], B = L[v];
+    for (let i = 0; i + 3 < A.n; i += 2) for (let k = 0; k + 3 < B.n; k += 2) {
+      const ax = A.p[i], ay = A.p[i + 1], dx = A.p[i + 2] - ax, dy = A.p[i + 3] - ay, bx = B.p[k], by = B.p[k + 1], ex = B.p[k + 2] - bx, ey = B.p[k + 3] - by;
+      const den = dx * ey - dy * ex; if (Math.abs(den) < 1e-6) continue;
+      const t = ((bx - ax) * ey - (by - ay) * ex) / den, w = ((bx - ax) * dy - (by - ay) * dx) / den; if (t < 0 || t > 1 || w < 0 || w > 1) continue;
+      const x = ax + dx * t, y = ay + dy * t;
+      if ([[A.p[0], A.p[1]], [A.p[A.n - 2], A.p[A.n - 1]], [B.p[0], B.p[1]], [B.p[B.n - 2], B.p[B.n - 1]]].some(([qx, qy]) => Math.hypot(qx - x, qy - y) < 2)) continue;     // an end: a T
+      add(x, y, [...armsOf(A, i, x, y), ...armsOf(B, k, x, y)]);
+    }
+  }
+  const out = [];
+  for (const j of J) {
+    if (j.arms.length < 3) continue;
+    const o = (G.jx || []).find(q => Math.hypot(q.x - j.x, q.y - j.y) < 40);
+    j.o = o || null; if (o && o.off) { j.off = 1; out.push(j); continue; }
+    j.cw = o && o.cw !== undefined ? !!o.cw : j.arms.some(q => q.s.rt === 'street');
+    j.cut = j.r + (j.cw ? 36 : 8); out.push(j);
+  }
+  return out;
+}
+/* the nearest point of segment i of line p to (x, y): [distance, x, y] */
+function gSegNear(p, i, x, y) {
+  const ax = p[i], ay = p[i + 1], dx = p[i + 2] - ax, dy = p[i + 3] - ay, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l)) : 0, px = ax + dx * t, py = ay + dy * t;
+  return [Math.hypot(px - x, py - y), px, py];
+}
+/* a junction's crosswalks: white bars across each arm just outside the crossing, drawn on a scratch canvas round it, then in one image */
+function gCrosswalks(gc, j) {
+  const e = Math.ceil(j.r + 70), c = GB.x || (GB.x = gCv(1, 1)); if (c.width !== e * 2 || c.height !== e * 2) { c.width = c.height = e * 2; }
+  const g = c.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, e * 2, e * 2); g.fillStyle = 'rgba(236,234,224,0.82)';
+  for (const q of j.arms) {
+    if (q.s.rt === 'dirt') continue;
+    g.setTransform(Math.cos(q.a), Math.sin(q.a), -Math.sin(q.a), Math.cos(q.a), e, e);     // x along the arm, out of the junction
+    const hw = q.wd / 2 - 6; for (let y = -hw; y + 6 <= hw; y += 11) g.fillRect(j.r + 10, y, 18, 6);
+  }
+  gc.drawImage(c, Math.round(j.x) - e, Math.round(j.y) - e);
+}
 /* a road type's layers over the stamp's box: 'walk' (the pavement, under the road; k 'm': flat) or 'marks' (colour only).
    A line along the road's side is a wide stroke with a narrower one cut out of it, so it follows the curves; markings
    stop short of where a branch leaves (its first point) */
-function gRoadCv(s, b, part, k) {
+function gRoadCv(s, b, part, k, G, J) {
   const c = GB.r || (GB.r = gCv(1, 1)); if (c.width !== b.w || c.height !== b.h) { c.width = b.w; c.height = b.h; }
   const g = c.getContext('2d'), wd = s.wd || 1; g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, b.w, b.h); g.translate(-b.x, -b.y);
   g.lineCap = g.lineJoin = 'round'; g.setLineDash([]);
@@ -129,6 +192,7 @@ function gRoadCv(s, b, part, k) {
     if (k === 'm') { gPath(g, s); g.strokeStyle = '#000'; g.lineWidth = W; g.stroke(); return c; }
     gPath(g, s); g.strokeStyle = '#4a4843'; g.lineWidth = W; g.stroke();
     gPath(g, s); g.strokeStyle = g.createPattern(gTex('concrete').c, 'repeat'); g.lineWidth = W - 4; g.stroke();
+    if (G) { g.globalCompositeOperation = 'destination-out'; g.strokeStyle = '#000'; for (const o of G.stamps) if (o !== s && o.l && gOk(o) && gHit(gBox(o), b)) { gPath(g, o); g.lineWidth = o.wd || 1; g.stroke(); } g.globalCompositeOperation = 'source-over'; }
     return c;
   }
   for (const m of gRT(s).marks) {
@@ -138,7 +202,7 @@ function gRoadCv(s, b, part, k) {
     if (m === 'ruts') line(wd * 0.62, 'rgba(30,20,10,0.22)', wd * 0.3);
   }
   g.globalCompositeOperation = 'destination-out'; g.fillStyle = '#000';
-  for (const p of s.l.slice(1)) { g.beginPath(); g.arc(p[0], p[1], wd * 0.8, 0, 7); g.fill(); }
+  for (const j of J || []) if (!j.off) { g.beginPath(); g.arc(j.x, j.y, j.cut, 0, 7); g.fill(); }
   g.globalCompositeOperation = 'source-over';
   return c;
 }
@@ -151,13 +215,15 @@ function gBake(G, gc, gm, r) {
     g.beginPath(); g.rect(r.x, r.y, r.w, r.h); g.clip();
     if (!G.base) continue; const B = gTex(G.base), src = k === 'm' ? B.m : B.c; g.fillStyle = src ? g.createPattern(src, 'repeat') : '#000'; g.fillRect(r.x, r.y, r.w, r.h);
   }
+  const J = gJunctions(G);
   for (const s of G.stamps) {
     if (!gOk(s)) continue; const b = gBox(s); if (!gHit(b, r)) continue;
     const M = gMask(s, b), R = gRT(s); hmax = Math.max(hmax, gTex(s.t).h);
-    if (R.walk) for (const [g, k] of T) g.drawImage(gRoadCv(s, b, 'walk', k), b.x, b.y);
+    if (R.walk) for (const [g, k] of T) g.drawImage(gRoadCv(s, b, 'walk', k, G), b.x, b.y);
     for (const [g, k] of T) g.drawImage(gStampCv(s, b, M, k), b.x, b.y);
-    if (R.marks.length && gc) gc.drawImage(gRoadCv(s, b, 'marks', 'c'), b.x, b.y);
+    if (R.marks.length && gc) gc.drawImage(gRoadCv(s, b, 'marks', 'c', G, J), b.x, b.y);
   }
+  if (gc) for (const j of J) if (j.cw && !j.off && Math.abs(j.x - (r.x + r.w / 2)) < r.w / 2 + j.r + 70 && Math.abs(j.y - (r.y + r.h / 2)) < r.h / 2 + j.r + 70) gCrosswalks(gc, j);
   if (gc && G.bounds && G.bounds.p.length >= 6) gOob(gc, G, r);
   for (const [g] of T) g.restore();
   return hmax;

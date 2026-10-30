@@ -123,6 +123,7 @@ let tab = S.tab || 'ter', osel = -1, place = null;     // the tab; the selected 
 let sel = -1, selV = null, tool = 'select', draft = null;     // selected stamp, its selected point [line, index]; draft: the shape / road being drawn
 const UNDO = [], REDO = [];
 /* the selection: a stamp (sel >= 0) or the battlefield edge (sel -2: G.bounds {p, r}, edited as a shape is) */
+let jsel = null;     // the selected junction: its spot [x, y] (junctions are found again after every change)
 const EDGE = -2, cur = () => sel === EDGE ? G.bounds : G.stamps[sel];
 const slug = n => (n || 'map').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'map';
 function newMap(name, w, h, base) {
@@ -135,10 +136,10 @@ function open(id) {
   bakeAll(); fit(); ui(); save();
 }
 /* a change: undo keeps the map before it */
-function snap() { UNDO.push(JSON.stringify({ base: G.base, stamps: G.stamps, bounds: G.bounds, objs: G.objs })); if (UNDO.length > 100) UNDO.shift(); REDO.length = 0; }
+function snap() { UNDO.push(JSON.stringify({ base: G.base, stamps: G.stamps, bounds: G.bounds, objs: G.objs, jx: G.jx })); if (UNDO.length > 100) UNDO.shift(); REDO.length = 0; }
 function restore(from, to) {
-  if (!from.length) return; to.push(JSON.stringify({ base: G.base, stamps: G.stamps, bounds: G.bounds, objs: G.objs }));
-  const o = JSON.parse(from.pop()); G.base = o.base; G.stamps = o.stamps; G.bounds = o.bounds; if (!G.bounds) delete G.bounds; G.objs = o.objs || []; osel = Math.min(osel, G.objs.length - 1); sel = sel === EDGE && !G.bounds ? -1 : Math.min(sel, G.stamps.length - 1); selV = null; bakeAll(); save(); ui();
+  if (!from.length) return; to.push(JSON.stringify({ base: G.base, stamps: G.stamps, bounds: G.bounds, objs: G.objs, jx: G.jx }));
+  const o = JSON.parse(from.pop()); G.jx = o.jx || []; jsel = null; G.base = o.base; G.stamps = o.stamps; G.bounds = o.bounds; if (!G.bounds) delete G.bounds; G.objs = o.objs || []; osel = Math.min(osel, G.objs.length - 1); sel = sel === EDGE && !G.bounds ? -1 : Math.min(sel, G.stamps.length - 1); selV = null; bakeAll(); save(); ui();
 }
 
 /* ---------- the bake: the map at full size (colour, and the material map when it's shown), only what changed ---------- */
@@ -150,7 +151,8 @@ function bakeAll() {
   BK.dirty = null; BK.h = gBake(G, BK.c.getContext('2d'), BK.m && BK.m.getContext('2d'), null); draw();
 }
 const boxU = (a, b) => !a ? b : !b ? a : { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.max(a.x + a.w, b.x + b.w) - Math.min(a.x, b.x), h: Math.max(a.y + a.h, b.y + b.h) - Math.min(a.y, b.y) };
-function dirty(b) { BK.dirty = boxU(BK.dirty, b); }
+function dirty(b) { if (b) b = { x: b.x - 80, y: b.y - 80, w: b.w + 160, h: b.h + 160 }; BK.dirty = boxU(BK.dirty, b); }     // past the box: a junction's crosswalks on the other road
+const juncs = () => gJunctions(G), jAt = (x, y) => jsel && juncs().find(j => Math.hypot(j.x - x, j.y - y) < 40);
 function bakeDirty() {
   const b = BK.dirty; if (!b) return; BK.dirty = null;
   const x = Math.max(0, b.x), y = Math.max(0, b.y), r = { x, y, w: Math.min(G.w, b.x + b.w) - x, h: Math.min(G.h, b.y + b.h) - y }; if (r.w <= 0 || r.h <= 0) return;
@@ -179,6 +181,11 @@ function frame() {
     gPath(cx, s); cx.lineWidth = 2.5 * k; cx.strokeStyle = '#000'; cx.stroke(); cx.lineWidth = 1.5 * k; cx.strokeStyle = '#f5d670'; cx.stroke();
     if (s.soft > 0 && !s.l) { gPath(cx, s); cx.lineWidth = s.soft; cx.strokeStyle = 'rgba(245,214,112,.12)'; cx.stroke(); }     // the blend zone
     if (tool === 'select') { for (const [li, i, x, y] of mids(s)) dot(x, y, 5 * k, 'rgba(95,211,208,.85)'); for (const [li, i, x, y] of verts(s)) dot(x, y, 8 * k, selV && selV[0] === li && selV[1] === i ? '#ef5a44' : '#f5d670', 2 * k); }
+  }
+  if (tab === 'ter' && tool === 'select' && !draft) for (const j of juncs()) {     // junctions: a diamond each, the selected one gold
+    const on = jsel && Math.hypot(j.x - jsel[0], j.y - jsel[1]) < 40, r = (on ? 11 : 8) * k;
+    cx.beginPath(); cx.moveTo(j.x, j.y - r); cx.lineTo(j.x + r, j.y); cx.lineTo(j.x, j.y + r); cx.lineTo(j.x - r, j.y); cx.closePath();
+    cx.fillStyle = on ? '#f5d670' : j.off ? 'rgba(255,255,255,.35)' : 'rgba(255,255,255,.85)'; cx.fill(); cx.lineWidth = 2 * k; cx.strokeStyle = '#000'; cx.stroke();
   }
   drawObjs();
   if (draft) {
@@ -256,8 +263,10 @@ cv.addEventListener('pointerdown', e => {
     const s = cur();
     for (const [li, i, x, y] of verts(s)) if (scr(x, y) < R) { Object.assign(drag, { kind: 'vert', li, i, box: gBox(s) }); return; }
     for (const [li, i, x, y] of mids(s)) if (scr(x, y) < R) { Object.assign(drag, { kind: 'mid', li, i, box: gBox(s) }); return; }
+    for (const j of juncs()) if (scr(j.x, j.y) < R) { drag.jtap = [j.x, j.y]; return; }     // a junction (under the selection's points, over its body): selected on the tap
     if (sel >= 0 && hits(s, wx, wy)) { Object.assign(drag, { kind: 'move', box: gBox(s), p0: copyL(s) }); return; }
   }
+  for (const j of juncs()) if (scr(j.x, j.y) < R) { drag.jtap = [j.x, j.y]; return; }
   for (let i = G.stamps.length - 1; i >= 0; i--) if (!G.stamps[i].lock && hits(G.stamps[i], wx, wy)) { Object.assign(drag, { kind: 'move', pick: i, box: gBox(G.stamps[i]), p0: copyL(G.stamps[i]) }); return; }
 });
 cv.addEventListener('pointermove', e => {
@@ -294,8 +303,9 @@ function endDrag(cancel) {
       ui(); draw(); return;
     }
     if (d.kind === 'vert') { selV = [d.li, d.i]; draw(); ui(); return; }
-    if (d.pick !== undefined) { sel = d.pick; selV = null; ui(); draw(); return; }
-    if (d.kind === 'pan' && sel !== -1) { sel = -1; selV = null; ui(); draw(); }
+    if (d.jtap) { jsel = d.jtap; sel = -1; selV = null; ui(); draw(); return; }
+    if (d.pick !== undefined) { sel = d.pick; selV = null; jsel = null; ui(); draw(); return; }
+    if (d.kind === 'pan' && (sel !== -1 || jsel)) { sel = -1; selV = null; jsel = null; ui(); draw(); }
     return;
   }
   if (d.kind === 'omove' || d.kind === 'orot') { save(); ui(); }
@@ -526,6 +536,10 @@ function ui() {
     const n = draft.p.length / 2, need = dk === 'shape' ? 3 : 2;
     const say = 'Tap to add points · ' + (dk === 'branch' ? n - 1 : n) + (dk === 'shape' && n >= 3 ? ' · tap the first to close' : '');
     r2 = `<div class="r"><button class="btn" data-a="dtex" ${dk === 'branch' ? 'disabled' : ''}><span class="sw" ${sw(draft.t)}></span>▾</button><span class="muted" style="flex:1">${say}</span><button class="btn ic" data-a="dback" ${n ? '' : 'disabled'}>⌫</button><button class="btn ic" data-a="dx">✕</button><button class="btn on" data-a="dok" ${n >= need ? '' : 'disabled'}>✓</button></div>`;
+  } else if (sel === -1 && jsel && jAt(...jsel)) {
+    const j = jAt(...jsel), v = j.off ? 'off' : !j.o || j.o.cw === undefined ? 'auto' : j.o.cw ? 'on' : 'none';
+    r2 = `<div class="r"><span class="muted" style="flex:none">Crosswalks</span><div class="scr">${[['auto', 'Auto'], ['on', 'On'], ['none', 'Off'], ['off', 'No junction']].map(([k, n]) => `<button class="btn${v === k ? ' on' : ''}" data-jn="${k}">${n}</button>`).join('')}</div></div>`;
+    ctx = `<b>✛ Junction · ${j.arms.length} ways</b>`;
   } else if (sel === EDGE) {
     const v = s.r || 0; S.prop = 'r';
     r2 = `<div class="r"><label class="sl"><span>Round</span><input type="range" id="pv" min="0" max="800" step="1" value="${v}"><b id="pvV">${v}</b></label></div>`;
@@ -537,7 +551,8 @@ function ui() {
     ctx = `<button class="btn ic" data-a="up" title="Up">▲</button><button class="btn ic" data-a="down" title="Down">▼</button><button class="btn ic" data-a="eye" title="Hide">${s.off ? '◌' : '◉'}</button><button class="btn ic${s.lock ? ' on' : ''}" data-a="lock" title="Lock">${s.lock ? '🔒' : '🔓'}</button><button class="btn ic" data-a="dup" title="Duplicate">⧉</button>${s.l ? `<button class="btn" data-a="branch" ${selV ? '' : 'disabled'}>⑂ Branch</button>` : ''}${canDelV(s) ? '<button class="btn" data-a="delv">− Point</button>' : ''}<button class="btn ic red" data-a="del" title="Delete">🗑</button>`;
   } else r2 = `<div class="r"><button class="btn" data-a="base"><span class="sw" ${sw(G.base)}></span>Base ▾</button><button class="btn" data-a="edge">⬠ Edge</button><span class="muted" style="flex:1">${G.w}×${G.h}</span></div>`;
   bars(r1 + r2, ctx);
-  if (sel === EDGE && !draft) $('#hint').textContent = 'Battlefield edge: outside it is out of bounds · drag the points · blue dots add points';
+  if (jsel && !draft && sel === -1) $('#hint').textContent = 'Junction: found where roads meet · its crosswalks and markings';
+  else if (sel === EDGE && !draft) $('#hint').textContent = 'Battlefield edge: outside it is out of bounds · drag the points · blue dots add points';
   else if (s && !draft) { const b = gBox(s), e = Math.ceil((s.soft || 0) * 1.2) + 1; $('#hint').textContent = `${s.l ? 'Road' : 'Shape'} ${b.w - 2 * e} × ${b.h - 2 * e} px${s.l ? ' · ' + s.wd + ' wide' : ''} · drag it or its points · blue dots add points${s.l ? ' · tap a point, then ⑂ Branch' : ''}`; }
   else $('#hint').textContent = '';
   const rt = $('#rt'); if (rt) rt.onchange = () => { snap(); const R = GROADS[rt.value]; edit(q => { if (rt.value === 'plain') delete q.rt; else q.rt = rt.value; if (R.t) q.t = S.rtex = R.t; if (R.sw !== undefined && q.sw === undefined) q.sw = R.sw; S.rt = rt.value; }); };     // new roads start as the last type
@@ -593,8 +608,13 @@ const onBar = e => {
     ui(); draw(); return;
   }
   if (tab !== 'ter') return;
-  const b = e.target.closest('button[data-a],button[data-prop]'); if (!b) return; const a = b.dataset.a, s = sel !== -1 ? cur() : null;
+  const b = e.target.closest('button[data-a],button[data-prop],button[data-jn]'); if (!b) return; const a = b.dataset.a, s = sel !== -1 ? cur() : null;
   if (b.dataset.prop) { S.prop = b.dataset.prop; save(); }
+  if (b.dataset.jn) {     // the junction's override: kept at its spot (none when back to auto)
+    snap(); const j = jAt(...jsel), L = G.jx || (G.jx = []), o = j.o || (L.push({ x: Math.round(j.x), y: Math.round(j.y) }), L[L.length - 1]), v = b.dataset.jn;
+    delete o.off; delete o.cw; if (v === 'off') o.off = 1; if (v === 'on') o.cw = 1; if (v === 'none') o.cw = 0; if (v === 'auto') L.splice(L.indexOf(o), 1);
+    dirty({ x: j.x - j.r - 80, y: j.y - j.r - 80, w: j.r * 2 + 160, h: j.r * 2 + 160 }); save();
+  }
   if (a === 'sel') { tool = 'select'; draft = null; }
   if (a === 'draw') startDraft('shape');
   if (a === 'road') startDraft('road');
