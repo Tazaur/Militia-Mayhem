@@ -813,3 +813,6 @@ Art drop (drop.py): atlas.png: hull4, tur_dead; atlas_m.png: tur_dead, sol_leg0,
 - No outlines on unselected shapes (View "Outlines" toggle removed).
 - `lock: 1` on a stamp or object: map taps pass through it (pointerdown loop / objAt skip it); the ☰ lists toggle it per row (`lockBtn`/`lockTap`) and still select it.
 - Selection actions (order, hide, lock, duplicate, branch, − point, delete; edge's Whole map) live in the floating `#ctx` bar over the map; `bars(h, ctx)` pads the bottom bar to 3 rows so its height never changes. One click handler `onBar` serves both bars.
+
+## Editor: branching from a point
+- Select a road point, tap ⑂ Branch: the draft starts at that point (`draft.li/end`); taps add points, ✓ finishes. From the line's last point (or the main line's first) the line itself is extended; from any other point a new line is added to `s.l`.

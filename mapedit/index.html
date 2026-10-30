@@ -306,20 +306,15 @@ const up = e => { PT.delete(e.pointerId); if (PT.size < 2) pinch = null; if (PT.
 cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', e => { PT.delete(e.pointerId); pinch = null; endDrag(true); });
 cv.addEventListener('wheel', e => { e.preventDefault(); zoomAt(Math.exp(-e.deltaY * 0.0015), ox(e), oy(e)); }, { passive: false });
 
-/* ---------- drawing: a shape (tap points, Done or tap the first), a road (tap points, Done), a branch (starts on the road) ---------- */
+/* ---------- drawing: a shape (tap points, Done or tap the first), a road (tap points, Done), a branch (from the selected point: an end point carries its line on, any other starts a new line there) ---------- */
 function startDraft(k) {
   const s = sel >= 0 ? cur() : null, like = s && (k === 'shape') === !s.l ? s : null;
-  if (k === 'branch') { draft = { k, of: sel, t: s.t, wd: s.wd, r: s.r || 0, p: [] }; tool = 'draw'; return; }
+  if (k === 'branch') { const [li, i] = selV, q = s.l[li], end = i === q.length - 2 ? 1 : i === 0 && li === 0 ? -1 : 0; draft = { k, of: sel, li, end, t: s.t, wd: s.wd, r: s.r || 0, p: [q[i], q[i + 1]] }; tool = 'draw'; return; }
   draft = { k, t: like ? like.t : lastTex(k), soft: like ? like.soft : k === 'road' ? 10 : 16, r: like ? like.r || 0 : k === 'road' ? 120 : 0, wd: like && like.wd || 70, p: [] };
   tool = 'draw'; sel = -1; selV = null;
 }
 function addPoint(x, y) {
   const p = draft.p;
-  if (draft.k === 'branch' && !p.length) {     // a branch starts on its road: snapped to the nearest line
-    const s = G.stamps[draft.of]; let b = null; for (const q of s.l) { const n = near(q, x, y); if (!b || n[0] < b[0]) b = n; }
-    if (b[0] > s.wd / 2 + 30 / V.z) { toast('Start the branch on the road'); return; }
-    x = b[1]; y = b[2];
-  }
   if (draft.k === 'shape' && p.length >= 6 && Math.hypot((p[0] - x) * V.z, (p[1] - y) * V.z) < 20) { finishDraft(); return; }
   p.push(Math.round(x), Math.round(y)); draw(); ui();
 }
@@ -327,7 +322,11 @@ function finishDraft() {
   const d = draft, need = d.k === 'shape' ? 6 : 4;
   if (d.p.length < need) { toast(d.k === 'shape' ? 'A shape needs 3 points' : 'A road needs 2 points'); return; }
   snap();
-  if (d.k === 'branch') { const s = G.stamps[d.of]; s.l.push(d.p); sel = d.of; }
+  if (d.k === 'branch') {     // an end point: the line goes on (the start the other way round); else a new line from the point
+    const s = G.stamps[d.of], q = s.l[d.li], add = d.p.slice(2);
+    if (d.end > 0) q.push(...add); else if (d.end < 0) { const r = []; for (let i = add.length - 2; i >= 0; i -= 2) r.push(add[i], add[i + 1]); q.unshift(...r); } else s.l.push(d.p);
+    sel = d.of;
+  }
   else { G.stamps.push(d.k === 'road' ? { k: 'path', t: d.t, soft: d.soft, r: d.r, wd: d.wd, l: [d.p] } : { t: d.t, soft: d.soft, r: d.r, p: d.p }); sel = G.stamps.length - 1; }
   selV = null; dirty(gBox(cur())); draft = null; tool = 'select'; save(); ui(); draw();
 }
@@ -525,7 +524,7 @@ function ui() {
   let ctx = '', r1 = `<div class="r"><button class="btn${tool === 'select' ? ' on' : ''}" data-a="sel">✥</button><button class="btn${dk === 'shape' ? ' on' : ''}" data-a="draw">✎ Shape</button><button class="btn${dk === 'road' || dk === 'branch' ? ' on' : ''}" data-a="road">〰 Road</button><button class="btn" data-a="shape">＋ ▾</button><span class="sp"></span><button class="btn" data-a="layers">☰ ${G.stamps.length}</button></div>`, r2;
   if (draft) {
     const n = draft.p.length / 2, need = dk === 'shape' ? 3 : 2;
-    const say = dk === 'branch' && !n ? 'Tap the road where the branch starts' : 'Tap to add points · ' + n + (dk === 'shape' && n >= 3 ? ' · tap the first to close' : '');
+    const say = 'Tap to add points · ' + (dk === 'branch' ? n - 1 : n) + (dk === 'shape' && n >= 3 ? ' · tap the first to close' : '');
     r2 = `<div class="r"><button class="btn" data-a="dtex" ${dk === 'branch' ? 'disabled' : ''}><span class="sw" ${sw(draft.t)}></span>▾</button><span class="muted" style="flex:1">${say}</span><button class="btn ic" data-a="dback" ${n ? '' : 'disabled'}>⌫</button><button class="btn ic" data-a="dx">✕</button><button class="btn on" data-a="dok" ${n >= need ? '' : 'disabled'}>✓</button></div>`;
   } else if (sel === EDGE) {
     const v = s.r || 0; S.prop = 'r';
@@ -535,11 +534,11 @@ function ui() {
     const ps = propsOf(s); if (!ps.includes(S.prop)) S.prop = ps[0]; const P = PROPS[S.prop], v = s[S.prop] || 0;
     r2 = `<div class="r"><button class="btn" data-a="tex"><span class="sw" ${sw(s.t)}></span>▾</button>${ps.map(k => `<button class="btn${k === S.prop ? ' on' : ''}" data-prop="${k}">${PROPS[k][0]} ${s[k] || 0}</button>`).join('')}</div>
     <div class="r"><label class="sl"><span>${P[0]}</span><input type="range" id="pv" min="${P[1]}" max="${P[2]}" step="1" value="${v}"><b id="pvV">${v}</b></label></div>`;
-    ctx = `<button class="btn ic" data-a="up" title="Up">▲</button><button class="btn ic" data-a="down" title="Down">▼</button><button class="btn ic" data-a="eye" title="Hide">${s.off ? '◌' : '◉'}</button><button class="btn ic${s.lock ? ' on' : ''}" data-a="lock" title="Lock">${s.lock ? '🔒' : '🔓'}</button><button class="btn ic" data-a="dup" title="Duplicate">⧉</button>${s.l ? '<button class="btn" data-a="branch">⑂ Branch</button>' : ''}${canDelV(s) ? '<button class="btn" data-a="delv">− Point</button>' : ''}<button class="btn ic red" data-a="del" title="Delete">🗑</button>`;
+    ctx = `<button class="btn ic" data-a="up" title="Up">▲</button><button class="btn ic" data-a="down" title="Down">▼</button><button class="btn ic" data-a="eye" title="Hide">${s.off ? '◌' : '◉'}</button><button class="btn ic${s.lock ? ' on' : ''}" data-a="lock" title="Lock">${s.lock ? '🔒' : '🔓'}</button><button class="btn ic" data-a="dup" title="Duplicate">⧉</button>${s.l ? `<button class="btn" data-a="branch" ${selV ? '' : 'disabled'}>⑂ Branch</button>` : ''}${canDelV(s) ? '<button class="btn" data-a="delv">− Point</button>' : ''}<button class="btn ic red" data-a="del" title="Delete">🗑</button>`;
   } else r2 = `<div class="r"><button class="btn" data-a="base"><span class="sw" ${sw(G.base)}></span>Base ▾</button><button class="btn" data-a="edge">⬠ Edge</button><span class="muted" style="flex:1">${G.w}×${G.h}</span></div>`;
   bars(r1 + r2, ctx);
   if (sel === EDGE && !draft) $('#hint').textContent = 'Battlefield edge: outside it is out of bounds · drag the points · blue dots add points';
-  else if (s && !draft) { const b = gBox(s), e = Math.ceil((s.soft || 0) * 1.2) + 1; $('#hint').textContent = `${s.l ? 'Road' : 'Shape'} ${b.w - 2 * e} × ${b.h - 2 * e} px${s.l ? ' · ' + s.wd + ' wide' : ''} · drag it or its points · blue dots add points`; }
+  else if (s && !draft) { const b = gBox(s), e = Math.ceil((s.soft || 0) * 1.2) + 1; $('#hint').textContent = `${s.l ? 'Road' : 'Shape'} ${b.w - 2 * e} × ${b.h - 2 * e} px${s.l ? ' · ' + s.wd + ' wide' : ''} · drag it or its points · blue dots add points${s.l ? ' · tap a point, then ⑂ Branch' : ''}`; }
   else $('#hint').textContent = '';
   const sl = $('#pv'); if (sl) {     // one undo step per drag, the old and new boxes re-baked
     let b0 = null; const k = S.prop;
