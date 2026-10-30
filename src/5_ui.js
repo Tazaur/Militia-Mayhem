@@ -50,7 +50,8 @@ function drawWorld(vw) {
   for (const s of MAP.statics) {
     if (!s.alive || !vis(s.x, s.y, s.type === 'tree' ? 40 : 16)) continue; AK = s.type;
     if (s.type === 'fence') at(SUNH.fence, () => { worldT(); ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.a); ctx.fillStyle = 'rgba(0,0,0,0.3)'; if (!SUNNOW) ctx.fillRect(-7, 2, 15, 3); ctx.fillStyle = CFG.style === 'grit' ? '#5a4632' : '#8a6a42'; ctx.fillRect(-7, -1, 14, 2.5); ctx.fillStyle = CFG.style === 'grit' ? '#3e3022' : '#5e4428'; ctx.fillRect(-2, -3, 4, 6); ctx.restore(); });
-    else if (s.type === 'hay') at(SUNH.hay, () => { worldT(); ctx.fillStyle = 'rgba(0,0,0,0.3)'; if (!SUNNOW) { ctx.beginPath(); ctx.arc(s.x + 3, s.y + 4, 13, 0, TAU); ctx.fill(); } ctx.fillStyle = CFG.style === 'grit' ? '#857344' : '#c8a64e'; ctx.beginPath(); ctx.arc(s.x, s.y, 13, 0, TAU); ctx.fill(); ctx.strokeStyle = CFG.style === 'grit' ? '#665834' : '#a0823a'; ctx.lineWidth = 1.5; for (const r of [9, 5]) { ctx.beginPath(); ctx.arc(s.x, s.y, r, s.a, s.a + 5); ctx.stroke(); } });
+    else if (s.type === 'bag' && !s.arc) at(SUNH.fence, () => { worldT(); img(SPR.bag, s.x, s.y, s.a, 1); });     // a loose sandbag (a wall's are its arc sprite)
+    else if (s.type === 'hay') at(SUNH.hay, () => { worldT(); ctx.fillStyle = 'rgba(0,0,0,0.3)'; if (!SUNNOW) { ctx.beginPath(); ctx.arc(s.x + 3, s.y + 4, 13, 0, TAU); ctx.fill(); } img(SPR.hay, s.x, s.y, s.a, 1); });
     else if (s.type === 'tree') at(SUNH.tree[0], () => { const tc = s.pine ? SPR.pines[s.v] : SPR.trees[s.v]; worldT(); ctx.fillStyle = 'rgba(0,0,0,0.28)'; if (!SUNNOW) { ctx.beginPath(); ctx.arc(s.x + 6, s.y + 7, 24 * s.sc, 0, TAU); ctx.fill(); } img(tc, s.x, s.y, s.a, s.sc, 0.94); });
   }
   AK = 'wreck'; for (const w of M.wrecks) if (vis(w.x, w.y, 70)) at(topOf(w), () => drawWreck(w));

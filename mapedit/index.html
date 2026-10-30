@@ -100,6 +100,7 @@ let ATLAS = {};
 const IMG = new Image(), MIMG = new Image();
 </script>
 <script src="../src/2b_ground.js"></script>
+<script src="../src/2c_props.js"></script>
 <script>
 'use strict';
 const $ = s => document.querySelector(s), cv = $('#cv'), cx = cv.getContext('2d');
@@ -368,16 +369,18 @@ const objs = () => G.objs || (G.objs = []);
 const kindsOf = tab => Object.keys(OK).filter(k => OK[k].tab === tab);
 const flagName = o => String.fromCharCode(65 + objs().filter(q => q.k === 'flag').indexOf(o));
 /* drawn over the ground in every tab (dimmed outside their own), true size */
+const PS = propSprites(false);     // the game's own prop sprites
+const spr = (c, a, sc) => { cx.save(); cx.rotate(a || 0); cx.scale(sc || 1, sc || 1); cx.imageSmoothingEnabled = true; cx.drawImage(c, -c.width / 2, -c.height / 2); cx.restore(); };
 function drawObjs() {
   const k = 1 / V.z, os = objs();
   os.forEach((o, i) => {
     const D = OK[o.k]; if (!D) return; const mine = D.tab === tab, on = mine && i === osel;
     cx.save(); cx.globalAlpha = mine ? 1 : 0.45; cx.translate(o.x, o.y);
     const tc = TEAMC[o.team === 1 ? 1 : o.team === -1 ? 2 : 0];
-    if (o.k === 'tree' || o.k === 'pine') { const r = D.r(o); cx.fillStyle = o.k === 'pine' ? '#1f5a2e' : '#2f8a35'; cx.beginPath(); cx.arc(0, 0, r, 0, 7); cx.fill(); cx.fillStyle = 'rgba(255,255,255,.18)'; cx.beginPath(); cx.arc(-r * 0.3, -r * 0.3, r * 0.45, 0, 7); cx.fill(); cx.strokeStyle = '#0c2a10'; cx.lineWidth = 1.5 * k; cx.beginPath(); cx.arc(0, 0, r, 0, 7); cx.stroke(); }
-    else if (o.k === 'hay') { cx.rotate(o.a || 0); cx.fillStyle = '#d9b54a'; cx.strokeStyle = '#6b5216'; cx.lineWidth = 1.5 * k; cx.beginPath(); cx.arc(0, 0, 13, 0, 7); cx.fill(); cx.stroke(); }
-    else if (o.k === 'bags') { cx.rotate(o.a || 0); cx.strokeStyle = '#8a7650'; cx.lineWidth = 13; cx.lineCap = 'round'; cx.beginPath(); cx.arc(-12, 0, 32, -1.15, 1.15); cx.stroke(); cx.strokeStyle = 'rgba(0,0,0,.35)'; cx.lineWidth = 1.5 * k; cx.stroke(); }
-    else if (o.k === 'bag') { cx.rotate(o.a || 0); cx.fillStyle = '#8a7650'; cx.fillRect(-9, -5, 18, 10); }
+    if (o.k === 'tree' || o.k === 'pine') spr((o.k === 'pine' ? PS.pines : PS.trees)[o.v || 0], o.a, o.sc || 1);
+    else if (o.k === 'hay') spr(PS.hay, o.a);
+    else if (o.k === 'bags') { const A = ATLAS.bagarc0; cx.rotate((o.a || 0) + Math.PI); if (A && gReady(IMG)) { cx.imageSmoothingEnabled = true; cx.drawImage(IMG, A[0], A[1], A[2], A[3], -A[4], -A[5], A[2], A[3]); } }
+    else if (o.k === 'bag') spr(PS.bag, o.a);
     else if (o.k === 'flag') { const r = o.r || 96; cx.fillStyle = 'rgba(255,255,255,.1)'; cx.beginPath(); cx.arc(0, 0, r, 0, 7); cx.fill(); cx.setLineDash([10 * k, 7 * k]); cx.strokeStyle = 'rgba(255,255,255,.7)'; cx.lineWidth = 2 * k; cx.stroke(); cx.setLineDash([]); label(flagName(o), 0, 0, 22 * k, '#fff'); }
     else if (o.k === 'base') { cx.strokeStyle = tc; cx.lineWidth = 3 * k; cx.setLineDash([12 * k, 8 * k]); cx.strokeRect(-170, -200, 340, 400); cx.setLineDash([]); cx.fillStyle = tc; cx.globalAlpha *= 0.15; cx.fillRect(-170, -200, 340, 400); cx.globalAlpha = mine ? 1 : 0.45; label('BASE', 0, 0, 16 * k, tc); }
     else if (o.k === 'camp') { cx.fillStyle = tc; cx.beginPath(); cx.moveTo(0, -22); cx.lineTo(22, 16); cx.lineTo(-22, 16); cx.closePath(); cx.fill(); label('CAMP', 0, 34, 11 * k, tc); }
@@ -389,7 +392,7 @@ function drawObjs() {
       cx.fillStyle = tc; cx.beginPath(); cx.moveTo(D.r(o) + 4, -8); cx.lineTo(D.r(o) + 18, 0); cx.lineTo(D.r(o) + 4, 8); cx.fill();     // the way it faces
     }
     else if (o.k === 'drop') { cx.fillStyle = '#f5d670'; cx.beginPath(); cx.moveTo(0, -16); cx.lineTo(14, 0); cx.lineTo(0, 16); cx.lineTo(-14, 0); cx.closePath(); cx.fill(); label('FFA', 0, 28, 10 * k, '#f5d670'); }
-    else if (o.k === 'crate') { cx.fillStyle = '#e07a2c'; cx.fillRect(-11, -11, 22, 22); cx.strokeStyle = '#5a2c08'; cx.lineWidth = 2; cx.strokeRect(-11, -11, 22, 22); }
+    else if (o.k === 'crate') spr(PS.crate);
     cx.restore();
     if (D.r(o) * V.z < 11 && o.k !== 'flag') {     // too small to see at this zoom: a badge, its icon
       cx.globalAlpha = mine ? 1 : 0.45; cx.fillStyle = 'rgba(13,18,11,.8)'; cx.strokeStyle = o.team !== undefined ? tc : '#a49f86'; cx.lineWidth = 1.5 * k;
