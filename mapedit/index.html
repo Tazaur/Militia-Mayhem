@@ -104,7 +104,7 @@ S.maps = S.maps || {}; S.view = S.view || 'col'; S.lines = S.lines !== false;
 const save = () => { try { localStorage.setItem(SKEY, JSON.stringify(S)); } catch (e) { toast('Storage full: export your maps'); } };
 let G = null;                                   // the open map
 const V = { x: 0, y: 0, z: 0.3 };               // view: screen = (world - x, y) * z (CSS px)
-let sel = -1, selV = -1, tool = 'select', draft = null;     // selected stamp, its selected vertex; draft: the polygon being drawn
+let sel = -1, selV = null, tool = 'select', draft = null;     // selected stamp, its selected point [line, index]; draft: the shape / road being drawn
 const UNDO = [], REDO = [];
 const slug = n => (n || 'map').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'map';
 function newMap(name, w, h, base) {
@@ -112,14 +112,14 @@ function newMap(name, w, h, base) {
   return { v: 1, id, name, w, h, base, stamps: [] };
 }
 function open(id) {
-  G = S.maps[id]; S.cur = id; sel = -1; selV = -1; draft = null; UNDO.length = REDO.length = 0;
+  G = S.maps[id]; S.cur = id; sel = -1; selV = null; draft = null; UNDO.length = REDO.length = 0;
   bakeAll(); fit(); ui(); save();
 }
 /* a change: undo keeps the map before it */
 function snap() { UNDO.push(JSON.stringify({ base: G.base, stamps: G.stamps })); if (UNDO.length > 100) UNDO.shift(); REDO.length = 0; }
 function restore(from, to) {
   if (!from.length) return; to.push(JSON.stringify({ base: G.base, stamps: G.stamps }));
-  const o = JSON.parse(from.pop()); G.base = o.base; G.stamps = o.stamps; sel = Math.min(sel, G.stamps.length - 1); selV = -1; bakeAll(); save(); ui();
+  const o = JSON.parse(from.pop()); G.base = o.base; G.stamps = o.stamps; sel = Math.min(sel, G.stamps.length - 1); selV = null; bakeAll(); save(); ui();
 }
 
 /* ---------- the bake: the map at full size (colour, and the material map when it's shown), only what changed ---------- */
@@ -139,58 +139,106 @@ function bakeDirty() {
 }
 
 /* ---------- drawing the view ---------- */
+const SKIRT = 480;      // the game's out-of-bounds ring (1_core.js): the base texture, tinted
 let W = 0, H = 0, DPR = 1, raf = 0;
 function resize() { DPR = Math.min(2, devicePixelRatio || 1); const r = cv.getBoundingClientRect(); W = r.width; H = r.height; cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR); draw(); }
 function draw() { if (!raf) raf = requestAnimationFrame(frame); }
+const PAT = {}; const pat = n => { const k = n + (gReady(IMG) ? 1 : 0); return PAT[k] || (PAT[k] = cx.createPattern(gTex(n).c, 'repeat')); };
 function frame() {
   raf = 0; if (!G) return;
   if (BK.dirty && (!drag || performance.now() - BK.t > 70)) bakeDirty();
   if (BK.dirty) draw();
   cx.setTransform(DPR, 0, 0, DPR, 0, 0); cx.fillStyle = '#070a06'; cx.fillRect(0, 0, W, H);
   cx.setTransform(DPR * V.z, 0, 0, DPR * V.z, -V.x * V.z * DPR, -V.y * V.z * DPR); cx.imageSmoothingEnabled = V.z < 1;
-  cx.drawImage(S.view === 'mat' && BK.m ? BK.m : BK.c, 0, 0);
+  const mat = S.view === 'mat' && BK.m;
+  cx.fillStyle = mat ? '#000' : pat(G.base); cx.fillRect(-SKIRT, -SKIRT, G.w + SKIRT * 2, G.h + SKIRT * 2);
+  if (!mat) { cx.fillStyle = 'rgba(40,6,2,0.38)'; cx.fillRect(-SKIRT, -SKIRT, G.w + SKIRT * 2, G.h + SKIRT * 2); }
+  cx.drawImage(mat ? BK.m : BK.c, 0, 0);
   const k = 1 / V.z;
   cx.lineWidth = 2 * k; cx.strokeStyle = 'rgba(255,90,60,.6)'; cx.setLineDash([10 * k, 8 * k]); cx.strokeRect(0, 0, G.w, G.h); cx.setLineDash([]);
-  if (S.lines) G.stamps.forEach((s, i) => { if (i === sel) return; gPath(cx, s); cx.lineWidth = 1.5 * k; cx.strokeStyle = s.off ? 'rgba(255,255,255,.18)' : 'rgba(255,255,255,.45)'; cx.setLineDash(s.off ? [6 * k, 6 * k] : []); cx.stroke(); cx.setLineDash([]); });
+  if (S.lines) G.stamps.forEach((s, i) => { if (i === sel) return; outline(s, s.off ? 'rgba(255,255,255,.18)' : 'rgba(255,255,255,.45)', 1.5 * k, s.off); });
   if (sel >= 0) {
-    const s = G.stamps[sel], p = s.p;
-    if (s.r > 0) { gPath(cx, { p }); cx.lineWidth = 1 * k; cx.strokeStyle = 'rgba(245,214,112,.35)'; cx.setLineDash([4 * k, 5 * k]); cx.stroke(); cx.setLineDash([]); }     // the points' cage
+    const s = G.stamps[sel];
+    if (s.r > 0) { gPath(cx, { p: s.p, l: s.l }); cx.lineWidth = 1 * k; cx.strokeStyle = 'rgba(245,214,112,.35)'; cx.setLineDash([4 * k, 5 * k]); cx.stroke(); cx.setLineDash([]); }     // the points' cage
+    if (s.l) { gPath(cx, s); cx.lineWidth = s.wd; cx.lineCap = cx.lineJoin = 'round'; cx.strokeStyle = 'rgba(245,214,112,.16)'; cx.stroke(); cx.lineCap = cx.lineJoin = 'miter'; }     // the road's width
     gPath(cx, s); cx.lineWidth = 2.5 * k; cx.strokeStyle = '#000'; cx.stroke(); cx.lineWidth = 1.5 * k; cx.strokeStyle = '#f5d670'; cx.stroke();
-    if (s.soft > 0) { cx.lineWidth = s.soft; cx.strokeStyle = 'rgba(245,214,112,.12)'; cx.stroke(); }     // the blend zone
-    if (tool === 'select') for (let i = 0; i < p.length; i += 2) {
-      const j = (i + 2) % p.length; cx.fillStyle = 'rgba(95,211,208,.85)'; cx.beginPath(); cx.arc((p[i] + p[j]) / 2, (p[i + 1] + p[j + 1]) / 2, 5 * k, 0, 7); cx.fill();     // + midpoints: drag to add a point
-    }
-    if (tool === 'select') for (let i = 0; i < p.length; i += 2) { cx.fillStyle = i / 2 === selV ? '#ef5a44' : '#f5d670'; cx.strokeStyle = '#000'; cx.lineWidth = 2 * k; cx.beginPath(); cx.arc(p[i], p[i + 1], 8 * k, 0, 7); cx.fill(); cx.stroke(); }
+    if (s.soft > 0 && !s.l) { gPath(cx, s); cx.lineWidth = s.soft; cx.strokeStyle = 'rgba(245,214,112,.12)'; cx.stroke(); }     // the blend zone
+    if (tool === 'select') { for (const [li, i, x, y] of mids(s)) dot(x, y, 5 * k, 'rgba(95,211,208,.85)'); for (const [li, i, x, y] of verts(s)) dot(x, y, 8 * k, selV && selV[0] === li && selV[1] === i ? '#ef5a44' : '#f5d670', 2 * k); }
   }
   if (draft) {
-    const p = draft.p; cx.beginPath(); for (let i = 0; i < p.length; i += 2) cx.lineTo(p[i], p[i + 1]);
-    if (p.length >= 6) { cx.closePath(); cx.fillStyle = cx.createPattern(gTex(draft.t).c, 'repeat'); cx.globalAlpha = 0.7; cx.fill(); cx.globalAlpha = 1; }
+    const p = draft.p, road = draft.k !== 'shape';
+    if (p.length >= (road ? 4 : 6)) {
+      gPath(cx, road ? { l: [p], r: draft.r } : { p, r: draft.r }); cx.globalAlpha = 0.7;
+      if (road) { cx.strokeStyle = pat(draft.t); cx.lineWidth = draft.wd; cx.lineCap = cx.lineJoin = 'round'; cx.stroke(); cx.lineCap = cx.lineJoin = 'miter'; } else { cx.fillStyle = pat(draft.t); cx.fill(); }
+      cx.globalAlpha = 1;
+    }
+    cx.beginPath(); for (let i = 0; i < p.length; i += 2) cx.lineTo(p[i], p[i + 1]); if (!road && p.length >= 6) cx.closePath();
     cx.lineWidth = 2 * k; cx.strokeStyle = '#5fd3d0'; cx.stroke();
-    for (let i = 0; i < p.length; i += 2) { cx.fillStyle = i === 0 ? '#7ddc6a' : '#5fd3d0'; cx.beginPath(); cx.arc(p[i], p[i + 1], (i === 0 ? 10 : 7) * k, 0, 7); cx.fill(); }
+    for (let i = 0; i < p.length; i += 2) dot(p[i], p[i + 1], (i === 0 ? 10 : 7) * k, i === 0 ? '#7ddc6a' : '#5fd3d0');
   }
+  if (S.guide !== false) guide();
+}
+function dot(x, y, r, c, lw) { cx.fillStyle = c; cx.beginPath(); cx.arc(x, y, r, 0, 7); cx.fill(); if (lw) { cx.strokeStyle = '#000'; cx.lineWidth = lw; cx.stroke(); } }
+/* a stamp's outline: a shape's edge, a road's centre line */
+function outline(s, c, lw, dash) { gPath(cx, s); cx.setLineDash(dash ? [6 * lw, 6 * lw] : []); cx.strokeStyle = c; cx.lineWidth = lw; cx.stroke(); cx.setLineDash([]); }
+/* the scale guide (bottom left, true size at this zoom): a tank, a jeep, a soldier and a ruler */
+function guide() {
+  cx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const z = V.z, ns = [['hull0', 'tank'], ['jeep0', 'jeep'], ['sol_stand', 'soldier']].filter(([n]) => ATLAS[n] && gReady(IMG));
+  const nice = [25, 50, 100, 200, 250, 500, 1000, 2000].find(v => v * z >= 50) || 2000, rl = nice * z;
+  const slot = n => Math.max(ATLAS[n][2] * z, 40) + 8; let w = 16 + rl, x = 10; for (const [n] of ns) w += slot(n);
+  const y0 = H - 10, hh = Math.max(40, ...ns.map(([n]) => ATLAS[n][3] * z + 22));
+  cx.fillStyle = 'rgba(13,18,11,.72)'; cx.beginPath(); cx.roundRect ? cx.roundRect(x, y0 - hh, w, hh, 8) : cx.rect(x, y0 - hh, w, hh); cx.fill();
+  cx.font = '600 10px Chakra Petch, system-ui'; cx.textAlign = 'center'; cx.fillStyle = '#ece4c8'; cx.imageSmoothingEnabled = true;
+  let px = x + 8;
+  for (const [n, lab] of ns) {
+    const a = ATLAS[n], sw = a[2] * z, sh = a[3] * z, cy0 = y0 - 16 - sh / 2;
+    cx.drawImage(IMG, a[0], a[1], a[2], a[3], px + (slot(n) - 8 - sw) / 2, cy0 - sh / 2, sw, sh);
+    cx.fillText(lab, px + slot(n) / 2 - 4, y0 - 4); px += slot(n);
+  }
+  cx.fillStyle = '#e0b72c'; cx.fillRect(px, y0 - 20, rl, 3); cx.fillRect(px, y0 - 25, 2, 13); cx.fillRect(px + rl - 2, y0 - 25, 2, 13);
+  cx.fillStyle = '#ece4c8'; cx.fillText(nice + ' px', px + rl / 2, y0 - 4);
 }
 const toWorld = (sx, sy) => [sx / V.z + V.x, sy / V.z + V.y];
 function fit() { const z = Math.min(W / G.w, H / G.h) * 0.94; V.z = z; V.x = G.w / 2 - W / 2 / z; V.y = G.h / 2 - H / 2 / z; draw(); }
 function zoomAt(f, sx, sy) { const [wx, wy] = toWorld(sx, sy); V.z = Math.max(0.05, Math.min(8, V.z * f)); V.x = wx - sx / V.z; V.y = wy - sy / V.z; draw(); }
 
-/* ---------- touch: one finger by tool (select: a handle, a shape, or pan; draw: tap a point, drag pans), two pinch ---------- */
+/* ---------- a stamp's handles: its points [line, index, x, y], and the midpoints between them (a shape's wrap round) ---------- */
+function verts(s) { const o = []; gLines(s).forEach((p, li) => { for (let i = 0; i < p.length; i += 2) o.push([li, i, p[i], p[i + 1]]); }); return o; }
+function mids(s) {
+  const o = []; gLines(s).forEach((p, li) => { for (let i = 0; i < p.length; i += 2) { const j = i + 2 < p.length ? i + 2 : s.l ? -1 : 0; if (j >= 0) o.push([li, i, (p[i] + p[j]) / 2, (p[i + 1] + p[j + 1]) / 2]); } });
+  return o;
+}
+/* the nearest point on a line to (x, y): [distance, x, y, segment start index] */
+function near(p, x, y) {
+  let best = [1e9, 0, 0, 0];
+  for (let i = 0; i + 2 < p.length; i += 2) {
+    const ax = p[i], ay = p[i + 1], dx = p[i + 2] - ax, dy = p[i + 3] - ay, l = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l));
+    const qx = ax + dx * t, qy = ay + dy * t, d = Math.hypot(x - qx, y - qy); if (d < best[0]) best = [d, qx, qy, i];
+  }
+  return best;
+}
+const inPoly = (x, y, p) => { let c = false; for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) { const xi = p[i], yi = p[i + 1], xj = p[j], yj = p[j + 1]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
+const hits = (s, x, y) => s.l ? s.l.some(p => near(p, x, y)[0] < s.wd / 2 + 10 / V.z) : inPoly(x, y, s.p);
+const copyL = s => gLines(s).map(p => p.slice());
+
+/* ---------- touch: one finger by tool (select: a handle, a stamp, or pan; drawing: tap a point, drag pans), two pinch ---------- */
 const PT = new Map(); let drag = null, pinch = null;
 const ox = e => e.clientX - cv.getBoundingClientRect().left, oy = e => e.clientY - cv.getBoundingClientRect().top;     // CSS px in the canvas
-const inPoly = (x, y, p) => { let c = false; for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) { const xi = p[i], yi = p[i + 1], xj = p[j], yj = p[j + 1]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
 cv.addEventListener('pointerdown', e => {
   try { cv.setPointerCapture(e.pointerId); } catch (x) { } PT.set(e.pointerId, [ox(e), oy(e)]);
   if (PT.size === 2) { endDrag(true); const [a, b] = [...PT.values()]; pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), c: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] }; return; }
   if (PT.size > 2) return;
-  const sx = ox(e), sy = oy(e), [wx, wy] = toWorld(sx, sy), R = 18;
+  const sx = ox(e), sy = oy(e), [wx, wy] = toWorld(sx, sy), R = 18, scr = (x, y) => Math.hypot((x - V.x) * V.z - sx, (y - V.y) * V.z - sy);
   drag = { sx, sy, wx, wy, moved: false, kind: 'pan', vx: V.x, vy: V.y };
   if (tool !== 'select') return;
   if (sel >= 0) {
-    const p = G.stamps[sel].p;
-    for (let i = 0; i < p.length; i += 2) if (Math.hypot((p[i] - V.x) * V.z - sx, (p[i + 1] - V.y) * V.z - sy) < R) { drag.kind = 'vert'; drag.i = i; drag.box = gBox(G.stamps[sel]); drag.snap = true; return; }
-    for (let i = 0; i < p.length; i += 2) { const j = (i + 2) % p.length, mx = (p[i] + p[j]) / 2, my = (p[i + 1] + p[j + 1]) / 2; if (Math.hypot((mx - V.x) * V.z - sx, (my - V.y) * V.z - sy) < R) { drag.kind = 'mid'; drag.i = i; drag.box = gBox(G.stamps[sel]); return; } }
-    if (inPoly(wx, wy, p)) { drag.kind = 'move'; drag.box = gBox(G.stamps[sel]); drag.p0 = p.slice(); return; }
+    const s = G.stamps[sel];
+    for (const [li, i, x, y] of verts(s)) if (scr(x, y) < R) { Object.assign(drag, { kind: 'vert', li, i, box: gBox(s) }); return; }
+    for (const [li, i, x, y] of mids(s)) if (scr(x, y) < R) { Object.assign(drag, { kind: 'mid', li, i, box: gBox(s) }); return; }
+    if (hits(s, wx, wy)) { Object.assign(drag, { kind: 'move', box: gBox(s), p0: copyL(s) }); return; }
   }
-  for (let i = G.stamps.length - 1; i >= 0; i--) if (inPoly(wx, wy, G.stamps[i].p)) { drag.kind = 'move'; drag.pick = i; drag.box = gBox(G.stamps[i]); drag.p0 = G.stamps[i].p.slice(); return; }
+  for (let i = G.stamps.length - 1; i >= 0; i--) if (hits(G.stamps[i], wx, wy)) { Object.assign(drag, { kind: 'move', pick: i, box: gBox(G.stamps[i]), p0: copyL(G.stamps[i]) }); return; }
 });
 cv.addEventListener('pointermove', e => {
   if (!PT.has(e.pointerId)) return; PT.set(e.pointerId, [ox(e), oy(e)]);
@@ -200,27 +248,27 @@ cv.addEventListener('pointermove', e => {
   }
   if (!drag) return;
   const dx = ox(e) - drag.sx, dy = oy(e) - drag.sy; if (!drag.moved && Math.hypot(dx, dy) < 7) return;
-  if (!drag.moved) {      // the drag starts: a change to undo, a new point from a midpoint, a shape picked up
+  if (!drag.moved) {      // the drag starts: a change to undo, a new point from a midpoint, a stamp picked up
     drag.moved = true;
     if (drag.kind !== 'pan') snap();
-    if (drag.pick !== undefined) { sel = drag.pick; selV = -1; ui(); }
-    if (drag.kind === 'mid') { const p = G.stamps[sel].p, j = (drag.i + 2) % p.length; p.splice(drag.i + 2, 0, Math.round((p[drag.i] + p[j]) / 2), Math.round((p[drag.i + 1] + p[j + 1]) / 2)); drag.kind = 'vert'; drag.i += 2; selV = drag.i / 2; }
-    if (drag.kind === 'vert') selV = drag.i / 2;
+    if (drag.pick !== undefined) { sel = drag.pick; selV = null; ui(); }
+    if (drag.kind === 'mid') { const p = gLines(G.stamps[sel])[drag.li], i = drag.i, j = i + 2 < p.length ? i + 2 : 0; p.splice(i + 2, 0, Math.round((p[i] + p[j]) / 2), Math.round((p[i + 1] + p[j + 1]) / 2)); drag.kind = 'vert'; drag.i += 2; }
+    if (drag.kind === 'vert') selV = [drag.li, drag.i];
   }
   const [wx, wy] = toWorld(ox(e), oy(e));
   if (drag.kind === 'pan') { V.x = drag.vx - dx / V.z; V.y = drag.vy - dy / V.z; draw(); return; }
-  const s = G.stamps[sel], p = s.p;
-  if (drag.kind === 'vert') { p[drag.i] = Math.round(wx); p[drag.i + 1] = Math.round(wy); }
-  else { const ox = Math.round(wx - drag.wx), oy = Math.round(wy - drag.wy); for (let i = 0; i < p.length; i += 2) { p[i] = drag.p0[i] + ox; p[i + 1] = drag.p0[i + 1] + oy; } }
+  const s = G.stamps[sel], L = gLines(s);
+  if (drag.kind === 'vert') { const p = L[drag.li]; p[drag.i] = Math.round(wx); p[drag.i + 1] = Math.round(wy); }
+  else { const mx = Math.round(wx - drag.wx), my = Math.round(wy - drag.wy); L.forEach((p, li) => { for (let i = 0; i < p.length; i += 2) { p[i] = drag.p0[li][i] + mx; p[i + 1] = drag.p0[li][i + 1] + my; } }); }
   const b = gBox(s); dirty(boxU(drag.box, b)); drag.box = b; draw();
 });
 function endDrag(cancel) {
   const d = drag; drag = null; if (!d || cancel) return;
   if (!d.moved) {     // a tap
-    if (tool === 'draw') { addPoint(d.wx, d.wy); return; }
-    if (d.kind === 'vert') { selV = d.i / 2; draw(); ui(); return; }
-    if (d.pick !== undefined) { sel = d.pick; selV = -1; ui(); draw(); return; }
-    if (d.kind === 'pan' && sel >= 0) { sel = -1; selV = -1; ui(); draw(); }
+    if (draft) { addPoint(d.wx, d.wy); return; }
+    if (d.kind === 'vert') { selV = [d.li, d.i]; draw(); ui(); return; }
+    if (d.pick !== undefined) { sel = d.pick; selV = null; ui(); draw(); return; }
+    if (d.kind === 'pan' && sel >= 0) { sel = -1; selV = null; ui(); draw(); }
     return;
   }
   if (d.kind !== 'pan') { dirty(d.box); save(); ui(); }
@@ -230,34 +278,51 @@ const up = e => { PT.delete(e.pointerId); if (PT.size < 2) pinch = null; if (PT.
 cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', e => { PT.delete(e.pointerId); pinch = null; endDrag(true); });
 cv.addEventListener('wheel', e => { e.preventDefault(); zoomAt(Math.exp(-e.deltaY * 0.0015), ox(e), oy(e)); }, { passive: false });
 
-/* ---------- drawing a new shape: tap points, Done (or tap the first point) ---------- */
+/* ---------- drawing: a shape (tap points, Done or tap the first), a road (tap points, Done), a branch (starts on the road) ---------- */
+function startDraft(k) {
+  const s = sel >= 0 ? G.stamps[sel] : null, like = s && (k === 'shape') === !s.l ? s : null;
+  if (k === 'branch') { draft = { k, of: sel, t: s.t, wd: s.wd, r: s.r || 0, p: [] }; tool = 'draw'; return; }
+  draft = { k, t: like ? like.t : lastTex(k), soft: like ? like.soft : k === 'road' ? 10 : 16, r: like ? like.r || 0 : k === 'road' ? 120 : 0, wd: like && like.wd || 70, p: [] };
+  tool = 'draw'; sel = -1; selV = null;
+}
 function addPoint(x, y) {
   const p = draft.p;
-  if (p.length >= 6 && Math.hypot((p[0] - x) * V.z, (p[1] - y) * V.z) < 20) { finishDraft(); return; }
+  if (draft.k === 'branch' && !p.length) {     // a branch starts on its road: snapped to the nearest line
+    const s = G.stamps[draft.of]; let b = null; for (const q of s.l) { const n = near(q, x, y); if (!b || n[0] < b[0]) b = n; }
+    if (b[0] > s.wd / 2 + 30 / V.z) { toast('Start the branch on the road'); return; }
+    x = b[1]; y = b[2];
+  }
+  if (draft.k === 'shape' && p.length >= 6 && Math.hypot((p[0] - x) * V.z, (p[1] - y) * V.z) < 20) { finishDraft(); return; }
   p.push(Math.round(x), Math.round(y)); draw(); ui();
 }
 function finishDraft() {
-  if (draft.p.length < 6) { toast('A shape needs 3 points'); return; }
-  snap(); G.stamps.push({ t: draft.t, soft: draft.soft, p: draft.p }); sel = G.stamps.length - 1; selV = -1;
-  dirty(gBox(G.stamps[sel])); draft = null; tool = 'select'; save(); ui(); draw();
+  const d = draft, need = d.k === 'shape' ? 6 : 4;
+  if (d.p.length < need) { toast(d.k === 'shape' ? 'A shape needs 3 points' : 'A road needs 2 points'); return; }
+  snap();
+  if (d.k === 'branch') { const s = G.stamps[d.of]; s.l.push(d.p); sel = d.of; }
+  else { G.stamps.push(d.k === 'road' ? { k: 'path', t: d.t, soft: d.soft, r: d.r, wd: d.wd, l: [d.p] } : { t: d.t, soft: d.soft, r: d.r, p: d.p }); sel = G.stamps.length - 1; }
+  selV = null; dirty(gBox(G.stamps[sel])); draft = null; tool = 'select'; save(); ui(); draw();
 }
 /* ready-made shapes at the middle of the view: a square, a circle, a blob */
 function addShape(k) {
-  const [cx0, cy0] = toWorld(W / 2, H / 2), r = Math.max(40, Math.round(110 / Math.max(V.z, 0.15) * 0.35 * 3)), p = [];
+  const [cx0, cy0] = toWorld(W / 2, H / 2), r = Math.max(40, Math.round(Math.min(W, H) * 0.22 / V.z)), p = [];
   const n = k === 'sq' ? 4 : k === 'circ' ? 20 : 12;
   for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2 + (k === 'sq' ? Math.PI / 4 : 0), f = k === 'blob' ? 0.7 + Math.random() * 0.5 : 1; p.push(Math.round(cx0 + Math.cos(a) * r * f), Math.round(cy0 + Math.sin(a) * r * f)); }
-  snap(); const last = sel >= 0 ? G.stamps[sel] : null;
-  G.stamps.push({ t: last ? last.t : lastTex(), soft: last ? last.soft : 16, r: last ? last.r || 0 : 0, p }); sel = G.stamps.length - 1; selV = -1; tool = 'select';
+  snap(); const last = sel >= 0 && !G.stamps[sel].l ? G.stamps[sel] : null;
+  G.stamps.push({ t: last ? last.t : lastTex(), soft: last ? last.soft : 16, r: last ? last.r || 0 : 0, p }); sel = G.stamps.length - 1; selV = null; tool = 'select'; draft = null;
   dirty(gBox(G.stamps[sel])); save(); ui(); draw();
 }
-const lastTex = () => S.tex || gTexNames().find(n => n !== G.base) || 'dirt';
+const lastTex = k => (k === 'road' ? S.rtex : S.tex) || (k === 'road' ? 'asphalt' : gTexNames().find(n => n !== G.base) || 'dirt');
 
 /* ---------- the selection's edits ---------- */
 function edit(fn, b0) { const s = G.stamps[sel]; const before = b0 || gBox(s); fn(s); dirty(boxU(before, gBox(s))); save(); draw(); ui(); }
-function move(d) {      // in the draw order: d -1 down, +1 up, ±99 to the bottom / top
-  const to = Math.max(0, Math.min(G.stamps.length - 1, sel + (Math.abs(d) > 1 ? Math.sign(d) * 1e9 : d))); if (to === sel) return;
+function move(d) {      // in the draw order: d -1 down, +1 up
+  const to = Math.max(0, Math.min(G.stamps.length - 1, sel + d)); if (to === sel) return;
   snap(); const [s] = G.stamps.splice(sel, 1); G.stamps.splice(to, 0, s); sel = to; dirty(gBox(s)); save(); draw(); ui();
 }
+/* removing a point: a shape keeps 3, a road's line 2 (a branch with fewer goes; the main line stays) */
+function canDelV(s) { if (!selV) return false; const p = gLines(s)[selV[0]]; return !!p && (s.l ? p.length > 4 || selV[0] > 0 : p.length > 6); }
+function delV(s) { const [li, i] = selV, L = gLines(s), p = L[li]; if (s.l && p.length <= 4) L.splice(li, 1); else p.splice(i, 2); }
 
 /* ---------- menus ---------- */
 const menu = $('#menu'), veil = $('#veil');
@@ -318,19 +383,20 @@ function mapForm(isNew) {
 }
 function viewMenu() {
   pop(`<button class="it${S.view === 'col' ? ' on' : ''}" data-v="col">Colour</button><button class="it${S.view === 'mat' ? ' on' : ''}" data-v="mat">Material <span class="k">R height · G shine · B glow</span></button><hr>
-    <button class="it" data-a="lines">${S.lines ? '☑' : '☐'} Shape outlines</button><button class="it" data-a="fit">⤢ Fit map</button>`, $('#bView'), m => m.onclick = e => {
+    <button class="it" data-a="lines">${S.lines ? '☑' : '☐'} Outlines</button><button class="it" data-a="guide">${S.guide !== false ? '☑' : '☐'} Scale guide <span class="k">tank · jeep · soldier</span></button><button class="it" data-a="fit">⤢ Fit map</button>`, $('#bView'), m => m.onclick = e => {
     const b = e.target.closest('button'); if (!b) return; unpop();
     if (b.dataset.v) { S.view = b.dataset.v; bakeAll(); save(); ui(); }
     if (b.dataset.a === 'lines') { S.lines = !S.lines; save(); draw(); }
+    if (b.dataset.a === 'guide') { S.guide = S.guide === false; save(); draw(); }
     if (b.dataset.a === 'fit') fit();
   });
 }
 function layersMenu(anchor) {
-  pop(`<h3>Shapes · top first</h3>${G.stamps.length ? '' : '<p class="muted" style="margin:4px 8px">None yet: Draw one, or add a shape.</p>'}${G.stamps.map((s, i) => i).reverse().map(i => { const s = G.stamps[i]; return `<button class="lay${i === sel ? ' on' : ''}" data-i="${i}"><span class="sw" ${sw(s.t)}></span><span class="n">${i + 1}. ${s.t}${s.off ? ' (hidden)' : ''}</span><span class="m">${s.p.length / 2} pts · edge ${s.soft}</span></button>`; }).join('')}
+  pop(`<h3>Shapes and roads · top first</h3>${G.stamps.length ? '' : '<p class="muted" style="margin:4px 8px">None yet: Draw one, or add a shape.</p>'}${G.stamps.map((s, i) => i).reverse().map(i => { const s = G.stamps[i]; return `<button class="lay${i === sel ? ' on' : ''}" data-i="${i}"><span class="sw" ${sw(s.t)}></span><span class="n">${i + 1}. ${s.t}${s.off ? ' (hidden)' : ''}</span><span class="m">${s.l ? 'road · ' + s.l.length + ' line' + (s.l.length > 1 ? 's' : '') : s.p.length / 2 + ' pts'} · edge ${s.soft}</span></button>`; }).join('')}
     <hr><button class="lay" data-i="base"><span class="sw" ${sw(G.base)}></span><span class="n">Base: ${G.base}</span><span class="m">${G.w}×${G.h}</span></button>`, anchor, m => m.onclick = e => {
     const b = e.target.closest('[data-i]'); if (!b) return; unpop();
     if (b.dataset.i === 'base') { sel = -1; ui(); draw(); return; }
-    sel = +b.dataset.i; selV = -1; tool = 'select'; focusSel(); ui(); draw();
+    sel = +b.dataset.i; selV = null; tool = 'select'; draft = null; focusSel(); ui(); draw();
   });
 }
 function shapeMenu(anchor) {
@@ -344,42 +410,54 @@ $('#file').onchange = async e => {
 };
 
 /* ---------- the bottom bar: tools, then what the selection / drawing / map can do ---------- */
+/* a stamp's numbers: one slider, chips pick which */
+const PROPS = { soft: ['Edge', 0, 160], r: ['Round', 0, 400], wd: ['Width', 8, 400] };
+const propsOf = s => s.l ? ['wd', 'soft', 'r'] : ['soft', 'r'];
 function ui() {
   if (!G) return;
   $('#name').textContent = G.name; $('#bUndo').disabled = !UNDO.length; $('#bRedo').disabled = !REDO.length;
-  const s = sel >= 0 ? G.stamps[sel] : null;
-  let r1 = `<div class="r"><button class="btn${tool === 'select' ? ' on' : ''}" data-a="sel">✥ Select</button><button class="btn${tool === 'draw' ? ' on' : ''}" data-a="draw">✎ Draw</button><button class="btn" data-a="shape">＋ Shape ▾</button><span class="sp"></span><button class="btn" data-a="layers">☰ ${G.stamps.length}</button></div>`, r2;
-  if (draft) r2 = `<div class="r"><button class="btn" data-a="dtex"><span class="sw" ${sw(draft.t)}></span>▾</button><span class="muted" style="flex:1">Tap to add points · ${draft.p.length / 2}${draft.p.length >= 6 ? ' · tap the first to close' : ''}</span><button class="btn ic" data-a="dback" ${draft.p.length ? '' : 'disabled'}>⌫</button><button class="btn ic" data-a="dx">✕</button><button class="btn on" data-a="dok" ${draft.p.length >= 6 ? '' : 'disabled'}>✓ Done</button></div>`;
-  else if (s) r2 = `<div class="r"><button class="btn" data-a="tex"><span class="sw" ${sw(s.t)}></span>▾</button><label class="sl"><span>Edge</span><input type="range" id="soft" min="0" max="160" step="1" value="${s.soft}"><b id="softV">${s.soft}</b></label></div>
-    <div class="r"><label class="sl"><span>Round</span><input type="range" id="r" min="0" max="400" step="1" value="${s.r || 0}"><b id="rV">${s.r || 0}</b></label></div>
-    <div class="r"><button class="btn ic" data-a="up" title="Up">▲</button><button class="btn ic" data-a="down" title="Down">▼</button><button class="btn ic" data-a="eye" title="Hide">${s.off ? '◌' : '◉'}</button><button class="btn ic" data-a="dup" title="Duplicate">⧉</button>${selV >= 0 && s.p.length > 6 ? '<button class="btn" data-a="delv">Remove point</button>' : ''}<span class="sp"></span><button class="btn ic red" data-a="del" title="Delete">🗑</button></div>`;
-  else r2 = `<div class="r"><button class="btn" data-a="base"><span class="sw" ${sw(G.base)}></span>Base ▾</button><span class="muted" style="flex:1">${G.w}×${G.h} · tap a shape to edit it</span></div>`;
+  const s = sel >= 0 ? G.stamps[sel] : null, dk = draft && draft.k;
+  let r1 = `<div class="r"><button class="btn${tool === 'select' ? ' on' : ''}" data-a="sel">✥</button><button class="btn${dk === 'shape' ? ' on' : ''}" data-a="draw">✎ Shape</button><button class="btn${dk === 'road' || dk === 'branch' ? ' on' : ''}" data-a="road">〰 Road</button><button class="btn" data-a="shape">＋ ▾</button><span class="sp"></span><button class="btn" data-a="layers">☰ ${G.stamps.length}</button></div>`, r2;
+  if (draft) {
+    const n = draft.p.length / 2, need = dk === 'shape' ? 3 : 2;
+    const say = dk === 'branch' && !n ? 'Tap the road where the branch starts' : 'Tap to add points · ' + n + (dk === 'shape' && n >= 3 ? ' · tap the first to close' : '');
+    r2 = `<div class="r"><button class="btn" data-a="dtex" ${dk === 'branch' ? 'disabled' : ''}><span class="sw" ${sw(draft.t)}></span>▾</button><span class="muted" style="flex:1">${say}</span><button class="btn ic" data-a="dback" ${n ? '' : 'disabled'}>⌫</button><button class="btn ic" data-a="dx">✕</button><button class="btn on" data-a="dok" ${n >= need ? '' : 'disabled'}>✓</button></div>`;
+  } else if (s) {
+    const ps = propsOf(s); if (!ps.includes(S.prop)) S.prop = ps[0]; const P = PROPS[S.prop], v = s[S.prop] || 0;
+    r2 = `<div class="r"><button class="btn" data-a="tex"><span class="sw" ${sw(s.t)}></span>▾</button>${ps.map(k => `<button class="btn${k === S.prop ? ' on' : ''}" data-prop="${k}">${PROPS[k][0]} ${s[k] || 0}</button>`).join('')}</div>
+    <div class="r"><label class="sl"><span>${P[0]}</span><input type="range" id="pv" min="${P[1]}" max="${P[2]}" step="1" value="${v}"><b id="pvV">${v}</b></label></div>
+    <div class="r"><button class="btn ic" data-a="up" title="Up">▲</button><button class="btn ic" data-a="down" title="Down">▼</button><button class="btn ic" data-a="eye" title="Hide">${s.off ? '◌' : '◉'}</button><button class="btn ic" data-a="dup" title="Duplicate">⧉</button>${s.l ? '<button class="btn" data-a="branch">⑂ Branch</button>' : ''}${canDelV(s) ? '<button class="btn" data-a="delv">− Point</button>' : ''}<span class="sp"></span><button class="btn ic red" data-a="del" title="Delete">🗑</button></div>`;
+  } else r2 = `<div class="r"><button class="btn" data-a="base"><span class="sw" ${sw(G.base)}></span>Base ▾</button><span class="muted" style="flex:1">${G.w}×${G.h} · tap a shape or road to edit it</span></div>`;
   $('#btm').innerHTML = r1 + r2;
-  $('#hint').textContent = draft ? '' : tool === 'select' && s ? 'Drag the shape or its points · drag a blue dot to add a point' : '';
-  for (const k of ['soft', 'r']) {     // sliders: one undo step per drag, the old and new boxes re-baked
-    const sl = $('#' + k); if (!sl) continue; let b0 = null;
-    sl.oninput = () => { if (!b0) { snap(); b0 = gBox(s); } s[k] = +sl.value; $('#' + k + 'V').textContent = sl.value; const b = gBox(s); dirty(boxU(b0, b)); b0 = boxU(b0, b); draw(); };
-    sl.onchange = () => { b0 = null; save(); };
+  if (s && !draft) { const b = gBox(s), e = Math.ceil((s.soft || 0) * 1.2) + 1; $('#hint').textContent = `${s.l ? 'Road' : 'Shape'} ${b.w - 2 * e} × ${b.h - 2 * e} px${s.l ? ' · ' + s.wd + ' wide' : ''} · drag it or its points · blue dots add points`; }
+  else $('#hint').textContent = '';
+  const sl = $('#pv'); if (sl) {     // one undo step per drag, the old and new boxes re-baked
+    let b0 = null; const k = S.prop;
+    sl.oninput = () => { if (!b0) { snap(); b0 = gBox(s); } s[k] = +sl.value; $('#pvV').textContent = sl.value; const c = $(`[data-prop=${k}]`); if (c) c.textContent = PROPS[k][0] + ' ' + sl.value; const b = gBox(s); dirty(boxU(b0, b)); b0 = boxU(b0, b); draw(); };
+    sl.onchange = () => { b0 = null; save(); ui(); };
   }
 }
 $('#btm').addEventListener('click', e => {
-  const b = e.target.closest('button[data-a]'); if (!b) return; const a = b.dataset.a, s = sel >= 0 ? G.stamps[sel] : null;
+  const b = e.target.closest('button[data-a],button[data-prop]'); if (!b) return; const a = b.dataset.a, s = sel >= 0 ? G.stamps[sel] : null;
+  if (b.dataset.prop) { S.prop = b.dataset.prop; save(); }
   if (a === 'sel') { tool = 'select'; draft = null; }
-  if (a === 'draw') { tool = 'draw'; sel = -1; selV = -1; draft = { t: lastTex(), soft: 16, p: [] }; }
+  if (a === 'draw') startDraft('shape');
+  if (a === 'road') startDraft('road');
+  if (a === 'branch') startDraft('branch');
   if (a === 'shape') return shapeMenu(b);
   if (a === 'layers') return layersMenu(b);
-  if (a === 'dtex') return texPicker(b, draft.t, t => { draft.t = S.tex = t; save(); ui(); draw(); });
+  if (a === 'dtex') return texPicker(b, draft.t, t => { draft.t = t; if (draft.k === 'road') S.rtex = t; else S.tex = t; save(); ui(); draw(); });
   if (a === 'dback') draft.p.splice(-2);
-  if (a === 'dx') { draft = null; tool = 'select'; }
+  if (a === 'dx') { if (draft.k === 'branch') sel = draft.of; draft = null; tool = 'select'; }
   if (a === 'dok') return finishDraft();
-  if (a === 'tex') return texPicker(b, s.t, t => { snap(); S.tex = t; edit(q => q.t = t); });
+  if (a === 'tex') return texPicker(b, s.t, t => { snap(); if (s.l) S.rtex = t; else S.tex = t; edit(q => q.t = t); });
   if (a === 'base') return texPicker(b, G.base, t => { snap(); G.base = t; bakeAll(); save(); ui(); });
   if (a === 'up') return move(1);
   if (a === 'down') return move(-1);
   if (a === 'eye') { snap(); return edit(q => q.off = q.off ? undefined : 1); }
-  if (a === 'dup') { snap(); const c = JSON.parse(JSON.stringify(s)); c.p = c.p.map(v => v + 24); G.stamps.splice(sel + 1, 0, c); sel++; dirty(gBox(c)); save(); }
-  if (a === 'delv') { snap(); edit(q => q.p.splice(selV * 2, 2)); selV = -1; }
-  if (a === 'del') { snap(); const bb = gBox(s); G.stamps.splice(sel, 1); sel = -1; selV = -1; dirty(bb); save(); }
+  if (a === 'dup') { snap(); const c = JSON.parse(JSON.stringify(s)); for (const p of gLines(c)) for (let i = 0; i < p.length; i++) p[i] += 24; G.stamps.splice(sel + 1, 0, c); sel++; dirty(gBox(c)); save(); }
+  if (a === 'delv') { snap(); edit(delV); selV = null; }
+  if (a === 'del') { snap(); const bb = gBox(s); G.stamps.splice(sel, 1); sel = -1; selV = null; dirty(bb); save(); }
   ui(); draw();
 });
 $('#bMap').onclick = mapMenu; $('#bView').onclick = viewMenu;
@@ -388,12 +466,12 @@ $('#bZin').onclick = () => zoomAt(1.4, W / 2, H / 2); $('#bZout').onclick = () =
 addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
   if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); restore(e.shiftKey ? REDO : UNDO, e.shiftKey ? UNDO : REDO); }
-  if (e.key === 'Delete' && sel >= 0) { snap(); const bb = gBox(G.stamps[sel]); G.stamps.splice(sel, 1); sel = -1; dirty(bb); save(); ui(); draw(); }
+  if (e.key === 'Delete' && sel >= 0) { snap(); const bb = gBox(G.stamps[sel]); G.stamps.splice(sel, 1); sel = -1; selV = null; dirty(bb); save(); ui(); draw(); }
   if (e.key === 'Enter' && draft) finishDraft();
-  if (e.key === 'Escape') { draft = null; tool = 'select'; sel = -1; ui(); draw(); }
+  if (e.key === 'Escape') { draft = null; tool = 'select'; sel = -1; selV = null; ui(); draw(); }
 });
 let tt = 0; function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('on'); clearTimeout(tt); tt = setTimeout(() => t.classList.remove('on'), 1800); }
-addEventListener('resize', resize);
+new ResizeObserver(resize).observe($('#wrap'));     // the bottom bar grows and shrinks with the selection: the canvas follows
 document.addEventListener('gesturestart', e => e.preventDefault());     // iOS: no page zoom
 
 /* ---------- start: the atlas (textures), then the last map or a new one ---------- */
@@ -402,7 +480,7 @@ document.addEventListener('gesturestart', e => e.preventDefault());     // iOS: 
   if (!S.cur || !S.maps[S.cur]) { const m = newMap('New map', 3000, 2000, 'grass'); S.maps[m.id] = m; S.cur = m.id; }
   open(S.cur);
   try { ATLAS = await (await fetch('../atlas.json')).json(); } catch (e) { }
-  let n = 0; const done = () => { if (++n === 2) { GTX.clear(); SWC.clear(); bakeAll(); ui(); } };
+  let n = 0; const done = () => { if (++n === 2) { GTX.clear(); SWC.clear(); for (const k in PAT) delete PAT[k]; bakeAll(); ui(); } };
   for (const [im, src] of [[IMG, '../atlas.png'], [MIMG, '../atlas_m.png']]) { im.onload = done; im.onerror = done; im.src = src; }
 })();
 </script>

@@ -41,25 +41,33 @@ function gTex(name) {
   if (T.m) { const d = T.m.getContext('2d').getImageData(0, 0, T.m.width, T.m.height).data; let h = 0; for (let i = 0; i < d.length; i += 4) h = Math.max(h, d[i]); T.h = h / 4; } else T.h = 0;     // its tallest px
   GTX.set(key, T); return T;
 }
-/* a stamp's box (whole px): its polygon and the blur round it */
+/* a stamp is a shape (p: a closed polygon) or a path (k 'path', l: open lines, the first the main one and the rest
+   branches, all wd px wide; branches start on another line, and being one mask they join seamlessly) */
+const gLines = s => s.l || [s.p];
+const gOk = s => !s.off && (s.l ? s.l.some(q => q.length >= 4) : s.p && s.p.length >= 6);
+/* a stamp's box (whole px): its points, the path's half width and the blur round it */
 function gBox(s) {
-  const p = s.p, e = Math.ceil((s.soft || 0) * 1.2) + 1; let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
-  for (let i = 0; i < p.length; i += 2) { x0 = Math.min(x0, p[i]); x1 = Math.max(x1, p[i]); y0 = Math.min(y0, p[i + 1]); y1 = Math.max(y1, p[i + 1]); }
+  const e = Math.ceil((s.soft || 0) * 1.2) + 1 + (s.l ? Math.ceil((s.wd || 0) / 2) : 0); let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  for (const p of gLines(s)) for (let i = 0; i < p.length; i += 2) { x0 = Math.min(x0, p[i]); x1 = Math.max(x1, p[i]); y0 = Math.min(y0, p[i + 1]); y1 = Math.max(y1, p[i + 1]); }
   return { x: Math.floor(x0 - e), y: Math.floor(y0 - e), w: Math.ceil(x1 + e) - Math.floor(x0 - e), h: Math.ceil(y1 + e) - Math.floor(y0 - e) };
 }
 /* the stamp's outline as a path: corners rounded by s.r px (each cut back at most half its shorter edge, then a curve
-   through the corner), sharp when 0. The editor draws its outlines with this too */
+   through the corner), sharp when 0; a path's lines open, their ends left sharp. The editor draws its outlines with this too */
 function gPath(g, s) {
-  const p = s.p, n = p.length / 2, r = s.r || 0; g.beginPath();
-  if (r <= 0 || n < 3) { for (let i = 0; i < p.length; i += 2) g.lineTo(p[i], p[i + 1]); g.closePath(); return; }
-  const pt = i => { i = (i + n) % n; return [p[i * 2], p[i * 2 + 1]]; };
-  const cut = (a, b, d) => { const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, t = Math.min(d, l / 2) / l; return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]; };
-  for (let i = 0; i < n; i++) {
-    const v = pt(i), a = cut(v, pt(i - 1), r), b = cut(v, pt(i + 1), r);
-    if (i === 0) g.moveTo(a[0], a[1]); else g.lineTo(a[0], a[1]);
-    g.quadraticCurveTo(v[0], v[1], b[0], b[1]);
+  const r = s.r || 0, open = !!s.l; g.beginPath();
+  for (const p of gLines(s)) {
+    const n = p.length / 2; if (n < 2) continue;
+    if (r <= 0 || n < 3) { g.moveTo(p[0], p[1]); for (let i = 2; i < p.length; i += 2) g.lineTo(p[i], p[i + 1]); if (!open) g.closePath(); continue; }
+    const pt = i => { i = (i + n) % n; return [p[i * 2], p[i * 2 + 1]]; };
+    const cut = (a, b, d) => { const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, t = Math.min(d, l / 2) / l; return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]; };
+    if (open) g.moveTo(p[0], p[1]);
+    for (let i = open ? 1 : 0; i < (open ? n - 1 : n); i++) {
+      const v = pt(i), a = cut(v, pt(i - 1), r), b = cut(v, pt(i + 1), r);
+      if (i === 0) g.moveTo(a[0], a[1]); else g.lineTo(a[0], a[1]);
+      g.quadraticCurveTo(v[0], v[1], b[0], b[1]);
+    }
+    if (open) g.lineTo(p[p.length - 2], p[p.length - 1]); else g.closePath();
   }
-  g.closePath();
 }
 const gHit = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 /* the stamp's mask over its box b: the polygon, blurred (three box blurs ~ a gaussian, sigma soft / 4: it mixes over
@@ -69,7 +77,7 @@ function gMask(s, b) {
   const soft = s.soft || 0, q = soft >= 24 ? 0.25 : soft >= 8 ? 0.5 : 1, w = Math.max(1, Math.ceil(b.w * q)), h = Math.max(1, Math.ceil(b.h * q));
   const c = GB.m || (GB.m = gCv(1, 1)); if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
   const g = c.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, w, h); g.setTransform(q, 0, 0, q, -b.x * q, -b.y * q);
-  g.fillStyle = '#fff'; gPath(g, s); g.fill();
+  gPath(g, s); if (s.l) { g.strokeStyle = '#fff'; g.lineWidth = s.wd || 1; g.lineCap = g.lineJoin = 'round'; g.stroke(); } else { g.fillStyle = '#fff'; g.fill(); }
   g.setTransform(1, 0, 0, 1, 0, 0);
   const sg = soft / 4 * q; if (sg >= 0.35) {
     const id = g.getImageData(0, 0, w, h), d = id.data, a = new Float32Array(w * h), t = new Float32Array(w * h);
@@ -103,7 +111,7 @@ function gBake(G, gc, gm, r) {
     if (!G.base) continue; const B = gTex(G.base), src = k === 'm' ? B.m : B.c; g.fillStyle = src ? g.createPattern(src, 'repeat') : '#000'; g.fillRect(r.x, r.y, r.w, r.h);
   }
   for (const s of G.stamps) {
-    if (!s.p || s.p.length < 6 || s.off) continue; const b = gBox(s); if (!gHit(b, r)) continue;
+    if (!gOk(s)) continue; const b = gBox(s); if (!gHit(b, r)) continue;
     const M = gMask(s, b); hmax = Math.max(hmax, gTex(s.t).h);
     for (const [g, k] of T) g.drawImage(gStampCv(s, b, M, k), b.x, b.y);
   }
