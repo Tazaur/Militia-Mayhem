@@ -23,6 +23,16 @@ if (GL) {
   const H = HTMLCanvasElement.prototype;
   for (const n of ['width', 'height']) { const d = Object.getOwnPropertyDescriptor(H, n); Object.defineProperty(H, n, { get: d.get, set(v) { this._gv = (this._gv || 0) + 1; d.set.call(this, v); }, configurable: true, enumerable: true }); }
 }
+/* fn draws on 2D canvas c inside (x, y, w, h) only: GX then uploads just that region, not the whole canvas. A falling roof
+   repainted a few cells of the map-sized roof canvas every frame for a second, and each re-uploaded all of it (~24 MB a
+   frame): the phone's GPU fell ~0.4 s behind. Any untracked draw in between still makes it upload the whole canvas */
+function gxPart(c, x, y, w, h, fn) {
+  const v0 = c._gv || 0; fn(); if (!GL) return;
+  let d = c._gd;
+  if (d && d.v1 === v0) { d.x0 = Math.min(d.x0, x); d.y0 = Math.min(d.y0, y); d.x1 = Math.max(d.x1, x + w); d.y1 = Math.max(d.y1, y + h); }
+  else d = c._gd = { v0, x0: x, y0: y, x1: x + w, y1: y + h };
+  d.v1 = c._gv || 0;
+}
 const GXW = new Set();
 function gxWarn(m) { if (GXW.has(m)) return; GXW.add(m); console.warn('GX: ' + m); }
 /* a recording Path2D: still a real one (2D contexts take it), and GX replays what was added */
@@ -304,10 +314,21 @@ function gxSrc(img) {
   if (e.gv !== gv || e.w !== w || e.h !== h) {
     if (GXB.ni && GXB.slots.some(o => o.t === e.t)) gxFlush();
     g.activeTexture(g.TEXTURE15); g.bindTexture(g.TEXTURE_2D, e.t); g.pixelStorei(g.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
-    if (e.w !== w || e.h !== h) { g.texImage2D(g.TEXTURE_2D, 0, g.RGBA8, g.RGBA, g.UNSIGNED_BYTE, img); e.w = w; e.h = h; } else g.texSubImage2D(g.TEXTURE_2D, 0, 0, 0, g.RGBA, g.UNSIGNED_BYTE, img);
+    const d = img._gd; img._gd = null;
+    if (e.w !== w || e.h !== h) { g.texImage2D(g.TEXTURE_2D, 0, g.RGBA8, g.RGBA, g.UNSIGNED_BYTE, img); e.w = w; e.h = h; }
+    else if (d && d.v0 === e.gv && d.v1 === gv) gxSubUp(img, d);     // only what gxPart drew since the last upload
+    else g.texSubImage2D(g.TEXTURE_2D, 0, 0, 0, g.RGBA, g.UNSIGNED_BYTE, img);
     g.pixelStorei(g.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false); g.activeTexture(g.TEXTURE0); GXB.dst = null; e.gv = gv; R.up++;
   }
   S.t = e.t; S.w = w; S.h = h; S.u0 = 0; S.v0 = 0; S.su = 1 / w; S.sv = 1 / h; return S;
+}
+/* a region of 2D canvas img into the bound texture at the same place, through a small scratch canvas */
+const GXSUB = document.createElement('canvas');
+function gxSubUp(img, d) {
+  const x0 = Math.max(0, Math.floor(d.x0)), y0 = Math.max(0, Math.floor(d.y0)), w = Math.min(img.width, Math.ceil(d.x1)) - x0, h = Math.min(img.height, Math.ceil(d.y1)) - y0; if (w <= 0 || h <= 0) return;
+  if (GXSUB.width !== w || GXSUB.height !== h) { GXSUB.width = w; GXSUB.height = h; }
+  const q = GXSUB.getContext('2d'); q.globalCompositeOperation = 'copy'; q.drawImage(img, x0, y0, w, h, 0, 0, w, h);
+  GL.texSubImage2D(GL.TEXTURE_2D, 0, x0, y0, GL.RGBA, GL.UNSIGNED_BYTE, GXSUB);
 }
 function gxPut(t, img, x, y) {
   const g = GL; g.activeTexture(g.TEXTURE15); g.bindTexture(g.TEXTURE_2D, t); g.pixelStorei(g.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);

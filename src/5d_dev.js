@@ -317,10 +317,12 @@ function devRoof() {
 function paintRoof() {
   const TL = MAP.tiled; if (!TL.roof) return;
   ROOF_C.width = WW; ROOF_C.height = WH;
-  for (let j = 0; j < TL.sr; j++) for (let i = 0; i < TL.sc; i++) if (TL.roof[j * TL.sc + i] === 1) paintRoofCell(i, j);
+  for (let j = 0; j < TL.sr; j++) for (let i = 0; i < TL.sc; i++) if (TL.roof[j * TL.sc + i] === 1) roofCell(i, j);
 }
+/* one cell repainted after the roof changed: only it goes up to the GPU again (gxPart) */
+function paintRoofCell(i, j) { gxPart(ROOF_C, i * SUB, j * SUB, SUB, SUB, () => roofCell(i, j)); }
 /* shingles, a dark edge wherever the roof stops */
-function paintRoofCell(i, j) {
+function roofCell(i, j) {
   const TL = MAP.tiled, k = j * TL.sc + i, x = i * SUB, y = j * SUB;
   const t = ((Math.imul(i, 2654435761) ^ Math.imul(j, 40503)) >>> 0) % 7 - 3;
   const open = (a, b) => { if (a < 0 || b < 0 || a >= TL.sc || b >= TL.sr) return true; return TL.roof[b * TL.sc + a] !== 1; };
@@ -339,13 +341,13 @@ function repaintRoofAround(cells) {
 /* a wall section fell: its roof comes down as a cascade, each tile ROOF_STEP s later per tile it is from the wall */
 const ROOF_STEP = 0.07;
 function devRoofFall(sec) {
-  const TL = MAP.tiled; if (!TL.roof) return 0; const ev = { hit: new Set() }; let n = 0;
-  for (let k = 0; k < TL.roof.length; k++) if (TL.roof[k] === 1 && TL.rsec[k] === sec.i) { DEV.roofQ.push({ k, at: M.time + TL.rdist[k] * ROOF_STEP, ev }); n++; }
+  const TL = MAP.tiled; if (!TL.roof) return 0; const fall = { hit: new Set() }; let n = 0;
+  for (let k = 0; k < TL.roof.length; k++) if (TL.roof[k] === 1 && TL.rsec[k] === sec.i) { DEV.roofQ.push({ k, at: M.time + TL.rdist[k] * ROOF_STEP, fall }); n++; }
   if (n) devLog(`ROOF ${n} TILES DOWN`, '#ffb060');
   return n;
 }
 /* one roof tile lands: collapse dust (even row + even column only), debris, a shake nearby, and whoever is under it is hurt (once per fall) */
-function devRoofTile(k, ev) {
+function devRoofTile(k, fall) {
   const TL = MAP.tiled; if (TL.roof[k] !== 1) return; TL.roof[k] = 2;
   const i = k % TL.sc, j = (k / TL.sc) | 0, cx = (i + 0.5) * SUB, cy = (j + 0.5) * SUB;
   paintCell(i, j); repaintRoofAround([k]);
@@ -354,8 +356,8 @@ function devRoofTile(k, ev) {
   shakeAt(cx, cy, 2.5, 420); ev('roof.fall', cx, cy);
   const under = (x, y) => ((y / SUB) | 0) * TL.sc + ((x / SUB) | 0) === k;
   if (NET.role === 'client') return;          // online: the host's roof does the hurting
-  for (const s of M.sol) if (s.alive && !s.veh && !ev.hit.has(s) && under(s.x, s.y)) { ev.hit.add(s); hurtSoldier(s, s.mhp * rnd(0.5, 0.75), null, 'roof', 0, 0, 'ROOF'); }
-  for (const v of M.vehicles) if (v.active && !v.dead && !ev.hit.has(v) && vehCircles(v, _vc).some(([x, y]) => under(x, y))) { ev.hit.add(v); hurtVehicle(v, v.type === 'tank' ? 40 : 120, null); }
+  for (const s of M.sol) if (s.alive && !s.veh && !fall.hit.has(s) && under(s.x, s.y)) { fall.hit.add(s); hurtSoldier(s, s.mhp * rnd(0.5, 0.75), null, 'roof', 0, 0, 'ROOF'); }
+  for (const v of M.vehicles) if (v.active && !v.dead && !fall.hit.has(v) && vehCircles(v, _vc).some(([x, y]) => under(x, y))) { fall.hit.add(v); hurtVehicle(v, v.type === 'tank' ? 40 : 120, null); }
 }
 /* the roof over the whole house, walls included, as the eyes of this view see it: with BUILDING CLEAR LOS on
    (CFG.clearLos, the default) or from inside a house (vw.rf, eased in
@@ -547,7 +549,7 @@ function devHeal() { const p = devPlayer(); if (!p) return; const s = p.sol; s.h
 /* every frame on a tiled map (the dev yard, OUTSKIRTS; host and clients): hit flashes wear off, roof tiles come down */
 function tiledTick(dt) {
   for (const sec of MAP.tiled.secs) if (sec.hitT > 0) sec.hitT -= dt;
-  if (DEV.roofQ.length) { for (const q of DEV.roofQ) if (q.at <= M.time) devRoofTile(q.k, q.ev); prune(DEV.roofQ, q => q.at > M.time); }
+  if (DEV.roofQ.length) { for (const q of DEV.roofQ) if (q.at <= M.time) devRoofTile(q.k, q.fall); prune(DEV.roofQ, q => q.at > M.time); }
 }
 /* every frame of a dev match */
 function devTick(dt) {
