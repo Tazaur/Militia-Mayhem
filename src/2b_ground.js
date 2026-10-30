@@ -12,8 +12,17 @@ const GTEXP = {      // placeholder textures: [base, dark, light, speck] and how
   grass: ['#3f7a2a', '#346a22', '#4b8a33', '#2b5a1c', 900], dirt: ['#7a5a3a', '#6a4c30', '#8a6a46', '#5a3e26', 700],
   sand: ['#c9b07a', '#b89f6a', '#d8c08a', '#a88e5c', 600], rock: ['#6e6c66', '#5e5c57', '#7e7c76', '#4e4c48', 800],
   snow: ['#e6edf2', '#d8e2ea', '#f4f8fb', '#c8d4de', 500], asphalt: ['#4c4c4c', '#444444', '#555555', '#3a3a3a', 900],
-  mud: ['#4e3c28', '#433322', '#5a4630', '#382a1c', 800]
+  mud: ['#4e3c28', '#433322', '#5a4630', '#382a1c', 800], concrete: ['#8e8b84', '#84817a', '#9a978f', '#76736c', 500]
 };
+/* road types (a path's rt; none: plain, just its texture): what's baked with it. walk: a pavement sw px wide each side
+   (concrete, kerb edged) under the road; marks over it: dash (a dashed white centre line), dbl (a double yellow one),
+   edge (white lines along the sides), ruts (two worn tracks). t / sw: what a road starts with when given the type */
+const GROADS = {
+  plain: { n: 'Plain', marks: [] }, street: { n: 'Street', walk: 1, marks: ['dash'], t: 'asphalt', sw: 14 },
+  highway: { n: 'Highway', marks: ['dbl', 'edge'], t: 'asphalt' }, dirt: { n: 'Dirt track', marks: ['ruts'], t: 'dirt' }
+};
+const gRT = s => s.l && GROADS[s.rt] || GROADS.plain;
+const gSW = s => gRT(s).walk ? s.sw ?? 14 : 0;
 const gRng = a => () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
 const gCv = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
 const gReady = im => !!(im && im.complete && im.naturalWidth);
@@ -47,7 +56,7 @@ const gLines = s => s.l || [s.p];
 const gOk = s => !s.off && (s.l ? s.l.some(q => q.length >= 4) : s.p && s.p.length >= 6);
 /* a stamp's box (whole px): its points, the path's half width and the blur round it */
 function gBox(s) {
-  const e = Math.ceil((s.soft || 0) * 1.2) + 1 + (s.l ? Math.ceil((s.wd || 0) / 2) : 0); let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  const e = Math.ceil((s.soft || 0) * 1.2) + 1 + (s.l ? Math.ceil((s.wd || 0) / 2 + gSW(s)) : 0); let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
   for (const p of gLines(s)) for (let i = 0; i < p.length; i += 2) { x0 = Math.min(x0, p[i]); x1 = Math.max(x1, p[i]); y0 = Math.min(y0, p[i + 1]); y1 = Math.max(y1, p[i + 1]); }
   return { x: Math.floor(x0 - e), y: Math.floor(y0 - e), w: Math.ceil(x1 + e) - Math.floor(x0 - e), h: Math.ceil(y1 + e) - Math.floor(y0 - e) };
 }
@@ -101,6 +110,38 @@ function gStampCv(s, b, M, k) {
   g.globalCompositeOperation = 'destination-in'; g.imageSmoothingEnabled = true; g.drawImage(M.c, 0, 0, M.c.width, M.c.height, 0, 0, M.c.width / M.q, M.c.height / M.q); g.globalCompositeOperation = 'source-over';
   return c;
 }
+/* a road type's layers over the stamp's box: 'walk' (the pavement, under the road; k 'm': flat) or 'marks' (colour only).
+   A line along the road's side is a wide stroke with a narrower one cut out of it, so it follows the curves; markings
+   stop short of where a branch leaves (its first point) */
+function gRoadCv(s, b, part, k) {
+  const c = GB.r || (GB.r = gCv(1, 1)); if (c.width !== b.w || c.height !== b.h) { c.width = b.w; c.height = b.h; }
+  const g = c.getContext('2d'), wd = s.wd || 1; g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, b.w, b.h); g.translate(-b.x, -b.y);
+  g.lineCap = g.lineJoin = 'round'; g.setLineDash([]);
+  const line = (w, col, cut) => {     // a stroke w wide, with a cut-out cut wide down its middle (on its own canvas, then over)
+    const t = GB.t || (GB.t = gCv(1, 1)); if (t.width !== b.w || t.height !== b.h) { t.width = b.w; t.height = b.h; }
+    const q = t.getContext('2d'); q.setTransform(1, 0, 0, 1, 0, 0); q.globalCompositeOperation = 'source-over'; q.clearRect(0, 0, b.w, b.h); q.translate(-b.x, -b.y); q.lineCap = q.lineJoin = 'round';
+    gPath(q, s); q.strokeStyle = col; q.lineWidth = w; q.stroke();
+    if (cut) { q.globalCompositeOperation = 'destination-out'; gPath(q, s); q.lineWidth = cut; q.stroke(); }
+    g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(t, 0, 0); g.translate(-b.x, -b.y);
+  };
+  if (part === 'walk') {
+    const sw = gSW(s), W = wd + sw * 2;
+    if (k === 'm') { gPath(g, s); g.strokeStyle = '#000'; g.lineWidth = W; g.stroke(); return c; }
+    gPath(g, s); g.strokeStyle = '#4a4843'; g.lineWidth = W; g.stroke();
+    gPath(g, s); g.strokeStyle = g.createPattern(gTex('concrete').c, 'repeat'); g.lineWidth = W - 4; g.stroke();
+    return c;
+  }
+  for (const m of gRT(s).marks) {
+    if (m === 'dash') { gPath(g, s); g.strokeStyle = 'rgba(236,234,224,0.85)'; g.lineWidth = 3; g.lineCap = 'butt'; g.setLineDash([18, 16]); g.stroke(); g.setLineDash([]); g.lineCap = 'round'; }
+    if (m === 'dbl') line(10, 'rgba(222,178,52,0.9)', 4);
+    if (m === 'edge') line(wd - 8, 'rgba(236,234,224,0.8)', wd - 13);
+    if (m === 'ruts') line(wd * 0.62, 'rgba(30,20,10,0.22)', wd * 0.3);
+  }
+  g.globalCompositeOperation = 'destination-out'; g.fillStyle = '#000';
+  for (const p of s.l.slice(1)) { g.beginPath(); g.arc(p[0], p[1], wd * 0.8, 0, 7); g.fill(); }
+  g.globalCompositeOperation = 'source-over';
+  return c;
+}
 /* bake map G's ground within box r (all of it if none; no G.base: only its stamps, over what's there) into gc (colour) and gm (material; may be null): 2D contexts,
    or GX's on GL surfaces. Returns the tallest painted height (px) */
 function gBake(G, gc, gm, r) {
@@ -112,8 +153,10 @@ function gBake(G, gc, gm, r) {
   }
   for (const s of G.stamps) {
     if (!gOk(s)) continue; const b = gBox(s); if (!gHit(b, r)) continue;
-    const M = gMask(s, b); hmax = Math.max(hmax, gTex(s.t).h);
+    const M = gMask(s, b), R = gRT(s); hmax = Math.max(hmax, gTex(s.t).h);
+    if (R.walk) for (const [g, k] of T) g.drawImage(gRoadCv(s, b, 'walk', k), b.x, b.y);
     for (const [g, k] of T) g.drawImage(gStampCv(s, b, M, k), b.x, b.y);
+    if (R.marks.length && gc) gc.drawImage(gRoadCv(s, b, 'marks', 'c'), b.x, b.y);
   }
   if (gc && G.bounds && G.bounds.p.length >= 6) gOob(gc, G, r);
   for (const [g] of T) g.restore();

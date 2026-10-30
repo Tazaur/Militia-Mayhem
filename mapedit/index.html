@@ -23,7 +23,7 @@ button,select,input{font:inherit;color:inherit}
 .tabs{flex:none;display:flex;gap:4px;padding:5px 10px;background:var(--panel);border-bottom:1px solid var(--line)}
 .tabs button{flex:1;height:36px;border:1px solid var(--line2);border-radius:9px;background:var(--panel2);font-weight:700;font-size:13px;letter-spacing:.3px;cursor:pointer;color:var(--dim)}
 .tabs button.on{background:var(--acc);border-color:var(--acc);color:#1a1405}
-.scr .btn{flex:none}
+.scr .btn,.scr .sel{flex:none}
 .scr{display:flex;gap:6px;overflow-x:auto;flex:1;min-width:0;scrollbar-width:none}.scr::-webkit-scrollbar{display:none}
 .sel{height:38px;border-radius:9px;border:1px solid var(--line2);background:var(--panel2);padding:0 6px;min-width:0;font-weight:600}
 #name{flex:1;min-width:0;font-family:var(--fd);font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.4px}
@@ -327,7 +327,7 @@ function finishDraft() {
     if (d.end > 0) q.push(...add); else if (d.end < 0) { const r = []; for (let i = add.length - 2; i >= 0; i -= 2) r.push(add[i], add[i + 1]); q.unshift(...r); } else s.l.push(d.p);
     sel = d.of;
   }
-  else { G.stamps.push(d.k === 'road' ? { k: 'path', t: d.t, soft: d.soft, r: d.r, wd: d.wd, l: [d.p] } : { t: d.t, soft: d.soft, r: d.r, p: d.p }); sel = G.stamps.length - 1; }
+  else { G.stamps.push(d.k === 'road' ? { k: 'path', t: d.t, soft: d.soft, r: d.r, wd: d.wd, l: [d.p], ...S.rt && S.rt !== 'plain' ? { rt: S.rt } : {} } : { t: d.t, soft: d.soft, r: d.r, p: d.p }); sel = G.stamps.length - 1; }
   selV = null; dirty(gBox(cur())); draft = null; tool = 'select'; save(); ui(); draw();
 }
 /* ready-made shapes at the middle of the view: a square, a circle, a blob */
@@ -513,8 +513,8 @@ $('#file').onchange = async e => {
 /* the bars: the bottom one always three rows high; the selection's actions in the floating #ctx bar over the map */
 function bars(h, ctx) { $('#btm').innerHTML = h + '<div class="r pad"></div>'.repeat(Math.max(0, 3 - (h.match(/<div class="r"/g) || []).length)); const c = $('#ctx'); c.innerHTML = ctx || ''; c.classList.toggle('on', !!ctx); }
 /* a stamp's numbers: one slider, chips pick which */
-const PROPS = { soft: ['Edge', 0, 160], r: ['Round', 0, 400], wd: ['Width', 8, 400] };
-const propsOf = s => s.l ? ['wd', 'soft', 'r'] : ['soft', 'r'];
+const PROPS = { soft: ['Edge', 0, 160], r: ['Round', 0, 400], wd: ['Width', 8, 400], sw: ['Walk', 0, 60] };
+const propsOf = s => s.l ? ['wd', ...gRT(s).walk ? ['sw'] : [], 'soft', 'r'] : ['soft', 'r'];
 function ui() {
   if (!G) return;
   $('#name').textContent = G.name; $('#bUndo').disabled = !UNDO.length; $('#bRedo').disabled = !REDO.length;
@@ -532,7 +532,7 @@ function ui() {
     ctx = `<b>⬠ Edge</b>${canDelV(s) ? '<button class="btn" data-a="delv">− Point</button>' : ''}<button class="btn red" data-a="edgeoff">Whole map</button>`;
   } else if (s) {
     const ps = propsOf(s); if (!ps.includes(S.prop)) S.prop = ps[0]; const P = PROPS[S.prop], v = s[S.prop] || 0;
-    r2 = `<div class="r"><button class="btn" data-a="tex"><span class="sw" ${sw(s.t)}></span>▾</button>${ps.map(k => `<button class="btn${k === S.prop ? ' on' : ''}" data-prop="${k}">${PROPS[k][0]} ${s[k] || 0}</button>`).join('')}</div>
+    r2 = `<div class="r"><button class="btn" data-a="tex"><span class="sw" ${sw(s.t)}></span>▾</button><div class="scr">${s.l ? `<select class="sel" id="rt" aria-label="Road type">${Object.entries(GROADS).map(([k, R]) => `<option value="${k}"${(s.rt || 'plain') === k ? ' selected' : ''}>${R.n}</option>`).join('')}</select>` : ''}${ps.map(k => `<button class="btn${k === S.prop ? ' on' : ''}" data-prop="${k}">${PROPS[k][0]} ${k === 'sw' ? gSW(s) : s[k] || 0}</button>`).join('')}</div></div>
     <div class="r"><label class="sl"><span>${P[0]}</span><input type="range" id="pv" min="${P[1]}" max="${P[2]}" step="1" value="${v}"><b id="pvV">${v}</b></label></div>`;
     ctx = `<button class="btn ic" data-a="up" title="Up">▲</button><button class="btn ic" data-a="down" title="Down">▼</button><button class="btn ic" data-a="eye" title="Hide">${s.off ? '◌' : '◉'}</button><button class="btn ic${s.lock ? ' on' : ''}" data-a="lock" title="Lock">${s.lock ? '🔒' : '🔓'}</button><button class="btn ic" data-a="dup" title="Duplicate">⧉</button>${s.l ? `<button class="btn" data-a="branch" ${selV ? '' : 'disabled'}>⑂ Branch</button>` : ''}${canDelV(s) ? '<button class="btn" data-a="delv">− Point</button>' : ''}<button class="btn ic red" data-a="del" title="Delete">🗑</button>`;
   } else r2 = `<div class="r"><button class="btn" data-a="base"><span class="sw" ${sw(G.base)}></span>Base ▾</button><button class="btn" data-a="edge">⬠ Edge</button><span class="muted" style="flex:1">${G.w}×${G.h}</span></div>`;
@@ -540,6 +540,7 @@ function ui() {
   if (sel === EDGE && !draft) $('#hint').textContent = 'Battlefield edge: outside it is out of bounds · drag the points · blue dots add points';
   else if (s && !draft) { const b = gBox(s), e = Math.ceil((s.soft || 0) * 1.2) + 1; $('#hint').textContent = `${s.l ? 'Road' : 'Shape'} ${b.w - 2 * e} × ${b.h - 2 * e} px${s.l ? ' · ' + s.wd + ' wide' : ''} · drag it or its points · blue dots add points${s.l ? ' · tap a point, then ⑂ Branch' : ''}`; }
   else $('#hint').textContent = '';
+  const rt = $('#rt'); if (rt) rt.onchange = () => { snap(); const R = GROADS[rt.value]; edit(q => { if (rt.value === 'plain') delete q.rt; else q.rt = rt.value; if (R.t) q.t = S.rtex = R.t; if (R.sw !== undefined && q.sw === undefined) q.sw = R.sw; S.rt = rt.value; }); };     // new roads start as the last type
   const sl = $('#pv'); if (sl) {     // one undo step per drag, the old and new boxes re-baked
     let b0 = null; const k = S.prop;
     sl.oninput = () => { if (!b0) { snap(); b0 = gBox(s); } s[k] = +sl.value; $('#pvV').textContent = sl.value; const c = sel >= 0 && $(`[data-prop=${k}]`); if (c) c.textContent = PROPS[k][0] + ' ' + sl.value; const b = gBox(s); dirty(boxU(b0, b)); b0 = boxU(b0, b); draw(); };

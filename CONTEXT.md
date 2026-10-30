@@ -816,3 +816,8 @@ Art drop (drop.py): atlas.png: hull4, tur_dead; atlas_m.png: tur_dead, sol_leg0,
 
 ## Editor: branching from a point
 - Select a road point, tap ⑂ Branch: the draft starts at that point (`draft.li/end`); taps add points, ✓ finishes. From the line's last point (or the main line's first) the line itself is extended; from any other point a new line is added to `s.l`.
+
+## Road types (2b_ground.js GROADS)
+- A path stamp's `rt`: plain (none), street (concrete pavement `sw` px each side + dashed white centre), highway (double yellow + white edge lines), dirt (ruts). `gRoadCv(s, b, 'walk'|'marks', k)` bakes the layers in gBake: the walk under the stamp (flat in material), the marks over it (colour only). Side lines = a wide stroke with a narrower cut out (follows curves). Marks are cut away round each branch's first point (junction).
+- Editor: a road-type dropdown on the road's row; Walk is one of its numbers when the type has a pavement; new roads take the last type (S.rt).
+- Next: junctions between separate roads / crossings found automatically (crosswalks, marks cut), editable per junction; then the old maps' straight roads converted to path stamps.
