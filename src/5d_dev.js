@@ -210,7 +210,7 @@ function houseRoof(H) {
 const roofAt = (x, y) => { const q = houseAt(x, y); return q ? q[0].roof[q[2] * q[0].W + q[1]] : 0; };
 function paintRoof() {
   ROOF_C.width = WW; ROOF_C.height = WH;
-  for (const H of MAP.houses) { H.rc = document.createElement('canvas'); H.rc.width = H.W * SUB; H.rc.height = H.H * SUB; for (let j = 0; j < H.H; j++) for (let i = 0; i < H.W; i++) roofCell(H, i, j); }
+  for (const H of MAP.houses) { roofPaint(H); H.rc = document.createElement('canvas'); H.rc.width = H.W * SUB; H.rc.height = H.H * SUB; for (let j = 0; j < H.H; j++) for (let i = 0; i < H.W; i++) roofCell(H, i, j); }
   const g = ROOF_C.getContext('2d'); for (const H of MAP.houses) roofLay(g, H);
 }
 /* a house's roof canvas laid into ROOF_C, turned */
@@ -225,18 +225,93 @@ function roofBlit(H) {
     g.restore();
   });
 }
-/* shingles, a dark edge wherever the roof stops (in the house's canvas) */
+/* roof styles. Pitched ones are hipped, whatever the house's shape: each point slopes to its nearest eave (the four ways
+   along its row / column of roof), so faces meet in ridges and hips; the sun (top left) lights the faces that way.
+   rows / tab: shingle courses (px) and tab width; wave: clay barrels; seam: standing-seam metal; straw: thatch; flat:
+   a parapet. pals: its colours (one per house), bits: what stands on it */
+const ROOF_STYLES = {
+  shingle: { rows: 8, tab: 14, bits: 'chimney vent sky moss', pals: [[112, 76, 58], [80, 86, 96], [72, 94, 76], [126, 62, 50], [62, 60, 58]] },
+  clay: { rows: 9, tab: 10, wave: 1, bits: 'chimney vent moss', pals: [[170, 84, 54], [186, 106, 66], [150, 72, 50]] },
+  metal: { seam: 10, bits: 'vent', pals: [[78, 118, 102], [150, 54, 40], [136, 140, 146], [72, 96, 128]] },
+  thatch: { straw: 1, bits: 'chimney moss', pals: [[170, 136, 64], [150, 118, 54]] },
+  tar: { flat: 1, bits: 'ac vent hatch plant', pals: [[76, 74, 70], [64, 66, 68]] },
+  concrete: { flat: 1, bits: 'ac vent hatch tank plant', pals: [[164, 164, 158], [146, 146, 140]] }
+};
+/* the styles that belong on each map (a house picks one by its seed, so a mirrored pair matches) */
+const MAP_ROOFS = { crossroads: ['tar', 'concrete', 'shingle', 'clay'], farmlands: ['metal', 'metal', 'thatch', 'shingle'], rivertown: ['clay', 'shingle', 'tar', 'clay'], snowfield: ['shingle', 'metal', 'shingle'], outskirts: ['shingle', 'shingle', 'clay', 'metal', 'shingle'] };
+/* the house's whole roof, painted once (H.rf, its frame): roofCell copies a tile of it in */
+function roofPaint(H) {
+  const L = MAP_ROOFS[MAP.id] || MAP_ROOFS.outskirts, R = mulberry(H.seed * 53 + 11);
+  const st = H.rs || L[Math.floor(R() * L.length)], S = ROOF_STYLES[st] || ROOF_STYLES.shingle, pal = S.pals[Math.floor(R() * S.pals.length)];
+  const W = H.W * SUB, HH = H.H * SUB, N = H.W * H.H, on = (i, j) => i >= 0 && j >= 0 && i < H.W && j < H.H && H.roof[j * H.W + i] === 1;
+  const c = H.rf = document.createElement('canvas'); c.width = W; c.height = HH; const g = c.getContext('2d'), im = g.createImageData(W, HH), D = im.data;
+  // each cell's roof run: the first / last cell of it left-right (rl, rr) and up-down (ru, rd)
+  const rl = new Int16Array(N), rr = new Int16Array(N), ru = new Int16Array(N), rd = new Int16Array(N);
+  for (let j = 0; j < H.H; j++) { for (let i = 0; i < H.W; i++) { const k = j * H.W + i; rl[k] = on(i - 1, j) ? rl[k - 1] : i; } for (let i = H.W - 1; i >= 0; i--) { const k = j * H.W + i; rr[k] = on(i + 1, j) ? rr[k + 1] : i; } }
+  for (let i = 0; i < H.W; i++) { for (let j = 0; j < H.H; j++) { const k = j * H.W + i; ru[k] = on(i, j - 1) ? ru[k - H.W] : j; } for (let j = H.H - 1; j >= 0; j--) { const k = j * H.W + i; rd[k] = on(i, j + 1) ? rd[k + H.W] : j; } }
+  const dist = (x, y) => { const k = Math.floor(y / SUB) * H.W + Math.floor(x / SUB); return [y - ru[k] * SUB + 0.5, (rr[k] + 1) * SUB - x - 0.5, (rd[k] + 1) * SUB - y - 0.5, x - rl[k] * SUB + 0.5]; };     // to the eave up, right, down, left
+  const hs = (a, b) => ((Math.imul(a, 73856093) ^ Math.imul(b, 19349663) ^ Math.imul(H.seed | 0, 83492791)) >>> 0) / 4294967296;
+  const blots = []; for (let n = 0; n < W * HH / 7000 + 2; n++) blots.push([R() * W, R() * HH, 10 + R() * 34, 0.05 + R() * 0.12]);     // weathering
+  const SUNF = [1.1, 0.86, 0.76, 1.0], grit = CFG.style === 'grit' ? 0.8 : 1, snow = SNOWY();
+  for (let y = 0; y < HH; y++) for (let x = 0; x < W; x++) {
+    const p = (y * W + x) * 4; if (!on(Math.floor(x / SUB), Math.floor(y / SUB))) { D[p + 3] = 0; continue; }
+    const q = dist(x, y); let f = 0; for (let n = 1; n < 4; n++) if (q[n] < q[f]) f = n;
+    let d2 = 1e9; for (let n = 0; n < 4; n++) if (n !== f && q[n] < d2) d2 = q[n];
+    const d = q[f], al = f % 2 ? y : x;     // across the face (from its eave), along it
+    let t = 1, v = S.flat ? 1 : SUNF[f];
+    if (S.flat) {
+      if (hs(x, y) < 0.09) t += (hs(y, x) - 0.5) * 0.5;     // gravel
+      if (d < 2) t *= 0.55; else if (d < 5) t *= 1.16; else if (d < 7) t *= f === 0 || f === 3 ? 0.7 : 0.9;     // the parapet, its shadow inside
+    } else {
+      if (S.rows) {
+        const row = Math.floor(d / S.rows), a = al + (row & 1) * S.tab / 2, ti = Math.floor(a / S.tab);
+        t = 1 + (hs(row * 7 + f, ti) - 0.5) * 0.18;
+        if (S.wave) t *= 0.78 + 0.32 * Math.sin(Math.PI * (a % S.tab) / S.tab);
+        if (d % S.rows < 1.6) t *= 0.68; else if (!S.wave && a % S.tab < 1.2) t *= 0.8;
+      } else if (S.seam) { const m = al % S.seam; t = (m < 1.5 ? 1.2 : m < 3 ? 0.76 : 1) * (0.97 + hs(Math.floor(al / S.seam), Math.floor(d / 6)) * 0.06); }
+      else if (S.straw) { t = 0.82 + 0.34 * hs(Math.floor(al / 2), Math.floor(d / 6) * 31 + f); if (d % 6 < 1) t *= 0.86; }
+      if (d2 - d < 1.1) t *= 0.62; else if (d2 - d < 3.5) t *= 1.12;     // ridge / hip: a line, then the cap
+      if (d < 2) t *= 0.5; else if (d < 3) t *= 0.8;     // the eave
+    }
+    for (const [bx, by, br, bk] of blots) { const e = Math.hypot(x - bx, y - by); if (e < br) t *= 1 - bk * (1 - e / br); }
+    t *= (0.96 + hs(x * 3 + 1, y * 7 + 2) * 0.08) * v * grit;
+    let r = pal[0] * t, gg = pal[1] * t, b = pal[2] * t;
+    if (snow) { const k = (S.flat ? 0.7 : [0.72, 0.55, 0.45, 0.66][f]) * (0.75 + hs(x, y) * 0.25) * (d < 3 ? 0.35 : 1), w = Math.min(1.1, Math.sqrt(t)); r += (232 * w - r) * k; gg += (238 * w - gg) * k; b += (246 * w - b) * k; }     // snow lying on it, the courses showing through
+    D[p] = r; D[p + 1] = gg; D[p + 2] = b; D[p + 3] = 255;
+  }
+  g.putImageData(im, 0, 0);
+  // what stands on it, each where the roof is at least m px in from every eave and clear of the others
+  const took = [], spot = (w, h, m) => {
+    for (let n = 0; n < 40; n++) {
+      const x = 4 + R() * (W - w - 8), y = 4 + R() * (HH - h - 8);
+      if (took.some(o => x < o[0] + o[2] + 5 && x + w + 5 > o[0] && y < o[1] + o[3] + 5 && y + h + 5 > o[1])) continue;
+      if ([[x, y], [x + w, y], [x, y + h], [x + w, y + h], [x + w / 2, y + h / 2]].every(([a, b]) => on(Math.floor(a / SUB), Math.floor(b / SUB)) && Math.min(...dist(Math.min(W - 1, a), Math.min(HH - 1, b))) >= m)) { took.push([x, y, w, h]); return [x, y]; }
+    }
+    return null;
+  };
+  const shade = (x, y, w, h, k) => { g.fillStyle = 'rgba(0,0,0,' + (k || 0.35) + ')'; g.fillRect(x + 4, y + 4, w, h); };
+  const bits = S.bits.split(' '), has = k => bits.includes(k), area = W * HH, mt = grit < 1 ? 0.8 : 1;
+  if (has('chimney') && R() < 0.75) { const q = spot(20, 16, 10); if (q) { const [x, y] = q; shade(x, y, 20, 16, 0.4); g.fillStyle = '#7a3c2c'; g.fillRect(x, y, 20, 16); g.fillStyle = '#5c2c20'; for (let r = 4; r < 16; r += 4) { g.fillRect(x, y + r, 20, 1); for (let c = (r / 4) % 2 ? 3 : 8; c < 20; c += 10) g.fillRect(x + c, y + r - 4, 1, 4); } g.fillStyle = '#9a9690'; g.fillRect(x - 1, y - 1, 22, 3); g.fillRect(x - 1, y - 1, 3, 18); g.fillStyle = '#1c1512'; g.fillRect(x + 5, y + 4, 10, 8); } }
+  if (has('sky') && R() < 0.4) for (let n = 0; n < 1 + (R() < 0.4); n++) { const q = spot(14, 18, 12); if (!q) break; const [x, y] = q; g.fillStyle = '#d8d8d2'; g.fillRect(x, y, 14, 18); g.fillStyle = '#34444f'; g.fillRect(x + 2, y + 2, 10, 14); g.fillStyle = 'rgba(200,225,240,0.35)'; g.beginPath(); g.moveTo(x + 2, y + 9); g.lineTo(x + 9, y + 2); g.lineTo(x + 12, y + 2); g.lineTo(x + 2, y + 12); g.fill(); }
+  if (has('ac')) for (let n = 0; n < 1 + Math.floor(R() * Math.min(4, area / 25000)); n++) { const q = spot(22, 18, 8); if (!q) break; const [x, y] = q; shade(x, y, 22, 18); g.fillStyle = grit < 1 ? '#6a6a64' : '#9a9a96'; g.fillRect(x, y, 22, 18); g.fillStyle = grit < 1 ? '#4a4a46' : '#6c6c68'; g.fillRect(x + 3, y + 3, 16, 12); g.fillStyle = '#2a2a28'; g.beginPath(); g.arc(x + 11, y + 9, 5, 0, TAU); g.fill(); g.strokeStyle = '#555550'; g.lineWidth = 1; g.beginPath(); g.moveTo(x + 6, y + 9); g.lineTo(x + 16, y + 9); g.moveTo(x + 11, y + 4); g.lineTo(x + 11, y + 14); g.stroke(); }
+  if (has('hatch') && R() < 0.7) { const q = spot(13, 13, 8); if (q) { const [x, y] = q; shade(x, y, 13, 13, 0.25); g.fillStyle = '#5e5e5a'; g.fillRect(x, y, 13, 13); g.fillStyle = '#7a7a74'; g.fillRect(x + 2, y + 2, 9, 9); g.fillStyle = '#444'; g.fillRect(x + 9, y + 5, 2, 3); } }
+  if (has('tank') && R() < 0.45) { const q = spot(24, 24, 8); if (q) { const [x, y] = q; g.fillStyle = 'rgba(0,0,0,0.35)'; g.beginPath(); g.arc(x + 16, y + 16, 12, 0, TAU); g.fill(); g.fillStyle = '#8c8c86'; g.beginPath(); g.arc(x + 12, y + 12, 12, 0, TAU); g.fill(); g.strokeStyle = '#6e6e68'; g.lineWidth = 2; g.beginPath(); g.arc(x + 12, y + 12, 8, 0, TAU); g.stroke(); g.fillStyle = '#b0b0aa'; g.beginPath(); g.arc(x + 9, y + 9, 3, 0, TAU); g.fill(); } }
+  if (has('vent')) for (let n = 0; n < 1 + Math.floor(R() * 3); n++) { const q = spot(7, 7, 6); if (!q) break; const [x, y] = q; g.fillStyle = 'rgba(0,0,0,0.35)'; g.beginPath(); g.arc(x + 5.5, y + 5.5, 3.5, 0, TAU); g.fill(); g.fillStyle = '#8a8a86'; g.beginPath(); g.arc(x + 3.5, y + 3.5, 3.5, 0, TAU); g.fill(); g.fillStyle = '#2a2a28'; g.beginPath(); g.arc(x + 3.5, y + 3.5, 1.6, 0, TAU); g.fill(); }
+  const leaf = (x, y, r) => { for (let n = 0; n < 5; n++) { g.fillStyle = ['#3f5f2a', '#567a34', '#6e9440'][n % 3]; g.beginPath(); g.arc(x + (R() - 0.5) * r * 1.4, y + (R() - 0.5) * r * 1.4, r * (0.5 + R() * 0.4), 0, TAU); g.fill(); } };
+  if (has('plant') && R() < 0.6) for (let n = 0; n < 1 + Math.floor(R() * 3); n++) {     // planter boxes, potted plants
+    if (R() < 0.5) { const q = spot(26, 9, 6); if (!q) break; const [x, y] = q; shade(x, y, 26, 9, 0.3); g.fillStyle = '#6a4a30'; g.fillRect(x, y, 26, 9); g.fillStyle = '#3a2a1c'; g.fillRect(x + 2, y + 2, 22, 5); for (let k = 0; k < 3; k++) leaf(x + 5 + k * 8, y + 4, 4); }
+    else { const q = spot(10, 10, 6); if (!q) break; const [x, y] = q; g.fillStyle = 'rgba(0,0,0,0.3)'; g.beginPath(); g.arc(x + 8, y + 8, 5, 0, TAU); g.fill(); g.fillStyle = '#8a5a3a'; g.beginPath(); g.arc(x + 5, y + 5, 5, 0, TAU); g.fill(); leaf(x + 5, y + 5, 4); }
+  }
+  if (has('moss') && !snow && R() < 0.65) { g.globalAlpha = 0.45 * mt; for (let n = 0; n < 2 + Math.floor(R() * area / 15000); n++) { const x = R() * W, y = R() * HH; if (!on(Math.floor(x / SUB), Math.floor(y / SUB))) continue; for (let k = 0; k < 6; k++) { const a = x + (R() - 0.5) * 16, b = y + (R() - 0.5) * 10; if (!on(Math.floor(a / SUB), Math.floor(b / SUB))) continue; g.fillStyle = R() < 0.5 ? '#4e6a2c' : '#62803a'; g.beginPath(); g.arc(a, b, 2 + R() * 3, 0, TAU); g.fill(); } } g.globalAlpha = 1; }
+}
+/* a roof tile from the painted roof; a torn dark edge where the roof beside it has fallen in */
 function roofCell(H, i, j) {
-  const k = j * H.W + i, x = i * SUB, y = j * SUB;
-  const t = ((Math.imul(i, 2654435761) ^ Math.imul(j, 40503)) >>> 0) % 7 - 3;
-  const open = (a, b) => a < 0 || b < 0 || a >= H.W || b >= H.H || H.roof[b * H.W + a] !== 1;
-  const g = H.rc.getContext('2d'); g.clearRect(x, y, SUB, SUB); if (H.roof[k] !== 1) return;
-  g.fillStyle = `rgb(${112 + t * 3},${72 + t * 2},${56 + t * 2})`; g.fillRect(x, y, SUB, SUB);
-  g.fillStyle = 'rgba(40,22,16,0.45)';
-  for (let r = 0; r < 4; r++) { g.fillRect(x, y + r * 4 + 3, SUB, 1); for (let sx = (r % 2) * 4; sx < SUB; sx += 8) g.fillRect(x + sx, y + r * 4, 1, 3); }
+  const k = j * H.W + i, x = i * SUB, y = j * SUB, g = H.rc.getContext('2d'); g.clearRect(x, y, SUB, SUB); if (H.roof[k] !== 1) return;
+  if (!H.rf) roofPaint(H); g.drawImage(H.rf, x, y, SUB, SUB, x, y, SUB, SUB);
+  const gone = (a, b) => a >= 0 && b >= 0 && a < H.W && b < H.H && H.cell[b * H.W + a] !== C_OUT && H.roof[b * H.W + a] !== 1;
   g.fillStyle = '#2a1a12';
-  if (open(i, j - 1)) g.fillRect(x, y, SUB, 2); if (open(i + 1, j)) g.fillRect(x + SUB - 2, y, 2, SUB);
-  if (open(i, j + 1)) g.fillRect(x, y + SUB - 2, SUB, 2); if (open(i - 1, j)) g.fillRect(x, y, 2, SUB);
+  if (gone(i, j - 1)) g.fillRect(x, y, SUB, 2); if (gone(i + 1, j)) g.fillRect(x + SUB - 2, y, 2, SUB);
+  if (gone(i, j + 1)) g.fillRect(x, y + SUB - 2, SUB, 2); if (gone(i - 1, j)) g.fillRect(x, y, 2, SUB);
 }
 /* cells (H-local indices) whose roof changed: they and their neighbours repainted; the house laid in again next tick */
 function repaintRoofAround(H, cells) {
