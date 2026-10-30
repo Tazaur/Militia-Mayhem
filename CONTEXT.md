@@ -860,3 +860,6 @@ ROOF_STYLES, MAP_ROOFS and roofPaint(H, st, list, snow, grit) live in src/2d_hou
 - CP roofA: memory only, from HS's B (the roof as remembered), so tiles that fell out of sight aren't known.
 - Indoors (in sight, under a live roof, below ROOF_Z[0]): the sun's shadow is the sweep's skyline alone, not its floating spans (the slab), so walls cast, light comes in at windows/doors, units cast on the floor.
 - FOG_PRESETS[0] STANDARD {fogD 20, fogK 20, fogE 50, fogW 16}: the default, set once (CFG.fogV 1) over earlier choices.
+
+## Sight strips cut along the rays (after 285)
+- visPoly: a strip's free ends follow the sight ray through them k deep into the wall (was 45 degrees), clamped to the wall face's span (square at an outer corner, where the ray leaves the wall).
