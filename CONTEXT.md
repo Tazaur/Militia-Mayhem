@@ -849,3 +849,8 @@ ROOF_STYLES, MAP_ROOFS and roofPaint(H, st, list, snow, grit) live in src/2d_hou
 
 ## Roofs shared with the editor; streets by default
 ROOF_STYLES, MAP_ROOFS and roofPaint(H, st, list, snow, grit) live in src/2d_house.js (gRng, gCv only); the game's roofOf(H) passes the map's list, SNOWY and the grit style. Editor houses have a Roof pick (rs: auto or a style; mkHouse keeps it); a house not selected is drawn with its roof, the selected one as its floor plan. New editor roads are streets (centre line, pavements, crosswalks at junctions) unless another type was picked.
+
+## Fixes after build 280
+- drawWorld's fog hole still listed the old rect roofs (`roofs`, gone): a ReferenceError every frame with line-of-sight vision, no UI. Removed.
+- ROOF_CAP 1: roofs past ROOF_FAR from your eyes are solid (0.7 let walls show through every roof in view); the see-inside fade near you stays.
+- Pavements (gRoadCv walk): each is cut where a road laid before it has pavement (one-sided, by stamp order), so a street ending on another doesn't draw its curb over the other's pavement.

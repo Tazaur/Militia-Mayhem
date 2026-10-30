@@ -74,7 +74,7 @@ function drawWorld(vw) {
   drawLasers(vis); pipe('lasers');     // under the smoke: a man in it doesn't give himself away
   if (!devOff('smoke')) drawSmokes(vw); pipe('smokes');
   // the remembered world over what's out of sight (everything above was drawn whole; dev views: the whole screen)
-  if (fogged && !(SUNNOW && SUNDBG)) { const H = new Path2D(); polyPath(H, fogPolys); for (const b of roofs) H.rect(b.x, b.y, b.w, b.h); worldT(); fogOverlay(vw, H); }
+  if (fogged && !(SUNNOW && SUNDBG)) { const H = new Path2D(); polyPath(H, fogPolys); worldT(); fogOverlay(vw, H); }
   // tags, reticles
   worldT(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   pipe('overlay-done'); const eyN = viewEyes(vw);

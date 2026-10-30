@@ -192,7 +192,7 @@ function gRoadCv(s, b, part, k, G, J) {
     if (k === 'm') { gPath(g, s); g.strokeStyle = '#000'; g.lineWidth = W; g.stroke(); return c; }
     gPath(g, s); g.strokeStyle = '#4a4843'; g.lineWidth = W; g.stroke();
     gPath(g, s); g.strokeStyle = g.createPattern(gTex('concrete').c, 'repeat'); g.lineWidth = W - 4; g.stroke();
-    if (G) { g.globalCompositeOperation = 'destination-out'; g.strokeStyle = '#000'; for (const o of G.stamps) if (o !== s && o.l && gOk(o) && gHit(gBox(o), b)) { gPath(g, o); g.lineWidth = o.wd || 1; g.stroke(); } g.globalCompositeOperation = 'source-over'; }
+    if (G) { g.globalCompositeOperation = 'destination-out'; g.strokeStyle = '#000'; const me = G.stamps.indexOf(s); G.stamps.forEach((o, n) => { if (o !== s && o.l && gOk(o) && gHit(gBox(o), b)) { gPath(g, o); g.lineWidth = Math.max(o.wd || 1, n < me && gSW(o) ? (o.wd || 1) + gSW(o) * 2 - 4 : 0); g.stroke(); } }); g.globalCompositeOperation = 'source-over'; }     // not over another road, nor over the pavement of one laid before it (where they meet the pavements are one: no curb line across)
     return c;
   }
   for (const m of gRT(s).marks) {

@@ -268,7 +268,7 @@ function devRoofTile(H, k, fall) {
    and out as you step under a roof and back out) gone within ROOF_NEAR, fading in to ROOF_CAP at ROOF_FAR and beyond;
    from outside, whole, as the memory holds it (so the wall you look at stays under it). A world-space region
    (rv.x, rv.y, rv.w, rv.h) drawn in sight above units and walls. (Out of sight the memory holds the whole roof: applyFog) */
-const ROOF_NEAR = 100, ROOF_FAR = 200, ROOF_CAP = 0.7, roofOp = d => d <= ROOF_NEAR ? 0 : ROOF_CAP * Math.min(1, (d - ROOF_NEAR) / (ROOF_FAR - ROOF_NEAR));
+const ROOF_NEAR = 100, ROOF_FAR = 200, ROOF_CAP = 1, roofOp = d => d <= ROOF_NEAR ? 0 : ROOF_CAP * Math.min(1, (d - ROOF_NEAR) / (ROOF_FAR - ROOF_NEAR));
 function roofView(vw, x0, y0, x1, y1) {
   if (!MAP.houses.length) return null;
   const x = Math.max(0, Math.floor(x0)), y = Math.max(0, Math.floor(y0)), w = Math.min(WW, Math.ceil(x1)) - x, h = Math.min(WH, Math.ceil(y1)) - y; if (w <= 0 || h <= 0) return null;
