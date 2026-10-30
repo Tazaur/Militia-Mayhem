@@ -341,7 +341,7 @@ function finishDraft() {
     if (d.end > 0) q.push(...add); else if (d.end < 0) { const r = []; for (let i = add.length - 2; i >= 0; i -= 2) r.push(add[i], add[i + 1]); q.unshift(...r); } else s.l.push(d.p);
     sel = d.of;
   }
-  else { G.stamps.push(d.k === 'road' ? { k: 'path', t: d.t, soft: d.soft, r: d.r, wd: d.wd, l: [d.p], ...S.rt && S.rt !== 'plain' ? { rt: S.rt } : {} } : { t: d.t, soft: d.soft, r: d.r, p: d.p }); sel = G.stamps.length - 1; }
+  else { G.stamps.push(d.k === 'road' ? { k: 'path', t: d.t, soft: d.soft, r: d.r, wd: d.wd, l: [d.p], ...(S.rt || 'street') !== 'plain' ? { rt: S.rt || 'street' } : {} } : { t: d.t, soft: d.soft, r: d.r, p: d.p }); sel = G.stamps.length - 1; }
   selV = null; dirty(gBox(cur())); draft = null; tool = 'select'; save(); ui(); draw();
 }
 /* ready-made shapes at the middle of the view: a square, a circle, a blob */

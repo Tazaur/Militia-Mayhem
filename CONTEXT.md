@@ -846,3 +846,6 @@ Each house's whole roof is painted once into H.rf (its frame); roofCell copies t
 
 ## Roofs shared with the editor
 ROOF_STYLES, MAP_ROOFS and roofPaint(H, st, list, snow, grit) live in src/2d_house.js (gRng, gCv only); the game's roofOf(H) passes the map's list, SNOWY and the grit style. Editor houses have a Roof pick (rs: auto or a style; the game's mkHouse keeps it); a house not selected is drawn with its roof, the selected one as its floor plan.
+
+## Roofs shared with the editor; streets by default
+ROOF_STYLES, MAP_ROOFS and roofPaint(H, st, list, snow, grit) live in src/2d_house.js (gRng, gCv only); the game's roofOf(H) passes the map's list, SNOWY and the grit style. Editor houses have a Roof pick (rs: auto or a style; mkHouse keeps it); a house not selected is drawn with its roof, the selected one as its floor plan. New editor roads are streets (centre line, pavements, crosswalks at junctions) unless another type was picked.
