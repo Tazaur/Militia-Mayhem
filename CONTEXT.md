@@ -834,3 +834,6 @@ Art drop (drop.py): atlas.png: hull4, tur_dead; atlas_m.png: tur_dead, sol_leg0,
 ## One road system
 - MAP.roads on every map = path stamps (2b_ground.js). Built-in maps make theirs with `roadOf(l, w, side, style)` (asphalt → street with pavement `side`, dirt → dirt track); editor maps: their path stamps. paintGround bakes them with `gBake({w, h, stamps: MAP.roads}, gx)` (no base) where the old rect painting was: pavements, markings, junction crosswalks as in the editor.
 - `onRoad(x, y, pad)` = within wd/2 + pavement + pad of any segment; `roadInRect(r, pad)` for placing. roadRect is gone.
+
+## One building system (build 274)
+Every built-in map's buildings are the tiled houses (breakable walls, windows, roofs); the rect roof buildings (ROOFS, buildRoofs, roofC, drawRoofs) are gone. buildMap: `house(mw, mh, at)` makes one (genHouse, then a lot from at) and its copy turned half round the centre; `houseLots(B)` puts houses on given lots (crossroads list, farmlands barn, rivertown square), `placeHouses(n, xmax, wr, hr, gap)` anywhere (outskirts too). Lots hold the space in m.buildings while placing, then go (tiledFinish at the end). genHouse takes a smallest size (minW, minH; under 15 wide one room is fine). Every built-in map paths on the SUB grid.

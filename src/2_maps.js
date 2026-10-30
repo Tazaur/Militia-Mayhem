@@ -98,14 +98,26 @@ function buildMap(id) {
     const mr = mirrorRect(r); if (r.x < mr.x + mr.w + gap && r.x + r.w > mr.x - gap && r.y < mr.y + mr.h + gap && r.y + r.h > mr.y - gap) return false;
     return true;
   };
-  const placeBuildings = (n, xmax, roofs, wr, hr) => {
-    let tries = 0, k = 0;
-    while (k < n && tries++ < 4000) {
-      const w = wr[0] + R() * (wr[1] - wr[0]), h = hr[0] + R() * (hr[1] - hr[0]), x = 60 + R() * (xmax - 60 - w), y = 60 + R() * (WH - 120 - h);
-      const r = { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h), roof: roofs[k % roofs.length], seed: k };
-      if (!rectFree(r, 48)) continue;
-      sym(m.buildings, r, q => ({ ...mirrorRect(q), seed: q.seed + 50 })); k++;
-    }
+  /* houses (the dev yard's tiled ones), each placed on the left half and mirrored half round the centre. mw, mh: the
+     most cells it may take (the least 4 fewer); at(w, h): its lot (a free rect) for a house that size, or null. The lots
+     hold the space while the map is placed (m.buildings), then the houses' own walls take over (tiledFinish, below) */
+  const house = (mw, mh, at) => {
+    const seed = Math.floor(R() * 1e9), mn = [Math.min(15, Math.max(9, mw - 4)), Math.min(13, Math.max(8, mh - 4))];
+    const h = genHouse(mulberry(seed * 7919 + 13), mw, mh, ...mn); if (!h) return false;
+    const r = at(h.W * SUB, h.H * SUB); if (!r) return false;
+    sym(m.buildings, r, mirrorRect);
+    const o = { x: r.x + r.w / 2, y: r.y + r.h / 2, a: 0, seed, mw, mh, mn };
+    m.houses.push(mkHouse(o, m.houses.length), mkHouse({ ...o, x: WW - o.x, y: WH - o.y, a: Math.PI }, m.houses.length + 1)); return true;
+  };
+  const cells = (px, lo) => Math.max(lo, Math.round(px / SUB));
+  /* houses on given lots [x, y, w, h] (centred there, as big as the lot - 10 x 9 cells at least), where they fit */
+  const houseLots = B => { for (const [x, y, w, h] of B) house(cells(w, 10), cells(h, 9), (W, H) => { const r = { x: Math.round(x + w / 2 - W / 2), y: Math.round(y + h / 2 - H / 2), w: W, h: H }; return rectFree(r, 32) ? r : null; }); };
+  /* n houses anywhere left of xmax, sizes (px) in wr x hr, gap px between lots */
+  const placeHouses = (n, xmax, wr, hr, gap) => {
+    for (let k = 0, t = 0; k < n && t < 60; t++) if (house(cells(wr[0] + R() * (wr[1] - wr[0]), 10), cells(hr[0] + R() * (hr[1] - hr[0]), 9), (W, H) => {
+      for (let q = 0; q < 150; q++) { const r = { x: Math.round(60 + R() * (xmax - 60 - W)), y: Math.round(60 + R() * (WH - 120 - H)), w: W, h: H }; if (rectFree(r, gap || 48)) return r; }
+      return null;
+    })) k++;
   };
   const addStatic = (o, mirrorIt) => { m.statics.push(o); if (mirrorIt) { const [x, y] = mirrorPt(o.x, o.y); m.statics.push({ ...o, x, y, a: (o.a || 0) + Math.PI }); } };
   const crescent = (x, y, face, mi) => {   // face = direction the cover protects against
@@ -134,8 +146,7 @@ function buildMap(id) {
     m.roads = [[0, 1000, 3000, 1000], [900, 0, 900, 2000], [2100, 0, 2100, 2000], [1500, 420, 1500, 1580], [900, 420, 3000, 420], [0, 1580, 2100, 1580]].map(l => roadOf(l, 72, 14, 'asphalt'));
     m.flags = [{ name: 'A', x: 720, y: 1400 }, { name: 'B', x: 1500, y: 1000 }, { name: 'C', x: 2280, y: 600 }];
     const B = [[980, 1100, 180, 130], [1180, 1290, 200, 160], [1000, 560, 200, 150], [1250, 760, 150, 150], [560, 620, 170, 150], [380, 1680, 200, 140], [1100, 1700, 220, 150], [300, 300, 180, 160], [560, 1180, 120, 110], [1240, 180, 160, 140]];
-    const roofs = ['tar', 'brick', 'metal', 'concrete'];
-    B.forEach(([x, y, w, h], i) => sym(m.buildings, { x, y, w, h, roof: roofs[i % 4], seed: i }, q => ({ ...mirrorRect(q), seed: q.seed + 50 })));
+    houseLots(B);
     for (const f of m.flags) for (let k = 0; k < 4; k++) { const c = Math.PI / 4 + k * Math.PI / 2; crescent(f.x + Math.cos(c) * 112, f.y + Math.sin(c) * 112, c, false); }
     crescent(400, 880, 0, true); crescent(400, 1120, 0, true);
     scatter(13, 120, 40, (x, y) => crescent(x, y, R() * TAU, true));
@@ -145,8 +156,8 @@ function buildMap(id) {
     m.flags = [{ name: 'A', x: 620, y: 1480 }, { name: 'B', x: 1500, y: 1000 }, { name: 'C', x: 2380, y: 520 }];
     const F = [{ x: 60, y: 60, w: 880, h: 520, crop: 'wheat' }, { x: 1060, y: 60, w: 400, h: 860, crop: 'corn' }, { x: 420, y: 1060, w: 520, h: 300, crop: 'plow' }, { x: 1060, y: 1340, w: 420, h: 600, crop: 'wheat' }];
     for (const f of F) sym(m.fields, f, q => ({ ...mirrorRect(q), crop: q.crop }));
-    m.buildings.push({ x: 1380, y: 740, w: 200, h: 140, roof: 'barn', seed: 1 }); m.buildings.push({ ...mirrorRect(m.buildings[0]), seed: 51 });
-    placeBuildings(6, 1380, ['barn', 'tin', 'thatch'], [110, 220], [90, 160]);
+    houseLots([[1380, 740, 200, 140]]);
+    placeHouses(6, 1380, [160, 240], [144, 190]);
     // fences along the roads, with gates
     for (const rd of m.roads) {
       const [x1, y1, x2, y2] = rd.l[0];
@@ -167,7 +178,7 @@ function buildMap(id) {
     m.roads = [[0, 1000, 3000, 1000], [850, 0, 850, 2000], [2150, 0, 2150, 2000]].map(l => roadOf(l, 60, 0, 'dirt'));
     m.ice = [{ x: 1250, y: 830, w: 500, h: 340 }, { x: 520, y: 260, w: 230, h: 150 }, { x: WW - 520 - 230, y: WH - 260 - 150, w: 230, h: 150 }];
     m.flags = [{ name: 'A', x: 640, y: 1460 }, { name: 'B', x: 1500, y: 1000 }, { name: 'C', x: 2360, y: 540 }];
-    placeBuildings(8, 1400, ['cabin', 'bunker', 'cabin'], [100, 200], [90, 150]);
+    placeHouses(8, 1400, [160, 230], [144, 180]);
     for (const f of [m.flags[0]]) for (let k = 0; k < 4; k++) { const c = Math.PI / 4 + k * Math.PI / 2; crescent(f.x + Math.cos(c) * 110, f.y + Math.sin(c) * 110, c, true); }
     for (let k = 0; k < 3; k++) { const c = Math.PI * 0.75 + (k - 1) * 0.55; crescent(1500 + Math.cos(c) * 290, 1000 + Math.sin(c) * 215, c, true); }
     crescent(400, 880, 0, true); crescent(400, 1120, 0, true);
@@ -178,18 +189,7 @@ function buildMap(id) {
     // roofs) around a road cross. Each house is placed on the left and mirrored; its lot holds the space while placing
     m.roads = [[0, WH / 2, WW, WH / 2], [860, 0, 860, WH], [WW - 860, 0, WW - 860, WH]].map(l => roadOf(l, 64, 12, 'asphalt'));
     m.flags = [{ name: 'A', x: 600, y: WH / 2 + 480 }, { name: 'B', x: WW / 2, y: WH / 2 }, { name: 'C', x: WW - 600, y: WH / 2 - 480 }];
-    const sc = WW / SUB, sr = WH / SUB;
-    for (let n = 0, k = 0; n < 60 && k < 12; n++) {
-      const seed = Math.floor(R() * 1e9), h = genHouse(mulberry(seed * 7919 + 13), 24, 20); if (!h) continue;
-      for (let t = 0; t < 150; t++) {
-        const ox = 4 + Math.floor(R() * (sc / 2 + 6 - h.W)), oy = 4 + Math.floor(R() * (sr - 8 - h.H)), r = { x: ox * SUB, y: oy * SUB, w: h.W * SUB, h: h.H * SUB };
-        if (!rectFree(r, 64)) continue;
-        sym(m.buildings, r, mirrorRect);     // the lot, held while placing; the house and its copy turned half round the centre
-        const o = { x: r.x + r.w / 2, y: r.y + r.h / 2, a: 0, seed, mw: 24, mh: 20 };
-        m.houses.push(mkHouse(o, m.houses.length), mkHouse({ ...o, x: WW - o.x, y: WH - o.y, a: Math.PI }, m.houses.length + 1)); k++; break;
-      }
-    }
-    m.buildings.length = 0; tiledFinish();
+    placeHouses(12, WW / 2 + 6 * SUB, [24 * SUB, 24 * SUB], [20 * SUB, 20 * SUB], 64);
     for (const f of m.flags) for (let k = 0; k < 3; k++) { const c = k * TAU / 3 + 0.3; crescent(f.x + Math.cos(c) * 112, f.y + Math.sin(c) * 112, c, false); }
     crescent(400, WH / 2 - 120, 0, true); crescent(400, WH / 2 + 120, 0, true);
     scatter(8, 110, 40, (x, y) => crescent(x, y, R() * TAU, true));
@@ -222,8 +222,8 @@ function buildMap(id) {
     m.flags = [{ name: 'A', x: 1060, y: 680 }, { name: 'B', x: 1500, y: 1000 }, { name: 'C', x: 1940, y: 1320 }];
     // town blocks: four buildings around square A, then fill
     const sq = [[790, 430, 170, 120], [1180, 430, 180, 120], [790, 820, 170, 120], [1190, 830, 170, 110]];
-    sq.forEach(([x, y, w, h], i) => sym(m.buildings, { x, y, w, h, roof: ['brick', 'tar', 'concrete', 'brick'][i], seed: i }, q => ({ ...mirrorRect(q), seed: q.seed + 50 })));
-    placeBuildings(9, 1400, ['brick', 'tar', 'concrete', 'metal'], [110, 210], [100, 170]);
+    houseLots(sq);
+    placeHouses(9, 1400, [160, 230], [144, 190]);
     for (const f of m.flags) if (f.name !== 'B') for (let k = 0; k < 4; k++) { const c = Math.PI / 4 + k * Math.PI / 2; crescent(f.x + Math.cos(c) * 110, f.y + Math.sin(c) * 110, c, false); }
     for (const sd of [-1, 1]) { crescent(1500 - 215, 1000 + sd * 72, 0, false); crescent(1500 + 215, 1000 + sd * 72, Math.PI, false); }
     crescent(400, 880, 0, true); crescent(400, 1120, 0, true);
@@ -260,6 +260,7 @@ function buildMap(id) {
     m.crateSpots = m.crateSpots.filter(c => !outOfBounds(c.x, c.y)); m.ffaSpawns = m.ffaSpawns.filter(c => !outOfBounds(c.x, c.y));
     for (const o of [...m.vehSpawns, ...m.fwd]) inside(o, 60);
   }
+  if (!m.gmap && m.houses.length) { m.buildings.length = 0; tiledFinish(); }     // the lots go: the houses' walls stand in them
   if (m.houses.length) tiledClear(m);       // houses: sight and glass are kept as wall runs (devSight)
   else { m.sight = m.buildings.filter(b => !b.glass); m.glass = m.buildings.filter(b => b.glass); }     // what blocks sight / dims it
   buildHash();
@@ -300,10 +301,6 @@ const PALS = {
 };
 PALS.snow = Object.assign({}, PALS.classic, { grass: '#e6edf2', gA: '#d8e2ea', gB: '#f4f8fb', gC: '#c8d4de', patch: ['150,170,195', '255,255,255'], mud: 'rgba(120,135,150,0.16)', dirt: '#b9bec4', dA: '#a2a8b0', dB: '#c8ccd0', pad: '#8d9298', padA: '#83888e', padB: '#979ca2', padL: '#767b80', ice: '#9cc8de', iceL: '#d4ecf6', iceD: '#6fa2bf' });
 PALS.snowGrit = Object.assign({}, PALS.grit, { grass: '#c6cac6', gA: '#b8bdb9', gB: '#d2d5d0', gC: '#a9aea9', patch: ['90,95,90', '225,228,224'], mud: 'rgba(80,80,72,0.3)', dirt: '#8f8e86', dA: '#7b7a72', dB: '#9c9b93', pad: '#6a6b68', padA: '#626360', padB: '#727370', padL: '#585956', ice: '#8aa2aa', iceL: '#b4c6cc', iceD: '#64808a' });
-const ROOFS = {
-  classic: { cabin: ['#3a2a1e', '#e8eef2', '#cdd8e0'], bunker: ['#3e4246', '#d6dee4', '#b9c4cc'], tar: ['#3c3a37', '#55524c', '#4a4743'], brick: ['#5e2b20', '#9a4a36', '#86402f'], metal: ['#2f4a40', '#5d8676', '#4d7466'], concrete: ['#57575a', '#a4a4a0', '#929290'], barn: ['#4a1c14', '#9a3426', '#82291d'], tin: ['#4a4c50', '#8a8e94', '#75797f'], thatch: ['#5a4520', '#a8873e', '#94742f'] },
-  grit: { cabin: ['#2a2420', '#c4c8c4', '#adb2ad'], bunker: ['#2c2f31', '#b8bcb8', '#9fa4a0'], tar: ['#2b2a27', '#3e3c38', '#35332f'], brick: ['#3e2620', '#61392d', '#553128'], metal: ['#26302b', '#45544c', '#3b4842'], concrete: ['#3d3d3d', '#6a6a66', '#5c5c58'], barn: ['#34201a', '#5e3027', '#512820'], tin: ['#333436', '#5a5c5f', '#4d4f52'], thatch: ['#3e3420', '#6e5e38', '#615230'] }
-};
 function pattern(w, h, fn) { const c = mk(w, h), g = c.getContext('2d'); fn(g, w, h); return gx.createPattern(c, 'repeat'); }
 let SKIRT_PAT = null;
 /* the out-of-bounds ring: same grass, tinted, with a dashed line marking the battlefield edge */
@@ -327,7 +324,7 @@ function drawSkirt(x0, y0, x1, y1) {
   ctx.restore();
 }
 function paintGround() {
-  const grit = CFG.style === 'grit', P = SNOWY() ? (grit ? PALS.snowGrit : PALS.snow) : (PALS[CFG.style] || PALS.classic), RF = ROOFS[CFG.style] || ROOFS.classic;
+  const grit = CFG.style === 'grit', P = SNOWY() ? (grit ? PALS.snowGrit : PALS.snow) : (PALS[CFG.style] || PALS.classic);
   px_.setTransform(1, 0, 0, 1, 0, 0); px_.clearRect(0, 0, WW, WH); dgx.setTransform(1, 0, 0, 1, 0, 0); dgx.clearRect(0, 0, WW, WH); if (typeof M !== 'undefined' && M) M.fogMem = null;
   if (MAP.id === 'devyard') { paintDevGround(); return; }
   GMAT = null; if (MAP.gmap) { paintStamped(); if (MAP.houses.length) paintTiled(); return; }
@@ -387,33 +384,8 @@ function paintGround() {
     }
     for (let i = 0; i < 26; i++) { const x = 100 + R() * (WW - 200), y = 100 + R() * (WH - 200); if (MAP.buildings.some(b => inRect(x, y, b, 20))) continue; scorch(x, y, 25 + R() * 30); }
   }
-  if (MAP.houses.length) paintTiled(); else buildRoofs(RF, grit);
+  if (MAP.houses.length) paintTiled();
   gx.fillStyle = 'rgba(0,0,0,0.35)'; gx.fillRect(0, 0, WW, 12); gx.fillRect(0, WH - 12, WW, 12); gx.fillRect(0, 0, 12, WH); gx.fillRect(WW - 12, 0, 12, WH);
-}
-/* roofs are separate sprites so they draw ABOVE soldiers and vehicles (height layering) */
-function buildRoofs(RF, grit) {
-  for (const B of MAP.buildings) {
-    const c = mk(B.w, B.h), g = c.getContext('2d'), b = { ...B, x: 0, y: 0 };
-    const pal = RF[b.roof] || RF.tar;
-    g.fillStyle = pal[0]; g.fillRect(b.x, b.y, b.w, b.h);
-    g.fillStyle = pal[1]; g.fillRect(b.x + 4, b.y + 4, b.w - 8, b.h - 8);
-    const r2 = mulberry(b.seed + 9); g.fillStyle = pal[2];
-    if (b.roof === 'metal' || b.roof === 'tin') for (let x = b.x + 8; x < b.x + b.w - 6; x += 8) g.fillRect(x, b.y + 4, 2, b.h - 8);
-    else if (b.roof === 'brick') for (let y = b.y + 8; y < b.y + b.h - 6; y += 6) for (let x = b.x + 6 + ((y / 6) % 2) * 6; x < b.x + b.w - 8; x += 12) g.fillRect(x, y, 10, 1);
-    else if (b.roof === 'barn') { g.fillRect(b.x + 4, b.y + b.h / 2 - 2, b.w - 8, 4); for (let x = b.x + 10; x < b.x + b.w - 6; x += 12) g.fillRect(x, b.y + 4, 1, b.h - 8); }
-    else if (b.roof === 'thatch') for (let i = 0; i < b.w * b.h / 20; i++) g.fillRect(b.x + 6 + r2() * (b.w - 12), b.y + 6 + r2() * (b.h - 12), 4, 1);
-    else for (let i = 0; i < b.w * b.h / 90; i++) g.fillRect(b.x + 6 + r2() * (b.w - 12), b.y + 6 + r2() * (b.h - 12), 2, 2);
-    if (b.roof !== 'barn' && b.roof !== 'thatch') for (let k = 0; k < 2; k++) {
-      const ux = b.x + 14 + r2() * (b.w - 46), uy = b.y + 14 + r2() * (b.h - 46);
-      g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(ux + 4, uy + 4, 22, 18);
-      g.fillStyle = grit ? '#6a6a64' : '#9a9a96'; g.fillRect(ux, uy, 22, 18); g.fillStyle = grit ? '#4a4a46' : '#6c6c68'; g.fillRect(ux + 3, uy + 3, 16, 12);
-      g.fillStyle = '#2a2a28'; g.beginPath(); g.arc(ux + 11, uy + 9, 5, 0, TAU); g.fill();
-    }
-    if (grit) { for (let i = 0; i < 6; i++) { const sx = b.x + r2() * b.w; const gr = g.createLinearGradient(sx, b.y, sx, b.y + b.h); gr.addColorStop(0, 'rgba(0,0,0,0.25)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(sx, b.y + 4, 2 + r2() * 4, b.h - 8); } }
-    g.strokeStyle = grit ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.12)'; g.lineWidth = 2; g.strokeRect(b.x + 3, b.y + 3, b.w - 6, b.h - 6);
-      if (SNOWY()) { g.fillStyle = grit ? 'rgba(200,204,200,0.55)' : 'rgba(245,248,252,0.6)'; for (let i = 0; i < b.w * b.h / 60; i++) g.fillRect(4 + Math.random() * (b.w - 8), 4 + Math.random() * (b.h - 8), 3, 2); }
-    B.roofC = c;
-  }
 }
 function gStamp(n, x, y, a, s, al) {
   const m = ATLAS[n]; if (!m) return;

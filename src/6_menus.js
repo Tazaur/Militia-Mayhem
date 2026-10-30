@@ -781,7 +781,6 @@ function drawMatchPanel(x, y, w, h, u) {
   const k = Math.min(mw / WW, mh / WH), dw = WW * k, dh = WH * k, dx = mx + (mw - dw) / 2;
   if (mh) ctx.drawImage(groundMini(), 0, 0, groundMini().width, groundMini().height, dx, my, dw, dh);
   if (mh) {
-  for (const b of MAP.buildings) if (b.roofC) ctx.drawImage(b.roofC, dx + b.x * k, my + b.y * k, b.w * k, b.h * k);
   for (const f of M.flags) { ctx.fillStyle = '#f2e6c4'; ctx.beginPath(); ctx.arc(dx + f.x * k, my + f.y * k, Math.max(4, 6 * u), 0, TAU); ctx.fill(); txt(f.name.length > 1 ? 'H' : f.name, dx + f.x * k, my + f.y * k + 1, fpx(9, u, 8), '#141a10', 'center', 'middle', FD); }
   ctx.strokeStyle = 'rgba(242,230,196,0.3)'; ctx.strokeRect(dx + 0.5, my + 0.5, dw - 1, dh - 1);
   if (!cl) UIB.push({ x: dx, y: my, w: dw, h: dh, fn: () => changeSetting('map', 1) }); }

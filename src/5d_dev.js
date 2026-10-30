@@ -71,11 +71,11 @@ WALL_IMG.src = WALLS_SRC;
    Everything about a house is kept in its frame: wall rects (MAP.buildings, b.f), sight runs, roof, posts. */
 function mkHouse(o, i) {
   let W = o.W, H = o.H, g = o.g;
-  if (!g) { const h = genHouse(mulberry(o.seed * 7919 + 13), o.mw || 24, o.mh || 20); if (!h) return null; W = h.W; H = h.H; g = h.g; }
+  if (!g) { const h = genHouse(mulberry(o.seed * 7919 + 13), o.mw || 24, o.mh || 20, ...(o.mn || [])); if (!h) return null; W = h.W; H = h.H; g = h.g; }
   const a = o.a || 0, c = Math.cos(a), s = Math.sin(a), hw = W * SUB / 2, hh = H * SUB / 2;
   const f = { a, c, s, ox: o.x - hw * c + hh * s, oy: o.y - hw * s - hh * c };
   const P = [fromF(f, 0, 0), fromF(f, W * SUB, 0), fromF(f, W * SUB, H * SUB), fromF(f, 0, H * SUB)], xs = P.map(p => p[0]), ys = P.map(p => p[1]);
-  return { i, x: o.x, y: o.y, a, seed: o.seed, mw: o.mw, mh: o.mh, W, H, cell: Uint8Array.from(g), sec: new Int16Array(W * H).fill(-1), f, pts: P, bb: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] };
+  return { i, x: o.x, y: o.y, a, seed: o.seed, mw: o.mw, mh: o.mh, mn: o.mn, W, H, cell: Uint8Array.from(g), sec: new Int16Array(W * H).fill(-1), f, pts: P, bb: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] };
 }
 /* the house cell under a world point: [house, i, j] (only cells of the house, not C_OUT), or null */
 function houseAt(x, y, pad) {

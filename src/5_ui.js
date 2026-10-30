@@ -59,10 +59,8 @@ function drawWorld(vw) {
   AK = 'shot'; for (const p of M.proj) if (vis(p.x, p.y, 20)) at(shotZ(p), () => drawProj(p));
   AK = 'thrown body'; for (const f of M.flings) if (vis(f.x, f.y, 40)) { const k = f.t / f.T, h = Math.sin(Math.PI * k); at(ZH.body + h * 34, () => solDraw(f, solSpr(f.color, 'dead'), f.x, f.y - h * 34, f.rot, 1 + h * 0.6, 1 + h * 0.6)); }
   if (!devOff('parts')) partsInto(at, vis);
-  const roofs = roofsIn(vis);
   AK = 'roofs'; at(SUNH.wall, () => {     // roofs (always known: the memory's hole leaves them showing, lit); the dev yard's as you see it
     if (rv) { worldT(); ctx.imageSmoothingEnabled = false; ctx.drawImage(rv.c, 0, 0, rv.w, rv.h, rv.x, rv.y, rv.w, rv.h); }
-    worldT(); if (!devOff('roofs')) drawRoofs(roofs);
   });
   AK = 'killer glow'; at(99, () => drawKillerGlow(vw), true);
   Q.sort((a, b) => a.z - b.z || a.i - b.i);
@@ -150,13 +148,6 @@ function drawProj(p) {
     if (p.k === 'rocket') { spr('fire5', p.x - p.vx * 0.02, p.y - p.vy * 0.02, M.time * 20, 0.45, 0.45, 0.9); light(p.x - p.vx * 0.02, p.y - p.vy * 0.02, 80, shotZ(p), rnd(0.5, 0.65)); }     // its exhaust
   }
   worldT();
-}
-/* the map's roofs (they're always known: drawn over the out-of-sight memory too) and the buildings' shadows */
-const roofsIn = vis => MAP.buildings.filter(b => b.roofC && vis(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h)));
-function drawRoofs(bs) {     // bs: the buildings in view (roofsIn)
-  for (const b of bs) ctx.drawImage(b.roofC, b.x, b.y);
-  ctx.fillStyle = CFG.style === 'grit' ? 'rgba(0,0,0,0.38)' : 'rgba(0,0,0,0.32)';
-  if (!MAP.houses.length && !SUNNOW) for (const b of bs) { ctx.beginPath(); ctx.moveTo(b.x + b.w, b.y); ctx.lineTo(b.x + b.w + 14, b.y + 14); ctx.lineTo(b.x + b.w + 14, b.y + b.h + 14); ctx.lineTo(b.x + 14, b.y + b.h + 14); ctx.lineTo(b.x, b.y + b.h); ctx.lineTo(b.x + b.w, b.y + b.h); ctx.closePath(); ctx.fill(); }
 }
 /* the smoke field; around this view's eyes it thins out (SIGHT_NEAR, as the sight rules do) down to SMOKE_KEEP, so you
    can see your feet in smoke */

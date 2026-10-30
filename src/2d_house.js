@@ -35,10 +35,11 @@ function houseTile(g, img, at, i, j, seed, broke) {
 }
 /* ---------------- house generator ---------------- */
 /* returns {W, H, g} with g[y*W+x] in C_OUT / C_FLOOR / C_WALL / C_WIN, or null if no house fits */
-function genHouse(R, maxW, maxH) {
+function genHouse(R, maxW, maxH, minW, minH) {     // minW / minH: the smallest it may be (15 x 13; under 15 wide it may have fewer than 3 rooms)
+  minW = minW || 15; minH = minH || 13;
   const ri = (a, b) => a + Math.floor(R() * (b - a + 1)), pick = A => A[Math.floor(R() * A.length)];
   for (let tries = 0; tries < 500; tries++) {
-    const W = ri(15, maxW), H = ri(13, maxH);
+    const W = ri(minW, maxW), H = ri(minH, maxH);
     // outline: a rectangle, or an L (the top-right corner cut away; the house is flipped / turned at the end)
     const nw = ri(4, W - 7), nh = ri(ROOM_SIDE + 1, H - ROOM_SIDE - 2), L = R() < 0.45 && nw >= 4 && nh <= H - 7;
     const inShape = (x, y) => x >= 0 && y >= 0 && x < W && y < H && !(L && x >= W - nw && y < nh);
@@ -75,7 +76,7 @@ function genHouse(R, maxW, maxH) {
         rooms.push({ x: r.x, y: r.y, w: r.w, h: q.a }, { x: r.x, y: cy + 1, w: r.w, h: r.h - q.a - 1 }); cuts.push({ o: 'h', at: cy, lo: r.x, hi: r.x + r.w - 1 });
       }
     }
-    if (rooms.length < 3) continue;
+    if (rooms.length < (minW < 15 ? 1 : 3)) continue;
     const roomAt = (x, y) => rooms.findIndex(r => x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h);
     // inner doors: one 2-wide gap per cut, between two rooms that face each other across it
     let ok = true;
