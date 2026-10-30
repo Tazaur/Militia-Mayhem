@@ -53,7 +53,7 @@ function buildMap(id) {
   const R = mulberry(id === 'crossroads' ? 1987 : id === 'farmlands' ? 2311 : id === 'snowfield' ? 6151 : id === 'outskirts' ? 8807 : 4099);
   const m = { id, arcs: [], roads: [], buildings: [], water: [], bridges: [], statics: [], flags: [], bases: [], crateSpots: [], vehSpawns: [], ffaSpawns: [], fields: [], fwd: [], ice: [] };
   m.bases = [{ team: 0, x: 130, y: WH / 2, pad: { x: 20, y: WH / 2 - 200, w: 340, h: 400 } }, { team: 1, x: WW - 130, y: WH / 2, pad: { x: WW - 360, y: WH / 2 - 200, w: 340, h: 400 } }];
-  MAP = m; BOUNDM = null;
+  MAP = m; BOUNDM = null; SKIRT = id.startsWith('g:') ? 0 : 480;
   const sym = (arr, o, mir) => { arr.push(o); arr.push(mir(o)); };
   /* a tiled house (OUTSKIRTS) within pad of (x, y) */
   const inHouse = (x, y, pad) => {

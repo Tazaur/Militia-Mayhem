@@ -791,3 +791,6 @@ Art drop (drop.py): atlas.png: hull4, tur_dead; atlas_m.png: tur_dead, sol_leg0,
 - buildMap g: maps: flags/bases moved in (inside(o, d)), blockedFor refuses OOB, afterwards OOB statics/crates/ffa spawns dropped and vehicle spawns/fwd moved in; buildNav blocks OOB cells (bots don't path out).
 - gStampAdd now re-bakes the stamp's whole box (stamps under it + the edge tint).
 - Editor: ⬠ Edge (no selection) adds a rectangle edge and selects it (sel = EDGE = -2, cur()); drag/add/remove points, Round up to 800, "Whole map" removes it; points clamp to the map.
+
+## Build 266: no skirt on editor maps
+- SKIRT is a let (1_core.js), set per map in buildMap: 0 on g: maps (camera, clamps and particles stop at the map edge), 480 elsewhere. Editor maps' out-of-bounds is the ring outside their edge; new editor maps start with an edge 12% of the short side in. The editor no longer draws a skirt.

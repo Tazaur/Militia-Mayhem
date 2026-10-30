@@ -111,7 +111,8 @@ const EDGE = -2, cur = () => sel === EDGE ? G.bounds : G.stamps[sel];
 const slug = n => (n || 'map').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'map';
 function newMap(name, w, h, base) {
   let id = slug(name), k = 2; while (S.maps[id]) id = slug(name) + '_' + k++;
-  return { v: 1, id, name, w, h, base, stamps: [] };
+  const m = Math.round(Math.min(w, h) * 0.12);     // the battlefield edge, set in: the ring outside it is out-of-bounds ground you can paint (the game shows nothing past the map)
+  return { v: 1, id, name, w, h, base, stamps: [], bounds: { p: [m, m, w - m, m, w - m, h - m, m, h - m], r: 0 } };
 }
 function open(id) {
   G = S.maps[id]; S.cur = id; sel = -1; selV = null; draft = null; UNDO.length = REDO.length = 0;
@@ -141,7 +142,6 @@ function bakeDirty() {
 }
 
 /* ---------- drawing the view ---------- */
-const SKIRT = 480;      // the game's out-of-bounds ring (1_core.js): the base texture, tinted
 let W = 0, H = 0, DPR = 1, raf = 0;
 function resize() { DPR = Math.min(2, devicePixelRatio || 1); const r = cv.getBoundingClientRect(); W = r.width; H = r.height; cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR); draw(); }
 function draw() { if (!raf) raf = requestAnimationFrame(frame); }
@@ -153,8 +153,6 @@ function frame() {
   cx.setTransform(DPR, 0, 0, DPR, 0, 0); cx.fillStyle = '#070a06'; cx.fillRect(0, 0, W, H);
   cx.setTransform(DPR * V.z, 0, 0, DPR * V.z, -V.x * V.z * DPR, -V.y * V.z * DPR); cx.imageSmoothingEnabled = V.z < 1;
   const mat = S.view === 'mat' && BK.m;
-  cx.fillStyle = mat ? '#000' : pat(G.base); cx.fillRect(-SKIRT, -SKIRT, G.w + SKIRT * 2, G.h + SKIRT * 2);
-  if (!mat) { cx.fillStyle = 'rgba(40,6,2,0.38)'; cx.fillRect(-SKIRT, -SKIRT, G.w + SKIRT * 2, G.h + SKIRT * 2); }
   cx.drawImage(mat ? BK.m : BK.c, 0, 0);
   const k = 1 / V.z;
   cx.lineWidth = 2 * k; cx.strokeStyle = 'rgba(255,90,60,.6)'; cx.setLineDash([10 * k, 8 * k]); cx.strokeRect(0, 0, G.w, G.h); cx.setLineDash([]);
@@ -459,7 +457,7 @@ $('#btm').addEventListener('click', e => {
   if (a === 'dback') draft.p.splice(-2);
   if (a === 'dx') { if (draft.k === 'branch') sel = draft.of; draft = null; tool = 'select'; }
   if (a === 'dok') return finishDraft();
-  if (a === 'edge') { if (!G.bounds) { snap(); const m = Math.round(Math.min(G.w, G.h) * 0.06); G.bounds = { p: [m, m, G.w - m, m, G.w - m, G.h - m, m, G.h - m], r: 0 }; dirty({ x: 0, y: 0, w: G.w, h: G.h }); save(); } sel = EDGE; selV = null; tool = 'select'; draft = null; }
+  if (a === 'edge') { if (!G.bounds) { snap(); const m = Math.round(Math.min(G.w, G.h) * 0.12); G.bounds = { p: [m, m, G.w - m, m, G.w - m, G.h - m, m, G.h - m], r: 0 }; dirty({ x: 0, y: 0, w: G.w, h: G.h }); save(); } sel = EDGE; selV = null; tool = 'select'; draft = null; }
   if (a === 'edgeoff') { snap(); delete G.bounds; sel = -1; selV = null; dirty({ x: 0, y: 0, w: G.w, h: G.h }); save(); }
   if (a === 'tex') return texPicker(b, s.t, t => { snap(); if (s.l) S.rtex = t; else S.tex = t; edit(q => q.t = t); });
   if (a === 'base') return texPicker(b, G.base, t => { snap(); G.base = t; bakeAll(); save(); ui(); });
