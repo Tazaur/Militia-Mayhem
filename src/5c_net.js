@@ -19,8 +19,6 @@ NET.name = cleanName(store.get('name', '')).trim();
 NET.cid = (() => { const mk = () => Math.random().toString(36).slice(2, 12); try { let c = sessionStorage.getItem('mm.cid'); if (!c) { c = mk(); sessionStorage.setItem('mm.cid', c); } return c; } catch (e) { return mk(); } })();
 NET.left = {}; NET.list = new Map();
 const NET_DELAY = 110;                                  // ms others are drawn behind the host
-const NETSFX = ['door', 'shuffle', 'clink', 'throw', 'reload', 'empty', 'knife', 'thud', 'horn', 'beep', 'drop', 'jump', 'heat', 'clang'];
-const NETSFX_I = {}; NETSFX.forEach((n, i) => NETSFX_I[n] = i);
 const WPNK = Object.keys(WPN);
 const netNow = () => Math.round(performance.now() - NET.t0);
 
@@ -353,7 +351,7 @@ async function netJoin(h, dev) {
   } catch (e) { NET.role = null; netFail(sigCode(e)); return; }
   NET.busy = '';
   NET.game.onPeers(netGamePeers, netErr);
-  PLAYERS = []; LOBBY.sel = 0; setState('lobby'); sfx('join');
+  PLAYERS = []; LOBBY.sel = 0; setState('lobby'); ev('lobby.join');
 }
 /* leave whatever online game we are in; back to the network menu with an optional message */
 function netShutdown(msg) {
@@ -365,7 +363,7 @@ function netShutdown(msg) {
 }
 function netLeave(msg) { netShutdown(msg); engineKillAll(); PLAYERS = []; SET.open = false; demoMatch(); setState('netmenu'); Music.mode = 'menu'; }
 function netHostGone(code) { if (NET.role !== 'client') return; netFail(code || 602); }
-function netReconnect() { const E = NET.err; if (!E || !E.re || NET.role) return; NET.err = null; sfx('ui'); netJoin({ c: E.re }, NET.dev || NETM.dev); }
+function netReconnect() { const E = NET.err; if (!E || !E.re || NET.role) return; NET.err = null; ev('menu'); netJoin({ c: E.re }, NET.dev || NETM.dev); }
 
 function netGamePeers(ch) {
   const me = ch.peers.find(p => p.sameTab); if (me) NET.myPeer = me.peer;
@@ -420,7 +418,7 @@ function netPeerLeft(peer) {
   const p = PLAYERS.find(q => isNet(q) && q.dev.peer === peer); if (!p) return;
   if (!M || M.demo || state === 'lobby') leaveLobby(p); else netBotify(p);
 }
-function netKick(p) { NET.kicked.add(p.dev.peer); if (p.cid) NET.kicked.add(p.cid); PLAYERS = PLAYERS.filter(q => q !== p); sfx('leave'); }
+function netKick(p) { NET.kicked.add(p.dev.peer); if (p.cid) NET.kicked.add(p.cid); PLAYERS = PLAYERS.filter(q => q !== p); ev('lobby.leave'); }
 /* someone dropped out mid-match: their soldier fights on as a bot */
 const botSubName = n => 'BOT (' + String(n || '').trim().slice(0, 10) + ')';
 function netBotify(p) {
@@ -751,7 +749,7 @@ function netClientStart(g) {
   const me = NET.me.sol; if (NET.kitPick) Object.assign(me, NET.kitPick);
   Object.assign(NET, { curMatch: g.id, buf: [], evq: [], bul: [], lastA: null, dep: null, lastI: null, selfD: null, roApplied: g.ro });
   NET.pmap.clear();
-  layoutViews(); SET.open = false; setState('play'); Music.mode = 'battle'; sfx('join');
+  layoutViews(); SET.open = false; setState('play'); Music.mode = 'battle'; ev('match.start');
   return true;
 }
 function netDecode(g, pv) {
@@ -824,7 +822,7 @@ function netCount(I) {
 function netDeployReq(s, opt) {
   NET.dep = { n: ++NET.depN, k: s.kit, v: s.var || 0, sc: s.sec || 0, nt: s.nt || 0, o: opt ? opt.name : '' };
   NET.kitPick = { kit: s.kit, var: s.var || 0, sec: s.sec || 0, nt: s.nt || 0 };
-  sfx('ui');
+  ev('menu');
 }
 function netClientTick(now) {
   if (!NET.game) return;
@@ -865,24 +863,23 @@ function netApplyEvents(To) {
 }
 function netDoEv(a, t) {
   switch (a[0]) {
-    case 'x': explosionFx(a[1], a[2], a[3], !!a[4]); break;
+    case 'x': explosionFx(a[1], a[2], a[3], !!a[4], EVBOOM[a[5]]); break;
+    case 'e': evNet(a); break;
     case 'd': { const s = MAP.statics[a[1]]; if (s) destroyStatic(s); break; }
     case 'k': netKillFx(a, t); break;
     case 'f': M.feed.unshift({ a: a[1] ? { n: String(a[1]), c: a[2] } : null, how: String(a[3]), b: { n: String(a[4]), c: a[5] }, t: 6 }); if (M.feed.length > 6) M.feed.length = 6; break;
-    case 'b': for (let i = 0; i < 2; i++) blood(a[1], a[2], a[3], a[4]); sfx('hurt', a[1], a[2]); break;
-    case 't': { M.toasts.push({ txt: String(a[1]), c: String(a[2]), t: +a[3] || 2.5 }); const my = NET.me && NET.me.sol ? NET.me.sol.team : -1; if (a[5] <= 2) sfx(a[5] === 1 && a[4] === my ? 'cap' : 'lost'); break; }
-    case 'pp': if (NET.me && a[1] === NET.me.id && NET.me.sol) { const s = NET.me.sol; s.pops.unshift({ txt: String(a[2]), t: 1.8 }); if (s.pops.length > 4) s.pops.length = 4; sfx('points'); } break;
-    case 'ps': if (NET.me && a[1] === NET.me.id && typeof a[2] === 'string') sfx(a[2]); break;
-    case 's': if (NETSFX[a[1]]) sfx(NETSFX[a[1]], a[2], a[3], (a[4] || 10) / 10); break;
+    case 'b': for (let i = 0; i < 2; i++) blood(a[1], a[2], a[3], a[4]); break;
+    case 't': { M.toasts.push({ txt: String(a[1]), c: String(a[2]), t: +a[3] || 2.5 }); break; }
+    case 'pp': if (NET.me && a[1] === NET.me.id && NET.me.sol) { const s = NET.me.sol; s.pops.unshift({ txt: String(a[2]), t: 1.8 }); if (s.pops.length > 4) s.pops.length = 4; ev('points', undefined, undefined, { s, n: parseInt(String(a[2]).slice(1)) || 0 }); } break;
     case 'sm': popSmoke(a[1], a[2], {}); break;
     case 'sd': { const sec = MAP.tiled && MAP.tiled.secs[a[1]]; if (sec) devDamage(sec, sec.hp - a[2] / 10, a[3], a[4], true); break; }     // a wall section's hp
   }
 }
 function netKillFx(a, t) {
   const s = M.sol[a[1]]; if (!s) return; const x = a[3], y = a[4];
-  if (a[2] === 1) { const ang = a[5] / 100, sp = a[6]; M.flings.push({ color: s.color, dark: s.dark, x, y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, t: 0, T: rnd(0.7, 1.0), rot: rnd(0, TAU), vr: rnd(-12, 12) }); sfx('splat', x, y); }
-  else if (a[2] === 2) { for (let i = 0; i < 6; i++) part({ k: 'steam', x, y, vx: rnd(-30, 30), vy: rnd(-30, 30), life: 1, max: 1, sz: 8, drag: 2 }); sfx('splash', x, y); }
-  else { const ang = a[6] / 100; addCorpse(s.color, s.dark, x, y, a[5] / 100); for (let i = 0; i < 6; i++) blood(x, y, Math.cos(ang), Math.sin(ang)); sfx('splat', x, y); }
+  if (a[2] === 1) { const ang = a[5] / 100, sp = a[6]; M.flings.push({ color: s.color, dark: s.dark, x, y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, t: 0, T: rnd(0.7, 1.0), rot: rnd(0, TAU), vr: rnd(-12, 12) }); ev('soldier.death', x, y, { s, fling: 1, swim: 0 }); }
+  else if (a[2] === 2) { for (let i = 0; i < 6; i++) part({ k: 'steam', x, y, vx: rnd(-30, 30), vy: rnd(-30, 30), life: 1, max: 1, sz: 8, drag: 2 }); ev('soldier.death', x, y, { s, fling: 0, swim: 1 }); }
+  else { const ang = a[6] / 100; addCorpse(s.color, s.dark, x, y, a[5] / 100); for (let i = 0; i < 6; i++) blood(x, y, Math.cos(ang), Math.sin(ang)); ev('soldier.death', x, y, { s, fling: 0, swim: 0 }); }
   s.alive = false; s.veh = null; s.seat = -1; s.torch = false; s._deadT = t;
   if (NET.me && s === NET.me.sol) {
     const k = a[7] >= 0 ? M.sol[a[7]] : null;
@@ -1010,7 +1007,7 @@ function netApplySnaps(now, dt) {
     if (Array.isArray(pa.T)) M.tickets = [pa.T[0] | 0, pa.T[1] | 0];
     const rr = new Rd(pa.R); for (const s of M.sol) { if (rr.end) break; s.pts = rr.u(3); s.k = rr.u(2); s.d = rr.u(2); s.caps = rr.u(1); s.vk = rr.u(1); }
     if (pa.A) { const ra2 = new Rd(pa.A); for (const s of M.sol) { if (ra2.end) break; s.heal = ra2.u(2); s.rep = ra2.u(2); s.longest = ra2.u(2) * 2; s.rk = ra2.u(1); } }
-    if (pa.o && !M.over) { M.over = true; M.overT = 0; M.winner = pa.o[0]; M.winnerSol = M.sol[pa.o[1]] || null; sfx('win'); }
+    if (pa.o && !M.over) { M.over = true; M.overT = 0; M.winner = pa.o[0]; M.winnerSol = M.sol[pa.o[1]] || null; ev('match.end'); }
   }
   // ---- what only you see: health, ammo, cooldowns, messages
   const pv = ps[0].pv;
@@ -1142,7 +1139,7 @@ function netBullets(dt) {
       if (Math.abs(v.x - x0) > 160 || Math.abs(v.y - y0) > 160) continue;
       const [ax, ay] = toLocal(v, x0, y0), [bx, by] = toLocal(v, x1, y1), t = segRect(ax, ay, bx, by, { x: -v.T.hl, y: -v.T.hw, w: v.T.hl * 2, h: v.T.hw * 2 }, 0); if (t >= 0 && t < bt) { bt = t; hit = 2; }
     }
-    if (hit) { const hx = lerp(x0, x1, bt), hy = lerp(y0, y1, bt); p.life = 0; if (hit === 1) sparks(hx, hy, 2); else if (hit === 2) { sfx('ting', hx, hy); sparks(hx, hy, 3); } continue; }
+    if (hit) { const hx = lerp(x0, x1, bt), hy = lerp(y0, y1, bt); p.life = 0; if (hit === 1) sparks(hx, hy, 2); else if (hit === 2) { ev('bullet.veh', hx, hy, {}); sparks(hx, hy, 3); } continue; }
     p.x = x1; p.y = y1; p.life -= dt; if (p.x < -SKIRT || p.y < -SKIRT || p.x > WW + SKIRT || p.y > WH + SKIRT) p.life = 0;
   }
   prune(NET.bul, p => p.life > 0);
@@ -1153,7 +1150,7 @@ function netCosmetics(dt) {
     s.flash -= dt; s.meleeT -= dt; s.hitT -= dt; s.hurtT -= dt; s.firedT -= dt;
     if (s.msg) { s.msg.t -= dt; if (s.msg.t <= 0) s.msg = null; }
     for (const q of s.pops) q.t -= dt; prune(s.pops, q => q.t > 0);
-    if (s.alive && s.torch && !s.veh) { sfx('torch', s.x, s.y); if (Math.random() < 0.12) { const [tx, ty] = muzzle(s, 20); part({ k: 'spark', x: tx, y: ty, vx: rnd(-140, 140), vy: rnd(-140, 140), life: 0.15, max: 0.15, sz: 1.4, drag: 6 }); } }
+    if (s.alive && s.torch && !s.veh) { ev('torch', s.x, s.y, { s }); if (Math.random() < 0.12) { const [tx, ty] = muzzle(s, 20); part({ k: 'spark', x: tx, y: ty, vx: rnd(-140, 140), vy: rnd(-140, 140), life: 0.15, max: 0.15, sz: 1.4, drag: 6 }); } }
   }
   for (const v of M.vehicles) { v.hitFlash -= dt; v.mgFlash -= dt; if (v.active && !v.dead) vehDamageFx(v, dt); engineUpdate(v); }
   for (const f of M.flags) f.wave += dt * 6;

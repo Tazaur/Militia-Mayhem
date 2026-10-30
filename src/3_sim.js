@@ -122,13 +122,7 @@ function vehTeam(v) { for (const s of v.seats) if (s) return s.team; return -1; 
 function vehColor(v) { const s = v.seats[0] || v.seats.find(Boolean); return s ? s.color : null; }
 function isEnemy(a, b) { return a !== b && a >= 0 && b >= 0; }
 function canHurt(src, tgt) { if (!src || src === tgt) return true; if (isEnemy(src.team, tgt.team)) return true; return M.ff && src.team === tgt.team; }
-function addPts(s, n, why) { if (!s) return; s.pts += n; if (s.player) { const txt = `+${n}  ${why}`; s.pops.unshift({ txt, t: 1.8 }); if (s.pops.length > 4) s.pops.length = 4; if (isNet(s.player)) netEv('pp', s.player.id, txt); else sfx('points'); } }
-/* a sound only one player should hear: played here for local players, sent to a remote player's screen */
-const PSFX_T = {};
-function psfx(pl, name) {
-  if (!pl) return; if (!isNet(pl)) { sfx(name); return; }
-  const k = pl.id + name, n = performance.now(); if (PSFX_T[k] && n - PSFX_T[k] < 220) return; PSFX_T[k] = n; netEv('ps', pl.id, name);
-}
+function addPts(s, n, why) { if (!s) return; s.pts += n; if (s.player) { const txt = `+${n}  ${why}`; s.pops.unshift({ txt, t: 1.8 }); if (s.pops.length > 4) s.pops.length = 4; if (isNet(s.player)) netEv('pp', s.player.id, txt); else ev('points', undefined, undefined, { s, n }); } }
 function cw(s) { return s.w ? s.w[s.wi] : null; }
 const fullW = id => ({ id, mag: WPN[id].mag, res: WPN[id].res });
 function giveLoadout(s) {
@@ -190,7 +184,7 @@ function spawnSoldier(s, opt) {
 }
 function afterSpawn(s) {
   if (s.bot) { s.bot.path = null; s.bot.goal = null; s.bot.target = null; s.bot.vehCd = rnd(0.5, 3); }
-  if (s.player) { psfx(s.player, 'spawn'); Object.assign(s.player, { kit: s.kit, var: s.var, sec: s.sec, nt: s.nt }); }
+  if (s.player) { ev('spawn', s.x, s.y, { s, revive: 0 }); Object.assign(s.player, { kit: s.kit, var: s.var, sec: s.sec, nt: s.nt }); }
 }
 function pickKit() { const r = Math.random(); return r < 0.35 ? 0 : r < 0.6 ? 1 : r < 0.8 ? 2 : 3; }
 
@@ -202,11 +196,12 @@ function hurtSoldier(s, dmg, src, kind, dx, dy, wname) {
   if (src && !canHurt(src, s)) return;
   if (kind === 'explosion' || kind === 'mine') dmg *= [1, 0.6][s.stance];
   s.hp -= dmg; s.lastHurt = M.time; s.hurtT = 0.35;
+  ev('soldier.hit', s.x, s.y, { s, kind, dmg: Math.round(dmg), hp: Math.max(0, Math.round(s.hp)) });
   if (s.dummy) devHit(s, dmg);
   if (s.bot && src && src !== s && isEnemy(s.team, src.team)) botHeard(s, src.veh || src);
-  if (src && src.player && src !== s) { src.hitT = 0.15; src.hitV = false; psfx(src.player, 'hit'); }
+  if (src && src.player && src !== s) { src.hitT = 0.15; src.hitV = false; ev('hitmark', src.x, src.y, { s: src, veh: 0 }); }
   if (s.player) rumble(s.player, Math.min(1, dmg / 60), 0.15);
-  if (kind === 'bullet' || kind === 'mg') { for (let i = 0; i < 2; i++) blood(s.x, s.y, dx, dy); sfx('hurt', s.x, s.y); netEv('b', s.x | 0, s.y | 0, Math.round(dx || 0), Math.round(dy || 0)); }
+  if (kind === 'bullet' || kind === 'mg') { for (let i = 0; i < 2; i++) blood(s.x, s.y, dx, dy); netEv('b', s.x | 0, s.y | 0, Math.round(dx || 0), Math.round(dy || 0)); }
   if (s.hp <= 0) { if (M.coop && s.player && !s.swim) goDown(s, src, wname); else kill(s, src, kind, dx, dy, wname); }
 }
 function blood(x, y, dx, dy) {
@@ -234,13 +229,13 @@ function kill(s, src, kind, dx, dy, wname) {
     const sp = kind === 'crush' ? Math.hypot(dx, dy) * 1.1 + 80 : rnd(100, 200);
     netEv('k', si, 1, s.x | 0, s.y | 0, Math.round(ang * 100), sp | 0, ki);
     M.flings.push({ color: s.color, dark: s.dark, x: s.x, y: s.y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, t: 0, T: rnd(0.7, 1.0), rot: rnd(0, TAU), vr: rnd(-12, 12) });
-    sfx('splat', s.x, s.y);
-  } else if (s.swim) { netEv('k', si, 2, s.x | 0, s.y | 0, 0, 0, ki); for (let i = 0; i < 6; i++) part({ k: 'steam', x: s.x, y: s.y, vx: rnd(-30, 30), vy: rnd(-30, 30), life: 1, max: 1, sz: 8, drag: 2 }); sfx('splash', s.x, s.y); }
+    ev('soldier.death', s.x, s.y, { s, fling: 1, swim: s.swim ? 1 : 0 });
+  } else if (s.swim) { netEv('k', si, 2, s.x | 0, s.y | 0, 0, 0, ki); for (let i = 0; i < 6; i++) part({ k: 'steam', x: s.x, y: s.y, vx: rnd(-30, 30), vy: rnd(-30, 30), life: 1, max: 1, sz: 8, drag: 2 }); ev('soldier.death', s.x, s.y, { s, fling: 0, swim: 1 }); }
   else {
     const rot = ang + Math.PI + rnd(-0.3, 0.3); netEv('k', si, 0, s.x | 0, s.y | 0, Math.round(rot * 100), Math.round(ang * 100), ki);
     addCorpse(s.color, s.dark, s.x, s.y, rot);
     for (let i = 0; i < 6; i++) blood(s.x, s.y, dx, dy);
-    sfx('splat', s.x, s.y);
+    ev('soldier.death', s.x, s.y, { s, fling: 0, swim: 0 });
   }
 }
 /* pause menu REDEPLOY: drop dead on the spot and go straight to the deploy screen */
@@ -255,13 +250,13 @@ function goDown(s, src, wname) {
   Object.assign(s, { down: true, hp: 0, bleed: 30, rev: 0, torch: false, reloadT: 0, stance: 0, vx: 0, vy: 0, ads: false });
   if (src && src !== s && isEnemy(src.team, s.team)) src.k++;
   feed(src && src !== s ? src : null, wname || 'DOWNED', s);
-  toast(s.name + ' IS DOWN', CHEX[s.color], 2.4, 0, 2); sfx('lost');
+  toast(s.name + ' IS DOWN', CHEX[s.color], 2.4, 0, 2);
   if (s.player) rumble(s.player, 1, 0.4);
   for (let i = 0; i < 6; i++) blood(s.x, s.y, 0, 0);
-  sfx('hurt', s.x, s.y);
+  ev('soldier.down', s.x, s.y, { s });
   survCheckWipe();
 }
-function reviveSoldier(s, f) { s.down = false; s.hp = s.mhp * f; s.rev = 0; s.protect = 1.2; s.lastHurt = M.time; if (s.player) psfx(s.player, 'spawn'); }
+function reviveSoldier(s, f) { s.down = false; s.hp = s.mhp * f; s.rev = 0; s.protect = 1.2; s.lastHurt = M.time; if (s.player) ev('spawn', s.x, s.y, { s, revive: 1 }); }
 function downTick(s, dt) {
   s.vx = s.vy = 0; s.bleed -= dt;
   const mate = M.sol.find(o => o !== s && o.alive && !o.down && !o.veh && o.team === s.team && Math.hypot(o.x - s.x, o.y - s.y) < 28);
@@ -291,14 +286,14 @@ function startWave() {
   const k = Math.min(1, (W.n - 1) / 9), b = SKILL[M.cfg.skill] || SKILL[1];
   M.skill = { name: b.name, react: b.react * (1 - 0.5 * k), err: b.err * (1 - 0.5 * k), rate: Math.min(1, b.rate + 0.3 * k) };
   for (const s of M.sol) if (s.player && !s.alive) spawnSoldier(s);      // anyone still picking a loadout goes in now
-  toast('WAVE ' + W.n + (W.lim ? ' OF ' + W.lim : ''), '#ff7a60', 2.6, 1, 2); sfx('lost');
+  toast('WAVE ' + W.n + (W.lim ? ' OF ' + W.lim : ''), '#ff7a60', 2.6, 1, 2); ev('wave.start');
 }
 function waveCleared() {
   const W = M.wv;
   if (W.lim && W.n >= W.lim) { endMatch(0); return; }
   W.brk = 12;
   for (const s of M.sol) if (s.player) { if (!s.alive) s.respawnT = 0; else if (s.down) reviveSoldier(s, 1); else s.hp = s.mhp; }
-  toast('WAVE ' + W.n + ' CLEARED', '#7dff7a', 3, 0, 1); sfx('cap');
+  toast('WAVE ' + W.n + ' CLEARED', '#7dff7a', 3, 0, 1); ev('wave.clear');
 }
 function spawnWaveBot(s) {
   const ps = M.sol.filter(o => o.player && o.alive), C = [...MAP.ffaSpawns, MAP.bases[1], MAP.fwd[1]];
@@ -335,7 +330,7 @@ function hurtVehicle(v, dmg, src) {
   const vt = vehTeam(v);
   if (src && vt >= 0 && src.team === vt && !M.ff) return;
   v.hp -= dmg; v.lastHit = src; v.hitFlash = 0.08;
-  if (src && src.player) { src.hitT = 0.15; src.hitV = true; psfx(src.player, 'hit'); }      // hit marker shows chevrons for vehicles / nests
+  if (src && src.player) { src.hitT = 0.15; src.hitV = true; ev('hitmark', src.x, src.y, { s: src, veh: 1 }); }      // hit marker shows chevrons for vehicles / nests
   for (const s of v.seats) if (s && s.player) rumble(s.player, Math.min(1, dmg / 200), 0.2);
   if (v.hp <= 0) destroyVehicle(v, src);
 }
@@ -343,7 +338,7 @@ function destroyVehicle(v, src) {
   v.dead = true; v.hp = 0;
   // who was aboard, before the blast: it kills anyone in an exposed seat (jeep, tank riders, nest) and empties their seat
   const crew = v.seats.filter(Boolean), occupied = crew.length > 0, vt = vehTeam(v);
-  explosion(v.x, v.y, v.type === 'tank' ? 110 : 80, 120, 150, src, -2, true);
+  explosion(v.x, v.y, v.type === 'tank' ? 110 : 80, 120, 150, src, -2, true, undefined, 'vehicle');
   if (src && occupied && isEnemy(src.team, vt)) { src.vk++; addPts(src, v.type === 'tank' ? 300 : 200, (v.type === 'nest' ? 'NEST' : v.type.toUpperCase()) + ' DESTROYED'); }
   for (const s of crew) if (s.alive) { s.protect = 0; kill(s, src, 'explosion', rnd(-1, 1), rnd(-1, 1)); }
   if (v.type !== 'nest') M.wrecks.push({ type: v.type, x: v.x, y: v.y, a: v.a, ta: v.ta, t: 180, T: 180, burn: 14, ...(([hl, hw]) => ({ hl, hw }))(wreckBox(v.type)), vx: 0, vy: 0, bw: v.type === 'jeep' && Math.random() < JEEP_BW ? rint(0, 3) : -1, bf: Math.random() < 0.5, tr: v.type === 'tank' ? rint(-1, 1) : 0 }) && (navDirty = 1, wreckWheel(M.wrecks[M.wrecks.length - 1]));
@@ -358,8 +353,8 @@ let EXP_REW = 0;                                  // a joiner's rocket/shell: it
 /* does a blast at (x, y) reach (tx, ty)? Walls shelter, glass doesn't. Starts a hair toward the target, so a blast
    on a wall's face still reaches its own side of the wall */
 function blastReaches(x, y, tx, ty, d) { const k = Math.min(4, d) / (d || 1); return los(x + (tx - x) * k, y + (ty - y) * k, tx, ty); }
-function explosion(x, y, r, dmgS, dmgV, src, team, big, kind) {
-  explosionFx(x, y, r, big); netEv('x', x | 0, y | 0, r | 0, big ? 1 : 0);
+function explosion(x, y, r, dmgS, dmgV, src, team, big, kind, cause) {
+  cause = cause || kind; explosionFx(x, y, r, big, cause); netEv('x', x | 0, y | 0, r | 0, big ? 1 : 0, EVBOOM.indexOf(cause));
   const T = EXP_REW ? netNow() - EXP_REW : 0;
   for (const s of M.sol) {
     if (!s.alive) continue; if (s.veh && !s.veh.T.seats[s.seat].exposed) continue;
@@ -382,8 +377,9 @@ function explosion(x, y, r, dmgS, dmgV, src, team, big, kind) {
   if (MAP.tiled) devBlast(x, y, r, dmgS);
 }
 /* everything you see and hear of a blast (online clients replay this from the host's events) */
-function explosionFx(x, y, r, big) {
-  sfx(big ? 'bigboom' : 'boom', x, y); earRing(x, y, r);
+const EVBOOM = ['grenade', 'rocket', 'shell', 'mine', 'vehicle'];
+function explosionFx(x, y, r, big, cause) {
+  ev('explosion', x, y, { r, big: big ? 1 : 0, kind: cause || 'grenade' });
   scorch(x, y, r * 0.7); lightFx(x, y, r * 2.2, 50, 0.35);
   const n = Math.round(r / 5);
   for (let i = 0; i < n; i++) { const a = rnd(0, TAU), sp = rnd(30, r * 1.6); part({ k: 'fire', x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rnd(0.3, 0.7), max: 0.7, sz: rnd(r * 0.25, r * 0.5), drag: 4 }); }
@@ -399,18 +395,16 @@ function explosionFx(x, y, r, big) {
 }
 function destroyStatic(s) {
   if (!s.alive) return; s.alive = false; netEv('d', s.idx);
+  ev('prop.break', s.x, s.y, { type: s.type });
   if (s.type === 'tree') {
-    sfx('crack', s.x, s.y);
     for (let i = 0; i < 14; i++) { const a = rnd(0, TAU), sp = rnd(30, 140); part({ k: 'leaf', x: s.x, y: s.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rnd(0.5, 1.2), max: 1.2, sz: rnd(2, 4), rot: rnd(0, TAU), vr: rnd(-8, 8), drag: 3 }); }
     gx.fillStyle = '#3d2a14'; gx.beginPath(); gx.arc(s.x, s.y, 6, 0, TAU); gx.fill();
     gx.fillStyle = CFG.style === 'grit' ? 'rgba(45,50,28,0.6)' : 'rgba(20,60,15,0.6)'; for (let i = 0; i < 10; i++) { gx.beginPath(); gx.arc(s.x + rnd(-22, 22), s.y + rnd(-22, 22), rnd(3, 7), 0, TAU); gx.fill(); }
   } else if (s.type === 'hay') {
-    sfx('crush', s.x, s.y);
     for (let i = 0; i < 16; i++) { const a = rnd(0, TAU), sp = rnd(30, 120); part({ k: 'straw', x: s.x, y: s.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rnd(0.5, 1.1), max: 1.1, sz: rnd(2, 4), rot: rnd(0, TAU), vr: rnd(-8, 8), drag: 3 }); }
     gx.fillStyle = 'rgba(170,140,70,0.5)'; for (let i = 0; i < 14; i++) gx.fillRect(s.x + rnd(-16, 16), s.y + rnd(-16, 16), rnd(3, 7), 1);
   } else {
     if (s.arc) s.arc.lost++;
-    sfx('crush', s.x, s.y);
     for (let i = 0; i < 6; i++) { const a = rnd(0, TAU), sp = rnd(20, 90); part({ k: s.type === 'fence' ? 'splinter' : 'dirt', x: s.x, y: s.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rnd(0.4, 0.8), max: 0.8, sz: rnd(2, 3.5), rot: rnd(0, 3), vr: rnd(-8, 8), drag: 4 }); }
     gx.fillStyle = s.type === 'fence' ? 'rgba(80,60,40,0.55)' : 'rgba(150,120,60,0.55)'; for (let i = 0; i < 4; i++) gx.fillRect(s.x + rnd(-8, 8), s.y + rnd(-6, 6), rnd(3, 6), rnd(1, 3));
   }
@@ -517,7 +511,7 @@ function vehicleCollide(v, local, auth) {
         const tch = v.tch || (v.tch = new Map()), last = tch.get(o); tch.set(o, M.time);
         if (last !== undefined && M.time - last < 0.4) continue;     // still leaning on it: pushing isn't a crash
         const rel = ((v.vx - o.vx) * dx + (v.vy - o.vy) * dy) / d;
-        if (rel > 70 && v.crashCd <= 0) { v.crashCd = 0.5; sfx('clang', v.x, v.y); const dm = (rel - 60) * 0.25; hurtVehicle(v, dm * Math.min(3, o.T.mass / v.T.mass), null); hurtVehicle(o, dm * (v.T.mass / Math.min(5, o.T.mass)), v.seats[0] && isEnemy(vehTeam(v), vehTeam(o)) ? v.seats[0] : null); }
+        if (rel > 70 && v.crashCd <= 0) { v.crashCd = 0.5; ev('veh.crash', v.x, v.y, { with: 'veh', spd: rel | 0, veh: v.type }); const dm = (rel - 60) * 0.25; hurtVehicle(v, dm * Math.min(3, o.T.mass / v.T.mass), null); hurtVehicle(o, dm * (v.T.mass / Math.min(5, o.T.mass)), v.seats[0] && isEnemy(vehTeam(v), vehTeam(o)) ? v.seats[0] : null); }
       }
     }
   }
@@ -525,7 +519,7 @@ function vehicleCollide(v, local, auth) {
   const m = 30 - SKIRT; if (v.x < m) solid(m - v.x, 0); if (v.x > WW - m) solid(WW - m - v.x, 0); if (v.y < m) solid(0, m - v.y); if (v.y > WH - m) solid(0, WH - m - v.y);
   if (hit) {
     const sp = Math.abs(v.spd);
-    if (sp > 120 && v.crashCd <= 0 && !local) { v.crashCd = 0.6; sfx('clang', v.x, v.y); if (v.type === 'jeep' && sp > CRASH_V) hurtVehicle(v, JEEP_CRASH * (sp - CRASH_V) ** 2, null); }
+    if (sp > 120 && v.crashCd <= 0 && !local) { v.crashCd = 0.6; ev('veh.crash', v.x, v.y, { with: 'wall', spd: sp | 0, veh: v.type }); if (v.type === 'jeep' && sp > CRASH_V) hurtVehicle(v, JEEP_CRASH * (sp - CRASH_V) ** 2, null); }
     v.spd *= 0.6;
   }
 }
@@ -574,7 +568,7 @@ function enterVehicle(s, c, instant) {
   v.seats[c.seat] = s; s.veh = v; s.seat = c.seat; s.stance = 0; s.torch = false; s.swim = false;
   const [lx, ly] = toLocal(v, s.x, s.y); s.seatFrom = [lx, ly]; s.seatT = s.seatMax = instant ? 0.01 : 0.25;
   s.reloadT = 0; s.vx = s.vy = 0;
-  sfx('door', v.x, v.y);
+  ev('veh.enter', v.x, v.y, { s, veh: v.type, role: v.T.seats[c.seat].role });
   return true;
 }
 function moveSeat(s, idx) {
@@ -585,7 +579,7 @@ function moveSeat(s, idx) {
   if (occ) { const fromO = seatLocal(v, idx).slice(); v.seats[old] = occ; occ.seat = old; occ.seatFrom = fromO; occ.seatT = occ.seatMax = 0.5; }
   else v.seats[old] = null;
   v.seats[idx] = s; s.seat = idx; s.seatFrom = fromS; s.seatT = s.seatMax = 0.5;
-  sfx('shuffle', v.x, v.y);
+  ev('veh.seat', v.x, v.y, { s, veh: v.type, role: v.T.seats[idx].role });
 }
 function leaveSeat(s) { const v = s.veh; if (v && v.seats[s.seat] === s) v.seats[s.seat] = null; s.veh = null; s.seat = -1; s.seatT = 0; }
 function exitVehicle(s, forced) {
@@ -596,7 +590,7 @@ function exitVehicle(s, forced) {
   if (!v.T.drive) tries.push([-30, 20], [-30, -20], [0, 32], [0, -32]);
   for (const [ax, ay] of tries) {
     const [wx, wy] = toWorld(v, ax * 0.95, ay * 0.95);
-    if (!solidAtExit(wx, wy, v) && clearPath(v.x, v.y, wx, wy)) { leaveSeat(s); s.x = wx; s.y = wy; s.vx = v.vx * 0.3; s.vy = v.vy * 0.3; s.a = v.T.drive ? s.a : v.mgA; sfx('door', v.x, v.y); return; }
+    if (!solidAtExit(wx, wy, v) && clearPath(v.x, v.y, wx, wy)) { leaveSeat(s); s.x = wx; s.y = wy; s.vx = v.vx * 0.3; s.vy = v.vy * 0.3; s.a = v.T.drive ? s.a : v.mgA; ev('veh.exit', v.x, v.y, { s, veh: v.type, role: v.T.seats[order[0]].role }); return; }
   }
   if (forced) { leaveSeat(s); const [wx, wy] = toWorld(v, 0, v.T.hw + 14); s.x = wx; s.y = wy; }
   else if (s.player) s.msg = { t: 1, txt: 'NO ROOM TO EXIT' };
@@ -636,9 +630,9 @@ function fireWeapon(s) {
   shotFx(s, W_, x, y);
 }
 /* fires the gun in hand, or clicks on an empty one; true if it fired */
-function pullTrigger(s) { if (cw(s).mag > 0) { fireWeapon(s); return true; } sfx('empty', s.x, s.y); s.fireCd = 0.25; return false; }
+function pullTrigger(s) { if (cw(s).mag > 0) { fireWeapon(s); return true; } ev('gun.empty', s.x, s.y, { s, w: cw(s).id }); s.fireCd = 0.25; return false; }
 function shotFx(s, W_, x, y) {
-  sfx(W_.snd, x, y);
+  ev('shot', x, y, { s, w: W_.id, scope: W_.scope ? 1 : 0 });
   part({ k: 'shell', x: s.x, y: s.y, vx: Math.cos(s.a + 1.6) * rnd(40, 80), vy: Math.sin(s.a + 1.6) * rnd(40, 80), life: 0.4, max: 0.4, sz: 1.5, rot: rnd(0, 3), vr: 20, drag: 4 });
   if (W_.dmg >= 90) for (const vw of M.views) if (vw.p === s.player) vw.shake = Math.min(18, vw.shake + 3);
 }
@@ -648,13 +642,13 @@ function fireRocket(s, st) {
   st.mag--; s.fireCd = 0.5; s.flash = 0.1; s.firedT = 1.5; s.shotN = (s.shotN || 0) + 1; rocketFx(s, x, y);
 }
 function rocketFx(s, x, y) {
-  sfx('rocket', x, y);
+  ev('rocket.fire', x, y, { s });
   const z = gunH(s); for (let i = 0; i < 6; i++) part({ k: 'smoke', z, x: s.x - Math.cos(s.a) * 14, y: s.y - Math.sin(s.a) * 14, vx: -Math.cos(s.a) * rnd(40, 120) + rnd(-30, 30), vy: -Math.sin(s.a) * rnd(40, 120) + rnd(-30, 30), life: 0.8, max: 0.8, sz: 10, drag: 3 });
 }
 function startReload(s) {
   const st = cw(s), W_ = WPN[st.id];
   if (s.reloadT > 0 || st.mag >= W_.mag || st.res <= 0) return;
-  s.reloadT = W_.rel; s.reloadMax = W_.rel; s.reloadW = s.wi; sfx('reload', s.x, s.y, 0.6);
+  s.reloadT = W_.rel; s.reloadMax = W_.rel; s.reloadW = s.wi; ev('reload', s.x, s.y, { s, w: st.id });
 }
 /* throws the selected throwable (frag or smoke), falling back to whatever is left */
 function canThrow(s) { return s.nades > 0 || s.smokes > 0; }
@@ -665,7 +659,7 @@ function throwNade(s, dist, force) {
   const sp = dist / 0.75, h0 = handH(s), T = 2 * 260 / 700, life = smoke ? 1.4 : 1.7;     // from the hand, landing when one thrown from the ground would
   M.proj.push({ k: 'nade', smoke, x, y, vx: Math.cos(s.a) * sp, vy: Math.sin(s.a) * sp, life, T0: life, src: s, team: s.team, h: h0, h0, vh: (350 * T * T - h0) / T, rot: 0 });
   if (smoke) s.smokes--; else s.nades--;
-  s.nadeCd = 0.8; s.throwT = 0.35; s.thrownSmoke = smoke; sfx('throw', x, y);
+  s.nadeCd = 0.8; s.throwT = 0.35; s.thrownSmoke = smoke; ev('nade.throw', x, y, { s, smoke: smoke ? 1 : 0 });
 }
 /* every view near (x, y) shakes, by amt at the spot fading to nothing at range */
 function shakeAt(x, y, amt, range) { for (const vw of M.views) { const d = Math.hypot(vw.cam.x - x, vw.cam.y - y); vw.shake = Math.min(18, vw.shake + amt * Math.max(0, 1 - d / range)); } }
@@ -673,7 +667,7 @@ function shakeAt(x, y, amt, range) { for (const vw of M.views) { const d = Math.
    of SMK_DUST): let out into the smoke field. A grenade's (no o) goes to the clients */
 function popSmoke(x, y, o) {
   if (!o) netEv('sm', x | 0, y | 0); o = o || {};
-  smokeEmit(x, y, o.dust ? SMK_DUST * (o.T || 10) / 10 : SMK_NADE, !!o.dust); if (!o.quiet) sfx('splash', x, y, 0.5);
+  smokeEmit(x, y, o.dust ? SMK_DUST * (o.T || 10) / 10 : SMK_NADE, !!o.dust); if (!o.quiet) ev('smoke.pop', x, y, { dust: o.dust ? 1 : 0 });
 }
 /* smoke (grenades, and dust off falling roofs and walls): one field of
    smoke amounts on GS px tiles (M.gsf), stepped SMK_HZ times a second (S-ticks), not every frame. Each S-tick:
@@ -859,7 +853,7 @@ function fireCannon(v, s) {
   cannonFx(v, x, y, s);
 }
 function cannonFx(v, x, y, s) {
-  sfx('cannon', x, y);
+  ev('cannon.fire', x, y, { s });
   part({ k: 'flash', x, y, vx: 0, vy: 0, life: 0.1, max: 0.1, sz: 90, drag: 0 });
   const z = canH(v); for (let i = 0; i < 10; i++) { const a = v.ta + rnd(-0.5, 0.5); part({ k: 'smoke', z, x, y, vx: Math.cos(a) * rnd(40, 160), vy: Math.sin(a) * rnd(40, 160), life: rnd(0.6, 1.2), max: 1.2, sz: rnd(10, 20), drag: 3 }); }
   for (let i = 0; i < 8; i++) { const a = v.ta + rnd(-2.6, 2.6) + Math.PI; part({ k: 'dust', x: v.x, y: v.y, vx: Math.cos(a) * rnd(60, 140), vy: Math.sin(a) * rnd(60, 140), life: 0.7, max: 0.7, sz: rnd(14, 22), drag: 3 }); }
@@ -876,11 +870,11 @@ function fireMG(v, s) {
   const [px, py] = mgPos(v), a = v.mgA + rnd(-0.05, 0.05), x = px + Math.cos(v.mgA) * 22, y = py + Math.sin(v.mgA) * 22;
   M.proj.push({ k: 'bullet', mg: true, x, y, ox: x, oy: y, vx: Math.cos(a) * 1150, vy: Math.sin(a) * 1150, life: 0.6, src: s, team: s.team, dmg: v.type === 'nest' ? 20 : 15, vdmg: 6, low: false, wname: 'MG', aa: v.mgA });
   v.mgCd = v.type === 'nest' ? 0.07 : 0.075; v.heat += v.type === 'nest' ? 0.035 : 0.05; v.mgFlash = 0.04; s.firedT = 1.2; v.mN = (v.mN || 0) + 1;
-  if (v.heat >= 1) { v.over = 1.6; sfx('heat', x, y); if (s.player) s.msg = { t: 1.2, txt: 'MG OVERHEATED' }; }
+  if (v.heat >= 1) { v.over = 1.6; ev('mg.heat', x, y, { s, veh: v.type }); if (s.player) s.msg = { t: 1.2, txt: 'MG OVERHEATED' }; }
   mgFx(v, px, py, x, y);
 }
 function mgFx(v, px, py, x, y) {
-  sfx('mg', x, y);
+  ev('mg.fire', x, y, { veh: v.type });
   part({ k: 'shell', x: px, y: py, vx: Math.cos(v.mgA + 1.6) * rnd(40, 90), vy: Math.sin(v.mgA + 1.6) * rnd(40, 90), life: 0.4, max: 0.4, sz: 1.5, rot: rnd(0, 3), vr: 20, drag: 4 });
 }
 /* gadgets */
@@ -895,27 +889,27 @@ function useGadget(s, I, dt) {
       s.torch = true; s.a = Math.atan2(best.y - s.y, best.x - s.x);
       const amt = Math.min(best.T.hp - best.hp, (best.type === 'tank' ? 110 : 70) * dt); best.hp += amt; s.rep += amt;
       s.repAcc = (s.repAcc || 0) + amt; if (s.repAcc >= 50) { s.repAcc -= 50; addPts(s, 10, 'REPAIR'); }
-      sfx('torch', s.x, s.y); const [tx, ty] = muzzle(s, 20);
+      ev('torch', s.x, s.y, { s }); const [tx, ty] = muzzle(s, 20);
       if (Math.random() < 0.12) part({ k: 'spark', x: tx, y: ty, vx: rnd(-140, 140), vy: rnd(-140, 140), life: 0.15, max: 0.15, sz: 1.4, drag: 6 });
       if (best.hp > best.T.hp * 0.25) best.burn = 0;
     } else if (I.gadgetP && s.player) s.msg = { t: 1, txt: 'NOTHING TO REPAIR HERE' };
     return;
   }
   if (!I.gadgetP || s.gcd > 0) return;
-  const drop = (o, d, cd, snd) => { const [x, y] = muzzle(s, d); M.items.push(Object.assign({ x, y, team: s.team, owner: s }, o)); s.gcd = s.gmax = cd; s.handT = 0.45; s.handK = K.g; sfx(snd, s.x, s.y); };
-  if (K.g === 'medbag') drop({ k: 'med', t: 12 }, 12, 16, 'drop');
-  if (K.g === 'ammo') drop({ k: 'ammo', t: 15, given: new Map() }, 12, 18, 'drop');
+  const drop = (o, d, cd, g) => { const [x, y] = muzzle(s, d); M.items.push(Object.assign({ x, y, team: s.team, owner: s }, o)); s.gcd = s.gmax = cd; s.handT = 0.45; s.handK = K.g; ev('gadget.drop', s.x, s.y, { s, g }); };
+  if (K.g === 'medbag') drop({ k: 'med', t: 12 }, 12, 16, 'medbag');
+  if (K.g === 'ammo') drop({ k: 'ammo', t: 15, given: new Map() }, 12, 18, 'ammo');
   if (K.g === 'mine') {
     if (s.mines <= 0) { if (s.player) s.msg = { t: 1, txt: 'OUT OF MINES' }; return; }
     const mine = M.items.filter(i => i.k === 'mine' && i.owner === s); if (mine.length >= 3) mine[0].t = -1;
-    drop({ k: 'mine', t: 9999, arm: 1.2 }, 14, 1, 'beep'); s.mines--;
+    drop({ k: 'mine', t: 9999, arm: 1.2 }, 14, 1, 'mine'); s.mines--;
   }
 }
 function updateItems(dt) {
   for (const it of M.items) {
     it.t -= dt;
     if (it.k === 'med') {
-      for (const s of M.sol) if (s.alive && !s.veh && s.team === it.team && !s.down && s.hp < s.mhp && Math.hypot(s.x - it.x, s.y - it.y) < 58) { const h = Math.min(s.mhp - s.hp, 14 * dt); s.hp += h; if (it.owner && it.owner !== s) { it.owner.heal += h; it.acc = (it.acc || 0) + h; if (it.acc >= 25) { it.acc -= 25; addPts(it.owner, 10, 'HEAL'); } } if (s.player) psfx(s.player, 'heal'); }
+      for (const s of M.sol) if (s.alive && !s.veh && s.team === it.team && !s.down && s.hp < s.mhp && Math.hypot(s.x - it.x, s.y - it.y) < 58) { const h = Math.min(s.mhp - s.hp, 14 * dt); s.hp += h; if (it.owner && it.owner !== s) { it.owner.heal += h; it.acc = (it.acc || 0) + h; if (it.acc >= 25) { it.acc -= 25; addPts(it.owner, 10, 'HEAL'); } } if (s.player) ev('heal', s.x, s.y, { s }); }
     } else if (it.k === 'ammo') {
       for (const s of M.sol) {
         if (!s.alive || s.veh || s.team !== it.team || Math.hypot(s.x - it.x, s.y - it.y) > 58) continue;
@@ -924,17 +918,17 @@ function updateItems(dt) {
         if (refillRes(s, 0.35)) gave = true;
         if (s.nades < KITS[s.kit].nades) { s.nades++; gave = true; } else if (s.smokes < 2) { s.smokes++; gave = true; }
         if (KITS[s.kit].g === 'mine' && s.mines < 2) { s.mines++; gave = true; }
-        if (gave) { it.given.set(s.id, M.time); if (it.owner && it.owner !== s) addPts(it.owner, 10, 'RESUPPLY'); if (s.player) psfx(s.player, 'pickup'); }
+        if (gave) { it.given.set(s.id, M.time); if (it.owner && it.owner !== s) addPts(it.owner, 10, 'RESUPPLY'); if (s.player) ev('pickup', s.x, s.y, { s, k: 'ammo' }); }
       }
     } else if (it.k === 'mine') {
       if (it.arm > 0) { it.arm -= dt; continue; }
       if (it.boom) { it.t = -1; explosion(it.x, it.y, 70, 140, 0, it.owner, it.team, true, 'mine'); for (const v of M.vehicles) if (v.active && !v.dead && Math.hypot(v.x - it.x, v.y - it.y) < 70) hurtVehicle(v, 460, it.owner); continue; }
       for (const v of M.vehicles) {
         if (!v.active || v.dead || !v.T.drive) continue; const vt = vehTeam(v); if (!isEnemy(vt, it.team)) continue;
-        vehCircles(v, _vc); if (_vc.some(([cx, cy, r]) => Math.hypot(cx - it.x, cy - it.y) < r + 6)) { it.boom = true; sfx('beep', it.x, it.y); }
+        vehCircles(v, _vc); if (_vc.some(([cx, cy, r]) => Math.hypot(cx - it.x, cy - it.y) < r + 6)) { it.boom = true; ev('mine.trip', it.x, it.y); }
       }
     } else if (it.k === 'pouch') {
-      for (const s of M.sol) if (s.alive && !s.veh && Math.hypot(s.x - it.x, s.y - it.y) < 16) { refillRes(s, 0.25); if (s.nades < KITS[s.kit].nades) s.nades++; it.t = -1; if (s.player) { psfx(s.player, 'pickup'); s.msg = { t: 1.2, txt: 'AMMO POUCH' }; } break; }
+      for (const s of M.sol) if (s.alive && !s.veh && Math.hypot(s.x - it.x, s.y - it.y) < 16) { refillRes(s, 0.25); if (s.nades < KITS[s.kit].nades) s.nades++; it.t = -1; if (s.player) { ev('pickup', s.x, s.y, { s, k: 'pouch' }); s.msg = { t: 1.2, txt: 'AMMO POUCH' }; } break; }
     }
   }
   prune(M.items, it => it.t > 0);
@@ -1010,7 +1004,7 @@ function updateProjectiles(dt) {
       if (s.veh && !s.veh.T.seats[s.seat].exposed) continue;
       const rad = solHitR(s), o = p.rew ? lagAt(s, T) : s;
       const t = segCirc(x0, y0, x1, y1, o.x, o.y, rad); if (t >= 0 && t < bt) { bt = t; hit = { k: 'sol', s }; }
-      else if (s.player && !p.whiz && p.k === 'bullet' && segCirc(x0, y0, x1, y1, s.x, s.y, 30) >= 0) { p.whiz = true; psfx(s.player, 'whiz'); }
+      else if (s.player && !p.whiz && p.k === 'bullet' && segCirc(x0, y0, x1, y1, s.x, s.y, 30) >= 0) { p.whiz = true; ev('bullet.near', s.x, s.y, { s }); }
     }
     for (const v of M.vehicles) {
       if (!v.active || v.dead) continue; const vt = vehTeam(v); if (vt >= 0 && p.src && vt === p.src.team && !M.ff) continue;
@@ -1027,7 +1021,7 @@ function updateProjectiles(dt) {
       const hx = lerp(x0, x1, bt), hy = lerp(y0, y1, bt);
       p.life = 0;
       const B = BLAST[p.k];
-      if (B) { explosion(hx, hy, B.r, B.s, hit.k === 'veh' ? 0 : B.v, p.src, p.team, B.big); if (hit.k === 'veh') hurtVehicle(hit.v, hit.v.type === 'tank' ? B.tank : B.veh, p.src); if (hit.k === 'sol') hurtSoldier(hit.s, B.sol, p.src, 'explosion', p.vx, p.vy, B.n); continue; }
+      if (B) { explosion(hx, hy, B.r, B.s, hit.k === 'veh' ? 0 : B.v, p.src, p.team, B.big, undefined, p.k); if (hit.k === 'veh') hurtVehicle(hit.v, hit.v.type === 'tank' ? B.tank : B.veh, p.src); if (hit.k === 'sol') hurtSoldier(hit.s, B.sol, p.src, 'explosion', p.vx, p.vy, B.n); continue; }
       if (hit.k === 'sol') hurtSoldier(hit.s, p.dmg, p.src, p.mg ? 'mg' : 'bullet', p.vx, p.vy, p.wname);
       else if (hit.k === 'veh') {
         const v = hit.v; let victim = null;
@@ -1040,14 +1034,14 @@ function updateProjectiles(dt) {
           if (t >= 0 && t < vt) { vt = t; victim = o; const dx = oo.x - p.ox, dy = oo.y - p.oy; aimed = p.aa !== undefined && dx * ac + dy * as > 0 && Math.abs(dx * as - dy * ac) < solHitR(o) + 4; }
         }
         if (victim && (aimed || Math.random() < 0.6)) hurtSoldier(victim, p.dmg, p.src, p.mg ? 'mg' : 'bullet', p.vx, p.vy, p.wname);
-        else { hurtVehicle(v, v.type === 'tank' ? p.vdmg * 0.2 : p.vdmg, p.src); sfx('ting', hx, hy); sparks(hx, hy, 3); }
+        else { hurtVehicle(v, v.type === 'tank' ? p.vdmg * 0.2 : p.vdmg, p.src); ev('bullet.veh', hx, hy, { veh: v.type }); sparks(hx, hy, 3); }
       } else if (hit.k === 'ground') part({ k: 'dirt', x: hx, y: hy, vx: p.vx * 0.04 + rnd(-15, 15), vy: p.vy * 0.04 + rnd(-15, 15), life: 0.3, max: 0.3, sz: 2, drag: 4 });
       else { sparks(hx, hy, 2); if (hit.k === 'static' && hit.s.type === 'bag') part({ k: 'dirt', x: hx, y: hy, vx: -p.vx * 0.05 + rnd(-20, 20), vy: -p.vy * 0.05 + rnd(-20, 20), life: 0.3, max: 0.3, sz: 2, drag: 4 }); }
       continue;
     }
     p.x = x1; p.y = y1; p.life -= dt; p.z = z1;
     if (p.x < -SKIRT || p.y < -SKIRT || p.x > WW + SKIRT || p.y > WH + SKIRT) p.life = 0;
-    if (p.life <= 0 && BLAST[p.k]) { const B = BLAST[p.k]; explosion(p.x, p.y, B.r, B.s, B.v, p.src, p.team, B.big); }
+    if (p.life <= 0 && BLAST[p.k]) { const B = BLAST[p.k]; explosion(p.x, p.y, B.r, B.s, B.v, p.src, p.team, B.big, undefined, p.k); }
     if (p.life <= 0 && p.k === 'bullet' && inWater(p.x, p.y)) part({ k: 'steam', x: p.x, y: p.y, vx: 0, vy: 0, life: 0.4, max: 0.4, sz: 4, drag: 0 });
   }
   EXP_REW = 0;
@@ -1076,16 +1070,16 @@ function lagAt(e, T) {
 }
 function sparks(x, y, n) { for (let i = 0; i < n; i++) { const a = rnd(0, TAU), s = rnd(60, 200); part({ k: 'spark', x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: rnd(0.08, 0.2), max: 0.2, sz: 1.5, drag: 6 }); } }
 function updateNade(p, dt) {
-  p.vh -= 700 * dt; p.h = Math.max(0, p.h + p.vh * dt); if (p.h === 0 && p.vh < 0) { p.vh = -p.vh * 0.35; if (Math.abs(p.vh) > 40) sfx('clink', p.x, p.y); p.vx *= 0.6; p.vy *= 0.6; }
+  p.vh -= 700 * dt; p.h = Math.max(0, p.h + p.vh * dt); if (p.h === 0 && p.vh < 0) { p.vh = -p.vh * 0.35; if (Math.abs(p.vh) > 40) ev('nade.bounce', p.x, p.y, { wall: 0 }); p.vx *= 0.6; p.vy *= 0.6; }
   const nx = p.x + p.vx * dt, ny = p.y + p.vy * dt;
   let bounced = false;
   for (const b of rectsIn(MAP.buildings, nx - 3, ny - 3, nx + 3, ny + 3, _rb)) if (inRect(nx, ny, b, 3)) { if (b.glass) { if (b.sec) devGlass(b.sec, nx, ny); continue; } if (p.x < b.x - 2 || p.x > b.x + b.w + 2) p.vx *= -0.5; else p.vy *= -0.5; bounced = true; }
   if (p.h < 14) { staticsNear(nx, ny, 16, _near); for (const s of _near) if (s.type !== 'fence' && Math.hypot(nx - s.x, ny - s.y) < s.r + 3) { const dx = nx - s.x, dy = ny - s.y, d = Math.hypot(dx, dy) || 1, dot = (p.vx * dx + p.vy * dy) / d; p.vx -= 1.6 * dot * dx / d; p.vy -= 1.6 * dot * dy / d; bounced = true; } }
-  if (bounced) sfx('clink', p.x, p.y); else { p.x = nx; p.y = ny; }
+  if (bounced) ev('nade.bounce', p.x, p.y, { wall: 1 }); else { p.x = nx; p.y = ny; }
   p.x = clamp(p.x, 10 - SKIRT, WW + SKIRT - 10); p.y = clamp(p.y, 10 - SKIRT, WH + SKIRT - 10);
   if (p.h === 0) { p.vx *= Math.exp(-dt * 3); p.vy *= Math.exp(-dt * 3); }
   p.rot += dt * 12; p.life -= dt;
-  if (p.life <= 0) { if (p.smoke) popSmoke(p.x, p.y); else explosion(p.x, p.y, 88, 150, 90, p.src, p.team, false); }
+  if (p.life <= 0) { if (p.smoke) popSmoke(p.x, p.y); else explosion(p.x, p.y, 88, 150, 90, p.src, p.team, false, undefined, 'grenade'); }
 }
 
 /* ---------------- soldier control ---------------- */
@@ -1093,8 +1087,8 @@ function updateNade(p, dt) {
 function stepFx(s, d, ang, dt) {
   const pr = s.stance === 1; s.moving = d / Math.max(dt, 1e-3) > (pr ? 6 : 18); s.walkT += d;
   if (s.moving && !s.swim && !(s.jumpT > 0)) { s.stepAcc += d; if (s.stepAcc > (pr ? 10 : 9)) { s.stepAcc = 0; s.stepSide = -s.stepSide; footprint(s.x, s.y, ang, pr ? 0 : s.stepSide, pr); } }
-  if (pr && s.moving && Math.random() < dt * 3) sfx('rustle', s.x, s.y, 0.5);
-  if (s.swim && s.moving && Math.random() < dt * 4) { sfx('splash', s.x, s.y, 0.5); part({ k: 'ripple', x: s.x, y: s.y, vx: 0, vy: 0, life: 0.9, max: 0.9, sz: 14, drag: 0 }); }
+  if (pr && s.moving && Math.random() < dt * 3) ev('crawl', s.x, s.y, { s });
+  if (s.swim && s.moving && Math.random() < dt * 4) { ev('swim', s.x, s.y, { s }); part({ k: 'ripple', x: s.x, y: s.y, vx: 0, vy: 0, life: 0.9, max: 0.9, sz: 14, drag: 0 }); }
 }
 function controlSoldier(s, I, dt) {
   s.flash -= dt; s.fireCd -= dt; s.nadeCd -= dt; s.protect -= dt; s.hurtT -= dt; s.hitT -= dt; s.stanceT -= dt; s.gcd -= dt; s.firedT -= dt; s.spotT -= dt; s.meleeCd -= dt; s.meleeT -= dt; s.spotCd -= dt; s.handT = (s.handT || 0) - dt;
@@ -1111,30 +1105,30 @@ function controlSoldier(s, I, dt) {
   s.swim = inWater(s.x, s.y);
   if (s.swim) s.stance = 0;
   s.throwT -= dt;
-  const swapTo = i => { if (i === s.wi || s.swim) return; s.wi = i; s.reloadT = 0; s.fireCd = Math.max(s.fireCd, 0.3); sfx('reload', s.x, s.y, 0.3); };
+  const swapTo = i => { if (i === s.wi || s.swim) return; s.wi = i; s.reloadT = 0; s.fireCd = Math.max(s.fireCd, 0.3); ev('weapon.swap', s.x, s.y, { s, w: s.w[i].id }); };
   if (I.swapW) swapTo(1 - s.wi);
   if (I.pickW !== undefined && I.pickW >= 0) swapTo(I.pickW);
   if (I.enter) { const c = enterCandidate(s); if (c && enterVehicle(s, c)) return; if (!c && I.interactSwap) swapTo(1 - s.wi); }
   // melee
   if (I.melee && s.meleeCd <= 0 && !s.swim) {
-    s.meleeCd = 0.7; s.meleeT = 0.18; sfx('knife', s.x, s.y); s.vx += Math.cos(s.a) * 90; s.vy += Math.sin(s.a) * 90;
-    for (const o of M.sol) { if (!o.alive || o === s || o.veh || !canHurt(s, o) || o.team === s.team && !M.ff) continue; const dx = o.x - s.x, dy = o.y - s.y; if (Math.hypot(dx, dy) < 28 && Math.abs(angDiff(s.a, Math.atan2(dy, dx))) < 1.0) { o.protect = 0; hurtSoldier(o, 100, s, 'knife', dx, dy, 'KNIFE'); sfx('thud', o.x, o.y); break; } }
+    s.meleeCd = 0.7; s.meleeT = 0.18; ev('knife.swing', s.x, s.y, { s }); s.vx += Math.cos(s.a) * 90; s.vy += Math.sin(s.a) * 90;
+    for (const o of M.sol) { if (!o.alive || o === s || o.veh || !canHurt(s, o) || o.team === s.team && !M.ff) continue; const dx = o.x - s.x, dy = o.y - s.y; if (Math.hypot(dx, dy) < 28 && Math.abs(angDiff(s.a, Math.atan2(dy, dx))) < 1.0) { o.protect = 0; hurtSoldier(o, 100, s, 'knife', dx, dy, 'KNIFE'); ev('knife.hit', o.x, o.y, { s }); break; } }
   }
   // spotting: mark enemies in front of you for the whole team
   if (I.spot && s.spotCd <= 0) {
     s.spotCd = 2.5; let n = 0;
     for (const o of M.sol) { if (!o.alive || !isEnemy(s.team, o.team)) continue; const dx = o.x - s.x, dy = o.y - s.y, d = Math.hypot(dx, dy); if (d < 760 && Math.abs(angDiff(s.a, Math.atan2(dy, dx))) < 0.4 && sees(s.x, s.y, o.x, o.y)) { o.spotT = 6; o.spotTeam = s.team; n++; } }
-    if (s.player) { psfx(s.player, 'ping'); s.msg = { t: 1, txt: n ? `SPOTTED ${n}` : 'NOTHING SPOTTED' }; }
+    if (s.player) { ev('spot', s.x, s.y, { s, n }); s.msg = { t: 1, txt: n ? `SPOTTED ${n}` : 'NOTHING SPOTTED' }; }
   }
   // jump / vault over low cover
   if (I.jump && s.jumpT <= 0 && !s.swim) {
     let dx = I.mx, dy = I.my; const l = Math.hypot(dx, dy); if (l < 0.2) { dx = Math.cos(s.a); dy = Math.sin(s.a); } else { dx /= l; dy /= l; }
-    s.jumpT = 0.42; s.jdx = dx; s.jdy = dy; s.stance = 0; sfx('jump', s.x, s.y);
+    s.jumpT = 0.42; s.jdx = dx; s.jdy = dy; s.stance = 0; ev('jump', s.x, s.y, { s });
   }
   if (!s.swim) {
     // two stances: standing (0) and prone (1)
-    if (I.proneT) { s.stance = s.stance ? 0 : 1; s.stanceT = 0.3; sfx('rustle', s.x, s.y); }
-    if (I.stanceCycle) { s.stance = s.stance ? 0 : 1; s.stanceT = 0.25; sfx('rustle', s.x, s.y); }
+    if (I.proneT) { s.stance = s.stance ? 0 : 1; s.stanceT = 0.3; ev('stance', s.x, s.y, { s, prone: s.stance }); }
+    if (I.stanceCycle) { s.stance = s.stance ? 0 : 1; s.stanceT = 0.25; ev('stance', s.x, s.y, { s, prone: s.stance }); }
   }
   let mx = I.mx, my = I.my; const m = Math.hypot(mx, my); if (m > 1) { mx /= m; my /= m; }
   if (I.sprint && m > 0.3 && s.stance) { s.stance = 0; s.stanceT = 0.2; }
@@ -1163,7 +1157,7 @@ function controlSoldier(s, I, dt) {
   if (I.fire && !sprint && !s.torch && s.fireCd <= 0 && s.stanceT <= 0) {
     if (s.reloadT <= 0 && !pullTrigger(s) && st.res <= 0 && s.w[1 - s.wi].mag + s.w[1 - s.wi].res > 0) s.wi = 1 - s.wi;      // dry: over to the other gun
   }
-  if (I.nadeCyc && s.smokes > 0 && s.nades > 0) { s.throwSel = 1 - s.throwSel; sfx('ui'); }
+  if (I.nadeCyc && s.smokes > 0 && s.nades > 0) { s.throwSel = 1 - s.throwSel; ev('menu'); }
   if (!(s.throwSel ? s.smokes : s.nades) && (s.throwSel ? s.nades : s.smokes)) s.throwSel = 1 - s.throwSel;     // one kind ran out: the other is up
   if (I.alt && canThrow(s) && s.nadeCd <= 0) throwNade(s, I.altDist || 240, s.bot ? (I.smoke ? 'smoke' : true) : false);
   for (const c of M.crates) if (c.live && Math.hypot(c.x - s.x, c.y - s.y) < 16) pickupCrate(s, c);
@@ -1177,7 +1171,7 @@ function pickupCrate(s, c) {
   else if (r < 0.45) { for (const w of s.w) { w.res = WPN[w.id].res; } txt = 'FULL AMMO'; }
   else if (r < 0.75) { s.nades = Math.min(5, s.nades + 2); txt = 'GRENADES +2'; }
   else { s.hp = Math.min(s.mhp, s.hp + 0.4 * s.mhp); refillRes(s, 0.5); txt = 'FIELD KIT'; }
-  if (s.player) { s.msg = { t: 1.8, txt }; psfx(s.player, 'pickup'); }
+  if (s.player) { s.msg = { t: 1.8, txt }; ev('pickup', s.x, s.y, { s, k: 'crate' }); }
 }
 function controlSeated(s, I, dt) {
   const v = s.veh, sd = v.T.seats[s.seat];
@@ -1192,7 +1186,7 @@ function controlSeated(s, I, dt) {
     if (v.type === 'tank') {
       v.aimT = I.aimA === null ? undefined : I.aimA;     // no aim input: the turret rides with the hull
       if (I.fire && v.cd <= 0 && (v.aimT === undefined || Math.abs(angDiff(v.ta, v.aimT)) < 0.35)) fireCannon(v, s);
-    } else if (I.fire) sfx('horn', v.x, v.y);
+    } else if (I.fire) ev('horn', v.x, v.y, { s, veh: v.type });
   } else if (sd.role === 'mg') {
     v.mgAim = I.aimA === null ? undefined : I.aimA;
     s.a = v.mgA;
@@ -1336,18 +1330,17 @@ function updateObjectives(dt) {
   }
   for (const t of [0, 1]) {
     const lim = LIMITS.team[M.cfg.limit] || 200;
-    if (!M.lowWarn[t] && M.tickets[t] <= lim * 0.2) { M.lowWarn[t] = true; toast(TEAMNAME[t] + ' IS RUNNING LOW ON TICKETS', TEAMHEX[t], 3, t, 0); sfx('lost'); }
+    if (!M.lowWarn[t] && M.tickets[t] <= lim * 0.2) { M.lowWarn[t] = true; toast(TEAMNAME[t] + ' IS RUNNING LOW ON TICKETS', TEAMHEX[t], 3, t, 0); ev('tickets.low'); }
     if (M.tickets[t] <= 0 && !M.over) endMatch(1 - t);
   }
 }
 function announceFlag(f, team, captured) {
   if (M.demo) return;
   toast(captured ? `${TEAMNAME[team]} CAPTURED ${f.name}` : `${TEAMNAME[team]} LOST ${f.name}`, TEAMHEX[team], 2.6, team, captured ? 1 : 2);
-  const humanTeams = new Set(LOCALS().map(p => p.team));
-  if (captured && humanTeams.has(team)) sfx('cap'); else sfx('lost');
+  ev('flag', undefined, undefined, { captured: captured ? 1 : 0, team });
 }
 function toast(txt, c, t, team, kind) { M.toasts.push({ txt, c, t }); netEv('t', txt, c, t, team, kind); }
-function endMatch(winner) { if (M.over) return; M.over = true; M.winner = winner; M.overT = 0; M.slowT = 1.5; sfx('win'); }
+function endMatch(winner) { if (M.over) return; M.over = true; M.winner = winner; M.overT = 0; M.slowT = 1.5; ev('match.end'); }
 
 /* ---------------- spotting (recon passive) ---------------- */
 function updateSpotting() {

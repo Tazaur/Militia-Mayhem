@@ -351,7 +351,7 @@ function devRoofTile(k, ev) {
   paintCell(i, j); repaintRoofAround([k]);
   if (i % 2 === 0 && j % 2 === 0) devDust(cx, cy);          // dust from roof tiles on an even row and even column
   { const a = rnd(0, TAU), sp = rnd(30, 120); part({ k: 'debris', x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rnd(0.4, 0.9), max: 0.9, sz: rnd(2, 4), rot: rnd(0, TAU), vr: rnd(-12, 12), drag: 3 }); }
-  shakeAt(cx, cy, 2.5, 420); sfx('crush', cx, cy, 0.6);
+  shakeAt(cx, cy, 2.5, 420); ev('roof.fall', cx, cy);
   const under = (x, y) => ((y / SUB) | 0) * TL.sc + ((x / SUB) | 0) === k;
   if (NET.role === 'client') return;          // online: the host's roof does the hurting
   for (const s of M.sol) if (s.alive && !s.veh && !ev.hit.has(s) && under(s.x, s.y)) { ev.hit.add(s); hurtSoldier(s, s.mhp * rnd(0.5, 0.75), null, 'roof', 0, 0, 'ROOF'); }
@@ -438,7 +438,7 @@ function devDamage(sec, v, x, y, net) {
   const intact = sec.hp >= sec.mhp;
   sec.hp -= v; sec.hitT = 0.35; if (M.dev) devNum(x, y, v, '#ffb060'); netEv('sd', sec.i, Math.round(sec.hp * 10), x | 0, y | 0);
   if (sec.hp <= 0) devCollapse(sec);
-  else if (sec.glass && intact) { devRepaint(sec, 0); devSight(); sfx('glass', x, y); }
+  else if (sec.glass && intact) { devRepaint(sec, 0); devSight(); ev('glass.hit', x, y); }
 }
 /* a shot, a grenade or a vaulting soldier through an intact window: it cracks */
 function devGlass(sec, x, y) { if (sec.alive && sec.hp >= sec.mhp) devDamage(sec, 1, x, y); }
@@ -461,7 +461,7 @@ function devRams(v) {
     devDamage(sec, s * P.wall * (sec.glass ? 3 : 1), x, y);
     hurtVehicle(v, s * P.self * (sec.glass ? 0.1 : 1), null);
     v.spd *= sec.glass ? Math.max(P.keep, 0.7) : P.keep; v.crashCd = 0.6;
-    if (!sec.glass) { sfx('crush', x, y); sparks(x, y, 3); }
+    ev('wall.ram', x, y, { glass: sec.glass ? 1 : 0 }); if (!sec.glass) sparks(x, y, 3);
   }
 }
 /* collapse dust: a smoke grenade's cloud, brown in a random shade, half opacity, 6-15 s */
@@ -480,7 +480,7 @@ function devCollapse(sec) {
   devRepaint(sec, 1);
   if (!sec.glass && TL.roof) { const ks = []; secCells(sec, (i, j) => ks.push(j * TL.sc + i)); repaintRoofAround(ks); devRoofFall(sec); }
   devSight(); navDirty = 1;          // the fog's memory isn't reset: out of sight you keep seeing it standing until you look
-  sfx(sec.glass ? 'glass' : 'crumble', (sec.cx + sec.cw / 2) * SUB, (sec.cy + sec.ch / 2) * SUB);
+  ev('wall.collapse', (sec.cx + sec.cw / 2) * SUB, (sec.cy + sec.ch / 2) * SUB, { glass: sec.glass ? 1 : 0 });
   devLog(sec.glass ? 'WINDOW BROKEN' : `WALL ${sec.n} CELL${sec.n > 1 ? 'S' : ''} DOWN`, '#ffb060');
 }
 
@@ -798,7 +798,7 @@ function devDrawPanel() {
 /* pointerdown on the panel: run the button, swallow the click (true); a tap off the open panel closes it */
 function devClick(x, y, touch) {
   const r = DEV.R; if (!r) return false; DEV.padNav = false;
-  for (const b of DEV.B) if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) { b.fn(x < b.x + b.w / 2 ? -1 : 1); sfx('ui'); return true; }
+  for (const b of DEV.B) if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) { b.fn(x < b.x + b.w / 2 ? -1 : 1); ev('menu'); return true; }
   if (touch && DEV.open && !(x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h)) { DEV.open = false; return true; }
   return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 }
@@ -807,23 +807,23 @@ function devClick(x, y, touch) {
 function devInputs() {
   for (const p of LOCALS()) {
     const st = p.raw, t = p.dev.type; if (!st) continue;
-    if (t === 'pad' && st.opt) { DEV.open = !DEV.open; DEV.padNav = DEV.open; sfx('ui'); p.raw = null; continue; }
+    if (t === 'pad' && st.opt) { DEV.open = !DEV.open; DEV.padNav = DEV.open; ev('menu'); p.raw = null; continue; }
     if (DEV.open && t === 'pad') { devPad(st); p.raw = null; }
     else if (DEV.open && t === 'touch') p.raw = null;
   }
 }
 function devPad(st) {
   const B = DEV.B; DEV.padNav = true;
-  if (st.back) { DEV.open = false; sfx('ui'); return; }
-  if (st.tabL || st.tabR) { DEV.tab = (DEV.tab + (st.tabR ? 1 : -1) + DEV_TABS.length) % DEV_TABS.length; DEV.sel = 0; sfx('ui'); return; }     // bumpers: the tabs
+  if (st.back) { DEV.open = false; ev('menu'); return; }
+  if (st.tabL || st.tabR) { DEV.tab = (DEV.tab + (st.tabR ? 1 : -1) + DEV_TABS.length) % DEV_TABS.length; DEV.sel = 0; ev('menu'); return; }     // bumpers: the tabs
   const i = DEV.sel = clamp(DEV.sel, 0, B.length - 1), b = B[i]; if (!b) return;
-  if (st.confirm) { b.fn(1); sfx('ui'); return; }
+  if (st.confirm) { b.fn(1); ev('menu'); return; }
   const dx = st.navX, dy = dx ? 0 : st.navY; if (!dx && !dy) return;
-  if (dx && b.adj) { b.fn(dx); sfx('ui'); return; }
+  if (dx && b.adj) { b.fn(dx); ev('menu'); return; }
   const gapTo = (a0, a1, b0, b1) => Math.max(0, b0 - a1, a0 - b1), ahead = (a0, a1, b0, b1, s) => s > 0 ? b0 - a1 : a0 - b1;
   let best = -1, bd = 1e9;      // the nearest button wholly that way; edge to edge, sideways gaps count double
   B.forEach((o, j) => { const along = dx ? ahead(b.x, b.x + b.w, o.x, o.x + o.w, dx) : ahead(b.y, b.y + b.h, o.y, o.y + o.h, dy), side = dx ? gapTo(b.y, b.y + b.h, o.y, o.y + o.h) : gapTo(b.x, b.x + b.w, o.x, o.x + o.w), d = along + 2 * side; if (j !== i && along >= -1 && d < bd) { bd = d; best = j; } });
-  if (best >= 0) { DEV.sel = best; sfx('ui'); }
+  if (best >= 0) { DEV.sel = best; ev('menu'); }
 }
 /* from the main menu: straight into the yard, one player, no bots */
 function startDev(dev) {

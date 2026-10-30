@@ -51,10 +51,11 @@ function auBufs(c) {
   return { noise: b, ir, curve: cur };
 }
 /* where a sound goes: bass shelf → lowpass (closes with distance hv, 0..1) → pan → dest, plus a reverb send that grows with distance */
-function sfxOut(A, P, hv, pan, dest, verbIn) {
-  const c = A.ctx, lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = Math.min(P.lp || 20000, 700 + 19000 * Math.pow(hv, 1.7)); lp.Q.value = 0.4;
+function sfxOut(A, P, hv, pan, dest, verbIn, F) {
+  const mu = F ? 1 - (1 - hv) * F.mu : hv, rd = F ? F.rd : 1;      // F falloff (1d_sev.js): how much distance muffles / adds reverb
+  const c = A.ctx, lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = Math.min(P.lp || 20000, 700 + 19000 * Math.pow(Math.max(0, mu), 1.7)); lp.Q.value = 0.4;
   if (pan && c.createStereoPanner) { const pn = c.createStereoPanner(); pn.pan.value = Math.max(-0.9, Math.min(0.9, pan)); lp.connect(pn); pn.connect(dest); } else lp.connect(dest);
-  if (P.rv && verbIn) { const sg = c.createGain(); sg.gain.value = P.rv * (0.45 + (1 - hv) * 1.1); lp.connect(sg); sg.connect(verbIn); }
+  if (P.rv && verbIn) { const sg = c.createGain(); sg.gain.value = P.rv * (0.45 + (1 - hv) * 1.1 * rd); lp.connect(sg); sg.connect(verbIn); }
   if (!P.bs) return lp;
   const sh = c.createBiquadFilter(); sh.type = 'lowshelf'; sh.frequency.value = 160; sh.gain.value = P.bs; sh.connect(lp); return sh;
 }

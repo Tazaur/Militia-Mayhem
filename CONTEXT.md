@@ -756,3 +756,10 @@ Art drop (drop.py): atlas.png: hull4, tur_dead; atlas_m.png: tur_dead, sol_leg0,
 
 ## Sound Lab: "Plays when" (no game build)
 - sound/index.html PLAYS: per game sound name, when the game plays it (read off every sfx / psfx call in 3_sim, 4_ai, 5c_net, 5d_dev, 6_menus). Shown as a dropdown under "Plays as". Keep it in step when a sound call is added or moved.
+
+## Build 256: sound events + rules (src/1d_sev.js), Sound Lab EVENTS tab
+- Every game sound is now an event: ev(name, x, y, ctx). EVD lists the 54 events (group, description, fields, flags a = a soldier does it → me/ally/bot; n = host-only, forwarded). SEVD = the default rules (reproduce the old sounds exactly). A rule: s sound | fx 'deafen', v, p pitch, dl delay, th min gap, who ('' at the spot / 'pl' only that player / 'ui' no position), F falloff (SEVF: screen | world | flat, mu muffle, rd reverb, pan), if condition (gates {g:'and'|'or', c, n} / tests {f, op, v, n}), off.
+- 1b_audio2.js: ev / evPlay / evSend / evNet; SEVU = mmgl.sevlab (the lab's "Send to game"), live via storage event. Hearing loss = deafen() (SEVX.deafen params), replaces earRing.
+- Net: 'n' events go host → clients as ['e', idx, x, y, sol, team, ...fields] (120 ms per event+soldier); clients evaluate their own rules. NETSFX / 's' / 'ps' / psfx are gone; 'b' and 't' no longer play sounds (soldier.hit / flag / waves / soldier.down are events). explosion() got a cause param (kind stays the damage type), sent as 'x' a[5] (EVBOOM).
+- hear(x, y, F) / sfxOut(..., F) take the rule's falloff; WPN[k].id = k.
+- Lab: sound/events.js = the EVENTS tab (tabs in the header): event picker, test values, rule cards (sound or hearing loss, who, volume / pitch / delay / gap, condition builder, custom falloff + curve, deafen params), send / export. Sounds tab "Plays when" is derived from the rules (tap → that event); "Plays as" takes new names.

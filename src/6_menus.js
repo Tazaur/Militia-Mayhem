@@ -90,7 +90,7 @@ function crispScale(px) { return Math.max(1, Math.round(px * 2) / 2); }
 /* ================= main menu ================= */
 const MENU = { sel: 0, spin: 0, msgT: 0 };
 function toMenu() { if (NET.role) netShutdown(); engineKillAll(); PLAYERS = []; SET.open = false; MENU.sel = 0; demoMatch(); setState('menu'); Music.mode = 'menu'; }
-function enterLobby(dev) { PLAYERS = []; LOBBY.sel = 0; setState('lobby'); if (dev) lobbyJoin(dev); else sfx('ui'); }
+function enterLobby(dev) { PLAYERS = []; LOBBY.sel = 0; setState('lobby'); if (dev) lobbyJoin(dev); else ev('menu'); }
 function menuAct(i, dev) {
   if (i === 0) enterLobby(dev);
   else if (i === 1) openNetMenu(dev);
@@ -101,8 +101,8 @@ function updateMenu(ins, dt) {
   MENU.msgT -= dt; MENU.spin += dt * (MENU.sel === 0 ? 0.35 : 0.08);
   for (const { dev, st } of ins) {
     const dx = st.navX || (st.tabR ? 1 : st.tabL ? -1 : 0);
-    if (dx) { MENU.sel = MENU.sel >= 2 ? (dx > 0 ? 1 : 0) : clamp(MENU.sel + dx, 0, 1); sfx('ui'); }
-    if (st.navY) { MENU.sel = st.navY < 0 ? (MENU.sel === 3 ? 0 : 2) : MENU.sel === 2 ? 0 : 3; sfx('ui'); }
+    if (dx) { MENU.sel = MENU.sel >= 2 ? (dx > 0 ? 1 : 0) : clamp(MENU.sel + dx, 0, 1); ev('menu'); }
+    if (st.navY) { MENU.sel = st.navY < 0 ? (MENU.sel === 3 ? 0 : 2) : MENU.sel === 2 ? 0 : 3; ev('menu'); }
     if (st.opt) { openSettings('menu'); return; }
     if ((st.confirm || st.pause) && stateT > 0.25) { menuAct(MENU.sel, dev); return; }
   }
@@ -167,14 +167,14 @@ function drawMenu() {
 const NETM = { sel: 0, entry: null };
 const CODE_KEYS = CODE_CH.split('').concat(['DEL', 'JOIN']);
 const netListShown = () => NET.mode === 'p2p';
-function openNetMenu(dev) { if (typeof netListRefresh === 'function') netListRefresh(); NET.err = null; NETM.sel = 0; NETM.entry = null; NETM.dev = dev && dev.type ? dev : { type: 'kb' }; setState('netmenu'); sfx('ui'); }
+function openNetMenu(dev) { if (typeof netListRefresh === 'function') netListRefresh(); NET.err = null; NETM.sel = 0; NETM.entry = null; NETM.dev = dev && dev.type ? dev : { type: 'kb' }; setState('netmenu'); ev('menu'); }
 function netRows() { return netAllHosts().filter(h => h.n < MAXP && (h.st === 'lobby' || h.mj)); }
 function netAct(i, dev) {
   if (dev && dev.type) NETM.dev = dev;
-  if (!NET.avail || NET.busy) { sfx('leave'); return; }
+  if (!NET.avail || NET.busy) { ev('blocked'); return; }
   if (i === 0) { askName('host'); return; }
-  if (i === 1) { NETM.entry = { mode: 'code', code: '', sel: 'q' }; sfx('ui'); return; }
-  if (i === 2) { netListRefresh(); sfx('ui'); return; }
+  if (i === 1) { NETM.entry = { mode: 'code', code: '', sel: 'q' }; ev('menu'); return; }
+  if (i === 2) { netListRefresh(); ev('menu'); return; }
   const h = netRows()[i - 3]; if (h) netJoin(h, NETM.dev);
 }
 const NAME_KEYS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('').concat(['SPACE', 'DEL', 'OK']);
@@ -200,36 +200,36 @@ function padNav(E, dx, dy) {
 /* the name step: shown before hosting and after typing a code; the name is remembered on this device */
 function askName(next, code) {
   // a name this device already used goes straight through (the name button on the online menu changes it)
-  if (next && NET.name) { sfx('ui'); if (next === 'host') netHost(NETM.dev); else netJoin({ c: code }, NETM.dev); return; }
-  NETM.entry = { mode: 'name', name: NET.name || '', sel: 'OK', next, code }; sfx('ui'); }
+  if (next && NET.name) { ev('menu'); if (next === 'host') netHost(NETM.dev); else netJoin({ c: code }, NETM.dev); return; }
+  NETM.entry = { mode: 'name', name: NET.name || '', sel: 'OK', next, code }; ev('menu'); }
 function codeKey(k, kb) {
   const E = NETM.entry; if (!E) return;
   if (E.mode === 'name') {
-    if (k === 'DEL') { if (E.name) E.name = E.name.slice(0, -1); else if (!kb) NETM.entry = null; sfx('ui'); return; }
+    if (k === 'DEL') { if (E.name) E.name = E.name.slice(0, -1); else if (!kb) NETM.entry = null; ev('menu'); return; }
     if (k === 'OK') {
-      NET.name = cleanName(E.name).trim(); store.set('name', NET.name); NETM.entry = null; sfx('ui');
+      NET.name = cleanName(E.name).trim(); store.set('name', NET.name); NETM.entry = null; ev('menu');
       if (E.next === 'host') netHost(NETM.dev); else if (E.next === 'join') netJoin({ c: E.code }, NETM.dev);
       return;
     }
-    if (E.name.length < 10) { E.name = cleanName(E.name + (k === 'SPACE' ? ' ' : k)); sfx('ui'); }
+    if (E.name.length < 10) { E.name = cleanName(E.name + (k === 'SPACE' ? ' ' : k)); ev('menu'); }
     return;
   }
-  if (k === 'DEL') { if (E.code) E.code = E.code.slice(0, -1); else if (!kb) NETM.entry = null; sfx('ui'); return; }
-  if (k === 'JOIN') { if (E.code.length === 4) askName('join', E.code); else sfx('leave'); return; }
-  if (E.code.length < 4) { E.code += k; sfx('ui'); if (E.code.length === 4) E.sel = 'JOIN'; }
+  if (k === 'DEL') { if (E.code) E.code = E.code.slice(0, -1); else if (!kb) NETM.entry = null; ev('menu'); return; }
+  if (k === 'JOIN') { if (E.code.length === 4) askName('join', E.code); else ev('blocked'); return; }
+  if (E.code.length < 4) { E.code += k; ev('menu'); if (E.code.length === 4) E.sel = 'JOIN'; }
 }
 function updateCodeEntry(ins) {
   const E = NETM.entry, K = padKeys(E), name = E.mode === 'name', done = name ? 'OK' : 'JOIN';
   for (const code of KB.typed) {
     const m = /^(Key|Digit|Numpad)(\w)$/.exec(code); if (m) { const ch = name ? m[2].toUpperCase() : m[2].toLowerCase(); if (K.includes(ch)) codeKey(ch); }
     if (code === 'Space' && name) codeKey('SPACE');
-    if (code === 'Backspace') codeKey('DEL', true); if (code === 'Enter' || code === 'NumpadEnter') { codeKey(done); return; } if (code === 'Escape') { NETM.entry = null; sfx('ui'); return; }
+    if (code === 'Backspace') codeKey('DEL', true); if (code === 'Enter' || code === 'NumpadEnter') { codeKey(done); return; } if (code === 'Escape') { NETM.entry = null; ev('menu'); return; }
     if (NETM.entry !== E) return;
   }
   for (const { dev, st } of ins) {
     if (dev.type !== 'pad') continue;
-    if (st.navX) { padNav(E, st.navX, 0); sfx('ui'); }
-    if (st.navY) { padNav(E, 0, st.navY); sfx('ui'); }
+    if (st.navX) { padNav(E, st.navX, 0); ev('menu'); }
+    if (st.navY) { padNav(E, 0, st.navY); ev('menu'); }
     if (st.confirm) { NETM.dev = dev; codeKey(E.sel); }
     else if (st.back) codeKey('DEL'); else if (st.pause) { NETM.dev = dev; codeKey(done); }
     if (NETM.entry !== E) return;
@@ -242,8 +242,8 @@ function updateNetMenu(ins, dt) {
   if (NET.err) {
     const E = NET.err;
     if (performance.now() - E.t > 600) for (const { st } of ins) {
-      if (E.re) { if (st.navX || st.navY) { E.sel = 1 - E.sel; sfx('ui'); } if (st.confirm) { if (E.sel === 0) netReconnect(); else { NET.err = null; sfx('ui'); } return; } if (st.back) { NET.err = null; sfx('ui'); return; } }
-      else if (st.confirm || st.back || st.pause) { NET.err = null; sfx('ui'); return; }
+      if (E.re) { if (st.navX || st.navY) { E.sel = 1 - E.sel; ev('menu'); } if (st.confirm) { if (E.sel === 0) netReconnect(); else { NET.err = null; ev('menu'); } return; } if (st.back) { NET.err = null; ev('menu'); return; } }
+      else if (st.confirm || st.back || st.pause) { NET.err = null; ev('menu'); return; }
     }
     runClicks(); return;
   }
@@ -252,10 +252,10 @@ function updateNetMenu(ins, dt) {
   const list = netListShown(), rows = netRows().length, n = list ? 3 + rows : 2;
   NETM.sel = clamp(NETM.sel, 0, n - 1);
   for (const { dev, st } of ins) {
-    if (st.navY) { NETM.sel = (NETM.sel + st.navY + n) % n; sfx('ui'); }
-    if (st.navX > 0 && NETM.sel < 2) { NETM.sel = NETM.sel === 0 ? 1 : list ? (rows ? 3 : 2) : 1; sfx('ui'); }
-    else if (st.navX < 0 && NETM.sel > 0) { NETM.sel = NETM.sel >= 2 ? 1 : 0; sfx('ui'); }
-    if (st.reload && list) { netListRefresh(); sfx('ui'); }
+    if (st.navY) { NETM.sel = (NETM.sel + st.navY + n) % n; ev('menu'); }
+    if (st.navX > 0 && NETM.sel < 2) { NETM.sel = NETM.sel === 0 ? 1 : list ? (rows ? 3 : 2) : 1; ev('menu'); }
+    else if (st.navX < 0 && NETM.sel > 0) { NETM.sel = NETM.sel >= 2 ? 1 : 0; ev('menu'); }
+    if (st.reload && list) { netListRefresh(); ev('menu'); }
     if (st.back && stateT > 0.25) { toMenu(); return; }
     if (st.opt) { openSettings('menu'); return; }
     if (st.confirm && stateT > 0.25) { netAct(NETM.sel, dev); return; }
@@ -288,7 +288,7 @@ function netToast(u) {
 /* a failed connection: code, what broke, what to try, and the trace (kept until dismissed) */
 function drawNetErr(u) {
   const E = NET.err; if (!E) return;
-  UIB = E.re ? [] : [{ x: 0, y: 0, w: W, h: H, fn: () => { if (performance.now() - E.t > 600) { NET.err = null; sfx('ui'); } } }];
+  UIB = E.re ? [] : [{ x: 0, y: 0, w: W, h: H, fn: () => { if (performance.now() - E.t > 600) { NET.err = null; ev('menu'); } } }];
   ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, W, H);
   const pw = Math.min(W - SAFE.l - SAFE.r - 24, 720 * u), ls = fpx(12, u, 10), lh = ls * 1.5;
   const bh = Math.max(44, 46 * u), ph = Math.min(H - SAFE.t - SAFE.b - 24, fpx(150, u, 120) + E.lines.length * lh + (E.lines.length ? lh : 0) + (E.hint ? fpx(54, u, 46) : 0) + (E.re ? bh + 14 * u : 0)), px = W / 2 - pw / 2, py = H / 2 - ph / 2;
@@ -302,7 +302,7 @@ function drawNetErr(u) {
   if (E.re) {     // lost the link mid-game: try to get back in (the host keeps the soldier for you), or close
     const bw = Math.min((pw - 40 * u) / 2, 240 * u), by = py + ph - bh - 14 * u, ok = performance.now() - E.t > 600;
     button({ x: W / 2 - bw - 6 * u, y: by, w: bw, h: bh, label: 'RECONNECT', primary: true, sel: E.sel === 0, off: !ok, fn: () => { if (ok) netReconnect(); }, size: fpx(16, u, 13) });
-    button({ x: W / 2 + 6 * u, y: by, w: bw, h: bh, label: 'CLOSE', sel: E.sel === 1, off: !ok, fn: () => { if (ok) { NET.err = null; sfx('ui'); } }, size: fpx(16, u, 13) });
+    button({ x: W / 2 + 6 * u, y: by, w: bw, h: bh, label: 'CLOSE', sel: E.sel === 1, off: !ok, fn: () => { if (ok) { NET.err = null; ev('menu'); } }, size: fpx(16, u, 13) });
     return;
   }
   fitTxtC(devOf(null) === 'touch' ? 'TAP TO CLOSE' : 'PRESS ANY BUTTON TO CLOSE', W / 2, py + ph - fpx(18, u, 15), pw - 30, fpx(11, u, 10), 'rgba(242,230,196,0.45)', FD);
@@ -485,13 +485,13 @@ const SET_TABS = [['VIDEO', [['GRAPHICS', ['style', 'clearLos', 'fullscreen', 'c
   ['CONTROLS', [['TOUCH', ['tSize', 'tAlpha', 'tFireX', 'tFireY', 'tLfire', 'tAuto']], ['BINDINGS', null]]]];
 const SET_PAGES = SET_TABS.flatMap(([, P], i) => P.map((_, j) => [i, j]));
 const setRows = () => SET_TABS[SET.tab][1][SET.sub][1];
-function setPage(d) { const n = SET_PAGES.length, k = SET_PAGES.findIndex(([i, j]) => i === SET.tab && j === SET.sub); [SET.tab, SET.sub] = SET_PAGES[(k + d + n) % n]; SET.sel = 0; sfx('ui'); }
+function setPage(d) { const n = SET_PAGES.length, k = SET_PAGES.findIndex(([i, j]) => i === SET.tab && j === SET.sub); [SET.tab, SET.sub] = SET_PAGES[(k + d + n) % n]; SET.sel = 0; ev('menu'); }
 const CONTROLS = [['MOVE', 'LEFT STICK', 'W A S D'], ['AIM', 'RIGHT STICK', 'MOUSE'], ['FIRE', 'RT', 'LEFT CLICK'], ['AIM DOWN SIGHTS', 'LT', 'RIGHT CLICK'],
   ['SPRINT', 'L3', 'SHIFT'], ['JUMP / VAULT', 'A', 'SPACE'], ['PRONE / STAND', 'B', 'C / Z'], ['RELOAD', 'X', 'R'],
   ['USE · EXIT · SWAP', 'Y', 'E · 1 / 2'], ['GRENADE', 'RB', 'G'], ['GADGET', 'LB', 'F'], ['MELEE', 'R3', 'V'],
   ['SPOT ENEMY', 'D-PAD UP', 'Q'], ['FLASHLIGHT', 'HOLD D-PAD UP', 'L'], ['VEHICLE SEAT', 'B / D-PAD', 'F / 1-4'], ['SCOREBOARD', 'VIEW', 'TAB'], ['PAUSE', 'START', 'ESC']];
-function openSettings(from) { SET.open = true; SET.from = from; SET.tab = 0; SET.sub = 0; SET.sel = 0; sfx('ui'); }
-function closeSettings() { SET.open = false; sfx('ui'); }
+function openSettings(from) { SET.open = true; SET.from = from; SET.tab = 0; SET.sub = 0; SET.sel = 0; ev('menu'); }
+function closeSettings() { SET.open = false; ev('menu'); }
 const inMatch = () => M && !M.demo;
 /* [name, value shown, slider fill 0..1 or null] */
 function setLabel(k) {
@@ -504,7 +504,7 @@ function setChange(k, d, f) {
   const S = SETS[k];
   if (S.o) { const i = S.o.findIndex(([x]) => x === S.get()), n = S.o.length; S.set(S.o[i < 0 ? 0 : (i + (d || 1) + n) % n][0]); }
   else S.set(clamp(f !== undefined ? S.lo + Math.round(f * (S.hi - S.lo) / S.st) * S.st : S.get() + (d || 1) * S.st, S.lo, S.hi));
-  SET.fsClick = false; saveCfg(); sfx('ui');
+  SET.fsClick = false; saveCfg(); ev('menu');
 }
 function updateSettings(ins) {
   for (const { st } of ins) {
@@ -512,7 +512,7 @@ function updateSettings(ins) {
     if (st.tabL || st.tabR) setPage(st.tabR ? 1 : -1);
     const rows = setRows();
     if (rows) {
-      if (st.navY) { SET.sel = (SET.sel + st.navY + rows.length) % rows.length; sfx('ui'); }
+      if (st.navY) { SET.sel = (SET.sel + st.navY + rows.length) % rows.length; ev('menu'); }
       if (st.navX) setChange(rows[SET.sel], st.navX);
       if (st.confirm) setChange(rows[SET.sel], 1);
     }
@@ -532,7 +532,7 @@ function drawSettings() {
   const dv = devOf(null), cs = Math.max(40, 40 * u); iconButton(px + pw - cs - 8, py + (hh - cs) / 2, cs, 'close', () => closeSettings(), false, ['back', dv]);
   // a row of tabs, each name shrunk to fit its tab
   const tabs = (names, on, x, y, tw, h, fsz, pick) => names.forEach((t, i) => { ctx.font = `${fsz}px ${FD}`; const fs = fsz * Math.min(1, (tw - 16) / ctx.measureText(t).width);
-    button({ x: x + i * tw, y, w: tw - 6, h, label: t, sel: on === i, fn: () => { pick(i); SET.sel = 0; sfx('ui'); }, size: fs }); });
+    button({ x: x + i * tw, y, w: tw - 6, h, label: t, sel: on === i, fn: () => { pick(i); SET.sel = 0; ev('menu'); }, size: fs }); });
   // core tabs: in the title row, between the title and the close button
   ctx.font = `${fpx(22, u, 17)}px ${FD}`; const c0 = px + pad + ctx.measureText('SETTINGS').width + 16 * u, c1 = px + pw - cs - 8 - 64 * u, ct = Math.min(150 * u, (c1 - c0) / SET_TABS.length);
   tabs(SET_TABS.map(([t]) => t), SET.tab, c1 - ct * SET_TABS.length, py + (hh - cs * 0.86) / 2, ct, cs * 0.86, fpx(14, u, 11), i => { SET.tab = i; SET.sub = 0; });
@@ -584,16 +584,16 @@ const matchRows = () => (NET.role ? MATCH_ROWS_NET : MATCH_ROWS_).filter(k => !(
 function deviceKey(d) { return d.type + (d.index !== undefined ? d.index : '') + (d.peer || ''); }
 function devName(d) { return d.type === 'net' ? (d.peer ? 'ONLINE' : 'HOST') : d.type === 'kb' ? 'KEYBOARD + MOUSE' : d.type === 'pad' ? 'CONTROLLER ' + (d.index + 1) : 'TOUCH'; }
 function lobbyJoin(dev) {
-  if (PLAYERS.length >= MAXP || PLAYERS.some(p => deviceKey(p.dev) === deviceKey(dev))) { sfx('leave'); return; }
+  if (PLAYERS.length >= MAXP || PLAYERS.some(p => deviceKey(p.dev) === deviceKey(dev))) { ev('blocked'); return; }
   const used = new Set(PLAYERS.map(p => p.pc || p.color));
   const id = [0, 1, 2, 3].find(i => !PLAYERS.some(p => p.id === i));
   const team = PLAYERS.filter(p => p.team === 0).length <= PLAYERS.filter(p => p.team === 1).length ? 0 : 1;
   const pref = PRIME[id], color = !used.has(pref) ? pref : COLORS.find(c => !used.has(c));
   PLAYERS.push({ id, dev, color, pc: color, team, ready: false, kit: 0, var: 0 });
   PLAYERS.sort((a, b) => a.id - b.id);
-  sfx('join');
+  ev('lobby.join');
 }
-function leaveLobby(p) { PLAYERS = PLAYERS.filter(q => q !== p); sfx('leave'); }
+function leaveLobby(p) { PLAYERS = PLAYERS.filter(q => q !== p); ev('lobby.leave'); }
 /* colours: in team modes a team wears one colour (anyone on it can change it, never to the other team's); otherwise each player
    wears their own pick (p.pc). The host (or local game) settles everyone's colour every lobby frame. */
 function lobbyTeamCols() {
@@ -624,13 +624,13 @@ function applyColor(p, c) {
   p.pc = c; syncLobbyColors();
 }
 function cycleColor(p, d) {
-  const c = nextColor(p, d); if (!c) { sfx('leave'); return; }
+  const c = nextColor(p, d); if (!c) { ev('blocked'); return; }
   if (NET.role === 'client') { NET.want.c = c; NET.want.cn = (NET.want.cn || 0) + 1; NET.want.cT = performance.now(); p.color = c; }
   else applyColor(p, c);
-  sfx('ui');
+  ev('menu');
 }
-function toggleTeam(p) { if (!MODES[CFG.mode].team) return; if (NET.role === 'client') { NET.want.t = 1 - p.team; NET.want.tn = (NET.want.tn || 0) + 1; NET.want.tT = performance.now(); p.team = NET.want.t; } else p.team = 1 - p.team; sfx('ui'); }
-function toggleReady(p) { if (NET.role === 'client') { NET.want.r = NET.want.r ? 0 : 1; NET.want.rT = performance.now(); p.ready = !!NET.want.r; sfx(p.ready ? 'join' : 'leave'); return; } p.ready = !p.ready; sfx(p.ready ? 'join' : 'leave'); }
+function toggleTeam(p) { if (!MODES[CFG.mode].team) return; if (NET.role === 'client') { NET.want.t = 1 - p.team; NET.want.tn = (NET.want.tn || 0) + 1; NET.want.tT = performance.now(); p.team = NET.want.t; } else p.team = 1 - p.team; ev('menu'); }
+function toggleReady(p) { if (NET.role === 'client') { NET.want.r = NET.want.r ? 0 : 1; NET.want.rT = performance.now(); p.ready = !!NET.want.r; ev('ready', undefined, undefined, { on: p.ready ? 1 : 0 }); return; } p.ready = !p.ready; ev('ready', undefined, undefined, { on: p.ready ? 1 : 0 }); }
 function saveCfg() { store.set('cfg3', CFG); }
 function changeSetting(key, d) {
   const C = CFG, prevMap = C.map, prevWeather = C.weather;
@@ -646,7 +646,7 @@ function changeSetting(key, d) {
   if (key === 'pub') C.pub = C.pub === false;
   if (key === 'weather') { C.weather = WEATHERS[(WEATHERS.indexOf(C.weather) + d + 3) % 3]; }
   if (MODES[C.mode].id === 'ffa') C.bots = Math.min(C.bots, 6);
-  saveCfg(); sfx('ui');
+  saveCfg(); ev('menu');
   if (C.map !== prevMap || C.weather !== prevWeather) demoMatch();
 }
 function settingLabel(key) {
@@ -671,11 +671,11 @@ function rematch() { newMatch({ ...(M.dev ? M.cfg : CFG) }, false); setState('pl
 function demoMatch() { newMatch({ mode: 0, map: CFG.map, bots: 7, limit: 1, skill: 1, camera: 'shared', weather: CFG.weather }, true); }
 /* controllers have to ready up; keyboard and touch players are readied by pressing START themselves */
 const canStart = () => PLAYERS.length > 0 && PLAYERS.every(p => p.ready || (p.dev.type !== 'pad' && !isNet(p)));
-function tryStart() { if (canStart()) startBattle(); else sfx('leave'); }
+function tryStart() { if (canStart()) startBattle(); else ev('blocked'); }
 function startBattle() {
   if (!PLAYERS.length) return;
   for (const p of PLAYERS) p.ready = true;
-  newMatch({ ...CFG }, false); setState('play'); Music.mode = 'battle'; sfx('join');
+  newMatch({ ...CFG }, false); setState('play'); Music.mode = 'battle'; ev('match.start');
 }
 function toLobby() { engineKillAll(); SET.open = false; for (const p of PLAYERS) { p.ready = false; p.sol = null; } demoMatch(); setState('lobby'); Music.mode = 'menu'; }
 function updateLobby(ins) {
@@ -694,12 +694,12 @@ function updateLobby(ins) {
     // bumpers: colour · D-pad / stick: match settings · Y: team · A: ready · Start: ready + start · B: un-ready, then leave
     const dc = st.tabR ? 1 : st.tabL ? -1 : 0;
     if (dc) cycleColor(p, dc);
-    if (st.navY) { LOBBY.sel = (LOBBY.sel + st.navY + nRows) % nRows; sfx('ui'); }
+    if (st.navY) { LOBBY.sel = (LOBBY.sel + st.navY + nRows) % nRows; ev('menu'); }
     if (st.navX && LOBBY.sel < matchRows().length) changeSetting(matchRows()[LOBBY.sel], st.navX);
     if ((dev.type === 'pad' ? st.interact : st.nadeCyc) && MODES[CFG.mode].team) toggleTeam(p);
     if (st.confirm && stateT > 0.3) { if (LOBBY.sel === matchRows().length) { p.ready = true; tryStart(); } else toggleReady(p); }
     if (st.pause && !st.back) { p.ready = true; tryStart(); }
-    if (st.back) { if (p.ready) { p.ready = false; sfx('leave'); } else leaveLobby(p); }
+    if (st.back) { if (p.ready) { p.ready = false; ev('ready', undefined, undefined, { on: 0 }); } else leaveLobby(p); }
   }
   runClicks();
 }
@@ -765,7 +765,7 @@ function drawSlot(x, y, w, h, i, u) {
     button({ x: x + w - ab - 4, y: sy - ab / 2, w: ab, h: ab, label: '›', fn: () => cycleColor(p, 1), size: fpx(22, u, 18), key: ['next', pd], keyAt: 'below' });
   }
   txt(CNAME[p.color], sx, artBot + fpx(12, u, 10), fpx(15, u, 12), col, 'center', 'middle', FD);
-  if (team) { const [tc, tn] = teamChipColor(p.team); button({ x: x + pad, y: y + h - pad - readyH - chipH - 8 * u, w: w - pad * 2, h: chipH, label: 'TEAM ' + tn, fill: tc, fn: () => { if (NET.role === 'host' && isNet(p)) { p.team = 1 - p.team; sfx('ui'); } else if (!p.ready && ctl) toggleTeam(p); }, size: fpx(14, u, 12), key: p.ready ? null : ['team', pd] }); }
+  if (team) { const [tc, tn] = teamChipColor(p.team); button({ x: x + pad, y: y + h - pad - readyH - chipH - 8 * u, w: w - pad * 2, h: chipH, label: 'TEAM ' + tn, fill: tc, fn: () => { if (NET.role === 'host' && isNet(p)) { p.team = 1 - p.team; ev('menu'); } else if (!p.ready && ctl) toggleTeam(p); }, size: fpx(14, u, 12), key: p.ready ? null : ['team', pd] }); }
   button({ x: x + pad, y: y + h - pad - readyH, w: w - pad * 2, h: readyH, label: p.ready ? '✓ READY' : 'READY', primary: !p.ready && ctl, fill: p.ready ? '#7dff7a' : undefined, fn: () => { if (ctl) toggleReady(p); }, size: fpx(17, u, 13), key: [p.ready ? 'back' : 'select', pd] });
 }
 function drawMatchPanel(x, y, w, h, u) {
@@ -804,7 +804,7 @@ function drawMatchPanel(x, y, w, h, u) {
 /* ================= pause ================= */
 const PAUSE = { by: null, sel: 0 };
 const PAUSE_ITEMS = ['RESUME', 'SETTINGS', 'REDEPLOY', 'RESTART MATCH', 'BACK TO LOBBY', 'QUIT TO MENU'];
-function openPause(p) { if (state !== 'play') return; PAUSE.by = p; PAUSE.sel = 0; setState('pause'); sfx('ui'); }
+function openPause(p) { if (state !== 'play') return; PAUSE.by = p; PAUSE.sel = 0; setState('pause'); ev('menu'); }
 const pauseItems = () => {
   const l = NET.role === 'client' ? ['RESUME', 'SETTINGS', 'REDEPLOY', 'LEAVE GAME'] : NET.role === 'host' ? ['RESUME', 'SETTINGS', 'REDEPLOY', 'RESTART MATCH', 'BACK TO LOBBY', 'END GAME'] : PAUSE_ITEMS;
   const l2 = M && M.dev ? l.filter(x => x !== 'BACK TO LOBBY') : l;
@@ -829,7 +829,7 @@ function pauseAct(i) {
 function updatePause(ins) {
   for (const { st } of ins) {
     if (st.pause || st.back) { setState('play'); return; }
-    if (st.navY) { const n = pauseItems().length; PAUSE.sel = (PAUSE.sel + st.navY + n) % n; sfx('ui'); }
+    if (st.navY) { const n = pauseItems().length; PAUSE.sel = (PAUSE.sel + st.navY + n) % n; ev('menu'); }
     if (st.opt) { openSettings('pause'); return; }
     if (st.confirm) { pauseAct(PAUSE.sel); return; }
   }

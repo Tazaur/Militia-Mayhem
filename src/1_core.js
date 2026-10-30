@@ -73,6 +73,7 @@ const WPN = {
   mp: { n: 'MACHINE PISTOL', s: 'M-PISTOL', mag: 20, res: 80, rate: 0.075, dmg: 12, spd: 850, life: 0.3, spread: 0.075, rel: 1.3, snd: 'pistol', vdmg: 1 },
   rpg: { n: 'BAZOOKA', s: 'BAZOOKA', mag: 1, res: 4, rate: 0.5, rel: 1.8, rocket: 1, snd: 'rocket' }
 };
+for (const k in WPN) WPN[k].id = k;
 const KITS = [
   { id: 'rifleman', n: 'RIFLEMAN', p: ['ar', 'br'], s: 'pistol', secs: ['pistol', 'mp'], nades: 3, g: 'medbag', gn: 'MEDIC BAG', desc: 'Front-line all-rounder. Drops bags that heal everyone nearby.' },
   { id: 'engineer', n: 'ENGINEER', p: ['ak', 'smg', 'shotgun'], s: 'rpg', secs: ['rpg'], nades: 1, g: 'torch', gn: 'REPAIR WRENCH', desc: 'Kills armor with rockets. Hold the gadget to repair vehicles.' },
@@ -414,25 +415,27 @@ function noise(o) {
   s.connect(f); f.connect(g); g.connect(o.out || AU.sfx); s.start(now, Math.random() * 1.5); s.stop(now + t + 0.03);
 }
 function thr(k, ms) { const n = performance.now(); if (AU.last[k] && n - AU.last[k] < ms) return false; AU.last[k] = n; return true; }
-function hear(x, y) {
-  if (!M || !M.views.length) return { v: 0.5, p: 0 };
-  let best = 0, pan = 0;
+/* how loud x,y is (v 0..1) and where (p -1..1) under falloff F (1d_sev.js; SEVF by default: by distance from the cameras) */
+function hear(x, y, F) {
+  F = F || SEVF;
+  if (!M || !M.views.length) return { v: F.m === 'flat' ? 1 : 0.5, p: 0 };
+  let best = -1, pan = 0;
   for (const vw of M.views) {
-    const R = Math.max(vw.w, vw.h) / vw.cam.z * 0.75, d = Math.hypot(x - vw.cam.x, y - vw.cam.y);
-    const k = d < R ? 1 - 0.45 * d / R : Math.max(0, 0.55 * (1 - (d - R) / (R * 1.4)));
-    if (k > best) { best = k; pan = M.views.length === 1 ? (x - vw.cam.x) / R : 0; }
+    const R = Math.max(vw.w, vw.h) / vw.cam.z * 0.75, k = fallK(F, Math.hypot(x - vw.cam.x, y - vw.cam.y), R);
+    if (k > best) { best = k; pan = M.views.length === 1 && F.pan !== 0 ? (x - vw.cam.x) / R : 0; }
   }
+  if (F.m === 'world') { const L = localSols(); if (L.length) best = fallK(F, Math.min(...L.map(s => Math.hypot(x - s.x, y - s.y)))); }
   return { v: best, p: pan };
 }
-function sfx(name, x, y, mul) {
-  if (!UISFX[name] || !AU.ui) return sfx1(name, x, y, mul);
-  const k = AU.sfx; AU.sfx = AU.ui; try { return sfx1(name, x, y, mul); } finally { AU.sfx = k; }      // menu clicks: not muffled
+/* play a sound here (ev() in 1b_audio2.js picks which, from the event's rules; r is the rule: falloff, pitch) */
+function sfx(name, x, y, mul, r) {
+  if (!UISFX[name] || !AU.ui) return sfx1(name, x, y, mul, r);
+  const k = AU.sfx; AU.sfx = AU.ui; try { return sfx1(name, x, y, mul, r); } finally { AU.sfx = k; }      // menu clicks: not muffled
 }
-function sfx1(name, x, y, mul) {
-  if (NET.role === 'host' && x !== undefined && NETSFX_I[name] !== undefined) netEv('s', NETSFX_I[name], x | 0, y | 0, Math.round((mul || 1) * 10));
+function sfx1(name, x, y, mul, r) {
   if (!AU.ctx || !AU.sfxOn) return;
-  if (sfx2(name, x, y, mul)) return;
-  const h = x === undefined ? { v: 1, p: 0 } : hear(x, y); const v = h.v * (mul || 1) * (M && M.demo ? 0.35 : 1); if (v < 0.03) return;
+  if (sfx2(name, x, y, mul, r)) return;
+  const h = x === undefined ? { v: 1, p: 0 } : hear(x, y, r && r.F ? Object.assign({}, SEVF, r.F) : SEVF); const v = h.v * (mul || 1) * (M && M.demo ? 0.35 : 1); if (v < 0.03) return;
   const out = outNode(h.p);
   switch (name) {
     case 'rifle': if (!thr('rifle', 35)) return; noise({ t: 0.09, v: 0.26 * v, ft: 'bandpass', f: 1500, f2: 500, q: 0.9, out }); tone({ type: 'square', f: 160, f2: 60, t: 0.06, v: 0.12 * v, out }); break;

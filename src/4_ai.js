@@ -282,7 +282,7 @@ function humanInput(p) {
   const st = p.raw, s = p.sol, I = newI();
   if (!st) return I;
   Object.assign(I, { mx: st.mx, my: st.my, fire: st.fire, alt: st.alt, swapW: !!st.swapW, pickW: st.pickW === undefined ? -1 : st.pickW, enter: !!st.interact, interactSwap: !st.mouse, reload: st.reload, sprint: st.sprint, seatNext: st.seatNext, seatDir: st.seatDir, seatIdx: st.seatIdx, nadeCyc: !!st.nadeCyc, proneT: !!st.proneT, stanceCycle: !!st.stanceCycle, gadget: !!st.gadget, gadgetP: !!st.gadgetP, ads: !!st.ads, jump: !!st.jump, melee: !!st.melee, spot: !!st.spot, lamp: !!st.lamp });
-  if (st.mapT && !(s.veh && p.dev.type === 'pad')) { p.mapOpen = !p.mapOpen; sfx('ui'); }
+  if (st.mapT && !(s.veh && p.dev.type === 'pad')) { p.mapOpen = !p.mapOpen; ev('menu'); }
   if (st.mouse) {
     const vw = M.views.find(v => v.p === p) || M.views[0];
     if (vw) {
@@ -315,7 +315,7 @@ function pickSpawnDir(opts, cur, dx, dy) {
 function deployInput(s, dt) {
   const p = s.player, st = p.raw || {}, opts = spawnOptions(s), K = () => KITS[s.kit];
   s.spawnSel = clamp(s.spawnSel, 0, opts.length - 1);
-  const poke = () => { s.deployIdle = 0; sfx('ui'); };
+  const poke = () => { s.deployIdle = 0; ev('menu'); };
   const changeSlot = (i, d) => { const S = SLOTS[i], n = S.opts(K()).length; if (S.id === 'gad' || n < 2) return; s[S.id] = ((s[S.id] || 0) + d + n) % n; poke(); };
   // bumpers: class · D-pad up/down: loadout slot · D-pad left/right: item in that slot · stick: spawn point on the map
   const kd = st.tabR ? 1 : st.tabL ? -1 : 0; if (kd) { s.kit = (s.kit + kd + KITS.length) % KITS.length; poke(); }
@@ -393,7 +393,7 @@ function fxTick(sdt, dt) {
   for (const f of M.flings) {
     f.t += sdt; f.x += f.vx * sdt; f.y += f.vy * sdt; f.vx *= Math.exp(-sdt * 1.2); f.vy *= Math.exp(-sdt * 1.2); f.rot += f.vr * sdt;
     for (const b of rectsIn(MAP.buildings, f.x - 2, f.y - 2, f.x + 2, f.y + 2, _rb)) if (inRect(f.x, f.y, b, 2)) { f.vx *= -0.4; f.vy *= -0.4; f.x += f.vx * sdt * 2; f.y += f.vy * sdt * 2; }
-    if (f.t >= f.T) { f.done = true; if (inWater(f.x, f.y)) { sfx('splash', f.x, f.y); part({ k: 'ripple', x: f.x, y: f.y, vx: 0, vy: 0, life: 1, max: 1, sz: 24, drag: 0 }); } else { addCorpse(f.color, f.dark, f.x, f.y, f.rot); for (let i = 0; i < 5; i++) blood(f.x, f.y, f.vx, f.vy); sfx('splat', f.x, f.y); } }
+    if (f.t >= f.T) { f.done = true; if (inWater(f.x, f.y)) { ev('body.land', f.x, f.y, { water: 1 }); part({ k: 'ripple', x: f.x, y: f.y, vx: 0, vy: 0, life: 1, max: 1, sz: 24, drag: 0 }); } else { addCorpse(f.color, f.dark, f.x, f.y, f.rot); for (let i = 0; i < 5; i++) blood(f.x, f.y, f.vx, f.vy); ev('body.land', f.x, f.y, { water: 0 }); } }
   }
   prune(M.flings, f => !f.done);
   updateSmokeField(dt); if (MAP.tiled) tiledTick(sdt);

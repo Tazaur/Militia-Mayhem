@@ -10,25 +10,66 @@ function gainEnv(out, now, v, att, dec) { const g = AU.ctx.createGain(); g.gain.
 /* the music's drums: a sound layer's tone and noise voices */
 function thump(out, now, f0, f1, t, v, drive) { sfxVoice(AU, Object.assign({}, SFXK.t, { f: f0, f2: f1, s: 0.8, t, dr: drive || 2.2 }), out, now, v, 1); }
 function burst(out, now, o) { sfxVoice(AU, Object.assign({}, SFXK.n, { ft: o.ft || 'lowpass', f: o.f, f2: o.f2 || 0, q: o.q || 0.7, a: o.att || 0.002, t: o.t }), out, now, o.v, 1); }
-/* a preset sound (1c_sfx.js): false when there's none for this name, so the classic set plays it */
-function sfx2(name, x, y, mul) {
-  const P = SFXU[name] && !SFXU[name].e ? SFXU[name] : CFG.sound !== 'classic' && SFXD[name]; if (!P) return false;
-  const h = x === undefined || P.nd ? { v: 1, p: x === undefined ? 0 : hear(x, y).p } : hear(x, y), v = (P.nd ? 1 : h.v) * (mul || 1) * (M && M.demo ? 0.35 : 1);
+/* a preset sound (1c_sfx.js): false when there's none for this name, so the classic set plays it. r: the event rule playing it */
+function sfx2(name, x, y, mul, r) {
+  let P = SFXU[name] && !SFXU[name].e ? SFXU[name] : CFG.sound !== 'classic' && SFXD[name]; if (!P) return false;
+  const F = r && r.F ? Object.assign({}, SEVF, r.F) : SEVF;
+  const h = x === undefined || P.nd ? { v: 1, p: x === undefined ? 0 : hear(x, y, F).p } : hear(x, y, F), v = (P.nd ? 1 : h.v) * (mul || 1) * (M && M.demo ? 0.35 : 1);
   if (v < 0.02) return true;
   if (P.th && !thr('p' + name, P.th)) return true;
-  sfxRun(AU, P, sfxOut(AU, P, h.v, h.p, AU.sfx, AU.verbIn), AU.ctx.currentTime, v);
+  if (r && r.p && r.p !== 1) P = Object.assign({}, P, { p: (P.p || 1) * r.p });
+  sfxRun(AU, P, sfxOut(AU, P, h.v, h.p, AU.sfx, AU.verbIn, F), AU.ctx.currentTime, v);
   if (P.in) SND.int = Math.min(1, SND.int + P.in * h.v);
   return true;
 }
-/* blasts close to a player: hearing muffles and a high whine rings for a couple of seconds */
-function earRing(x, y, r) {
-  if (!AU.ctx || CFG.sound === 'classic' || !AU.sfxOn || !M || M.demo) return;
-  let k = 0; for (const s of localSols()) k = Math.max(k, 1 - Math.hypot(s.x - x, s.y - y) / (r * 1.6));
-  if (k <= 0.05) return;
-  const c = AU.ctx, now = c.currentTime, dur = 1.2 + 2.2 * k, f = AU.ear.frequency;
-  f.cancelScheduledValues(now); f.setValueAtTime(Math.max(f.value, 20), now); f.exponentialRampToValueAtTime(260 + (1 - k) * 1600, now + 0.05); f.exponentialRampToValueAtTime(20000, now + dur);
-  for (const [fq, vv] of [[3720, 0.05], [4180, 0.03]]) { const o = c.createOscillator(); o.type = 'sine'; o.frequency.value = fq; const g = c.createGain(); g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(vv * k, now + 0.12); g.gain.exponentialRampToValueAtTime(0.0001, now + dur); o.connect(g); g.connect(AU.master); o.start(now); o.stop(now + dur + 0.1); }
-  for (const p of LOCALS()) rumble(p, 0.8 * k, 0.35);
+/* ================= events → sounds (rules in 1d_sev.js) =================
+   ev(name, x, y, ctx): something happened; each of the event's rules whose condition passes plays its sound (or effect).
+   The Sound Lab's EVENTS tab edits the rules; "Send rules to game" stores them here (they replace that event's defaults). */
+const SEVU = store.get('sevlab', {});
+addEventListener('storage', e => { if (e.key !== 'mmgl.sevlab') return; for (const k in SEVU) delete SEVU[k]; Object.assign(SEVU, store.get('sevlab', {})); });
+/* the soldiers this screen plays as (alive or not) */
+function evMine() { const a = LOCALS().map(p => p.sol).filter(Boolean); if (NET.me && NET.me.sol && !a.includes(NET.me.sol)) a.push(NET.me.sol); return a; }
+function ev(name, x, y, c) {
+  const D = EVD[name]; if (!D) return; c = c || {};
+  if (NET.role === 'host' && D[3].includes('n') && !c._net) evSend(name, x, y, c);      // only the host sees it: tell the others
+  if (!AU.ctx || !AU.sfxOn) return;
+  const R = SEVU[name] || SEVD[name]; if (!R || !R.length) return;
+  const mine = evMine(), X = Object.assign({}, c);
+  if (c.s) { X.me = mine.includes(c.s) ? 1 : 0; X.ally = mine.some(m => m.team === c.s.team) ? 1 : 0; X.bot = c.s.player ? 0 : 1; }
+  if (c.team !== undefined) X.mine = mine.some(m => m.team === c.team) ? 1 : 0;
+  if (x !== undefined) { const L = mine.filter(s => s.alive); X.dist = Math.round(L.length ? Math.min(...L.map(s => Math.hypot(x - s.x, y - s.y))) : M && M.views[0] ? Math.hypot(x - M.views[0].cam.x, y - M.views[0].cam.y) : 0); }
+  for (let i = 0; i < R.length; i++) {
+    const r = R[i]; if (r.off || !sevTest(r.if, X)) continue;
+    if (r.th && !thr('e' + name + i, r.th)) continue;
+    if (r.dl > 0) setTimeout(() => evPlay(r, x, y, X), r.dl * 1000); else evPlay(r, x, y, X);
+  }
+}
+function evPlay(r, x, y, X) {
+  const v = r.v === undefined ? 1 : r.v;
+  if (r.fx === 'deafen') {
+    if (x === undefined || !M || M.demo) return;
+    const E = Object.assign({}, SEVX.deafen, r.E), reach = (X.r || 100) * E.re;
+    let k = 0; for (const s of localSols()) k = Math.max(k, 1 - Math.hypot(s.x - x, s.y - y) / reach);
+    if (k <= 0.05) return;
+    deafen(AU, Math.min(1, k * v), E); if (E.rm) for (const p of LOCALS()) rumble(p, E.rm * k, 0.35);
+    return;
+  }
+  if (!r.s) return;
+  if (r.who === 'pl') { if (X.me) sfx(r.s, undefined, undefined, v, r); }
+  else if (r.who === 'ui') sfx(r.s, undefined, undefined, v, r);
+  else sfx(r.s, x, y, v, r);
+}
+/* host → clients: ['e', event, x, y, soldier, team, ...the event's fields in EVD order]; one soldier's repeats of an event within 120 ms are dropped */
+const EVSENT = {};
+function evSend(name, x, y, c) {
+  const si = c.s ? M.sol.indexOf(c.s) : -1, k = name + si, n = performance.now(); if (EVSENT[k] && n - EVSENT[k] < 120) return; EVSENT[k] = n;
+  netEv('e', EVLIST.indexOf(name), x === undefined ? null : x | 0, y === undefined ? null : y | 0, si, c.team === undefined ? null : c.team, ...Object.keys(EVD[name][2]).map(f => c[f] === undefined ? null : c[f]));
+}
+function evNet(a) {
+  const name = EVLIST[a[1]], D = EVD[name]; if (!D) return;
+  const c = { _net: 1 }; if (M.sol[a[4]]) c.s = M.sol[a[4]]; if (a[5] !== null && a[5] !== undefined) c.team = a[5];
+  Object.keys(D[2]).forEach((f, i) => { if (a[6 + i] !== null && a[6 + i] !== undefined) c[f] = a[6 + i]; });
+  ev(name, a[2] === null ? undefined : a[2], a[3] === null ? undefined : a[3], c);
 }
 /* rockets in flight: a crackling, sizzling loop that follows the rocket */
 function loopsUpdate(dt) {
