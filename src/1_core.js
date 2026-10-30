@@ -699,7 +699,7 @@ function touchPlayer() { return PLAYERS.find(p => p.dev.type === 'touch'); }
 const CFG = Object.assign({ mode: 0, map: 0, bots: 5, limit: 1, skill: 1, ff: false, board: false, midjoin: true, camera: 'split', style: 'classic', fogLook: 'grey', weather: 'clear', teamColors: 'player', fog: 'los', sound: 'exp', sun: true, clearLos: true,
   res: 100, lightQ: 1, shLay: true, shLen: 64, shMem: true, shPt: true, lights: 'all', refl: true, fogQ: 'high', smk: 'high', fps: 0, minimap: true, tSize: 100, tAlpha: 100, tFireX: 96, tFireY: 92, tLfire: true, volMaster: 100, volSfx: store.get('sfx', true) ? 100 : 0, volMus: store.get('mus', true) ? 100 : 0 }, store.get('cfg3', {}));
 /* settings › FOG OF WAR presets: [name, values] (drawn by fogLook / fogEdge) */
-const FOG_PRESETS = [['GREYSCALE', { fogD: 100, fogK: 22, fogE: 0, fogW: 24 }], ['MUTED', { fogD: 50, fogK: 22, fogE: 0, fogW: 24 }],
+const FOG_PRESETS = [['STANDARD', { fogD: 20, fogK: 20, fogE: 50, fogW: 16 }], ['GREYSCALE', { fogD: 100, fogK: 22, fogE: 0, fogW: 24 }], ['MUTED', { fogD: 50, fogK: 22, fogE: 0, fogW: 24 }],
   ['DARKENED', { fogD: 0, fogK: 42, fogE: 0, fogW: 24 }], ['EDGE ONLY', { fogD: 0, fogK: 0, fogE: 60, fogW: 24 }]];
 /* settings › PERFORMANCE › PRESET: [name, values] (any row changed after: CUSTOM). Costliest first: the light's resolution
    (lightQ), DYNAMIC LIGHTING (off: drop shadows, no light maps), each channel past the first (shLay: a sweep each), the
@@ -712,7 +712,7 @@ const QUALITY = [['ULTRA', { res: 100, lightQ: 2, sun: true, shLay: true, shLen:
   ['LOW', { res: 90, lightQ: 1, sun: true, shLay: false, shLen: 64, shMem: false, shPt: true, lights: 'spot', refl: false, fogQ: 'low', smk: 'low' }],
   ['VERY LOW', { res: 85, lightQ: 0, sun: true, shLay: false, shLen: 32, shMem: false, shPt: false, lights: 'spot', refl: false, fogQ: 'low', smk: 'low' }],
   ['LOWEST', { res: 70, lightQ: 0, sun: false, shLay: false, shLen: 32, shMem: false, shPt: false, lights: 'spot', refl: false, fogQ: 'low', smk: 'low' }]];
-if (CFG.fogD === undefined) Object.assign(CFG, FOG_PRESETS[{ grey: 0, partial: 1, dark: 2 }[CFG.fogLook] || 0][1]);     // the old OUT OF SIGHT choice, as sliders
+if (CFG.fogV !== 1) { Object.assign(CFG, FOG_PRESETS[0][1]); CFG.fogV = 1; }     // STANDARD the default (once, over what was set before)
 delete CFG.fogLook; applyMute();     // sets sfxOn / musOn from the volumes
 /* soldiers: one design (dark green, armband in the team colour); poses stand / nogun / rpg / sit / dead / leg0-2 */
 function solSpr(color, pose) { return 'sol_' + pose + '_' + color; }

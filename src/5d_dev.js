@@ -274,6 +274,10 @@ function roofView(vw, x0, y0, x1, y1) {
   const x = Math.max(0, Math.floor(x0)), y = Math.max(0, Math.floor(y0)), w = Math.min(WW, Math.ceil(x1)) - x, h = Math.min(WH, Math.ceil(y1)) - y; if (w <= 0 || h <= 0) return null;
   if (ROOF_V.width < w || ROOF_V.height < h) { ROOF_V.width = Math.max(ROOF_V.width, w); ROOF_V.height = Math.max(ROOF_V.height, h); }
   const g = ROOF_V.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, w, h); g.drawImage(ROOF_C, x, y, w, h, 0, 0, w, h);
+  if (SUNNOW) {     // drawn over the light: lit here as the light lit a flat top (sunTone's sunlit colour)
+    const [r, gg, b] = sunTone().li; g.globalCompositeOperation = 'multiply'; g.fillStyle = `rgb(${r * 255 | 0},${gg * 255 | 0},${b * 255 | 0})`; g.fillRect(0, 0, w, h);
+    g.globalCompositeOperation = 'destination-in'; g.drawImage(ROOF_C, x, y, w, h, 0, 0, w, h); g.globalCompositeOperation = 'source-over';
+  }
   const eyes = viewSols(vw).map(posOf), inside = CFG.clearLos !== false || eyes.some(o => roofAt(o.x, o.y) === 1);
   const dt = Math.min(0.1, Math.max(0, M.time - (vw.rfT ?? M.time))); vw.rfT = M.time; vw.rf = clamp((vw.rf || 0) + (inside ? dt : -dt) * 4, 0, 1);
   const f = vw.rf; if (f <= 0) return { c: ROOF_V, x, y, w, h };

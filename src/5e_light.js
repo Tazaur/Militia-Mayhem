@@ -332,13 +332,9 @@ void main() {
     const CP = prog(VS, `precision highp float; ${TX}
 #define PLT vec3(1., 0.96, 0.86)
 uniform sampler2D MT, LT, SWT, SWS, SWL; uniform vec2 G, P, O; uniform float K, Q, V, TM, BL, EN, RF, LB, LY, RFL; uniform vec3 L, C, W, SKY, LI; uniform vec3 WX; uniform vec4 E[2];
-float ro(float d) { return ${ROOF_CAP.toFixed(2)} * clamp((d - ${ROOF_NEAR.toFixed(1)}) / ${(ROOF_FAR - ROOF_NEAR).toFixed(1)}, 0., 1.); }     // roofOp
-float roofA(vec2 p, vec2 w, bool ou) {     // how much of the roof shows here (roofView's fade; out of sight, all of it)
-  if (tx(p).b < 0.5 || hh(p) > ${ROOF_Z[1].toFixed(1)}) return 0.;
-  if (ou) return 1.;
-  float a = 1.;
-  for (int i = 0; i < 4; i++) { if (float(i) >= EN) break; vec4 e = E[i / 2]; float d = length(w - (i - i / 2 * 2 == 0 ? e.xy : e.zw)); a *= i == 0 ? ro(d) : ro(d) / ${ROOF_CAP.toFixed(2)}; }
-  return mix(1., a, RF); }     // RF: how far inside a house the view is (roofView's vw.rf)
+float roofA(vec2 p, bool ou) {     // the remembered roof (out of sight it's whole, as last seen: HS's B), lit as a flat top. In sight the roof is drawn over the light (drawWorld)
+  if (!ou) return 0.;
+  vec4 c = texture2D(HS, clamp(p, R.xy, R.zw) / S); return c.b > 0.5 && max(c.r, c.g) * 63.75 <= ${ROOF_Z[1].toFixed(1)} ? 1. : 0.; }
 vec4 mt(vec2 p) { return texture2D(MT, clamp(p, R.xy, R.zw) / S); }
 vec3 hr(float t) { t = clamp(t, 0., 1.) * 4.; return t < 1. ? mix(vec3(0.04, 0.04, 0.16), vec3(0.1, 0.3, 0.95), t) : t < 2. ? mix(vec3(0.1, 0.3, 0.95), vec3(0.1, 0.85, 0.35), t - 1.) : t < 3. ? mix(vec3(0.1, 0.85, 0.35), vec3(1., 0.85, 0.1), t - 2.) : mix(vec3(1., 0.85, 0.1), vec3(1., 0.2, 0.15), t - 3.); }     // dev heights' ramp
 float hs(vec2 p) { vec3 q = fract(p.xyx * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }     // fract hash: no big sin (it splits between cells)
@@ -350,7 +346,8 @@ void main() {
   bool ou = FG > 0.5; float h0 = hv(p, ou), sh;
   vec3 N = normalize(vec3(-vec2(hv(p + vec2(1., 0.), ou) - hv(p - vec2(1., 0.), ou), hv(p + vec2(0., 1.), ou) - hv(p - vec2(0., 1.), ou)) * K * 0.5, 1.));
   float lam = (0.45 + 0.55 * max(dot(N, L), 0.)) / (0.45 + 0.55 * L.z);
-  { vec2 q = (floor(p) + 0.5) / S; sh = 1. - max(sunIn(ou ? texture2D(SWS, q) : texture2D(SWT, q), h0), LY > 0.5 && !ou ? texture2D(SWL, q).r : 0.); }
+  { vec2 q = (floor(p) + 0.5) / S; vec4 sw = ou ? texture2D(SWS, q) : texture2D(SWT, q); bool ur = !ou && tx(p).b > 0.5 && h0 < ${ROOF_Z[0].toFixed(1)};     // ur: indoors, under the roof: lit as if open (the walls' shadows, the sun in at windows and doors)
+    sh = 1. - max(ur ? clamp((un(sw.rg) - h0 + 0.75) / 1.5, 0., 1.) : sunIn(sw, h0), LY > 0.5 && !ou ? texture2D(SWL, q).r : 0.); }
   if (Q > 4.5) { vec4 a = texture2D(LT, f / G); gl_FragColor = vec4(Q > 5.5 ? min(a.rgb * 4. + a.a * 2. * PLT, 1.) : vec3(sh), 1.); return; }     // dev: the sun's shadow alone, the point lights alone
   if (Q > 3.5) { gl_FragColor = vec4(mt(p).rgb, 1.); return; }
   if (Q > 2.5) {     // dev HEIGHTS: the top (whatever it is) on one ramp, 0 dark blue .. 64 px red; hatched where it floats over air (not where it rests on a wheel / track): the hatch is its underside
@@ -365,7 +362,7 @@ void main() {
   // the memory's map (ou): shade only (no highlights, glow, gloss), roofs whole
   if (ou && Q > 0.5) { gl_FragColor = vec4(0., 0., 0., 1.); return; }
   if (ou) { pl = vec3(0.); r = 0.; }
-  float ra = roofA(p, w, ou);     // the roof shows: lit as a flat top in the sun (as is: no shade, no highlight)
+  float ra = roofA(p, ou);     // the roof shows: lit as a flat top in the sun (as is: no shade, no highlight)
   if (Q < 0.5) { gl_FragColor = vec4(mix(min(mix(C, LI, sh) * min(lam, 1.) + pl, vec3(1.)) * (1. - r * 0.55), min(LI + pl, vec3(1.)), ra), 1.); return; }     // C: shade, LI: sunlit (both the night's ambient after dark)
   if (Q < 1.5) { vec3 hi = W * max(lam - 1., 0.) * 1.6 * sh + pl * 0.6 + gw * 1.5; gl_FragColor = vec4(hi / (1. + hi) * (1. - ra), 1.); return; }     // dodge by h / (1 + h): x (1 + h)
   float b = 0.;

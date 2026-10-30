@@ -854,3 +854,9 @@ ROOF_STYLES, MAP_ROOFS and roofPaint(H, st, list, snow, grit) live in src/2d_hou
 - drawWorld's fog hole still listed the old rect roofs (`roofs`, gone): a ReferenceError every frame with line-of-sight vision, no UI. Removed.
 - ROOF_CAP 1: roofs past ROOF_FAR from your eyes are solid (0.7 let walls show through every roof in view); the see-inside fade near you stays.
 - Pavements (gRoadCv walk): each is cut where a road laid before it has pavement (one-sided, by stamp order), so a street ending on another doesn't draw its curb over the other's pavement.
+
+## Roofs over the light; indoor sun; FoW STANDARD (after 285)
+- With the sun on, the in-sight roof (roofView, pre-lit by sunTone().li) is drawn after the smoke: nothing under a roof (vehicles, smoke) shows over it. Sun off: queued at tree height - 1.
+- CP roofA: memory only, from HS's B (the roof as remembered), so tiles that fell out of sight aren't known.
+- Indoors (in sight, under a live roof, below ROOF_Z[0]): the sun's shadow is the sweep's skyline alone, not its floating spans (the slab), so walls cast, light comes in at windows/doors, units cast on the floor.
+- FOG_PRESETS[0] STANDARD {fogD 20, fogK 20, fogE 50, fogW 16}: the default, set once (CFG.fogV 1) over earlier choices.

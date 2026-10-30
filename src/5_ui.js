@@ -58,9 +58,9 @@ function drawWorld(vw) {
   AK = 'shot'; for (const p of M.proj) if (vis(p.x, p.y, 20)) at(shotZ(p), () => drawProj(p));
   AK = 'thrown body'; for (const f of M.flings) if (vis(f.x, f.y, 40)) { const k = f.t / f.T, h = Math.sin(Math.PI * k); at(ZH.body + h * 34, () => solDraw(f, solSpr(f.color, 'dead'), f.x, f.y - h * 34, f.rot, 1 + h * 0.6, 1 + h * 0.6)); }
   if (!devOff('parts')) partsInto(at, vis);
-  AK = 'roofs'; at(SUNH.wall, () => {     // roofs (always known: the memory's hole leaves them showing, lit); the dev yard's as you see it
-    if (rv) { worldT(); ctx.imageSmoothingEnabled = false; ctx.drawImage(rv.c, 0, 0, rv.w, rv.h, rv.x, rv.y, rv.w, rv.h); }
-  });
+  // roofs over everything under them (vehicles, smoke): with the sun, after the smoke (lit already: roofView); without, the top of the queue's ground things
+  const roofDraw = () => { if (rv) { worldT(); ctx.imageSmoothingEnabled = false; ctx.drawImage(rv.c, 0, 0, rv.w, rv.h, rv.x, rv.y, rv.w, rv.h); } };
+  AK = 'roofs'; if (!SUNNOW) at(SUNH.tree[0] - 1, roofDraw);
   AK = 'killer glow'; at(99, () => drawKillerGlow(vw), true);
   Q.sort((a, b) => a.z - b.z || a.i - b.i);
   for (const d of Q) if (!d.post) { d.f(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; pipe('q', d); }
@@ -73,6 +73,7 @@ function drawWorld(vw) {
   if (fogged && !devOff('fog')) drawSoftFog(vw); pipe('softfog');
   drawLasers(vis); pipe('lasers');     // under the smoke: a man in it doesn't give himself away
   if (!devOff('smoke')) drawSmokes(vw); pipe('smokes');
+  if (SUNNOW) { roofDraw(); pipe('roofs'); }
   // the remembered world over what's out of sight (everything above was drawn whole; dev views: the whole screen)
   if (fogged && !(SUNNOW && SUNDBG)) { const H = new Path2D(); polyPath(H, fogPolys); worldT(); fogOverlay(vw, H); }
   // tags, reticles
