@@ -33,7 +33,8 @@ function rr(g, x, y, w, h, r) { g.beginPath(); if (g.roundRect) g.roundRect(x, y
 let WW = 3000, WH = 2000;                // the dev yard shrinks the world (setWorld)
 /* out of bounds: a band of terrain around the battlefield you can enter, but staying out for OOB_T seconds kills you */
 const SKIRT = 480, OOB_T = 5;
-const outOfBounds = (x, y) => x < 0 || y < 0 || x > WW || y > WH;
+let BOUNDM = null;     // a stamped map's battlefield edge as a grid (2b_ground.js gBoundsMask): outside it is out of bounds too
+const outOfBounds = (x, y) => x < 0 || y < 0 || x > WW || y > WH || (BOUNDM !== null && !BOUNDM.a[((y / BOUNDM.s) | 0) * BOUNDM.w + ((x / BOUNDM.s) | 0)]);
 const COLORS = ['red', 'orange', 'yellow', 'green', 'blue', 'cyan', 'magenta'];   // the playable colours (art also has white/black, unused)
 const CHEX_C = { red: '#e02c26', orange: '#f07c16', yellow: '#e8cc20', green: '#2cc036', blue: '#345cf2', cyan: '#22cce4', magenta: '#cc36cc', white: '#f0f0f0', black: '#4a4a4a' };
 const CHEX_G = { red: '#b04a3e', orange: '#bd7838', yellow: '#b9ac4c', green: '#638f48', blue: '#516fae', cyan: '#5299a6', magenta: '#8f5190', white: '#cbc6b8', black: '#4a4a44' };

@@ -785,3 +785,9 @@ Art drop (drop.py): atlas.png: hull4, tur_dead; atlas_m.png: tur_dead, sol_leg0,
 ## Build 264: roads, skirt and scale guide in the map editor
 - Road stamps: `{k:'path',t,soft,r,wd,l:[[x,y,...],...]}`: open lines (l[0] main, the rest branches starting on it), all stroked wd wide into one mask (so junctions blend), interior corners rounded by r (gPath). gLines(s) = s.l || [s.p]; gOk(s) says if it bakes.
 - Editor: one slider with chips (Edge / Round / Width); ⑂ Branch snaps its first tap to the road; handles are [line, index]; canvas follows #wrap via ResizeObserver (the bar's rows change: before, taps were off when a shape was selected); 480 px skirt drawn like the game (base texture + red tint); scale guide (tank, jeep, soldier at true size + ruler, View menu).
+
+## Build 265: battlefield edge (stamped maps)
+- Map field `bounds: {p, r}`: a polygon (rounded by r) inside the map; outside it is out of bounds like the skirt. gOob tints outside it and dashes the edge in gBake (colour only, via a 2D scratch canvas since gc may be GX). gBoundsMask → BOUNDM (8 px grid) read by outOfBounds() (1_core.js); BOUNDM reset in buildMap, set in its g: branch.
+- buildMap g: maps: flags/bases moved in (inside(o, d)), blockedFor refuses OOB, afterwards OOB statics/crates/ffa spawns dropped and vehicle spawns/fwd moved in; buildNav blocks OOB cells (bots don't path out).
+- gStampAdd now re-bakes the stamp's whole box (stamps under it + the edge tint).
+- Editor: ⬠ Edge (no selection) adds a rectangle edge and selects it (sel = EDGE = -2, cur()); drag/add/remove points, Round up to 800, "Whole map" removes it; points clamp to the map.

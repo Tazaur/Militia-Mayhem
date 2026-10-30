@@ -106,6 +106,8 @@ let G = null;                                   // the open map
 const V = { x: 0, y: 0, z: 0.3 };               // view: screen = (world - x, y) * z (CSS px)
 let sel = -1, selV = null, tool = 'select', draft = null;     // selected stamp, its selected point [line, index]; draft: the shape / road being drawn
 const UNDO = [], REDO = [];
+/* the selection: a stamp (sel >= 0) or the battlefield edge (sel -2: G.bounds {p, r}, edited as a shape is) */
+const EDGE = -2, cur = () => sel === EDGE ? G.bounds : G.stamps[sel];
 const slug = n => (n || 'map').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'map';
 function newMap(name, w, h, base) {
   let id = slug(name), k = 2; while (S.maps[id]) id = slug(name) + '_' + k++;
@@ -116,10 +118,10 @@ function open(id) {
   bakeAll(); fit(); ui(); save();
 }
 /* a change: undo keeps the map before it */
-function snap() { UNDO.push(JSON.stringify({ base: G.base, stamps: G.stamps })); if (UNDO.length > 100) UNDO.shift(); REDO.length = 0; }
+function snap() { UNDO.push(JSON.stringify({ base: G.base, stamps: G.stamps, bounds: G.bounds })); if (UNDO.length > 100) UNDO.shift(); REDO.length = 0; }
 function restore(from, to) {
-  if (!from.length) return; to.push(JSON.stringify({ base: G.base, stamps: G.stamps }));
-  const o = JSON.parse(from.pop()); G.base = o.base; G.stamps = o.stamps; sel = Math.min(sel, G.stamps.length - 1); selV = null; bakeAll(); save(); ui();
+  if (!from.length) return; to.push(JSON.stringify({ base: G.base, stamps: G.stamps, bounds: G.bounds }));
+  const o = JSON.parse(from.pop()); G.base = o.base; G.stamps = o.stamps; G.bounds = o.bounds; if (!G.bounds) delete G.bounds; sel = sel === EDGE && !G.bounds ? -1 : Math.min(sel, G.stamps.length - 1); selV = null; bakeAll(); save(); ui();
 }
 
 /* ---------- the bake: the map at full size (colour, and the material map when it's shown), only what changed ---------- */
@@ -157,8 +159,8 @@ function frame() {
   const k = 1 / V.z;
   cx.lineWidth = 2 * k; cx.strokeStyle = 'rgba(255,90,60,.6)'; cx.setLineDash([10 * k, 8 * k]); cx.strokeRect(0, 0, G.w, G.h); cx.setLineDash([]);
   if (S.lines) G.stamps.forEach((s, i) => { if (i === sel) return; outline(s, s.off ? 'rgba(255,255,255,.18)' : 'rgba(255,255,255,.45)', 1.5 * k, s.off); });
-  if (sel >= 0) {
-    const s = G.stamps[sel];
+  if (sel !== -1) {
+    const s = cur();
     if (s.r > 0) { gPath(cx, { p: s.p, l: s.l }); cx.lineWidth = 1 * k; cx.strokeStyle = 'rgba(245,214,112,.35)'; cx.setLineDash([4 * k, 5 * k]); cx.stroke(); cx.setLineDash([]); }     // the points' cage
     if (s.l) { gPath(cx, s); cx.lineWidth = s.wd; cx.lineCap = cx.lineJoin = 'round'; cx.strokeStyle = 'rgba(245,214,112,.16)'; cx.stroke(); cx.lineCap = cx.lineJoin = 'miter'; }     // the road's width
     gPath(cx, s); cx.lineWidth = 2.5 * k; cx.strokeStyle = '#000'; cx.stroke(); cx.lineWidth = 1.5 * k; cx.strokeStyle = '#f5d670'; cx.stroke();
@@ -232,11 +234,11 @@ cv.addEventListener('pointerdown', e => {
   const sx = ox(e), sy = oy(e), [wx, wy] = toWorld(sx, sy), R = 18, scr = (x, y) => Math.hypot((x - V.x) * V.z - sx, (y - V.y) * V.z - sy);
   drag = { sx, sy, wx, wy, moved: false, kind: 'pan', vx: V.x, vy: V.y };
   if (tool !== 'select') return;
-  if (sel >= 0) {
-    const s = G.stamps[sel];
+  if (sel !== -1) {
+    const s = cur();
     for (const [li, i, x, y] of verts(s)) if (scr(x, y) < R) { Object.assign(drag, { kind: 'vert', li, i, box: gBox(s) }); return; }
     for (const [li, i, x, y] of mids(s)) if (scr(x, y) < R) { Object.assign(drag, { kind: 'mid', li, i, box: gBox(s) }); return; }
-    if (hits(s, wx, wy)) { Object.assign(drag, { kind: 'move', box: gBox(s), p0: copyL(s) }); return; }
+    if (sel >= 0 && hits(s, wx, wy)) { Object.assign(drag, { kind: 'move', box: gBox(s), p0: copyL(s) }); return; }
   }
   for (let i = G.stamps.length - 1; i >= 0; i--) if (hits(G.stamps[i], wx, wy)) { Object.assign(drag, { kind: 'move', pick: i, box: gBox(G.stamps[i]), p0: copyL(G.stamps[i]) }); return; }
 });
@@ -252,14 +254,15 @@ cv.addEventListener('pointermove', e => {
     drag.moved = true;
     if (drag.kind !== 'pan') snap();
     if (drag.pick !== undefined) { sel = drag.pick; selV = null; ui(); }
-    if (drag.kind === 'mid') { const p = gLines(G.stamps[sel])[drag.li], i = drag.i, j = i + 2 < p.length ? i + 2 : 0; p.splice(i + 2, 0, Math.round((p[i] + p[j]) / 2), Math.round((p[i + 1] + p[j + 1]) / 2)); drag.kind = 'vert'; drag.i += 2; }
+    if (drag.kind === 'mid') { const p = gLines(cur())[drag.li], i = drag.i, j = i + 2 < p.length ? i + 2 : 0; p.splice(i + 2, 0, Math.round((p[i] + p[j]) / 2), Math.round((p[i + 1] + p[j + 1]) / 2)); drag.kind = 'vert'; drag.i += 2; }
     if (drag.kind === 'vert') selV = [drag.li, drag.i];
   }
   const [wx, wy] = toWorld(ox(e), oy(e));
   if (drag.kind === 'pan') { V.x = drag.vx - dx / V.z; V.y = drag.vy - dy / V.z; draw(); return; }
-  const s = G.stamps[sel], L = gLines(s);
+  const s = cur(), L = gLines(s);
   if (drag.kind === 'vert') { const p = L[drag.li]; p[drag.i] = Math.round(wx); p[drag.i + 1] = Math.round(wy); }
   else { const mx = Math.round(wx - drag.wx), my = Math.round(wy - drag.wy); L.forEach((p, li) => { for (let i = 0; i < p.length; i += 2) { p[i] = drag.p0[li][i] + mx; p[i + 1] = drag.p0[li][i + 1] + my; } }); }
+  if (sel === EDGE) for (const p of L) for (let i = 0; i < p.length; i += 2) { p[i] = Math.max(0, Math.min(G.w, p[i])); p[i + 1] = Math.max(0, Math.min(G.h, p[i + 1])); }     // the edge stays on the map
   const b = gBox(s); dirty(boxU(drag.box, b)); drag.box = b; draw();
 });
 function endDrag(cancel) {
@@ -268,7 +271,7 @@ function endDrag(cancel) {
     if (draft) { addPoint(d.wx, d.wy); return; }
     if (d.kind === 'vert') { selV = [d.li, d.i]; draw(); ui(); return; }
     if (d.pick !== undefined) { sel = d.pick; selV = null; ui(); draw(); return; }
-    if (d.kind === 'pan' && sel >= 0) { sel = -1; selV = null; ui(); draw(); }
+    if (d.kind === 'pan' && sel !== -1) { sel = -1; selV = null; ui(); draw(); }
     return;
   }
   if (d.kind !== 'pan') { dirty(d.box); save(); ui(); }
@@ -280,7 +283,7 @@ cv.addEventListener('wheel', e => { e.preventDefault(); zoomAt(Math.exp(-e.delta
 
 /* ---------- drawing: a shape (tap points, Done or tap the first), a road (tap points, Done), a branch (starts on the road) ---------- */
 function startDraft(k) {
-  const s = sel >= 0 ? G.stamps[sel] : null, like = s && (k === 'shape') === !s.l ? s : null;
+  const s = sel >= 0 ? cur() : null, like = s && (k === 'shape') === !s.l ? s : null;
   if (k === 'branch') { draft = { k, of: sel, t: s.t, wd: s.wd, r: s.r || 0, p: [] }; tool = 'draw'; return; }
   draft = { k, t: like ? like.t : lastTex(k), soft: like ? like.soft : k === 'road' ? 10 : 16, r: like ? like.r || 0 : k === 'road' ? 120 : 0, wd: like && like.wd || 70, p: [] };
   tool = 'draw'; sel = -1; selV = null;
@@ -301,21 +304,21 @@ function finishDraft() {
   snap();
   if (d.k === 'branch') { const s = G.stamps[d.of]; s.l.push(d.p); sel = d.of; }
   else { G.stamps.push(d.k === 'road' ? { k: 'path', t: d.t, soft: d.soft, r: d.r, wd: d.wd, l: [d.p] } : { t: d.t, soft: d.soft, r: d.r, p: d.p }); sel = G.stamps.length - 1; }
-  selV = null; dirty(gBox(G.stamps[sel])); draft = null; tool = 'select'; save(); ui(); draw();
+  selV = null; dirty(gBox(cur())); draft = null; tool = 'select'; save(); ui(); draw();
 }
 /* ready-made shapes at the middle of the view: a square, a circle, a blob */
 function addShape(k) {
   const [cx0, cy0] = toWorld(W / 2, H / 2), r = Math.max(40, Math.round(Math.min(W, H) * 0.22 / V.z)), p = [];
   const n = k === 'sq' ? 4 : k === 'circ' ? 20 : 12;
   for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2 + (k === 'sq' ? Math.PI / 4 : 0), f = k === 'blob' ? 0.7 + Math.random() * 0.5 : 1; p.push(Math.round(cx0 + Math.cos(a) * r * f), Math.round(cy0 + Math.sin(a) * r * f)); }
-  snap(); const last = sel >= 0 && !G.stamps[sel].l ? G.stamps[sel] : null;
+  snap(); const last = sel >= 0 && !cur().l ? cur() : null;
   G.stamps.push({ t: last ? last.t : lastTex(), soft: last ? last.soft : 16, r: last ? last.r || 0 : 0, p }); sel = G.stamps.length - 1; selV = null; tool = 'select'; draft = null;
-  dirty(gBox(G.stamps[sel])); save(); ui(); draw();
+  dirty(gBox(cur())); save(); ui(); draw();
 }
 const lastTex = k => (k === 'road' ? S.rtex : S.tex) || (k === 'road' ? 'asphalt' : gTexNames().find(n => n !== G.base) || 'dirt');
 
 /* ---------- the selection's edits ---------- */
-function edit(fn, b0) { const s = G.stamps[sel]; const before = b0 || gBox(s); fn(s); dirty(boxU(before, gBox(s))); save(); draw(); ui(); }
+function edit(fn, b0) { const s = cur(); const before = b0 || gBox(s); fn(s); dirty(boxU(before, gBox(s))); save(); draw(); ui(); }
 function move(d) {      // in the draw order: d -1 down, +1 up
   const to = Math.max(0, Math.min(G.stamps.length - 1, sel + d)); if (to === sel) return;
   snap(); const [s] = G.stamps.splice(sel, 1); G.stamps.splice(to, 0, s); sel = to; dirty(gBox(s)); save(); draw(); ui();
@@ -402,7 +405,7 @@ function layersMenu(anchor) {
 function shapeMenu(anchor) {
   pop(`<button class="it" data-k="sq">◻ Square</button><button class="it" data-k="circ">◯ Circle</button><button class="it" data-k="blob">☁ Blob</button>`, anchor, m => m.onclick = e => { const b = e.target.closest('[data-k]'); if (b) { unpop(); addShape(b.dataset.k); } });
 }
-function focusSel() { const b = gBox(G.stamps[sel]), [cx0, cy0] = [b.x + b.w / 2, b.y + b.h / 2]; if (cx0 < V.x || cy0 < V.y || cx0 > V.x + W / V.z || cy0 > V.y + H / V.z) { V.x = cx0 - W / 2 / V.z; V.y = cy0 - H / 2 / V.z; } }
+function focusSel() { const b = gBox(cur()), [cx0, cy0] = [b.x + b.w / 2, b.y + b.h / 2]; if (cx0 < V.x || cy0 < V.y || cx0 > V.x + W / V.z || cy0 > V.y + H / V.z) { V.x = cx0 - W / 2 / V.z; V.y = cy0 - H / 2 / V.z; } }
 $('#file').onchange = async e => {
   const f = e.target.files[0]; e.target.value = ''; if (!f) return;
   try { const m = JSON.parse(await f.text()); if (!m.stamps || !m.w) throw 0; if (S.maps[m.id] && !confirm('Replace your "' + S.maps[m.id].name + '"?')) m.id = newMap(m.name, 1, 1, '').id; S.maps[m.id] = m; open(m.id); toast('Imported'); }
@@ -416,29 +419,35 @@ const propsOf = s => s.l ? ['wd', 'soft', 'r'] : ['soft', 'r'];
 function ui() {
   if (!G) return;
   $('#name').textContent = G.name; $('#bUndo').disabled = !UNDO.length; $('#bRedo').disabled = !REDO.length;
-  const s = sel >= 0 ? G.stamps[sel] : null, dk = draft && draft.k;
+  const s = sel !== -1 ? cur() : null, dk = draft && draft.k;
   let r1 = `<div class="r"><button class="btn${tool === 'select' ? ' on' : ''}" data-a="sel">✥</button><button class="btn${dk === 'shape' ? ' on' : ''}" data-a="draw">✎ Shape</button><button class="btn${dk === 'road' || dk === 'branch' ? ' on' : ''}" data-a="road">〰 Road</button><button class="btn" data-a="shape">＋ ▾</button><span class="sp"></span><button class="btn" data-a="layers">☰ ${G.stamps.length}</button></div>`, r2;
   if (draft) {
     const n = draft.p.length / 2, need = dk === 'shape' ? 3 : 2;
     const say = dk === 'branch' && !n ? 'Tap the road where the branch starts' : 'Tap to add points · ' + n + (dk === 'shape' && n >= 3 ? ' · tap the first to close' : '');
     r2 = `<div class="r"><button class="btn" data-a="dtex" ${dk === 'branch' ? 'disabled' : ''}><span class="sw" ${sw(draft.t)}></span>▾</button><span class="muted" style="flex:1">${say}</span><button class="btn ic" data-a="dback" ${n ? '' : 'disabled'}>⌫</button><button class="btn ic" data-a="dx">✕</button><button class="btn on" data-a="dok" ${n >= need ? '' : 'disabled'}>✓</button></div>`;
+  } else if (sel === EDGE) {
+    const v = s.r || 0; S.prop = 'r';
+    r2 = `<div class="r"><span class="muted" style="flex:1">Battlefield edge · outside it is out of bounds</span></div>
+    <div class="r"><label class="sl"><span>Round</span><input type="range" id="pv" min="0" max="800" step="1" value="${v}"><b id="pvV">${v}</b></label></div>
+    <div class="r">${canDelV(s) ? '<button class="btn" data-a="delv">− Point</button>' : ''}<span class="sp"></span><button class="btn red" data-a="edgeoff">Whole map</button></div>`;
   } else if (s) {
     const ps = propsOf(s); if (!ps.includes(S.prop)) S.prop = ps[0]; const P = PROPS[S.prop], v = s[S.prop] || 0;
     r2 = `<div class="r"><button class="btn" data-a="tex"><span class="sw" ${sw(s.t)}></span>▾</button>${ps.map(k => `<button class="btn${k === S.prop ? ' on' : ''}" data-prop="${k}">${PROPS[k][0]} ${s[k] || 0}</button>`).join('')}</div>
     <div class="r"><label class="sl"><span>${P[0]}</span><input type="range" id="pv" min="${P[1]}" max="${P[2]}" step="1" value="${v}"><b id="pvV">${v}</b></label></div>
     <div class="r"><button class="btn ic" data-a="up" title="Up">▲</button><button class="btn ic" data-a="down" title="Down">▼</button><button class="btn ic" data-a="eye" title="Hide">${s.off ? '◌' : '◉'}</button><button class="btn ic" data-a="dup" title="Duplicate">⧉</button>${s.l ? '<button class="btn" data-a="branch">⑂ Branch</button>' : ''}${canDelV(s) ? '<button class="btn" data-a="delv">− Point</button>' : ''}<span class="sp"></span><button class="btn ic red" data-a="del" title="Delete">🗑</button></div>`;
-  } else r2 = `<div class="r"><button class="btn" data-a="base"><span class="sw" ${sw(G.base)}></span>Base ▾</button><span class="muted" style="flex:1">${G.w}×${G.h} · tap a shape or road to edit it</span></div>`;
+  } else r2 = `<div class="r"><button class="btn" data-a="base"><span class="sw" ${sw(G.base)}></span>Base ▾</button><button class="btn" data-a="edge">⬠ Edge</button><span class="muted" style="flex:1">${G.w}×${G.h}</span></div>`;
   $('#btm').innerHTML = r1 + r2;
-  if (s && !draft) { const b = gBox(s), e = Math.ceil((s.soft || 0) * 1.2) + 1; $('#hint').textContent = `${s.l ? 'Road' : 'Shape'} ${b.w - 2 * e} × ${b.h - 2 * e} px${s.l ? ' · ' + s.wd + ' wide' : ''} · drag it or its points · blue dots add points`; }
+  if (sel === EDGE && !draft) $('#hint').textContent = 'Drag the points · blue dots add points';
+  else if (s && !draft) { const b = gBox(s), e = Math.ceil((s.soft || 0) * 1.2) + 1; $('#hint').textContent = `${s.l ? 'Road' : 'Shape'} ${b.w - 2 * e} × ${b.h - 2 * e} px${s.l ? ' · ' + s.wd + ' wide' : ''} · drag it or its points · blue dots add points`; }
   else $('#hint').textContent = '';
   const sl = $('#pv'); if (sl) {     // one undo step per drag, the old and new boxes re-baked
     let b0 = null; const k = S.prop;
-    sl.oninput = () => { if (!b0) { snap(); b0 = gBox(s); } s[k] = +sl.value; $('#pvV').textContent = sl.value; const c = $(`[data-prop=${k}]`); if (c) c.textContent = PROPS[k][0] + ' ' + sl.value; const b = gBox(s); dirty(boxU(b0, b)); b0 = boxU(b0, b); draw(); };
+    sl.oninput = () => { if (!b0) { snap(); b0 = gBox(s); } s[k] = +sl.value; $('#pvV').textContent = sl.value; const c = sel >= 0 && $(`[data-prop=${k}]`); if (c) c.textContent = PROPS[k][0] + ' ' + sl.value; const b = gBox(s); dirty(boxU(b0, b)); b0 = boxU(b0, b); draw(); };
     sl.onchange = () => { b0 = null; save(); ui(); };
   }
 }
 $('#btm').addEventListener('click', e => {
-  const b = e.target.closest('button[data-a],button[data-prop]'); if (!b) return; const a = b.dataset.a, s = sel >= 0 ? G.stamps[sel] : null;
+  const b = e.target.closest('button[data-a],button[data-prop]'); if (!b) return; const a = b.dataset.a, s = sel !== -1 ? cur() : null;
   if (b.dataset.prop) { S.prop = b.dataset.prop; save(); }
   if (a === 'sel') { tool = 'select'; draft = null; }
   if (a === 'draw') startDraft('shape');
@@ -450,6 +459,8 @@ $('#btm').addEventListener('click', e => {
   if (a === 'dback') draft.p.splice(-2);
   if (a === 'dx') { if (draft.k === 'branch') sel = draft.of; draft = null; tool = 'select'; }
   if (a === 'dok') return finishDraft();
+  if (a === 'edge') { if (!G.bounds) { snap(); const m = Math.round(Math.min(G.w, G.h) * 0.06); G.bounds = { p: [m, m, G.w - m, m, G.w - m, G.h - m, m, G.h - m], r: 0 }; dirty({ x: 0, y: 0, w: G.w, h: G.h }); save(); } sel = EDGE; selV = null; tool = 'select'; draft = null; }
+  if (a === 'edgeoff') { snap(); delete G.bounds; sel = -1; selV = null; dirty({ x: 0, y: 0, w: G.w, h: G.h }); save(); }
   if (a === 'tex') return texPicker(b, s.t, t => { snap(); if (s.l) S.rtex = t; else S.tex = t; edit(q => q.t = t); });
   if (a === 'base') return texPicker(b, G.base, t => { snap(); G.base = t; bakeAll(); save(); ui(); });
   if (a === 'up') return move(1);
@@ -466,7 +477,7 @@ $('#bZin').onclick = () => zoomAt(1.4, W / 2, H / 2); $('#bZout').onclick = () =
 addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
   if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); restore(e.shiftKey ? REDO : UNDO, e.shiftKey ? UNDO : REDO); }
-  if (e.key === 'Delete' && sel >= 0) { snap(); const bb = gBox(G.stamps[sel]); G.stamps.splice(sel, 1); sel = -1; selV = null; dirty(bb); save(); ui(); draw(); }
+  if (e.key === 'Delete' && sel >= 0) { snap(); const bb = gBox(cur()); G.stamps.splice(sel, 1); sel = -1; selV = null; dirty(bb); save(); ui(); draw(); }
   if (e.key === 'Enter' && draft) finishDraft();
   if (e.key === 'Escape') { draft = null; tool = 'select'; sel = -1; selV = null; ui(); draw(); }
 });

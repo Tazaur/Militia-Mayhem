@@ -115,8 +115,27 @@ function gBake(G, gc, gm, r) {
     const M = gMask(s, b); hmax = Math.max(hmax, gTex(s.t).h);
     for (const [g, k] of T) g.drawImage(gStampCv(s, b, M, k), b.x, b.y);
   }
+  if (gc && G.bounds && G.bounds.p.length >= 6) gOob(gc, G, r);
   for (const [g] of T) g.restore();
   return hmax;
+}
+
+/* the battlefield edge (G.bounds: {p, r}, a shape inside the map; none: the whole map): outside it tinted as the skirt is,
+   the edge dashed. Drawn on a 2D scratch canvas over the rect, then in one image (gc may be GX's) */
+function gOob(gc, G, r) {
+  const c = GB.o || (GB.o = gCv(1, 1)); if (c.width !== r.w || c.height !== r.h) { c.width = r.w; c.height = r.h; }
+  const g = c.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, r.w, r.h); g.translate(-r.x, -r.y);
+  gPath(g, G.bounds); g.rect(r.x - 1, r.y - 1, r.w + 2, r.h + 2); g.fillStyle = 'rgba(40,6,2,0.38)'; g.fill('evenodd');
+  gPath(g, G.bounds); g.strokeStyle = 'rgba(255,90,60,0.55)'; g.lineWidth = 3; g.setLineDash([18, 12]); g.stroke();
+  gc.drawImage(c, r.x, r.y);
+}
+/* the edge as a grid of s px cells, 1 inside (outOfBounds reads it), or null for the whole map */
+function gBoundsMask(G) {
+  if (!G.bounds || G.bounds.p.length < 6) return null;
+  const s = 8, w = Math.ceil(G.w / s) + 1, h = Math.ceil(G.h / s) + 1, c = gCv(w, h), g = c.getContext('2d');
+  g.scale(1 / s, 1 / s); gPath(g, G.bounds); g.fillStyle = '#fff'; g.fill();
+  const d = g.getImageData(0, 0, w, h).data, a = new Uint8Array(w * h); for (let i = 0; i < a.length; i++) a[i] = d[i * 4 + 3] > 127 ? 1 : 0;
+  return { s, w, h, a };
 }
 
 /* ---------------- in the game ---------------- */
@@ -142,6 +161,6 @@ function paintStamped() {
 }
 /* one more stamp, baked over only its box (destruction later: a crater, scorch) */
 function gStampAdd(s) {
-  const G = MAP.gmap; if (!G) return; G.stamps.push(s); const b = gBox(s);
-  GMAX = Math.max(GMAX, gBake({ ...G, stamps: [s], base: null }, gx, GMAT && GMAT.getContext('2d'), b) || 0);
+  const G = MAP.gmap; if (!G) return; G.stamps.push(s); const b = gBox(s), x = Math.max(0, b.x), y = Math.max(0, b.y);
+  GMAX = Math.max(GMAX, gBake(G, gx, GMAT && GMAT.getContext('2d'), { x, y, w: Math.min(G.w, b.x + b.w) - x, h: Math.min(G.h, b.y + b.h) - y }) || 0);     // the whole box again (the stamps under it, the edge's tint)
 }

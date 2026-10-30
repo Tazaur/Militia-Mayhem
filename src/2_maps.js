@@ -53,7 +53,7 @@ function buildMap(id) {
   const R = mulberry(id === 'crossroads' ? 1987 : id === 'farmlands' ? 2311 : id === 'snowfield' ? 6151 : id === 'outskirts' ? 8807 : 4099);
   const m = { id, arcs: [], roads: [], buildings: [], water: [], bridges: [], statics: [], flags: [], bases: [], crateSpots: [], vehSpawns: [], ffaSpawns: [], fields: [], fwd: [], ice: [] };
   m.bases = [{ team: 0, x: 130, y: WH / 2, pad: { x: 20, y: WH / 2 - 200, w: 340, h: 400 } }, { team: 1, x: WW - 130, y: WH / 2, pad: { x: WW - 360, y: WH / 2 - 200, w: 340, h: 400 } }];
-  MAP = m;
+  MAP = m; BOUNDM = null;
   const sym = (arr, o, mir) => { arr.push(o); arr.push(mir(o)); };
   /* a tiled house (OUTSKIRTS) within pad of (x, y) */
   const inHouse = (x, y, pad) => {
@@ -61,8 +61,16 @@ function buildMap(id) {
     for (const [a, b] of [[x, y], [x - pad, y - pad], [x + pad, y - pad], [x - pad, y + pad], [x + pad, y + pad]]) { const i = (a / SUB) | 0, j = (b / SUB) | 0; if (i >= 0 && j >= 0 && i < TL.sc && j < TL.sr && TL.bld[j * TL.sc + i] >= 0) return true; }
     return false;
   };
+  /* a stamped map's battlefield edge: o (and its pad) moved to the nearest spot at least d in from it */
+  const inside = (o, d) => {
+    const ok = (x, y) => !outOfBounds(x, y) && [0, 1, 2, 3, 4, 5, 6, 7].every(k => !outOfBounds(x + Math.cos(k * TAU / 8) * d, y + Math.sin(k * TAU / 8) * d));
+    if (ok(o.x, o.y)) return; let best = null;
+    for (let r = 20; r < Math.max(WW, WH) && !best; r += 20) for (let k = 0; k < 32; k++) { const x = o.x + Math.cos(k * TAU / 32) * r, y = o.y + Math.sin(k * TAU / 32) * r; if (ok(x, y)) { best = [x, y]; break; } }
+    if (!best) return; const dx = best[0] - o.x, dy = best[1] - o.y; o.x += dx; o.y += dy; if (o.pad) { o.pad.x += dx; o.pad.y += dy; }
+  };
   const blockedFor = (x, y, pad) => {
     if (x < 50 || y < 50 || x > WW - 50 || y > WH - 50) return true;
+    if (BOUNDM && outOfBounds(x, y)) return true;
     if (inHouse(x, y, pad + 8)) return true;
     if (onRoad(x, y, pad)) return true;
     for (const w of m.water) if (inRect(x, y, w, pad + 10)) return true;
@@ -179,8 +187,9 @@ function buildMap(id) {
     scatter(34, 44, 26, (x, y) => tree(x, y, true));
     scatter(8, 60, 24, (x, y) => addStatic({ type: 'hay', x, y, r: 13, a: R() * TAU, alive: true }, true));
   } else if (id.startsWith('g:')) {     // a map editor map (2b_ground.js): its stamped ground; flags, cover and trees placed as the others' (objects: later, in the editor)
-    m.gmap = JSON.parse(JSON.stringify(gMapOf(id)));
+    m.gmap = JSON.parse(JSON.stringify(gMapOf(id))); BOUNDM = gBoundsMask(m.gmap);
     m.flags = [{ name: 'A', x: WW * 0.22, y: WH * 0.72 }, { name: 'B', x: WW / 2, y: WH / 2 }, { name: 'C', x: WW * 0.78, y: WH * 0.28 }];
+    for (const o of [...m.flags, ...m.bases]) inside(o, 160);
     for (const f of m.flags) for (let k = 0; k < 3; k++) { const c = k * TAU / 3 + 0.4; crescent(f.x + Math.cos(c) * 110, f.y + Math.sin(c) * 110, c, false); }
     crescent(400, WH / 2 - 120, 0, true); crescent(400, WH / 2 + 120, 0, true);
     scatter(6, 110, 40, (x, y) => crescent(x, y, R() * TAU, true));
@@ -219,6 +228,11 @@ function buildMap(id) {
     if (!bad && !m.ffaSpawns.some(p => Math.hypot(p.x - x, p.y - y) < 300)) m.ffaSpawns.push({ x, y });
   }
   m.fwd = [{ x: m.flags[0].x - 60, y: m.flags[0].y }, { x: m.flags[2].x + 60, y: m.flags[2].y }];
+  if (BOUNDM) {     // a battlefield edge: what mirroring put outside it goes, spawns come in
+    m.statics = m.statics.filter(s => !outOfBounds(s.x, s.y)); m.arcs = m.arcs.filter(A => A.bags.every(b => m.statics.includes(b)));
+    m.crateSpots = m.crateSpots.filter(c => !outOfBounds(c.x, c.y)); m.ffaSpawns = m.ffaSpawns.filter(c => !outOfBounds(c.x, c.y));
+    for (const o of [...m.vehSpawns, ...m.fwd]) inside(o, 60);
+  }
   if (m.tiled) tiledClear(m);       // tiled: sight and glass are kept as wall runs (devSight)
   else { m.sight = m.buildings.filter(b => !b.glass); m.glass = m.buildings.filter(b => b.glass); }     // what blocks sight / dims it
   buildHash();
@@ -476,7 +490,7 @@ function buildNav() {
   for (let j = 0; j < NGH; j++) for (let i = 0; i < NGW; i++) {
     const x = (i + 0.5) * NC, y = (j + 0.5) * NC, k = j * NGW + i;
     let s = 0, v = 0;
-    if (x < 30 || y < 30 || x > WW - 30 || y > WH - 30) s = v = 1;
+    if (x < 30 || y < 30 || x > WW - 30 || y > WH - 30 || (BOUNDM && outOfBounds(x, y))) s = v = 1;
     if (!TL) for (const b of MAP.buildings) { if (inRect(x, y, b, 12)) s = 1; if (inRect(x, y, b, 38)) v = 1; }
     for (const w of MAP.water) { if (inRect(x, y, w, 4)) s = 1; if (inRect(x, y, w, 30)) v = 1; }
     if (s) navS[k] = 1; if (v) navV[k] = 1;
