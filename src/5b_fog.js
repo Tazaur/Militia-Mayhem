@@ -75,22 +75,16 @@ function visPoly(ex, ey, box, walls, pad) {
   for (let i = 0; i < P.length; i++) {
     const a = P[i], b = P[(i + 1) % P.length], f = [a[3], a[4], b[3], b[4]].find(f => f && f[5] && on(a, f) && on(b, f)) || segs.find(f => f[5] && on(a, f) && on(b, f)); EF.push(f || null);
   }
-  // a strip's very ends (no wall face beyond them) are cut along the sight ray through them (as far into the wall as the
-  // ray goes in k deep), kept within the wall's face (a ray past its corner leaves the wall: cut square there)
+  // every strip end at a wall's vertex is cut at 45 degrees: a free end (no wall face beyond it) inward; where the outline
+  // turns onto another face (a wall's corner, a room's), both strips end on the diagonal between their inner edges, so
+  // they meet edge to edge (no overlap). The same face running on: square. A short edge: a shallower strip, still 45
   for (let i = 0, n = P.length; i < n; i++) {
     const f = EF[i]; if (!f) continue;
     const a = P[i], b = P[(i + 1) % n], k = f[5], L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, tx = (b[0] - a[0]) / L, ty = (b[1] - a[1]) / L;
-    const e0 = EF[(i + n - 1) % n] ? 0 : 1, e1 = EF[(i + 1) % n] ? 0 : 1;
-    const p0 = (f[0] - a[0]) * tx + (f[1] - a[1]) * ty, p1 = (f[2] - a[0]) * tx + (f[3] - a[1]) * ty, lo = Math.min(p0, p1), hi = Math.max(p0, p1);     // the face's span along the edge (a at 0, b at L)
-    const ray = v => { const dx = v[0] - ex, dy = v[1] - ey, dl = Math.hypot(dx, dy) || 1, ci = Math.max(0.05, -(dx * f[6] + dy * f[7]) / dl); return (dx * tx + dy * ty) / dl * k / ci; };     // along the edge, where the ray through v is k into the wall
-    let t0 = e0 ? clamp(ray(a), lo, L) : 0, t1 = e1 ? clamp(L + ray(b), 0, hi) : L; if (t0 > t1) t0 = t1 = (t0 + t1) / 2;
-    const bx = a[0] - f[6] * k, by = a[1] - f[7] * k;
-    strips.push([[a[0], a[1]], [b[0], b[1]], [bx + tx * t1, by + ty * t1], [bx + tx * t0, by + ty * t0]]);
-  }
-  // where the outline turns from one wall face to another (a room's corner), the square between their strips too
-  for (let i = 0; i < P.length; i++) {
-    const f = EF[(i + P.length - 1) % P.length], g = EF[i], v = P[i]; if (!f || !g || f === g || Math.abs(f[6] * g[7] - f[7] * g[6]) < 0.5) continue;
-    const k = Math.min(f[5], g[5]), [x, y] = v; strips.push([[x, y], [x - f[6] * k, y - f[7] * k], [x - (f[6] + g[6]) * k, y - (f[7] + g[7]) * k], [x - g[6] * k, y - g[7] * k]]);
+    const cut = (g, out) => !g ? k : g === f || Math.abs(f[6] * g[7] - f[7] * g[6]) < 0.5 ? 0 : (g[6] * tx + g[7] * ty) * out * g[5];     // inward along the edge (toward the other end)
+    let s0 = cut(EF[(i + n - 1) % n], -1), s1 = cut(EF[(i + 1) % n], 1), r = s0 + s1 > L ? L / (s0 + s1) : 1;
+    const d = k * r, bx = a[0] - f[6] * d, by = a[1] - f[7] * d; s0 *= r; s1 *= r;
+    strips.push([[a[0], a[1]], [b[0], b[1]], [bx + tx * (L - s1), by + ty * (L - s1)], [bx + tx * s0, by + ty * s0]]);
   }
   const out = P.map(v => v[2] ? [v[0], v[1], 1] : [v[0], v[1]]); out.strips = strips; out.faces = segs;   // [x, y, 1] = a corner
   return out;

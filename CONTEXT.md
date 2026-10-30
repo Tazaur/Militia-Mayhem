@@ -863,3 +863,7 @@ ROOF_STYLES, MAP_ROOFS and roofPaint(H, st, list, snow, grit) live in src/2d_hou
 
 ## Sight strips cut along the rays (after 285)
 - visPoly: a strip's free ends follow the sight ray through them k deep into the wall (was 45 degrees), clamped to the wall face's span (square at an outer corner, where the ray leaves the wall).
+- Then (approved): every strip end at a wall vertex is cut at 45 degrees: free ends inward; where the outline turns onto another face both strips end on the shared diagonal (the corner square is gone); the same face running on: square.
+
+## Window shadows
+- SUNH.glass 6: windows are in the sun heights as a low box (frame and sill), a short shadow; the sun comes in over them. Point lights still pass through glass.

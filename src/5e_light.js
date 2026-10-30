@@ -197,7 +197,7 @@ function sunTone() {
   _toneK = key; return _tone = { day, li: mx(NIGHT, lit, day), sh: mx(NIGHT, mx(SUN.tint, DUSK, g), day), w: SUN.warm.map((v, i) => v * lit[i] * day), sky: sky.map(v => v * lerp(0.25, 1, day)) };
 }
 let HS = 0.5; const LIGHT_Q = [0.35, 0.5, 0.75];                                     // height buffer resolution vs the screen (settings › LIGHTING QUALITY)
-const SUNH = { flag: 22, item: 4, wall: 40, fence: 9, hay: 14, crate: 10, nest: 10, tree: [56, 36] };     // px
+const SUNH = { flag: 22, item: 4, wall: 40, glass: 6, fence: 9, hay: 14, crate: 10, nest: 10, tree: [56, 36] };     // px
 const SUNB = { mgNest: SUNH.nest, jump: 4, step: 4.5 };     // px: the nest MG rests on its bags (drawn over them, so never lower); a jump's gap; walked per frame of a walk (two frames a footstep)
 /* per part (sprite name less its frame number) or shape (SUNH name): lift = an air gap (px) between it and what it rests
    on, add = px taller than painted. A part's start is the top of what's under it (+ lift); its pixels stand on that.
@@ -607,7 +607,7 @@ const shp = (h, n) => { const P = sunP(n), b = P.lift || 0; return [h + b + (P.a
 function sunHeights(vis, hidden, vw) {
   if (GMAT && MAP.gmap) { hq(HL.g, WW / 2, WH / 2, WW / 2, 0, 0, WH / 2, 0, 0, 0, 0, 0, 1, 1, 0, 0.01); HMAX = Math.max(HMAX, GMAX); }     // the map editor's ground: its painted heights (a GL surface: rows bottom up)
   const [wt, wb] = shp(SUNH.wall, 'wall');
-  for (const b of MAP.buildings) { if (b.glass) continue; const [cx, cy] = b.f ? fromF(b.f, b.x + b.w / 2, b.y + b.h / 2) : [b.x + b.w / 2, b.y + b.h / 2]; if (vis(cx, cy, Math.max(b.w, b.h))) hbox(HL.w, cx, cy, b.w / 2, b.h / 2, b.f ? b.f.a : 0, 1, wt, wb, 0); }
+  for (const b of MAP.buildings) { const [cx, cy] = b.f ? fromF(b.f, b.x + b.w / 2, b.y + b.h / 2) : [b.x + b.w / 2, b.y + b.h / 2]; if (vis(cx, cy, Math.max(b.w, b.h))) hbox(HL.w, cx, cy, b.w / 2, b.h / 2, b.f ? b.f.a : 0, 1, b.glass ? SUNH.glass : wt, b.glass ? 0 : wb, 0); }
   const [t0, tb] = shp(SUNH.tree[0], 'tree'), t1 = shp(SUNH.tree[1], 'tree')[0], [h0, hb] = shp(SUNH.hay, 'hay'), [ft, fb] = shp(SUNH.fence, 'fence');
   for (const s of MAP.statics) {
     if (!s.alive || !vis(s.x, s.y, 40)) continue;
