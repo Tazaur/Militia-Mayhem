@@ -186,14 +186,23 @@ function buildMap(id) {
     scatter(8, 110, 40, (x, y) => crescent(x, y, R() * TAU, true));
     scatter(34, 44, 26, (x, y) => tree(x, y, true));
     scatter(8, 60, 24, (x, y) => addStatic({ type: 'hay', x, y, r: 13, a: R() * TAU, alive: true }, true));
-  } else if (id.startsWith('g:')) {     // a map editor map (2b_ground.js): its stamped ground; flags, cover and trees placed as the others' (objects: later, in the editor)
+  } else if (id.startsWith('g:')) {     // a map editor map (2b_ground.js): its stamped ground and placed objects (objs); a kind with none placed is placed as the other maps' are
     m.gmap = JSON.parse(JSON.stringify(gMapOf(id))); BOUNDM = gBoundsMask(m.gmap);
-    m.flags = [{ name: 'A', x: WW * 0.22, y: WH * 0.72 }, { name: 'B', x: WW / 2, y: WH / 2 }, { name: 'C', x: WW * 0.78, y: WH * 0.28 }];
-    for (const o of [...m.flags, ...m.bases]) inside(o, 160);
-    for (const f of m.flags) for (let k = 0; k < 3; k++) { const c = k * TAU / 3 + 0.4; crescent(f.x + Math.cos(c) * 110, f.y + Math.sin(c) * 110, c, false); }
-    crescent(400, WH / 2 - 120, 0, true); crescent(400, WH / 2 + 120, 0, true);
-    scatter(6, 110, 40, (x, y) => crescent(x, y, R() * TAU, true));
-    scatter(20, 44, 26, (x, y) => tree(x, y, true));
+    const O = m.gmap.objs || [], of = (...k) => O.filter(o => k.includes(o.k));
+    const fl = of('flag'); m.flags = fl.length ? fl.map((o, i) => ({ name: String.fromCharCode(65 + i), x: o.x, y: o.y, r: o.r })) : [{ name: 'A', x: WW * 0.22, y: WH * 0.72 }, { name: 'B', x: WW / 2, y: WH / 2 }, { name: 'C', x: WW * 0.78, y: WH * 0.28 }];
+    for (const o of of('base')) { const b = m.bases[o.team ? 1 : 0]; b.x = o.x; b.y = o.y; b.pad = { x: o.x - 170, y: o.y - 200, w: 340, h: 400 }; b.placed = 1; }
+    for (const o of [...(fl.length ? [] : m.flags), ...m.bases.filter(b => !b.placed)]) inside(o, 160);
+    if (of('tree', 'pine', 'hay', 'bags', 'bag').length) for (const o of O) {     // details as placed
+      if (o.k === 'tree' || o.k === 'pine') addStatic({ type: 'tree', x: o.x, y: o.y, r: 10, v: o.v || 0, sc: o.sc || 1, a: o.a || 0, alive: true, pine: o.k === 'pine' });
+      else if (o.k === 'hay') addStatic({ type: 'hay', x: o.x, y: o.y, r: 13, a: o.a || 0, alive: true });
+      else if (o.k === 'bags') crescent(o.x, o.y, o.a || 0, false);
+      else if (o.k === 'bag') bag(o.x, o.y, o.a || 0);
+    } else {
+      for (const f of m.flags) for (let k = 0; k < 3; k++) { const c = k * TAU / 3 + 0.4; crescent(f.x + Math.cos(c) * 110, f.y + Math.sin(c) * 110, c, false); }
+      crescent(400, WH / 2 - 120, 0, true); crescent(400, WH / 2 + 120, 0, true);
+      scatter(6, 110, 40, (x, y) => crescent(x, y, R() * TAU, true));
+      scatter(20, 44, 26, (x, y) => tree(x, y, true));
+    }
   } else {
     // river town
     m.roads = [[0, 350, 3000, 350], [0, 1000, 3000, 1000], [0, 1650, 3000, 1650], [700, 0, 700, 2000], [2300, 0, 2300, 2000]].map(l => ({ l, w: 72, side: 14, style: 'asphalt' }));
@@ -227,7 +236,14 @@ function buildMap(id) {
     const bad = m.buildings.some(b => inRect(x, y, b, 40)) || m.water.some(w => inRect(x, y, w, 30)) || m.statics.some(s => Math.hypot(s.x - x, s.y - y) < 40) || inHouse(x, y, 30);
     if (!bad && !m.ffaSpawns.some(p => Math.hypot(p.x - x, p.y - y) < 300)) m.ffaSpawns.push({ x, y });
   }
-  m.fwd = [{ x: m.flags[0].x - 60, y: m.flags[0].y }, { x: m.flags[2].x + 60, y: m.flags[2].y }];
+  m.fwd = [{ x: m.flags[0].x - 60, y: m.flags[0].y }, { x: m.flags[m.flags.length - 1].x + 60, y: m.flags[m.flags.length - 1].y }];
+  if (m.gmap) {     // an editor map's placed gameplay objects stand in for the ones placed above
+    const O = m.gmap.objs || [], of = k => O.filter(o => o.k === k), V = of('veh'), C = of('crate'), D = of('drop');
+    if (V.length) m.vehSpawns = V.map(o => ({ type: o.type || 'tank', x: o.x, y: o.y, a: o.a || 0, team: o.team === undefined ? 0 : o.team, resp: o.resp }));
+    if (C.length) m.crateSpots = C.map(o => ({ x: o.x, y: o.y }));
+    if (D.length) m.ffaSpawns = D.map(o => ({ x: o.x, y: o.y }));
+    for (const o of of('camp')) m.fwd[o.team ? 1 : 0] = { x: o.x, y: o.y };
+  }
   if (BOUNDM) {     // a battlefield edge: what mirroring put outside it goes, spawns come in
     m.statics = m.statics.filter(s => !outOfBounds(s.x, s.y)); m.arcs = m.arcs.filter(A => A.bags.every(b => m.statics.includes(b)));
     m.crateSpots = m.crateSpots.filter(c => !outOfBounds(c.x, c.y)); m.ffaSpawns = m.ffaSpawns.filter(c => !outOfBounds(c.x, c.y));

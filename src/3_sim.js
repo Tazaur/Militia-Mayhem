@@ -53,11 +53,11 @@ function newMatch(cfg, demo) {
     brass: [], scoreHeld: false, lowWarn: [false, false], ff: !!cfg.ff && !demo, rain: cfg.weather === 'rain' && MAPNAMES[cfg.map][0] !== 'snowfield', snow: cfg.weather === 'snow' || (cfg.weather === 'rain' && MAPNAMES[cfg.map][0] === 'snowfield'), teamColor,
     coop, wv: coop ? { n: 0, queue: 0, left: 0, brk: 8, spT: 0, lim: LIMITS.surv[cfg.limit] || 0 } : null
   };
-  if (mode.id === 'conquest') M.flags = MAP.flags.map(f => ({ ...f, r: 96, owner: -1, prog: 0, contested: false, wave: rnd(0, 6), cnt: [0, 0] }));
-  if (mode.id === 'koth') M.flags = [{ ...MAP.flags[1], name: 'HILL', r: 120, owner: -1, prog: 0, contested: false, wave: 0, cnt: [0, 0] }];
+  if (mode.id === 'conquest') M.flags = MAP.flags.map(f => ({ ...f, r: f.r || 96, owner: -1, prog: 0, contested: false, wave: rnd(0, 6), cnt: [0, 0] }));
+  if (mode.id === 'koth') M.flags = [{ ...MAP.flags[MAP.flags.length >> 1], name: 'HILL', r: 120, owner: -1, prog: 0, contested: false, wave: 0, cnt: [0, 0] }];
   M.dev = !!cfg.dev && !demo;
   if (demo || coop || M.dev) M.tickets = [99999, 99999];
-  if (mode.id === 'conquest') { M.flags[0].owner = 0; M.flags[0].prog = -1; M.flags[2].owner = 1; M.flags[2].prog = 1; }
+  if (mode.id === 'conquest' && M.flags.length > 1) { const L = M.flags[M.flags.length - 1]; M.flags[0].owner = 0; M.flags[0].prog = -1; L.owner = 1; L.prog = 1; }     // the ends start held (editor maps can have any number)
   for (const s of MAP.vehSpawns) M.vehicles.push(makeVehicle(s));
   for (const c of MAP.crateSpots) M.crates.push({ x: c.x, y: c.y, a: rnd(-0.4, 0.4), live: true, t: 0 });
   const humans = demo ? [] : PLAYERS;
@@ -347,7 +347,7 @@ function destroyVehicle(v, src) {
   if (src && src.player && !occupied) src.msg = { t: 1.4, txt: 'EMPTY ' + v.type.toUpperCase() + ' DESTROYED' };
   feed(src, 'DESTROYED', { name: v.type === 'nest' ? 'MG NEST' : v.type.toUpperCase(), color: 'white' });
   engineOff(v);
-  v.active = false; v.respawnT = v.T.respawn;
+  v.active = false; v.respawnT = v.sp.resp || v.T.respawn;     // sp.resp: an editor map spawner's own time
   scorch(v.x, v.y, v.type === 'tank' ? 90 : 70);
 }
 let EXP_REW = 0;                                  // a joiner's rocket/shell: its blast is judged where things were on their screen

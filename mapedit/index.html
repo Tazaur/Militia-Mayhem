@@ -20,6 +20,12 @@ body{display:flex;flex-direction:column;position:fixed;inset:0}
 button,select,input{font:inherit;color:inherit}
 .bar{flex:none;display:flex;align-items:center;gap:6px;padding:6px 10px;background:var(--panel);border-bottom:1px solid var(--line);min-height:48px}
 #top{padding-top:calc(6px + env(safe-area-inset-top))}
+.tabs{flex:none;display:flex;gap:4px;padding:5px 10px;background:var(--panel);border-bottom:1px solid var(--line)}
+.tabs button{flex:1;height:36px;border:1px solid var(--line2);border-radius:9px;background:var(--panel2);font-weight:700;font-size:13px;letter-spacing:.3px;cursor:pointer;color:var(--dim)}
+.tabs button.on{background:var(--acc);border-color:var(--acc);color:#1a1405}
+.scr .btn{flex:none}
+.scr{display:flex;gap:6px;overflow-x:auto;flex:1;min-width:0;scrollbar-width:none}.scr::-webkit-scrollbar{display:none}
+.sel{height:38px;border-radius:9px;border:1px solid var(--line2);background:var(--panel2);padding:0 6px;min-width:0;font-weight:600}
 #name{flex:1;min-width:0;font-family:var(--fd);font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.4px}
 #wrap{flex:1;position:relative;min-height:0;background:#070a06}
 #cv{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block}
@@ -77,6 +83,7 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
   <button class="btn ic" id="bRedo" aria-label="Redo">↷</button>
   <button class="btn" id="bView" aria-label="View menu">View ▾</button>
 </div>
+<div class="tabs" id="tabs"><button data-tab="ter">Terrain</button><button data-tab="det">Details</button><button data-tab="play">Gameplay</button></div>
 <div id="wrap">
   <canvas id="cv"></canvas>
   <div id="hint"></div>
@@ -104,6 +111,7 @@ S.maps = S.maps || {}; S.view = S.view || 'col'; S.lines = S.lines !== false;
 const save = () => { try { localStorage.setItem(SKEY, JSON.stringify(S)); } catch (e) { toast('Storage full: export your maps'); } };
 let G = null;                                   // the open map
 const V = { x: 0, y: 0, z: 0.3 };               // view: screen = (world - x, y) * z (CSS px)
+let tab = S.tab || 'ter', osel = -1, place = null;     // the tab; the selected object (G.objs); the kind being placed
 let sel = -1, selV = null, tool = 'select', draft = null;     // selected stamp, its selected point [line, index]; draft: the shape / road being drawn
 const UNDO = [], REDO = [];
 /* the selection: a stamp (sel >= 0) or the battlefield edge (sel -2: G.bounds {p, r}, edited as a shape is) */
@@ -115,14 +123,14 @@ function newMap(name, w, h, base) {
   return { v: 1, id, name, w, h, base, stamps: [], bounds: { p: [m, m, w - m, m, w - m, h - m, m, h - m], r: 0 } };
 }
 function open(id) {
-  G = S.maps[id]; S.cur = id; sel = -1; selV = null; draft = null; UNDO.length = REDO.length = 0;
+  G = S.maps[id]; S.cur = id; sel = -1; selV = null; osel = -1; place = null; draft = null; UNDO.length = REDO.length = 0;
   bakeAll(); fit(); ui(); save();
 }
 /* a change: undo keeps the map before it */
-function snap() { UNDO.push(JSON.stringify({ base: G.base, stamps: G.stamps, bounds: G.bounds })); if (UNDO.length > 100) UNDO.shift(); REDO.length = 0; }
+function snap() { UNDO.push(JSON.stringify({ base: G.base, stamps: G.stamps, bounds: G.bounds, objs: G.objs })); if (UNDO.length > 100) UNDO.shift(); REDO.length = 0; }
 function restore(from, to) {
-  if (!from.length) return; to.push(JSON.stringify({ base: G.base, stamps: G.stamps, bounds: G.bounds }));
-  const o = JSON.parse(from.pop()); G.base = o.base; G.stamps = o.stamps; G.bounds = o.bounds; if (!G.bounds) delete G.bounds; sel = sel === EDGE && !G.bounds ? -1 : Math.min(sel, G.stamps.length - 1); selV = null; bakeAll(); save(); ui();
+  if (!from.length) return; to.push(JSON.stringify({ base: G.base, stamps: G.stamps, bounds: G.bounds, objs: G.objs }));
+  const o = JSON.parse(from.pop()); G.base = o.base; G.stamps = o.stamps; G.bounds = o.bounds; if (!G.bounds) delete G.bounds; G.objs = o.objs || []; osel = Math.min(osel, G.objs.length - 1); sel = sel === EDGE && !G.bounds ? -1 : Math.min(sel, G.stamps.length - 1); selV = null; bakeAll(); save(); ui();
 }
 
 /* ---------- the bake: the map at full size (colour, and the material map when it's shown), only what changed ---------- */
@@ -165,6 +173,7 @@ function frame() {
     if (s.soft > 0 && !s.l) { gPath(cx, s); cx.lineWidth = s.soft; cx.strokeStyle = 'rgba(245,214,112,.12)'; cx.stroke(); }     // the blend zone
     if (tool === 'select') { for (const [li, i, x, y] of mids(s)) dot(x, y, 5 * k, 'rgba(95,211,208,.85)'); for (const [li, i, x, y] of verts(s)) dot(x, y, 8 * k, selV && selV[0] === li && selV[1] === i ? '#ef5a44' : '#f5d670', 2 * k); }
   }
+  drawObjs();
   if (draft) {
     const p = draft.p, road = draft.k !== 'shape';
     if (p.length >= (road ? 4 : 6)) {
@@ -231,6 +240,12 @@ cv.addEventListener('pointerdown', e => {
   if (PT.size > 2) return;
   const sx = ox(e), sy = oy(e), [wx, wy] = toWorld(sx, sy), R = 18, scr = (x, y) => Math.hypot((x - V.x) * V.z - sx, (y - V.y) * V.z - sy);
   drag = { sx, sy, wx, wy, moved: false, kind: 'pan', vx: V.x, vy: V.y };
+  if (tab !== 'ter') {     // objects: the selection's turn handle, an object (to move), else pan / place on a tap
+    const o = objs()[osel];
+    if (o && OK[o.k].set.some(q => q[2] === 'ang')) { const [hx, hy] = rotH(o); if (scr(hx, hy) < R + 4) { drag.kind = 'orot'; return; } }
+    const i = objAt(wx, wy); if (i >= 0) { const q = objs()[i]; Object.assign(drag, { kind: 'omove', oi: i, ox: q.x - wx, oy: q.y - wy }); }
+    return;
+  }
   if (tool !== 'select') return;
   if (sel !== -1) {
     const s = cur();
@@ -257,6 +272,8 @@ cv.addEventListener('pointermove', e => {
   }
   const [wx, wy] = toWorld(ox(e), oy(e));
   if (drag.kind === 'pan') { V.x = drag.vx - dx / V.z; V.y = drag.vy - dy / V.z; draw(); return; }
+  if (drag.kind === 'omove') { const o = objs()[drag.oi]; if (osel !== drag.oi) { osel = drag.oi; ui(); } o.x = Math.round(Math.max(0, Math.min(G.w, wx + drag.ox))); o.y = Math.round(Math.max(0, Math.min(G.h, wy + drag.oy))); draw(); return; }
+  if (drag.kind === 'orot') { const o = objs()[osel]; o.a = Math.round(Math.atan2(wy - o.y, wx - o.x) / (Math.PI / 36)) * (Math.PI / 36); draw(); return; }     // 5° steps
   const s = cur(), L = gLines(s);
   if (drag.kind === 'vert') { const p = L[drag.li]; p[drag.i] = Math.round(wx); p[drag.i + 1] = Math.round(wy); }
   else { const mx = Math.round(wx - drag.wx), my = Math.round(wy - drag.wy); L.forEach((p, li) => { for (let i = 0; i < p.length; i += 2) { p[i] = drag.p0[li][i] + mx; p[i + 1] = drag.p0[li][i + 1] + my; } }); }
@@ -267,12 +284,17 @@ function endDrag(cancel) {
   const d = drag; drag = null; if (!d || cancel) return;
   if (!d.moved) {     // a tap
     if (draft) { addPoint(d.wx, d.wy); return; }
+    if (tab !== 'ter') {
+      if (d.kind === 'omove') osel = d.oi; else if (place) placeObj(place, d.wx, d.wy); else osel = -1;
+      ui(); draw(); return;
+    }
     if (d.kind === 'vert') { selV = [d.li, d.i]; draw(); ui(); return; }
     if (d.pick !== undefined) { sel = d.pick; selV = null; ui(); draw(); return; }
     if (d.kind === 'pan' && sel !== -1) { sel = -1; selV = null; ui(); draw(); }
     return;
   }
-  if (d.kind !== 'pan') { dirty(d.box); save(); ui(); }
+  if (d.kind === 'omove' || d.kind === 'orot') { save(); ui(); }
+  else if (d.kind !== 'pan') { dirty(d.box); save(); ui(); }
   draw();
 }
 const up = e => { PT.delete(e.pointerId); if (PT.size < 2) pinch = null; if (PT.size === 0) endDrag(false); else if (drag) drag = null; };
@@ -324,6 +346,74 @@ function move(d) {      // in the draw order: d -1 down, +1 up
 /* removing a point: a shape keeps 3, a road's line 2 (a branch with fewer goes; the main line stays) */
 function canDelV(s) { if (!selV) return false; const p = gLines(s)[selV[0]]; return !!p && (s.l ? p.length > 4 || selV[0] > 0 : p.length > 6); }
 function delV(s) { const [li, i] = selV, L = gLines(s), p = L[li]; if (s.l && p.length <= 4) L.splice(li, 1); else p.splice(i, 2); }
+
+/* ---------- objects (G.objs: {k, x, y, ...settings}): details and gameplay, placed by tapping, read by buildMap (2_maps.js) ---------- */
+/* each kind: its tab, name, icon, footprint radius (px) and settings: [field, label, kind, ...]
+   kinds: 'ang' a facing (also a handle on the map), 'num' min max step, 'pick' [[value, label], ...] */
+const TEAMS = [[0, 'West'], [1, 'East']], TEAMC = ['#4d8dff', '#ff5a4a', '#cfcfcf'];
+const OK = {
+  tree: { tab: 'det', n: 'Tree', ic: '🌳', r: o => 22 * (o.sc || 1), set: [['v', 'Look', 'pick', [[0, '1'], [1, '2'], [2, '3'], [3, '4']]], ['sc', 'Size', 'num', 0.6, 1.4, 0.05], ['a', 'Turn', 'ang']], def: { v: 0, sc: 1, a: 0 } },
+  pine: { tab: 'det', n: 'Pine', ic: '🌲', r: o => 22 * (o.sc || 1), set: [['v', 'Look', 'pick', [[0, '1'], [1, '2'], [2, '3'], [3, '4']]], ['sc', 'Size', 'num', 0.6, 1.4, 0.05], ['a', 'Turn', 'ang']], def: { v: 0, sc: 1, a: 0 } },
+  hay: { tab: 'det', n: 'Hay bale', ic: '🟡', r: () => 13, set: [['a', 'Turn', 'ang']], def: { a: 0 } },
+  bags: { tab: 'det', n: 'Sandbag wall', ic: '◠', r: () => 38, set: [['a', 'Faces', 'ang']], def: { a: 0 } },
+  bag: { tab: 'det', n: 'Sandbag', ic: '▬', r: () => 9, set: [['a', 'Turn', 'ang']], def: { a: 0 } },
+  flag: { tab: 'play', n: 'Objective', ic: '⚑', r: o => o.r || 96, set: [['r', 'Capture radius', 'num', 50, 220, 2]], def: { r: 96 } },
+  base: { tab: 'play', n: 'Team base', ic: '⌂', r: () => 40, set: [['team', 'Team', 'pick', TEAMS]], def: { team: 0 } },
+  camp: { tab: 'play', n: 'Forward camp', ic: '⛺', r: () => 26, set: [['team', 'Team', 'pick', TEAMS]], def: { team: 0 } },
+  veh: { tab: 'play', n: 'Vehicle spawner', ic: '⛟', r: o => o.type === 'nest' ? 20 : o.type === 'jeep' ? 40 : 60, set: [['type', 'Vehicle', 'pick', [['tank', 'Tank'], ['jeep', 'Jeep'], ['nest', 'MG nest']]], ['team', 'Team', 'pick', [...TEAMS, [-1, 'None']]], ['resp', 'Respawn (s)', 'num', 5, 120, 1], ['a', 'Faces', 'ang']], def: { type: 'tank', team: 0, resp: 24, a: 0 } },
+  drop: { tab: 'play', n: 'FFA spawn', ic: '◆', r: () => 18, set: [], def: {} },
+  crate: { tab: 'play', n: 'Supply crate', ic: '▣', r: () => 14, set: [], def: {} }
+};
+const objs = () => G.objs || (G.objs = []);
+const kindsOf = tab => Object.keys(OK).filter(k => OK[k].tab === tab);
+const flagName = o => String.fromCharCode(65 + objs().filter(q => q.k === 'flag').indexOf(o));
+/* drawn over the ground in every tab (dimmed outside their own), true size */
+function drawObjs() {
+  const k = 1 / V.z, os = objs();
+  os.forEach((o, i) => {
+    const D = OK[o.k]; if (!D) return; const mine = D.tab === tab, on = mine && i === osel;
+    cx.save(); cx.globalAlpha = mine ? 1 : 0.45; cx.translate(o.x, o.y);
+    const tc = TEAMC[o.team === 1 ? 1 : o.team === -1 ? 2 : 0];
+    if (o.k === 'tree' || o.k === 'pine') { const r = D.r(o); cx.fillStyle = o.k === 'pine' ? '#1f5a2e' : '#2f8a35'; cx.beginPath(); cx.arc(0, 0, r, 0, 7); cx.fill(); cx.fillStyle = 'rgba(255,255,255,.18)'; cx.beginPath(); cx.arc(-r * 0.3, -r * 0.3, r * 0.45, 0, 7); cx.fill(); cx.strokeStyle = '#0c2a10'; cx.lineWidth = 1.5 * k; cx.beginPath(); cx.arc(0, 0, r, 0, 7); cx.stroke(); }
+    else if (o.k === 'hay') { cx.rotate(o.a || 0); cx.fillStyle = '#d9b54a'; cx.strokeStyle = '#6b5216'; cx.lineWidth = 1.5 * k; cx.beginPath(); cx.arc(0, 0, 13, 0, 7); cx.fill(); cx.stroke(); }
+    else if (o.k === 'bags') { cx.rotate(o.a || 0); cx.strokeStyle = '#8a7650'; cx.lineWidth = 13; cx.lineCap = 'round'; cx.beginPath(); cx.arc(-12, 0, 32, -1.15, 1.15); cx.stroke(); cx.strokeStyle = 'rgba(0,0,0,.35)'; cx.lineWidth = 1.5 * k; cx.stroke(); }
+    else if (o.k === 'bag') { cx.rotate(o.a || 0); cx.fillStyle = '#8a7650'; cx.fillRect(-9, -5, 18, 10); }
+    else if (o.k === 'flag') { const r = o.r || 96; cx.fillStyle = 'rgba(255,255,255,.1)'; cx.beginPath(); cx.arc(0, 0, r, 0, 7); cx.fill(); cx.setLineDash([10 * k, 7 * k]); cx.strokeStyle = 'rgba(255,255,255,.7)'; cx.lineWidth = 2 * k; cx.stroke(); cx.setLineDash([]); label(flagName(o), 0, 0, 22 * k, '#fff'); }
+    else if (o.k === 'base') { cx.strokeStyle = tc; cx.lineWidth = 3 * k; cx.setLineDash([12 * k, 8 * k]); cx.strokeRect(-170, -200, 340, 400); cx.setLineDash([]); cx.fillStyle = tc; cx.globalAlpha *= 0.15; cx.fillRect(-170, -200, 340, 400); cx.globalAlpha = mine ? 1 : 0.45; label('BASE', 0, 0, 16 * k, tc); }
+    else if (o.k === 'camp') { cx.fillStyle = tc; cx.beginPath(); cx.moveTo(0, -22); cx.lineTo(22, 16); cx.lineTo(-22, 16); cx.closePath(); cx.fill(); label('CAMP', 0, 34, 11 * k, tc); }
+    else if (o.k === 'veh') {
+      cx.rotate(o.a || 0); const n = o.type === 'jeep' ? 'jeep0' : o.type === 'nest' ? 'mg' : 'hull0', A = ATLAS[n];
+      cx.strokeStyle = tc; cx.lineWidth = 3 * k; cx.beginPath(); cx.arc(0, 0, D.r(o), 0, 7); cx.stroke();
+      if (A && gReady(IMG)) { cx.imageSmoothingEnabled = true; cx.drawImage(IMG, A[0], A[1], A[2], A[3], -A[4], -A[5], A[2], A[3]); }
+      else { cx.fillStyle = tc; cx.fillRect(-30, -16, 60, 32); }
+      cx.fillStyle = tc; cx.beginPath(); cx.moveTo(D.r(o) + 4, -8); cx.lineTo(D.r(o) + 18, 0); cx.lineTo(D.r(o) + 4, 8); cx.fill();     // the way it faces
+    }
+    else if (o.k === 'drop') { cx.fillStyle = '#f5d670'; cx.beginPath(); cx.moveTo(0, -16); cx.lineTo(14, 0); cx.lineTo(0, 16); cx.lineTo(-14, 0); cx.closePath(); cx.fill(); label('FFA', 0, 28, 10 * k, '#f5d670'); }
+    else if (o.k === 'crate') { cx.fillStyle = '#e07a2c'; cx.fillRect(-11, -11, 22, 22); cx.strokeStyle = '#5a2c08'; cx.lineWidth = 2; cx.strokeRect(-11, -11, 22, 22); }
+    cx.restore();
+    if (D.r(o) * V.z < 11 && o.k !== 'flag') {     // too small to see at this zoom: a badge, its icon
+      cx.globalAlpha = mine ? 1 : 0.45; cx.fillStyle = 'rgba(13,18,11,.8)'; cx.strokeStyle = o.team !== undefined ? tc : '#a49f86'; cx.lineWidth = 1.5 * k;
+      cx.beginPath(); cx.arc(o.x, o.y, 11 * k, 0, 7); cx.fill(); cx.stroke();
+      cx.font = `${12 * k}px system-ui`; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillStyle = '#ece4c8'; cx.fillText(D.ic, o.x, o.y + 0.5 * k); cx.globalAlpha = 1;
+    }
+    if (on) {
+      const r = Math.max(D.r(o), 14 * k); cx.strokeStyle = '#000'; cx.lineWidth = 4 * k; cx.beginPath(); cx.arc(o.x, o.y, r + 4 * k, 0, 7); cx.stroke(); cx.strokeStyle = '#f5d670'; cx.lineWidth = 2 * k; cx.stroke();
+      if (D.set.some(s => s[2] === 'ang')) { const [hx, hy] = rotH(o); cx.beginPath(); cx.moveTo(o.x, o.y); cx.lineTo(hx, hy); cx.stroke(); dot(hx, hy, 9 * k, '#5fd3d0', 2 * k); }
+    }
+  });
+}
+function label(t, x, y, sz, c) { cx.font = `700 ${sz}px Chakra Petch, system-ui`; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.lineWidth = sz / 4; cx.strokeStyle = '#000'; cx.strokeText(t, x, y); cx.fillStyle = c; cx.fillText(t, x, y); }
+/* the turn handle: out along the facing, past the footprint */
+function rotH(o) { const d = Math.max(OK[o.k].r(o), 14 / V.z) + 34 / V.z, a = o.a || 0; return [o.x + Math.cos(a) * d, o.y + Math.sin(a) * d]; }
+function objAt(wx, wy) {     // the topmost object of this tab under (wx, wy)
+  const os = objs(); for (let i = os.length - 1; i >= 0; i--) { const o = os[i], D = OK[o.k]; if (!D || D.tab !== tab) continue; if (Math.hypot(o.x - wx, o.y - wy) < Math.max(o.k === 'flag' || o.k === 'base' ? 40 : D.r(o), 16 / V.z)) return i; }
+  return -1;
+}
+function placeObj(k, x, y) {
+  snap(); const o = { k, x: Math.round(Math.max(0, Math.min(G.w, x))), y: Math.round(Math.max(0, Math.min(G.h, y))), ...JSON.parse(JSON.stringify(OK[k].def)) };
+  const last = S.last && S.last[k]; if (last) Object.assign(o, last);     // the settings last used for this kind
+  objs().push(o); osel = objs().length - 1; save(); ui(); draw();
+}
 
 /* ---------- menus ---------- */
 const menu = $('#menu'), veil = $('#veil');
@@ -417,6 +507,8 @@ const propsOf = s => s.l ? ['wd', 'soft', 'r'] : ['soft', 'r'];
 function ui() {
   if (!G) return;
   $('#name').textContent = G.name; $('#bUndo').disabled = !UNDO.length; $('#bRedo').disabled = !REDO.length;
+  for (const b of document.querySelectorAll('#tabs button')) b.classList.toggle('on', b.dataset.tab === tab);
+  if (tab !== 'ter') return uiObj();
   const s = sel !== -1 ? cur() : null, dk = draft && draft.k;
   let r1 = `<div class="r"><button class="btn${tool === 'select' ? ' on' : ''}" data-a="sel">✥</button><button class="btn${dk === 'shape' ? ' on' : ''}" data-a="draw">✎ Shape</button><button class="btn${dk === 'road' || dk === 'branch' ? ' on' : ''}" data-a="road">〰 Road</button><button class="btn" data-a="shape">＋ ▾</button><span class="sp"></span><button class="btn" data-a="layers">☰ ${G.stamps.length}</button></div>`, r2;
   if (draft) {
@@ -444,7 +536,51 @@ function ui() {
     sl.onchange = () => { b0 = null; save(); ui(); };
   }
 }
+/* the Details / Gameplay bar: select, or a kind to place (tap the map to put one down); the selection's settings:
+   choices as dropdowns, numbers and facing on one slider with chips to pick which, then duplicate / delete */
+const OPROPS = o => OK[o.k].set.filter(q => q[2] !== 'pick');
+function uiObj() {
+  const os = objs(), mine = os.filter(o => OK[o.k] && OK[o.k].tab === tab).length, o = os[osel] && OK[os[osel].k].tab === tab ? os[osel] : null; if (!o) osel = -1;
+  let h = `<div class="r"><button class="btn${!place ? ' on' : ''}" data-a="osel">✥</button><div class="scr">${kindsOf(tab).map(k => `<button class="btn${place === k ? ' on' : ''}" data-place="${k}">${OK[k].ic} ${OK[k].n}</button>`).join('')}</div><button class="btn" data-a="olist">☰ ${mine}</button></div>`;
+  if (o) {
+    const D = OK[o.k], picks = D.set.filter(q => q[2] === 'pick'), ps = OPROPS(o);
+    h += `<div class="r"><b style="font-size:13px;flex:none">${D.ic} ${D.n}${o.k === 'flag' ? ' ' + flagName(o) : ''}</b><span class="sp"></span>${picks.map(([f, n, , opts]) => `<select class="sel" data-set="${f}" aria-label="${n}">${opts.map(([v, l]) => `<option value="${v}"${(o[f] ?? D.def[f]) == v ? ' selected' : ''}>${l}</option>`).join('')}</select>`).join('')}</div>`;
+    if (ps.length) {
+      if (!ps.some(q => q[0] === S.oprop)) S.oprop = ps[0][0]; const P = ps.find(q => q[0] === S.oprop), ang = P[2] === 'ang', v = ang ? Math.round(((o.a || 0) * 180 / Math.PI % 360 + 360) % 360) : o[P[0]] ?? D.def[P[0]];
+      h += `<div class="r"><label class="sl"><span>${P[1]}</span><input type="range" id="ov" min="${ang ? 0 : P[3]}" max="${ang ? 359 : P[4]}" step="${ang ? 5 : P[5]}" value="${v}"><b id="ovV">${v}${ang ? '°' : ''}</b></label></div>`;
+    }
+    h += `<div class="r">${ps.length > 1 ? ps.map(q => `<button class="btn${q[0] === S.oprop ? ' on' : ''}" data-oprop="${q[0]}">${q[1]}</button>`).join('') : ''}<span class="sp"></span><button class="btn ic" data-a="odup" title="Duplicate">⧉</button><button class="btn ic red" data-a="odel" title="Delete">🗑</button></div>`;
+  } else h += `<div class="r"><span class="muted" style="flex:1">${place ? 'Tap the map to place a ' + OK[place].n.toLowerCase() + ' · ✥ when done' : 'Pick something above to place it, or tap one to edit it'}${tab === 'play' && !os.some(q => q.k === 'flag') ? ' · no objectives yet: the game places A, B, C' : ''}</span></div>`;
+  $('#btm').innerHTML = h;
+  $('#hint').textContent = o ? 'Drag it to move' + (OK[o.k].set.some(q => q[2] === 'ang') ? ' · drag the blue dot to turn it' : '') : '';
+  if (!o) return;
+  const remember = () => { (S.last || (S.last = {}))[o.k] = Object.fromEntries(OK[o.k].set.map(q => [q[0], o[q[0]]])); save(); };     // new ones of this kind start the same
+  for (const el of document.querySelectorAll('#btm [data-set]')) el.onchange = () => { snap(); const f = el.dataset.set, v = el.value; o[f] = isNaN(+v) ? v : +v; remember(); ui(); draw(); };
+  const sl = $('#ov'); if (sl) {
+    let first = true; const P = OPROPS(o).find(q => q[0] === S.oprop), ang = P[2] === 'ang';
+    sl.oninput = () => { if (first) { snap(); first = false; } const v = +sl.value; if (ang) o.a = v * Math.PI / 180; else o[P[0]] = v; $('#ovV').textContent = v + (ang ? '°' : ''); draw(); };
+    sl.onchange = () => { first = true; remember(); save(); };
+  }
+}
+function objList(anchor) {
+  const os = objs(), ids = os.map((o, i) => i).filter(i => OK[os[i].k] && OK[os[i].k].tab === tab).reverse();
+  pop(`<h3>${tab === 'det' ? 'Details' : 'Gameplay'}</h3>${ids.length ? '' : '<p class="muted" style="margin:4px 8px">None placed yet.</p>'}${ids.map(i => { const o = os[i], D = OK[o.k]; return `<button class="lay${i === osel ? ' on' : ''}" data-i="${i}"><span style="width:22px;text-align:center">${D.ic}</span><span class="n">${D.n}${o.k === 'flag' ? ' ' + flagName(o) : ''}${o.team !== undefined ? ' · ' + (o.team === -1 ? 'no team' : TEAMS[o.team ? 1 : 0][1]) : ''}${o.type ? ' · ' + o.type : ''}</span><span class="m">${o.x}, ${o.y}</span></button>`; }).join('')}`, anchor,
+    m => m.onclick = e => { const b = e.target.closest('[data-i]'); if (!b) return; unpop(); osel = +b.dataset.i; place = null; const o = os[osel]; if (o.x < V.x || o.y < V.y || o.x > V.x + W / V.z || o.y > V.y + H / V.z) { V.x = o.x - W / 2 / V.z; V.y = o.y - H / 2 / V.z; } ui(); draw(); });
+}
+$('#tabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (!b) return; tab = S.tab = b.dataset.tab; sel = -1; selV = null; osel = -1; place = null; draft = null; tool = 'select'; save(); ui(); draw(); });
 $('#btm').addEventListener('click', e => {
+  const ob = e.target.closest('button[data-place],button[data-oprop],button[data-a^="o"]');
+  if (ob && tab !== 'ter') {
+    const a = ob.dataset.a, o = objs()[osel];
+    if (ob.dataset.place) { place = place === ob.dataset.place ? null : ob.dataset.place; osel = -1; }
+    if (ob.dataset.oprop) S.oprop = ob.dataset.oprop;
+    if (a === 'osel') place = null;
+    if (a === 'olist') return objList(ob);
+    if (a === 'odup' && o) { snap(); const c = JSON.parse(JSON.stringify(o)); c.x += 40; c.y += 40; objs().push(c); osel = objs().length - 1; save(); }
+    if (a === 'odel' && o) { snap(); objs().splice(osel, 1); osel = -1; save(); }
+    ui(); draw(); return;
+  }
+  if (tab !== 'ter') return;
   const b = e.target.closest('button[data-a],button[data-prop]'); if (!b) return; const a = b.dataset.a, s = sel !== -1 ? cur() : null;
   if (b.dataset.prop) { S.prop = b.dataset.prop; save(); }
   if (a === 'sel') { tool = 'select'; draft = null; }
@@ -475,6 +611,7 @@ $('#bZin').onclick = () => zoomAt(1.4, W / 2, H / 2); $('#bZout').onclick = () =
 addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
   if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); restore(e.shiftKey ? REDO : UNDO, e.shiftKey ? UNDO : REDO); }
+  if (e.key === 'Delete' && tab !== 'ter' && osel >= 0) { snap(); objs().splice(osel, 1); osel = -1; save(); ui(); draw(); }
   if (e.key === 'Delete' && sel >= 0) { snap(); const bb = gBox(cur()); G.stamps.splice(sel, 1); sel = -1; selV = null; dirty(bb); save(); ui(); draw(); }
   if (e.key === 'Enter' && draft) finishDraft();
   if (e.key === 'Escape') { draft = null; tool = 'select'; sel = -1; selV = null; ui(); draw(); }

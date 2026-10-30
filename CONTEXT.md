@@ -794,3 +794,7 @@ Art drop (drop.py): atlas.png: hull4, tur_dead; atlas_m.png: tur_dead, sol_leg0,
 
 ## Build 266: no skirt on editor maps
 - SKIRT is a let (1_core.js), set per map in buildMap: 0 on g: maps (camera, clamps and particles stop at the map edge), 480 elsewhere. Editor maps' out-of-bounds is the ring outside their edge; new editor maps start with an edge 12% of the short side in. The editor no longer draws a skirt.
+
+## Build 267: map editor tabs and objects
+- Editor: tabs Terrain / Details / Gameplay (S.tab), the same bar layout in each. Objects in G.objs `{k, x, y, ...}`; kinds in OK (mapedit): tree, pine, hay, bags (sandbag crescent, a = faces), bag | flag (r capture radius), base (team), camp (forward camp, team), veh (type tank/jeep/nest, team 0/1/-1, resp s, a), drop (FFA spawn), crate. Place: pick a kind, tap the map (repeats); select: drag to move, blue dot turns (5° steps); settings: picks as selects, numbers/facing on one slider with chips; new ones copy the kind's last settings (S.last). Objects clamp to the map; too small at the zoom → icon badge.
+- buildMap g: branch: placed flags (lettered in order, own r), bases (pad centred), details (statics as placed) replace the automatic ones per kind; after the shared placement, veh / crate / drop / camp replace vehSpawns / crateSpots / ffaSpawns / fwd. Conquest: first and last flags start held (any count); KOTH hill = middle flag; vehicle respawn = sp.resp || T.respawn.
