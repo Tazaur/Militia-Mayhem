@@ -2,7 +2,7 @@
    SCENES: the dev tester (dev mode's TEST tab; tools/scene.mjs runs the same headless, with screenshots and a log).
    A scene is one set of params, laid round a window of a house on the map (testSpots picks it, room round it):
      spots   INSIDE (in the room, in view through the window), POST (just in from it), WINDOW, OUTSIDE (in front of it),
-             BESIDE (to one side of OUTSIDE: room for a tank), FAR (further out), DOOR (outside the nearest door),
+             BESIDE (to one side of OUTSIDE: room for a tank), FAR (further out), DOOR (outside the nearest door), DOORIN (just in from it, in its patch of sun),
              ROOF (the house's middle), TREE (the nearest standing tree, if one is near); PLAYER is wherever the player is
      at      { SPOT: what stands there } - none, dummy, bot, mate, jeep, tank, nest, husk jeep, husk tank
      drv     { SPOT: who drives the vehicle there } - dummy, bot, mate;  move { SPOT: throttle 0-1 } a dummy driver drives on
@@ -15,7 +15,7 @@
    what it sets); a new place is a spot in testSpots. The panel and the runner pick them up as they are.
    ===================================================================== */
 const TEST = { on: false, p: null, name: 'window', S: null, log: [], t0: 0, shots: [], fell: [], noHud: false, bare: false, spots: false };
-const TEST_SPOTS = ['INSIDE', 'POST', 'OUTSIDE', 'BESIDE', 'FAR', 'DOOR', 'TREE'];
+const TEST_SPOTS = ['INSIDE', 'POST', 'OUTSIDE', 'BESIDE', 'FAR', 'DOOR', 'DOORIN', 'TREE'];
 const TEST_WHAT = ['none', 'dummy', 'bot', 'mate', 'jeep', 'tank', 'nest', 'husk jeep', 'husk tank'];
 const TEST_TIMES = { day: [0.7, -2.36], dusk: [0.14, -2.8], night: [-0.26, -2.36] };     // the sun's height, direction
 /* live switches: set at once, no re-run. o: the options (the panel steps through them), set: what each does */
@@ -45,6 +45,7 @@ const SCENES = {
   drive: { n: 'DRIVING PAST', at: { BESIDE: 'jeep', INSIDE: 'dummy' }, drv: { BESIDE: 'dummy' }, move: { BESIDE: 0.6 }, cam: 'PLAYER' },
   night: { n: 'NIGHT', at: { INSIDE: 'dummy', BESIDE: 'jeep' }, drv: { BESIDE: 'dummy' }, time: 'night' },
   indoors: { n: 'INDOORS', player: 'INSIDE', at: { POST: 'dummy', OUTSIDE: 'dummy' }, cam: 'INSIDE', zoom: 1.5 },
+  doorway: { n: 'IN THE DOORWAY', player: 'DOORIN', cam: 'PLAYER', zoom: 2 },     // under the roof, in the sun through the door
   tree: { n: 'UNDER A TREE', player: 'TREE', at: { OUTSIDE: 'dummy' }, cam: 'TREE', zoom: 1.5 },
   felled: { n: 'A FELLED TREE', player: 'OUTSIDE', at: { TREE: 'jeep' }, fell: ['TREE'], cam: 'TREE', zoom: 1.5 },
   brawl: { n: 'LIVE BOTS', at: { INSIDE: 'bot', DOOR: 'bot', FAR: 'mate' }, brain: true, cam: 'PLAYER' },
@@ -65,6 +66,7 @@ function testSpots() {
       if (!open(S.OUTSIDE, 8, 6) || !open(S.FAR, 8, 6) || !open(S.BESIDE, 40, 40) || !sees(S.OUTSIDE[0], S.OUTSIDE[1], S.INSIDE[0], S.INSIDE[1])) continue;
       let dp = null, dd = 1e9; for (const q of P) if (q.door && houseAt(q.x, q.y) && houseAt(q.x, q.y)[0] === H) { const d = Math.hypot(q.x - p.x, q.y - p.y); if (d < dd) { dd = d; dp = q; } }
       S.DOOR = dp ? [dp.x + Math.cos(dp.a) * SUB * 2.5, dp.y + Math.sin(dp.a) * SUB * 2.5] : at(SUB * 5, -40);
+      S.DOORIN = dp ? (() => { const az = (TEST_TIMES[TEST.p && TEST.p.time] || TEST_TIMES.day)[1], sx = -Math.cos(az), sy = -Math.sin(az), k = sx * -Math.cos(dp.a) + sy * -Math.sin(dp.a) > 0.2 ? SUB * 1.2 : 0; return k ? [S.DOOR[0] + sx * k, S.DOOR[1] + sy * k] : [dp.x - Math.cos(dp.a) * SUB * 1.5, dp.y - Math.sin(dp.a) * SUB * 1.5]; })() : IN;     // in the sun the door lets in (from the opening, away from the sun), if it comes in
       let tr = null, td = 500; for (const o of MAP.statics) if (o.type === 'tree' && o.alive) { const d = Math.hypot(o.x - S.OUTSIDE[0], o.y - S.OUTSIDE[1]); if (d < td) { td = d; tr = o; } }
       if (tr) { S.TREE = [tr.x, tr.y]; S.tree = tr; }
       S.out = p.a; S.va = p.a + Math.PI / 2; S.H = H;     // facing out of the window; along the wall (vehicles)
@@ -98,7 +100,7 @@ function testApply(p) {
   if (me && p.player && p.player !== 'none' && S[p.player]) {
     const [x, y] = S[p.player]; if (me.veh) exitVehicle(me, true);
     if (!me.alive) spawnSoldier(me, { kind: 'pt', x, y });
-    Object.assign(me, { x, y, vx: 0, vy: 0, a: face(p.player), protect: 0 }); tlog(`PLAYER AT ${p.player}`);
+    Object.assign(me, { x, y, vx: 0, vy: 0, a: face(p.player), protect: 0 }); tlog(`PLAYER AT ${p.player} (${x | 0}, ${y | 0})`);
   }
   for (const [k, what] of Object.entries(p.at)) if (S[k] && what && what !== 'none') testPut(k, what, face(k));
   for (const [k, who] of Object.entries(p.drv)) {

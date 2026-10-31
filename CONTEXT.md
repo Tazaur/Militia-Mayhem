@@ -942,10 +942,22 @@ Art drop (drop.py): atlas 384x818 -> 384x1154; new sprites: tree0, tree1, tree2;
 - GXLC unpremultiplies and keeps alpha (can light a layer). scene.mjs logs console warnings (failed shaders).
 - Scene switches: TOPS, LIGHT VIEW (SUNDBG).
 
-## Crowns as upper surfaces, like roofs (build 329)
+## Crowns as upper surfaces, like roofs (build 330)
 - An atlas tree's parts are an upper surface (q.up; HP kind -10 - hs): written floating (G/A, even at the trunk) with B 0.4,
   so they cast (the sweep) and are the top for upperLit, but the lit surface under them is what's there (gm/hg: R). No
   materials from them. The unit see-through marks (kind 4) are gone. With the sun all three layers draw in upperLit (after
   the smoke); without, tree0 stays in the queue.
 - Smoke light: a crown's shadow is its parts' art swept from max(base, SMK_Z) to the top (SMK_TS, coloured T.sh), not a capsule.
 - HP material depth is 1 - top / HZ (was / 32: tops past 32 px were clipped out of the material pass).
+
+## Upper things on their own heights and sweep (build 331)
+- The bug: the sweep keeps one floating span a pixel. Roof slabs and crowns shared it with what floats under them (a
+  soldier's body on his legs, hulls, turrets): two spans got joined (bridging), a joined one reaching the ground folded
+  into the skyline (a solid column: the unit's own sprite shaded), or the lower one kept (the roof's / crown's shade lost
+  along the unit's shadow: the ghost outline). Indoors only the skyline counted, so it showed there worst.
+- Now (channels on, _sun.ly: 12+ texture units): roofs and crowns go in HL.p, drawn into their own heights (L2.U, unit 11)
+  and swept on their own over their box and its shadow (sunLayers, RS MD 1 -> L2.M B). CP: lower shade = max(frame sweep,
+  channels R, upper B), indoors too (the roof shades its room; the sun in at doors and windows by the same rule);
+  upper surface = SWL G. TX hu/rf read the upper heights (UL). Point lights are blocked by them too (P bk). The fog memory
+  keeps them in with the rest (hKept draws p). Without channels: the old merged path (ur: skyline only).
+- Scenes: spot DOORIN (in the sun the door lets in), scene 'doorway'. PLAYER AT logs the position.
