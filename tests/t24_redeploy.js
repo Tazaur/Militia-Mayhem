@@ -1,4 +1,5 @@
 require('../harness.js');
+// covers: 6_menus 3_sim
 // pause-menu REDEPLOY kills you on the spot and goes straight to the deploy screen (never in co-op);
 // bodies lie 2 min then fade over 1; spent casings fade over 15 s.
 const press=b=>{pads[0].buttons[b].pressed=true;step(1);pads[0].buttons[b].pressed=false;step(2);};

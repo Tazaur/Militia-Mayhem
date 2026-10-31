@@ -883,3 +883,16 @@ ROOF_STYLES, MAP_ROOFS and roofPaint(H, st, list, snow, grit) live in src/2d_hou
   - Log: `EVHOOK` (1b ev) → `testEv`; `testState()` = log + spots + soldiers (with thoughts) + vehicles + wrecks. Dummies take scripted input (`dummy.I`, `dummyInput`). `wreckOf(v)` (3_sim) makes husks; `newBot()` is the one bot-brain literal.
 - **Visual checks go through the runner**: `node tools/scene.mjs <scene> '<params json>' --shots 0.6,2 [--map outskirts] [--phone] [--keep-hud]` (serves the repo, headless Chrome, camera snapped on the scene, HUD off) → PNGs + `<scene>.log` in %TEMP%/mm-scenes. `node tools/scene.mjs list` prints scenes/spots/switches.
 - t25 now runs on OUTSKIRTS in dev mode and runs every scene + play-as-AI; t12 has no DEV button. harness: Path2D stub.
+
+## Team size; fast, picked tests
+- The match row BOTS / TEAM is now TEAM SIZE (0-12; 0 = NO BOTS, players only; default 6). Bots fill each team up to it
+  around its players, so both sides field the same number (newMatch, 3_sim.js); if one team has more players than the size,
+  the other is filled to match. Free-for-all keeps a plain bot count. Mid-match joiners already take a bot's place.
+- The harness loads the game with a global eval ((0,eval)), not a direct one inside the module: direct eval made every game
+  variable a dynamic lookup, and a map build took ~10 s in node (0.4 s now). The full suite went from ~10 min to ~27 s.
+- The harness seeds Math.random (TEST_SEED, 1 by default): every run repeats exactly. G.setHook(f) taps the event bus.
+- `node tools/test.mjs` runs only the tests covering the src files changed since the last commit (each test's second line:
+  `// covers: 3_sim 6_menus`), 10 at a time, with timings. Names (`t18 t26`), `--all`, `--since <commit>`, `--seed n`.
+  Changes to harness.js, build.py or 1_core.js run everything. Render-only files are checked with tools/scene.mjs.
+- t18 was flaky (a random open strip sometimes out of bounds or beside a crate): its strip now avoids both.
+- t23 (co-op: "bled out", "no respawn mid-wave") still fails, as it did before these changes.

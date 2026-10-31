@@ -1,4 +1,5 @@
 require('../harness.js');
+// covers: 3_sim
 setImmediate(()=>{
   step(5); G.newMatch({mode:0,map:0,bots:0,limit:1,skill:1,camera:'shared',weather:'clear'},false);
   const M=G.M; M.sol.length=0;

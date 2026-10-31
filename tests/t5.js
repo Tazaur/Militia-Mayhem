@@ -1,4 +1,5 @@
 require('../harness.js');
+// covers: 2_maps 2b_ground 2c_props 2d_house 3_sim 4_ai
 setImmediate(()=>{
   step(5); console.log('state',G.state,'errs',errs());
   for (const map of [0,1,2,3,4]) {

@@ -636,7 +636,7 @@ function changeSetting(key, d) {
   const C = CFG, prevMap = C.map, prevWeather = C.weather;
   if (key === 'mode') C.mode = (C.mode + d + MODES.length) % MODES.length;
   if (key === 'map') C.map = (C.map + d + MAPNAMES.length) % MAPNAMES.length;
-  if (key === 'bots') C.bots = clamp(C.bots + d, 0, MODES[C.mode].id === 'ffa' ? 6 : 10);
+  if (key === 'bots') C.bots = MODES[C.mode].id === 'ffa' ? clamp(C.bots + d, 0, 6) : clamp(C.bots + d, 0, 12);
   if (key === 'limit') C.limit = (C.limit + d + 3) % 3;
   if (key === 'skill') C.skill = (C.skill + d + 3) % 3;
   if (key === 'ff') C.ff = !C.ff;
@@ -654,7 +654,7 @@ function settingLabel(key) {
   switch (key) {
     case 'mode': return ['MODE', MODES[C.mode].n];
     case 'map': return ['MAP', MAPNAMES[C.map][1]];
-    case 'bots': return [ffa ? 'BOTS' : 'BOTS / TEAM', String(C.bots)];
+    case 'bots': return ffa ? ['BOTS', String(C.bots)] : ['TEAM SIZE', C.bots ? String(C.bots) : 'NO BOTS'];
     case 'limit': if (MODES[C.mode].coop) return ['WAVES', LIMITS.surv[C.limit] ? String(LIMITS.surv[C.limit]) : 'ENDLESS'];
       return ffa ? ['KILL LIMIT', String(LIMITS.ffa[C.limit])] : ['TICKETS', String(LIMITS.team[C.limit])];
     case 'skill': return ['BOT SKILL', SKILL[C.skill].name];

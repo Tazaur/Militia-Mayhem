@@ -1,4 +1,5 @@
 require('../harness.js');
+// covers: 5d_dev 5g_test 2d_house 4_ai 3_sim
 // dev mode (a setting: OUTSKIRTS here): generated houses (rooms, doors, windows), no-AI dummies with a TTK log,
 // scenes (5g_test.js), playing as AI, wall sections that collapse into rubble, windows you can see and shoot through; then back to a normal world.
 setImmediate(()=>{

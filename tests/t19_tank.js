@@ -1,4 +1,5 @@
 require('../harness.js');
+// covers: 3_sim
 // real rams still hurt (pushing doesn't), and tank doors: driver at the back, gunner either side, riders at the rear corners
 const hold=(b,f)=>{pads[0].buttons[b].pressed=true;step(f);pads[0].buttons[b].pressed=false;step(2);};
 const press=b=>hold(b,1);

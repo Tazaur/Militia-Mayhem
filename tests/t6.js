@@ -1,4 +1,5 @@
 require('../harness.js');
+// covers: 4_ai 6_menus 3_sim
 let T=0;
 const hold=(b,frames)=>{pads[0].buttons[b].pressed=true;step(frames);pads[0].buttons[b].pressed=false;step(2);};
 const press=(b)=>hold(b,1);

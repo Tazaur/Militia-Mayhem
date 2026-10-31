@@ -79,7 +79,9 @@ function newMatch(cfg, demo) {
     // a fixed pool of raiders the waves draw from (the roster never changes mid-match, so online clients keep up)
     for (let i = 0; i < 24; i++) { const b = makeSoldier({ team: 1, color: teamColor[1], name: nextName(), bot: true }); b.dark = true; b.respawnT = 1e9; M.sol.push(b); }
   } else {
-    for (const t of [0, 1]) { const nb = demo ? 7 : cfg.bots; for (let i = 0; i < nb; i++) { const b = makeSoldier({ team: t, color: teamColor[t], name: nextName(), bot: true }); b.dark = !demo && cfg.teamColors !== 'classic'; M.sol.push(b); } }
+    // cfg.bots is the team size: bots fill each team up to it around its players (both teams the same size, even if one has more players); 0: players only, no bots
+    const hum = t => M.sol.filter(o => o.player && o.team === t).length, size = demo ? 7 : cfg.bots ? Math.max(cfg.bots, hum(0), hum(1)) : 0;
+    for (const t of [0, 1]) { const nb = Math.max(0, size - hum(t)); for (let i = 0; i < nb; i++) { const b = makeSoldier({ team: t, color: teamColor[t], name: nextName(), bot: true }); b.dark = !demo && cfg.teamColors !== 'classic'; M.sol.push(b); } }
   }
   for (const s of M.sol) if (s.bot && !coop) s.respawnT = rnd(0, 0.8);
   rainAudio(M.rain);

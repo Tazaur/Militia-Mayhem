@@ -1,4 +1,5 @@
 require('../harness.js');
+// covers: 3_sim 5_ui
 // blowing up a crewed vehicle (any type) scores it, never says "EMPTY"; an empty one says EMPTY. Duplicate names get nicknames.
 const press=b=>{pads[0].buttons[b].pressed=true;step(1);pads[0].buttons[b].pressed=false;step(2);};
 setImmediate(()=>{

@@ -1,4 +1,5 @@
 require('../harness.js');
+// covers: 3_sim 2_maps 2b_ground
 const hold=(b,f)=>{pads[0].buttons[b].pressed=true;step(f);pads[0].buttons[b].pressed=false;step(2);};
 const press=b=>hold(b,1);
 setImmediate(()=>{

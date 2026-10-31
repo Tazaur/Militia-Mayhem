@@ -1,4 +1,5 @@
 require('../harness.js');
+// covers: 3_sim 4_ai 6_menus
 // team modes: teammates share one colour; free-for-all / co-op: everyone their own.
 // co-op survival: 2x health, players go down and get revived, waves escalate, a wipe ends it, the dead return when a wave is cleared.
 const press=(i,b)=>{pads[i].buttons[b].pressed=true;step(1);pads[i].buttons[b].pressed=false;step(2);};

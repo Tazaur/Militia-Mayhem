@@ -696,7 +696,7 @@ function rumble(pl, s, d) {
 function touchPlayer() { return PLAYERS.find(p => p.dev.type === 'touch'); }
 
 /* ---------------- settings ---------------- */
-const CFG = Object.assign({ mode: 0, map: 0, bots: 5, limit: 1, skill: 1, ff: false, board: false, midjoin: true, camera: 'split', style: 'classic', fogLook: 'grey', weather: 'clear', teamColors: 'player', fog: 'los', sound: 'exp', sun: true, clearLos: true,
+const CFG = Object.assign({ mode: 0, map: 0, bots: 6, limit: 1, skill: 1, ff: false, board: false, midjoin: true, camera: 'split', style: 'classic', fogLook: 'grey', weather: 'clear', teamColors: 'player', fog: 'los', sound: 'exp', sun: true, clearLos: true,
   res: 100, lightQ: 1, shLay: true, shLen: 64, shMem: true, shPt: true, lights: 'all', refl: true, fogQ: 'high', smk: 'high', fps: 0, minimap: true, tSize: 100, tAlpha: 100, tFireX: 96, tFireY: 92, tLfire: true, volMaster: 100, volSfx: store.get('sfx', true) ? 100 : 0, volMus: store.get('mus', true) ? 100 : 0 }, store.get('cfg3', {}));
 /* settings › FOG OF WAR presets: [name, values] (drawn by fogLook / fogEdge) */
 const FOG_PRESETS = [['STANDARD', { fogD: 20, fogK: 20, fogE: 50, fogW: 16 }], ['GREYSCALE', { fogD: 100, fogK: 22, fogE: 0, fogW: 24 }], ['MUTED', { fogD: 50, fogK: 22, fogE: 0, fogW: 24 }],

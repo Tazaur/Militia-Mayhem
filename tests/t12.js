@@ -1,4 +1,5 @@
 require('../harness.js');
+// covers: 6_menus 1_core
 const press=(i,b,n=1)=>{pads[i].buttons[b].pressed=true;step(n);pads[i].buttons[b].pressed=false;step(2);};
 const stick=(i,x,y)=>{pads[i].axes=[x,y,0,0];step(2);pads[i].axes=[0,0,0,0];step(2);};
 setImmediate(()=>{

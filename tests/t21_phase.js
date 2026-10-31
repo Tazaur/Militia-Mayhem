@@ -1,4 +1,5 @@
 require('../harness.js');
+// covers: 3_sim
 // walking into a parked vehicle (from every side, standing / prone, and pinned against a wall) never gets you inside its hull
 const hold=(b,f)=>{pads[0].buttons[b].pressed=true;step(f);pads[0].buttons[b].pressed=false;step(2);};
 const press=b=>hold(b,1);

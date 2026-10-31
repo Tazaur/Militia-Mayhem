@@ -1,4 +1,5 @@
 require('../harness.js');
+// covers: 4_ai 3_sim
 // a bot on a gun nest only shoots at what its gun can swing to
 const hold=(b,f)=>{pads[0].buttons[b].pressed=true;step(f);pads[0].buttons[b].pressed=false;step(2);};
 const press=b=>hold(b,1);

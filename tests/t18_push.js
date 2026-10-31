@@ -1,4 +1,5 @@
 require('../harness.js');
+// covers: 3_sim
 // vehicles shove vehicles and wrecks, sharing the push by mass
 const hold=(b,f)=>{pads[0].buttons[b].pressed=true;step(f);pads[0].buttons[b].pressed=false;step(2);};
 const press=b=>hold(b,1);
@@ -9,7 +10,7 @@ setImmediate(()=>{
   const me=G.PLAYERS[0].sol; step(30); press(0); step(200);
   const M=G.M; let errs=0;
   // an open strip of ground
-  const clear=(x,y)=>!G.MAP.buildings.some(b=>G.inRect(x,y,b,70))&&!G.MAP.statics.some(o=>Math.hypot(o.x-x,o.y-y)<90)&&!G.inWater(x,y);
+  const clear=(x,y)=>!G.MAP.buildings.some(b=>G.inRect(x,y,b,70))&&!G.MAP.statics.some(o=>Math.hypot(o.x-x,o.y-y)<90)&&!G.inWater(x,y)&&!G.M.crates.some(c=>Math.hypot(c.x-x,c.y-y)<90)&&!G.outOfBounds(x,y-120)&&!G.outOfBounds(x,y+120);     // no crates (a jeep stops dead on one), in the battlefield (out of it the OOB timer kills the driver)
   let P=null; for(let k=0;k<20000&&!P;k++){const x=400+Math.random()*(G.WW-1200),y=300+Math.random()*(G.WH-600); let ok=true; for(let d=-80;d<=520;d+=20) if(!clear(x+d,y)){ok=false;break;} if(ok)P=[x,y];}
   if(!P){console.log('no open strip');console.log('errs',1);return;}
   const mkV=type=>{const v=M.vehicles.find(v=>v.type===type&&!v.dead&&!v.seats.some(Boolean)&&!v.__used);if(v)v.active=true;return v;};
