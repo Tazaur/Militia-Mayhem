@@ -66,6 +66,7 @@ if (bench) {     // frames timed by rAF (the page's own loop draws them); the GP
   if (probe) b.gpu += ' · PROBE ' + JSON.stringify(await js(probe));
   bres = `BENCH ${b.n} frames · mean ${b.mean.toFixed(2)} ms (${(1000 / b.mean).toFixed(0)} fps) · p95 ${b.p95.toFixed(2)} ms · light ${b.light} · GPU ${b.gt.toFixed(2)} ms: ${b.gpu}`;
 }
+if (probe && !bench) bres = 'PROBE ' + JSON.stringify(await js(probe));
 const st = await js('testState()');
 const text = [`${scene} on ${st.map} · ${st.time} s · ${st.fps} fps`, '', ...st.log, '', 'SPOTS ' + JSON.stringify(st.spots), '', 'SOLDIERS', ...st.soldiers.map(s => '  ' + JSON.stringify(s)), 'VEHICLES', ...st.vehicles.map(v => '  ' + JSON.stringify(v)), 'WRECKS ' + JSON.stringify(st.wrecks), ...(st.wck ? ['SHADOW CACHE CHECK ' + JSON.stringify(st.wck)] : []), '', ...(errs.length ? ['ERRORS', ...errs] : ['no errors'])].join('\n');
 fs.writeFileSync(path.join(out, scene + '.log'), text);

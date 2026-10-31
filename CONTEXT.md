@@ -1054,3 +1054,8 @@ SHADOW CACHE setting (`CFG.shCache`: 2 SUN + MEMORY, the default; 1 SUN; 0 OFF),
 ## Merged passes: the maps' shader split by surface (build 400)
 - The maps shader's body is now lit(f, p, up, ou, w2): a surface's shade / highlights / glow; sunSh() its sun shadow. The upper surface and the memory's map skip the point lights' 4 LT taps, and the water ripples, bloom and glint run only when the glow map is wanted (all exact: they only fed outputs those maps don't use). LIGHT MAPS (ONE PASS) 4.09 -> ~3.45 ms on ULTRA; ONE A MAP ~6.3.
 - Tried and dropped: ALL IN ONE PASS (one MRT draw, six targets: the frame's, the memory's and the upper surface's maps). Slower, 5.1 ms vs 3.5, even as its own program: the bigger shader and six targets cost more than the draws saved.
+
+## WebGL vs WebGPU, measured; texelFetch in the maps (build 403)
+- tools/gpubench.js (run via scene.mjs --probe "import('/tools/gpubench.js').then(m => m.run())"): catches the frame's light-maps MRT draw (PIPE hook), takes its real textures and uniforms, times N draws in WebGL (timer query), runs the same shader ported to WGSL on WebGPU (timestamp queries) and diffs the outputs (max 1/255: the port is exact).
+- First result: WebGPU 0.93 ms a draw vs WebGL 1.13 (Intel gen-9). The gap was the texture reads (WGSL textureLoad vs texture2D sampling), not the API: the MRT program (es3) now turns the maps' texel reads into texelFetch (es3()), and WebGL is 0.68 ms vs WebGPU's 0.93. LIGHT MAPS 3.33 -> 2.58 ms in the frame.
+- scene.mjs --probe works without --bench too.

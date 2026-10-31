@@ -407,7 +407,7 @@ void main() {
 #endif
 }`, CP = prog(VS, CPS, ['p']);
     /* WebGL2: the same, its maps (shade, highlights, glow) in one pass into three targets (MRT: drawSun copies them into GC) */
-    const es3 = s => s.replace(/texture2D\(/g, 'texture(').replace(/\battribute\b/g, 'in').replace(/\bvarying\b/g, 'out');
+    const es3 = s => s.replace(/texture2D\((\w+), clamp\(p, R\.xy, R\.zw\) \/ S\)/g, 'texelFetch($1, ivec2(clamp(p, R.xy, R.zw)), 0)').replace('vec2 q = (floor(p) + 0.5) / S;', 'ivec2 q = ivec2(floor(p));').replace(/texture2D\((SW[TSL]), q\)/g, 'texelFetch($1, q, 0)').replace(/texture2D\(/g, 'texture(').replace(/\battribute\b/g, 'in').replace(/\bvarying\b/g, 'out');
     const CPM = GL ? prog('#version 300 es\n' + es3(VS), '#version 300 es\n#define MRT 1\n' + es3(CPS).replace('precision highp float;', 'precision highp float; layout(location = 0) out vec4 o0; layout(location = 1) out vec4 o1; layout(location = 2) out vec4 o2;'), ['p']) : null;
     /* heights: one quad per thing (i0 centre + x half-axis, i1 y half-axis + kind + p0, i2 p1 p2 + atlas uv0, i3 uv1 + its top + w,
        i4 its underside's box in its uv), to buffer px by X (scale, offset); kinds: 0 sprite (p0 base, p1 add: its painted heights
