@@ -927,3 +927,17 @@ Art drop (drop.py): atlas 384x818 -> 384x1154; new sprites: tree0, tree1, tree2;
   HIGH: sway + fade; LOW: still + fade.
 - Scenes: spot TREE (the nearest standing tree), param fell [SPOT], switch TREES; scenes 'tree' and 'felled'.
 - drop.py runs the tests 10 at a time.
+
+## Trees and roofs lit by the sun (build 328)
+- Height buffer range is 0-127.5 px (5e_light.js HZ/HZS, 0.5 px a step); atlas art heights stay m.r*63.75.
+  Sweep spans store lo/hi over [-16,128] conservatively (lo ceil, hi floor); each sweep read is lowered by its true
+  sun distance to the texel read. HP sprite heights are read bilinear, alpha-weighted (hb, uniform AZ): no stairstep stripes.
+- Atlas trees cast through their painted heights (treeParts: tree0 on under_tree, tree1/tree2 stacked, sway, q.k scale,
+  q.hs heights scale if over HZ). Units under a crown get HP kind-4 marks (B 0.4): lit on their grounded top (gm/hg),
+  still shaded by the crown. The no-sun shadow layer casts the crown too; the old circle shadow is gone.
+- Upper surface (UP): roofs + tree tops are drawn after the smoke into UPG and lit by the sun maps 4/5 (GC is 2x3 maps;
+  4/5 scissored to UPB, the roofs and crowns in view); upperLit(fn). RS G channel = the upper surface's shade.
+  Every surface lifts +0.75 before the sun test (no acne; the lit roof matches the remembered one).
+- ROOF & TREETOP LIGHT (CFG.tops; ULTRA/HIGH/MEDIUM lit, LOW and below flat = roofLit tint). SHADOW LENGTH FULL = 128.
+- GXLC unpremultiplies and keeps alpha (can light a layer). scene.mjs logs console warnings (failed shaders).
+- Scene switches: TOPS, LIGHT VIEW (SUNDBG).

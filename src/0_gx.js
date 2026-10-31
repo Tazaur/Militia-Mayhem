@@ -171,11 +171,12 @@ precision highp float; uniform sampler2D D, G; uniform vec4 uD, uM0, uM1, uM2; u
 vec3 m(vec4 M) { return texture(G, gl_FragCoord.xy * M.xy + M.zw).rgb; }
 float dg(float b, float s) { return b <= 0. ? 0. : s >= 1. ? 1. : min(1., b / (1. - s)); }
 void main() {
-  vec3 c = texture(D, (gl_FragCoord.xy - uD.xy) * uD.zw).rgb;
+  vec4 d = texture(D, (gl_FragCoord.xy - uD.xy) * uD.zw); if (d.a <= 0.) { o = vec4(0.); return; }
+  vec3 c = d.rgb / d.a;     // a layer (upperLit): lit as its colours, its alpha kept
   if (uOn.x > 0.5) c *= m(uM0);
   if (uOn.y > 0.5) { vec3 h = m(uM1); c = vec3(dg(c.r, h.r), dg(c.g, h.g), dg(c.b, h.b)); }
   if (uOn.z > 0.5) c = min(c + m(uM2), 1.);
-  o = vec4(c, 1.);
+  o = vec4(c * d.a, d.a);
 }`;
 /* a gaussian blur along uR.xy (sigma uR.z GL px), read from the copy D (1 / its size: uT) clamped to the rect uD (GL px) */
 const GXBLUR = `#version 300 es
@@ -786,7 +787,7 @@ class GX {
     g.enable(g.BLEND); GXB.prog = null; GXB.blk = null; const s = GXB.sc; g.scissor(s[0], s[1], s[2], s[3]);
   }
   /* the light's maps composited (drawSun): src a GL surface, at: each map's corner in it (canvas px), sw x sh of it onto
-     the device rect to (an opaque target: the screen); on: [shade, highlights, glow] */
+     the device rect to (the screen, or a layer: its alpha kept); on: [shade, highlights, glow] */
   lightComp(src, at, sw, sh, to, on) {
     if (!GXR) gxInit(); gxFlush(); const sf = this.canvas, g = GL, R = GXR, P = R.PL, H = sf.gh, [dx, dy, dw, dh] = to;
     const xu = gxDst(sf, [dx, dy, dx + dw, dy + dh]); if (!xu) return;

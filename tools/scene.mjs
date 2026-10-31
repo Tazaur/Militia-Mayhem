@@ -31,7 +31,7 @@ let list; for (let k = 0; k < 40; k++) { try { list = await (await fetch(`http:/
 const ws = new WebSocket(list.find(t => t.type === 'page').webSocketDebuggerUrl);
 await new Promise(r => ws.onopen = r);
 let id = 0; const pend = {}, errs = [];
-ws.onmessage = e => { const m = JSON.parse(e.data); if (m.id && pend[m.id]) { pend[m.id](m.result || m.error); delete pend[m.id]; } if (m.method === 'Runtime.exceptionThrown') errs.push('EXCEPTION ' + (m.params.exceptionDetails.exception || {}).description); if (m.method === 'Runtime.consoleAPICalled' && m.params.type === 'error') errs.push('console.error ' + m.params.args.map(a => a.value || a.description).join(' ')); };
+ws.onmessage = e => { const m = JSON.parse(e.data); if (m.id && pend[m.id]) { pend[m.id](m.result || m.error); delete pend[m.id]; } if (m.method === 'Runtime.exceptionThrown') errs.push('EXCEPTION ' + (m.params.exceptionDetails.exception || {}).description); if (m.method === 'Runtime.consoleAPICalled' && (m.params.type === 'error' || m.params.type === 'warning')) errs.push('console.' + m.params.type + ' ' + m.params.args.map(a => a.value || a.description).join(' ')); };
 const send = (method, params = {}) => new Promise(r => { const i = ++id; pend[i] = r; ws.send(JSON.stringify({ id: i, method, params })); });
 const js = async x => { const r = await send('Runtime.evaluate', { expression: x, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception ? r.exceptionDetails.exception.description : r.exceptionDetails.text); return r.result && r.result.value; };
 const until = async (x, ms = 15000) => { for (let t = 0; t < ms; t += 100) { if (await js(x)) return true; await sleep(100); } return false; };

@@ -456,7 +456,8 @@ const SETS = {
   quality: { n: 'PRESET', o: QUALITY.map(([n], i) => [i, n]), get: qualPreset, set: i => { const r = CFG.res; Object.assign(CFG, QUALITY[i][1]); if (CFG.res !== r) resize(); }, lab: i => i < 0 ? 'CUSTOM' : null },
   lightQ: choice('LIGHTING QUALITY', 'lightQ', [[0, 'LOW'], [1, 'MEDIUM'], [2, 'HIGH']]),
   shLay: choice('FLOATING SHADOWS', 'shLay', [[true, 'SEPARATE'], [false, 'MERGED']]),
-  shLen: choice('SHADOW LENGTH', 'shLen', [[64, 'FULL'], [32, 'SHORT']]),
+  shLen: choice('SHADOW LENGTH', 'shLen', [[128, 'FULL'], [32, 'SHORT']]),
+  tops: choice('ROOF & TREETOP LIGHT', 'tops', [['lit', 'FULL'], ['flat', 'FLAT']]),
   shMem: choice('SHADOWS OUT OF SIGHT', 'shMem', [[true, 'ON'], [false, 'OFF']]),
   shPt: choice('LAMP SHADOWS', 'shPt', [[true, 'ON'], [false, 'OFF']]),
   lights: choice('LIGHTS', 'lights', [['all', 'ALL'], ['spot', 'SPOTLIGHTS ONLY']]),
@@ -481,7 +482,7 @@ const SETS = {
   tAuto: { n: 'DRAG TO AIM', o: [['on', 'AIMS + FIRES'], ['off', 'AIMS ONLY'], ['range', 'FIRES IN RANGE']], get: () => TOUCH.auto, set: v => { TOUCH.auto = v; store.set('autofire', v); } }
 };
 /* core tabs (title row), each with its pages (sub tabs, the row under it); Q / E or LB / RB step through every page */
-const SET_TABS = [['VIDEO', [['GRAPHICS', ['style', 'clearLos', 'fullscreen', 'camera']], ['FOG OF WAR', ['fogStyle', 'fogD', 'fogK', 'fogE', 'fogW', 'roofFog']], ['PERFORMANCE', ['quality', 'res', 'lightQ', 'fogQ', 'smk', 'trees', 'rec']], ['LIGHTS', ['lights', 'refl']], ['SHADOWS', ['sun', 'shLay', 'shLen', 'shMem', 'shPt']]]],
+const SET_TABS = [['VIDEO', [['GRAPHICS', ['style', 'clearLos', 'fullscreen', 'camera']], ['FOG OF WAR', ['fogStyle', 'fogD', 'fogK', 'fogE', 'fogW', 'roofFog']], ['PERFORMANCE', ['quality', 'res', 'lightQ', 'fogQ', 'smk', 'trees', 'tops', 'rec']], ['LIGHTS', ['lights', 'refl']], ['SHADOWS', ['sun', 'shLay', 'shLen', 'shMem', 'shPt']]]],
   ['AUDIO', [['VOLUME', ['volMaster', 'volSfx', 'volMus']], ['SOUND', ['sound']]]], ['HUD', [['DISPLAY', ['fps', 'minimap', 'teams']], ['DEV', ['dev']]]],
   ['CONTROLS', [['TOUCH', ['tSize', 'tAlpha', 'tFireX', 'tFireY', 'tLfire', 'tAuto']], ['BINDINGS', null]]]];
 const SET_PAGES = SET_TABS.flatMap(([, P], i) => P.map((_, j) => [i, j]));

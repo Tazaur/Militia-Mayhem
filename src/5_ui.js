@@ -101,7 +101,7 @@ function drawWorld(vw) {
   for (const s of MAP.statics) {
     if (!s.alive) { if (atlasTree(s) && vis(s.x, s.y, 60)) { AK = 'felled tree'; at(0.5, () => { const k = s.sc * TREE_K; spr('tree0', s.x, s.y, s.a, k, k, 0.6); worldT(); }); } continue; }
     if (!vis(s.x, s.y, s.type === 'tree' ? 60 : 16)) continue; AK = s.type;
-    if (atlasTree(s)) { treeFade(s); at(SUNH.tree[1], () => { if (!SUNNOW) { worldT(); ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.beginPath(); ctx.arc(s.x + 6, s.y + 7, treeR(s), 0, TAU); ctx.fill(); } treeLayers(s, 0, 0); }); continue; }     // no sun: one flat shadow, offset
+    if (atlasTree(s)) { treeFade(s); at(SUNH.tree[1], () => treeLayers(s, 0, 0)); continue; }     // its shadow: the sun's (its painted heights, treeParts), or without, the shadow layer's
     if (s.type === 'fence') at(SUNH.fence, () => { worldT(); ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.a); ctx.fillStyle = 'rgba(0,0,0,0.3)'; if (!SUNNOW) ctx.fillRect(-7, 2, 15, 3); ctx.fillStyle = CFG.style === 'grit' ? '#5a4632' : '#8a6a42'; ctx.fillRect(-7, -1, 14, 2.5); ctx.fillStyle = CFG.style === 'grit' ? '#3e3022' : '#5e4428'; ctx.fillRect(-2, -3, 4, 6); ctx.restore(); });
     else if (s.type === 'bag' && !s.arc) at(SUNH.fence, () => { worldT(); img(SPR.bag, s.x, s.y, s.a, 1); });     // a loose sandbag (a wall's are its arc sprite)
     else if (s.type === 'hay') at(SUNH.hay, () => { worldT(); ctx.fillStyle = 'rgba(0,0,0,0.3)'; if (!SUNNOW) { ctx.beginPath(); ctx.arc(s.x + 3, s.y + 4, 13, 0, TAU); ctx.fill(); } img(SPR.hay, s.x, s.y, s.a, 1); });
@@ -113,13 +113,16 @@ function drawWorld(vw) {
   AK = 'thrown body'; for (const f of M.flings) if (vis(f.x, f.y, 40)) { const k = f.t / f.T, h = Math.sin(Math.PI * k); at(ZH.body + h * 34, () => solDraw(f, solSpr(f.color, 'dead'), f.x, f.y - h * 34, f.rot, 1 + h * 0.6, 1 + h * 0.6)); }
   if (!devOff('parts')) partsInto(at, vis);
   // roofs over everything under them (vehicles, smoke): with the sun, after the smoke (lit already: roofView); without, the top of the queue's ground things
-  const roofDraw = () => { if (rv) { worldT(); ctx.imageSmoothingEnabled = false; const f = () => ctx.drawImage(rv.c, 0, 0, rv.w, rv.h, rv.x, rv.y, rv.w, rv.h); if (SUNNOW) roofLit(f); else f(); } };
+  const roofDraw = () => { if (rv) { worldT(); ctx.imageSmoothingEnabled = false; ctx.drawImage(rv.c, 0, 0, rv.w, rv.h, rv.x, rv.y, rv.w, rv.h); } };
   AK = 'roofs'; if (!SUNNOW) at(SUNH.tree[0] - 1, roofDraw);
   AK = 'tree tops'; if (!SUNNOW) at(SUNH.tree[0], () => drawTreeTops(vis));
   AK = 'killer glow'; at(99, () => drawKillerGlow(vw), true);
   Q.sort((a, b) => a.z - b.z || a.i - b.i);
   for (const d of Q) if (!d.post) { d.f(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; pipe('q', d); }
   // the light, over the whole view (out of sight: the shade for the memory, no point lights, units only cast)
+  UPB = null; const upb = (x0, y0, x1, y1) => { UPB = UPB ? [Math.min(UPB[0], x0), Math.min(UPB[1], y0), Math.max(UPB[2], x1), Math.max(UPB[3], y1)] : [x0, y0, x1, y1]; };     // what the upper surface's light covers
+  if (rv) for (const H of MAP.houses) if (H.roof && H.bb[2] > rv.x && H.bb[0] < rv.x + rv.w && H.bb[3] > rv.y && H.bb[1] < rv.y + rv.h) upb(...H.bb);
+  for (const s of MAP.statics) if (s.alive && atlasTree(s) && vis(s.x, s.y, 60)) { const r = treeR(s) / 0.85 + 8; upb(s.x - r, s.y - r, s.x + r, s.y + r); }
   if (SUNNOW) drawSun(vw, vis, hidden, fogged);
   else if (!devOff('add')) drawLights(vis); else lightsNow(vis);
   if (!SUNNOW) pipe('lights2d');
@@ -128,7 +131,7 @@ function drawWorld(vw) {
   if (fogged && !devOff('fog')) drawSoftFog(vw); pipe('softfog');
   drawLasers(vis); pipe('lasers');     // under the smoke: a man in it doesn't give himself away
   if (!devOff('smoke')) drawSmokes(vw); pipe('smokes');
-  if (SUNNOW) { roofDraw(); pipe('roofs'); roofLit(() => drawTreeTops(vis)); pipe('tree tops'); }
+  if (SUNNOW) { upperLit(() => { roofDraw(); pipe('roofs'); drawTreeTops(vis); }); pipe('tree tops'); }     // lit as their own surface (upperLit)
   // the remembered world over what's out of sight (everything above was drawn whole; dev views: the whole screen)
   if (fogged && !(SUNNOW && SUNDBG)) { const H = new Path2D(); polyPath(H, fogPolys); worldT(); fogOverlay(vw, H); if (SUNNOW && !CFG.roofFog) roofsOver(vw, rv, H); }
   // tags, reticles
@@ -462,9 +465,10 @@ function drawShadowLayer(vw, vis) {
   const main = ctx, d0 = DPR, X = vw.x * d0, Y = vw.y * d0, Wd = vw.w * d0, Ht = vw.h * d0; ctx = C.getContext('2d'); DPR = d0 * q;     // drawn at q (spr, worldT read DPR)
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(X * q - 1, Y * q - 1, Wd * q + 2, Ht * q + 2); ctx.imageSmoothingEnabled = true; ctx.globalAlpha = 1;
   const k = Math.min(SHD.kMax, 1 / Math.tan(sunEl())), ux = -Math.cos(SUN.az) * k, uy = -Math.sin(SUN.az) * k, eyes = viewEyes(vw);
-  const cast = o => { for (const p of partsOf(o)) { const b = p.b, t = p.b + p.add + artMax(p.n), n = Math.max(1, Math.ceil((t - b) * k / SHD.step)); for (let i = 0; i <= n; i++) { const h = b + (t - b) * i / n; spr(p.n, p.x + ux * h, p.y + uy * h, p.a, 1, p.fy); } } };
+  const cast = o => { for (const p of partsOf(o)) { const hs = p.hs || 1, sc = p.k || 1, b = p.b * hs, t = (p.b + p.add + artMax(p.n)) * hs, n = Math.max(1, Math.ceil((t - b) * k / SHD.step)); for (let i = 0; i <= n; i++) { const h = b + (t - b) * i / n; spr(p.n, p.x + ux * h, p.y + uy * h, p.a, sc, sc * (p.fy || 1)); } } };
   for (const s of M.sol) if (s.alive && !s.down && !s.veh && !s.swim && vis(s.x, s.y, 30) && !smokeHides(eyes, s, vw)) cast(s);
   for (const v of M.vehicles) if (v.active && vis(v.x, v.y, 80)) cast(v);
+  for (const s of MAP.statics) if (s.alive && atlasTree(s) && vis(s.x, s.y, 80)) cast(s);     // a crown: its art swept down its span, as the units
   worldT(); ctx.fillStyle = '#000';
   for (const f of M.flings) { if (!vis(f.x, f.y, 40)) continue; const h = Math.sin(Math.PI * f.t / f.T); ctx.beginPath(); ctx.ellipse(f.x, f.y + 4, 10 * (1 - h * 0.3), 6 * (1 - h * 0.3), 0, 0, TAU); ctx.fill(); }
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'source-atop'; ctx.fillRect(X * q - 1, Y * q - 1, Wd * q + 2, Ht * q + 2); ctx.globalCompositeOperation = 'source-over';     // the colours gone: silhouettes

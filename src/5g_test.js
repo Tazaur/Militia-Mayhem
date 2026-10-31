@@ -33,6 +33,8 @@ const TEST_KEYS = {
   spots: { n: 'SPOTS', o: [false, true], set: v => TEST.spots = v },
   ts: { n: 'SPEED', o: [1, 0.25, 0.5, 2, 0], set: v => DEV.ts = v },
   trees: { n: 'TREES', o: ['high', 'ultra', 'low'], set: v => CFG.trees = v },
+  tops: { n: 'TOPS', o: ['lit', 'flat'], set: v => CFG.tops = v },
+  sundbg: { n: 'LIGHT VIEW', o: [0, 1, 2, 3, 4, 5, 6, 7], set: v => SUNDBG = v },     // the light's dev views: 1 heights, 2 shade, 3 highlights, 4 glow, 5 materials, 6 sun shadow, 7 point lights
 };
 const SCENE_BASE = { pick: 0, player: 'OUTSIDE', at: {}, drv: {}, move: {}, smoke: [], shots: [], fell: [], roofs: true, los: true, sun: true, time: 'day', hud: true, cam: 'SCENE', zoom: 1, brain: false, sight: false, spots: false, ts: 1 };
 const SCENES = {
