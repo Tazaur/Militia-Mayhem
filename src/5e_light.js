@@ -201,6 +201,21 @@ function sunTone() {
 const HZ = 127.5, HZS = '127.5', SUN_LMAX = Math.ceil(HZ / Math.tan(SUN_MIN));     // the height buffer's top (px; a byte, 0.5 px a step): a stacked tree reaches ~125; SUN_LMAX: the longest shadow (that top at 5°)
 const sunReach = () => CFG.lightQ >= 2 ? SUN_LMAX : 720;     // how far off the view a caster's shadow is taken in: LIGHTING QUALITY ULTRA all of it, else 720 px (its buffer margin)
 let HS = 0.5; const LIGHT_Q = [0.35, 0.5, 0.75];                                     // height buffer resolution vs the screen (settings › LIGHTING QUALITY)
+/* settings › ADAPTIVE LIGHTING: the light's resolution (HS) follows the frame time, a step of LIGHT_A at a time, never
+   above LIGHTING QUALITY's own: down once the smoothed frame has been slower than 1/50 s for LA_DN s, up once it has been
+   quicker than 1/57 s for LA.wait s. A step up that slows it again within LA_BACK s doubles the wait (up to 60 s), so it
+   settles instead of see-sawing. Its buffers only grow (drawSun), so a step down costs nothing */
+const LIGHT_A = [0.25, 0.3, 0.35, 0.42, 0.5, 0.6, 0.75], LA_DN = 0.6, LA_BACK = 4, LA = { i: -1, top: -1, ema: 1 / 60, slow: 0, fast: 0, wait: 3, tUp: -1e9 };
+function lightAdapt(dt) {
+  const top = LIGHT_A.indexOf(LIGHT_Q[CFG.lightQ] || 0.5), now = performance.now() / 1000;
+  if (top !== LA.top) { LA.top = LA.i = top; LA.wait = 3; LA.slow = LA.fast = 0; }
+  if (!CFG.lightA || state !== 'play' || !(dt > 0) || dt > 0.25) { LA.slow = LA.fast = 0; return; }     // off, a menu, or a hitch / a hidden tab
+  LA.ema += (dt - LA.ema) * 0.1;
+  if (LA.ema > 1 / 50) { LA.slow += dt; LA.fast = 0; } else if (LA.ema < 1 / 57) { LA.fast += dt; LA.slow = 0; } else LA.slow = LA.fast = 0;
+  if (LA.slow > LA_DN && LA.i > 0) { if (now - LA.tUp < LA_BACK) LA.wait = Math.min(60, LA.wait * 2); LA.i--; LA.slow = 0; }
+  else if (LA.fast > LA.wait && LA.i < top) { LA.i++; LA.fast = 0; LA.tUp = now; }
+}
+const lightHS = () => CFG.lightA && LA.i >= 0 ? LIGHT_A[Math.min(LA.i, LA.top)] : LIGHT_Q[CFG.lightQ] || 0.5;
 const SUNH = { flag: 22, item: 4, wall: 40, glass: 6, fence: 9, hay: 14, crate: 10, nest: 10, tree: [56, 36] };     // px
 const SUNB = { mgNest: SUNH.nest, jump: 4, step: 4.5 };     // px: the nest MG rests on its bags (drawn over them, so never lower); a jump's gap; walked per frame of a walk (two frames a footstep)
 /* per part (sprite name less its frame number) or shape (SUNH name): lift = an air gap (px) between it and what it rests
@@ -802,7 +817,7 @@ function sunNoSweep(S, box, T, FS, u) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, S.out); gl.activeTexture(gl.TEXTURE0 + u); gl.bindTexture(gl.TEXTURE_2D, T[0]); gl.activeTexture(gl.TEXTURE0);
 }
 function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory's light too, map 3)
-  HS = LIGHT_Q[CFG.lightQ] || 0.5; gxYield();
+  HS = lightHS(); gxYield();
   const S = _sun, { gl, GC, U, CU } = S, w = Math.ceil(cv.width * HS), h = Math.ceil(cv.height * HS), dpr = DPR, K = VZ * dpr * HS, k = dpr * HS;
   if (GC.width !== w * 2 || GC.height !== h * 3) { GC.width = w * 2; GC.height = h * 3; S.out = GL ? GC.fb : null; gxYield(); }     // the maps 2 × 3 (4 in a row outgrew phone GPUs' 8192 px)
   const rx = Math.floor(vw.x * dpr * HS), ry = Math.floor(vw.y * dpr * HS), rw = Math.min(w - rx, Math.ceil(vw.w * dpr * HS)), rh = Math.min(h - ry, Math.ceil(vw.h * dpr * HS));

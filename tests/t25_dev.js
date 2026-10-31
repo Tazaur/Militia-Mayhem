@@ -179,5 +179,11 @@ setImmediate(()=>{
     const D=Math.PI/180, [en,an]=G.sunPath(Math.PI/2), [em,am]=G.sunPath(0.3), [ee]=G.sunPath(14/24*Math.PI*2);
     ok(Math.abs(en/D-75)<0.01&&Math.abs(an+Math.PI/2)<1e-6,'day cycle: noon 75°, south '+(en/D).toFixed(2)); ok(Math.cos(am)>0.3&&em>0,'day cycle: morning sun east'); ok(ee<0,'day cycle: dark by 20:00');
     ok(Math.abs(G.dayPhOf(em)-0.3)<1e-6,'day cycle: dayPhOf undoes sunPath'); }
+  { // ADAPTIVE LIGHTING: slow frames step the light's resolution down, quick ones back up to LIGHTING QUALITY's, never past it
+    const C=G.CFG, q0=C.lightQ, a0=C.lightA, st0=G.state; C.lightQ=1; C.lightA=true; G.setState('play'); const run=(dt,s)=>{ for(let t=0;t<s;t+=dt) G.lightAdapt(dt); };
+    run(1/60,1); ok(Math.abs(G.lightHS()-0.5)<1e-9,'adaptive: starts at the quality own '+G.lightHS());
+    run(1/30,3); const lo=G.lightHS(); ok(lo<0.5,'adaptive: slow frames step it down '+lo);
+    run(1/60,80); ok(Math.abs(G.lightHS()-0.5)<1e-9,'adaptive: quick frames bring it back up, no further '+G.lightHS());
+    C.lightA=false; ok(Math.abs(G.lightHS()-0.5)<1e-9,'adaptive off: the quality own'); C.lightQ=q0; C.lightA=a0; G.setState(st0); }
   console.log('errs',errs+global.errs());
 });

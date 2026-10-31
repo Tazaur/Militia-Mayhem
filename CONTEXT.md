@@ -989,3 +989,17 @@ Art drop (drop.py): atlas 384x818 -> 384x1154; new sprites: tree0, tree1, tree2;
 ## Scoreboard in dev mode (build 366)
 - `M.scoreHeld` (6_menus.js) used to be off whenever `M.dev` was set, so Tab and the touch scoreboard button did nothing in dev.
 - Now only a pad's View is withheld in dev (it opens the tool panel, `devInputs` `st.opt`).
+
+## Performance round: ADAPTIVE LIGHTING (build 367)
+The perf plan, one commit each, each with a setting to compare on the phone (FPS COUNTER › FPS + GPU STAGES):
+1. ADAPTIVE LIGHTING (this build).
+2. Sun shadows refreshed only when needed.
+3. Static shadow cache.
+4. Merged passes and point-light culling.
+5. WebGPU renderer (RENDERER setting).
+
+ADAPTIVE LIGHTING (`lightA`, default OFF; 5e_light.js `lightAdapt`, called from `devTime` every frame):
+- The light's resolution (HS) steps through LIGHT_A [0.25 .. 0.75], never above LIGHTING QUALITY's own.
+- It steps down once the smoothed frame has been slower than 1/50 s for 0.6 s, and up once it has been quicker than 1/57 s for `LA.wait` s (3 s).
+- A step up that slows it again within 4 s doubles the wait, up to 60 s.
+- The FPS counter (FPS + FRAME TIMES) shows LIGHT n%. t25 checks it.

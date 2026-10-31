@@ -455,6 +455,7 @@ const SETS = {
   res: slider('RENDER RESOLUTION', 'res', 50, 100, 5, '%', () => resize()),
   quality: { n: 'PRESET', o: QUALITY.map(([n], i) => [i, n]), get: qualPreset, set: i => { const r = CFG.res; Object.assign(CFG, QUALITY[i][1]); if (CFG.res !== r) resize(); }, lab: i => i < 0 ? 'CUSTOM' : null },
   lightQ: choice('LIGHTING QUALITY', 'lightQ', [[0, 'LOW'], [1, 'MEDIUM'], [2, 'HIGH']]),
+  lightA: choice('ADAPTIVE LIGHTING', 'lightA', [[false, 'OFF'], [true, 'ON']]),     // the light's resolution follows the frame time, up to LIGHTING QUALITY (lightAdapt)
   shLay: choice('FLOATING SHADOWS', 'shLay', [[true, 'SEPARATE'], [false, 'MERGED']]),
   shLen: choice('SHADOW LENGTH', 'shLen', [[128, 'FULL'], [32, 'SHORT']]),
   tops: choice('ROOF & TREETOP LIGHT', 'tops', [['lit', 'FULL'], ['flat', 'FLAT']]),
@@ -482,7 +483,7 @@ const SETS = {
   tAuto: { n: 'DRAG TO AIM', o: [['on', 'AIMS + FIRES'], ['off', 'AIMS ONLY'], ['range', 'FIRES IN RANGE']], get: () => TOUCH.auto, set: v => { TOUCH.auto = v; store.set('autofire', v); } }
 };
 /* core tabs (title row), each with its pages (sub tabs, the row under it); Q / E or LB / RB step through every page */
-const SET_TABS = [['VIDEO', [['GRAPHICS', ['style', 'clearLos', 'fullscreen', 'camera']], ['FOG OF WAR', ['fogStyle', 'fogD', 'fogK', 'fogE', 'fogW', 'roofFog']], ['PERFORMANCE', ['quality', 'res', 'lightQ', 'fogQ', 'smk', 'trees', 'tops', 'rec']], ['LIGHTS', ['lights', 'refl']], ['SHADOWS', ['sun', 'shLay', 'shLen', 'shMem', 'shPt']]]],
+const SET_TABS = [['VIDEO', [['GRAPHICS', ['style', 'clearLos', 'fullscreen', 'camera']], ['FOG OF WAR', ['fogStyle', 'fogD', 'fogK', 'fogE', 'fogW', 'roofFog']], ['PERFORMANCE', ['quality', 'res', 'lightQ', 'lightA', 'fogQ', 'smk', 'trees', 'tops', 'rec']], ['LIGHTS', ['lights', 'refl']], ['SHADOWS', ['sun', 'shLay', 'shLen', 'shMem', 'shPt']]]],
   ['AUDIO', [['VOLUME', ['volMaster', 'volSfx', 'volMus']], ['SOUND', ['sound']]]], ['HUD', [['DISPLAY', ['fps', 'minimap', 'teams']], ['DEV', ['dev']]]],
   ['CONTROLS', [['TOUCH', ['tSize', 'tAlpha', 'tFireX', 'tFireY', 'tLfire', 'tAuto']], ['BINDINGS', null]]]];
 const SET_PAGES = SET_TABS.flatMap(([, P], i) => P.map((_, j) => [i, j]));
@@ -981,7 +982,7 @@ function onGL(f) { if (!GL) return f(); const m = ctx; ctx = GLSCR.getContext('2
 function onGLHere(f) { if (!GL) return f(); const t = ctx.getTransform(), m = ctx; ctx = GLSCR.getContext('2d'); try { ctx.setTransform(t.a, t.b, t.c, t.d, t.e, t.f); f(); } finally { ctx = m; ctx.setTransform(t.a, t.b, t.c, t.d, t.e, t.f); } }
 /* settings › FPS COUNTER: top right, under the safe area */
 function drawFps() {
-  screenT(); const u = uiU(), t = `${Math.round(DEV.fps)} FPS` + (CFG.fps > 1 ? ` · ${DEV.um.toFixed(1)} / ${DEV.rm.toFixed(1)} MS` : '');
+  screenT(); const u = uiU(), t = `${Math.round(DEV.fps)} FPS` + (CFG.fps > 1 ? ` · ${DEV.um.toFixed(1)} / ${DEV.rm.toFixed(1)} MS` : '') + (CFG.fps > 1 && CFG.lightA ? ` · LIGHT ${Math.round(lightHS() * 100)}%` : '');
   txt(t, W - SAFE.r - 10 * u, SAFE.t + 10 * u, fpx(11, u, 10), DEV.fps < 45 ? '#ff9a6a' : '#9fe07a', 'right', 'top', FD);
   if (CFG.fps < 2) return;
   const fs = fpx(10, u, 9), x = W - SAFE.r - 10 * u, L = [`WORST ${GPUP.worst.toFixed(1)} MS`];

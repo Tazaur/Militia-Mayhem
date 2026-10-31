@@ -39,6 +39,7 @@ function dayCycle(dt) {
 /* the cycle's time of day: DEV.ph 0 is 6:00, π / 2 noon */
 const dayClock = () => { const h = ((6 + DEV.ph / TAU * 24) % 24 + 24) % 24; return `${h | 0}:${String(Math.floor(h % 1 * 60)).padStart(2, '0')}`; };
 function devTime(dt, um, rm) {
+  lightAdapt(dt);
   if (M && M.dev && state === 'play') dayCycle(dt); const e = 0.08; DEV.fps += ((dt > 0 ? 1 / dt : 60) - DEV.fps) * e; DEV.um += (um - DEV.um) * e; DEV.rm += (rm - DEV.rm) * e;
   const P = GPUP, now = performance.now(); P.wk = Math.max(P.wk, dt * 1000); if (now - P.wt > 1000) { P.worst = P.wk; P.wk = 0; P.wt = now; }     // the slowest frame of the last second
   recFrame(dt, um, rm);
