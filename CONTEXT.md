@@ -970,3 +970,6 @@ Art drop (drop.py): atlas 384x818 -> 384x1154; new sprites: tree0, tree1, tree2;
 
 ## Roof collapse over 3 s (build 360)
 - `devRoofFall`: each tile lands at `rdist / furthest rdist * ROOF_T` (3 s), so the tile furthest from the fallen wall always lands last at 3 s, whatever the patch size (was 0.07 s per tile). t25_dev waits ROOF_T (exposed on G).
+
+## Roof crumbles outward in 1.5 s (build 361)
+- `devRoofFall`: a tile lands at `clamp(rdist / furthest + rnd(-ROOF_J, ROOF_J), 0, 1) * ROOF_T`, with ROOF_T 1.5 s and ROOF_J 0.15. It still spreads outward from the wall, with a ragged front, and never runs past 1.5 s.
