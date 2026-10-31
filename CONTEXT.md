@@ -967,3 +967,6 @@ Art drop (drop.py): atlas 384x818 -> 384x1154; new sprites: tree0, tree1, tree2;
 - `applyFog` calls `roofMemSee`. It copies `H.rc` into c only inside the sight polygons, per pixel like the memory picture, and drops a cell once all 4 of its corners are seen. `roofsOver` draws c's S cells out of sight over ROOF_C.
 - Fixes two bugs: an unseen collapse showed its outline (the neighbours' torn edges in ROOF_C), and half-seen fallen tiles went dark (a pend tile left when its centre was seen, and its unseen part showed the fogged memory).
 - Scene tester: `breach [SPOT]` knocks the nearest wall down; any spot may be a world `[x, y]`. Repro: `window {"breach":["ROOF"],"player":[1800,1585],"cam":"ROOF"}`.
+
+## Roof collapse over 3 s (build 360)
+- `devRoofFall`: each tile lands at `rdist / furthest rdist * ROOF_T` (3 s), so the tile furthest from the fallen wall always lands last at 3 s, whatever the patch size (was 0.07 s per tile). t25_dev waits ROOF_T (exposed on G).

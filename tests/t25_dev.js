@@ -87,7 +87,7 @@ setImmediate(()=>{
     M.gsf=null; const far=ks.reduce((m,k)=>T2.rdist[k]>T2.rdist[m]?k:m,ks[0]);
     G.devDamage(sec,9999,0,0); step(2);
     ok(T2.rdist[far]>=4,'patch is several tiles deep '+T2.rdist[far]); ok(T2.roof[far]===1&&ks.some(k=>T2.roof[k]===2),'cascade: near tiles first, far tiles still up');
-    step(Math.ceil(T2.rdist[far]*0.07*60)+10);
+    step(Math.ceil(G.ROOF_T*60)+10);
     let wd=0; for(let j=sec.cy;j<sec.cy+sec.ch;j++)for(let i=sec.cx;i<sec.cx+sec.cw;i++) if((i+j)%2===0) wd++;
     const F=M.gsf; let dB=0,dA=0; if(F){ for(const k of F.act){dA+=F.A[k];dB+=F.B[k];} for(const e of F.em){dA+=e[1];if(e[2])dB+=e[1];} }
     ok(F&&dB>wd&&Math.abs(dA-dB)<1e-3,'dust: brown smoke in the field '+dB.toFixed(1)+' (all of it brown)');

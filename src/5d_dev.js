@@ -268,11 +268,14 @@ function roofMemSee(m, polys, bx0, by0, bx1, by1) {
     g.restore(); if (!e.S.size) m.pend.delete(H);
   }
 }
-/* a wall section fell: its roof comes down as a cascade, each tile ROOF_STEP s later per tile it is from the wall */
-const ROOF_STEP = 0.07;
+/* a wall section fell: its roof comes down as a cascade over ROOF_T s, each tile later the further it is from the wall
+   (the furthest last) */
+const ROOF_T = 3;
 function devRoofFall(sec) {
-  const H = sec.h; if (!H.roof) return 0; const fall = { hit: new Set() }; let n = 0;
-  for (let k = 0; k < H.roof.length; k++) if (H.roof[k] === 1 && H.rsec[k] === sec.li) { DEV.roofQ.push({ H, k, at: M.time + H.rdist[k] * ROOF_STEP, fall }); n++; }
+  const H = sec.h; if (!H.roof) return 0; const fall = { hit: new Set() }, K = []; let far = 0;
+  for (let k = 0; k < H.roof.length; k++) if (H.roof[k] === 1 && H.rsec[k] === sec.li) { K.push(k); far = Math.max(far, H.rdist[k]); }
+  for (const k of K) DEV.roofQ.push({ H, k, at: M.time + (far ? H.rdist[k] / far : 0) * ROOF_T, fall });
+  const n = K.length;
   if (n) devLog(`ROOF ${n} TILES DOWN`, '#ffb060');
   return n;
 }
