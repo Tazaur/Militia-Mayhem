@@ -1041,3 +1041,7 @@ SHADOW CACHE setting (`CFG.shCache`: 2 SUN + MEMORY, the default; 1 SUN; 0 OFF),
   - Panning 150 px/s on ULTRA: mean 21.4 → 16.8 ms, p95 43.5 → 33.6.
 - **GPU STAGES split.** New labels MEMORY SHADOWS, UPPER SHADOWS (the u=9 channel/roof/crown sweeps, until now counted under POINT LIGHTS) and SHADOW CACHE.
 - **Scene param `pan: [vx, vy]`** moves the camera (world px/s).
+- **Roofs are cached too (wc.u).** sunHeights gathers the roofs before the trees, so `HL.p`'s first `HLY.pr` quads are roofs; they're in the hash.
+  - The cycle: 's', then 'uh'/'us' (roofs into the cache heights, MAX, swept into wc.u), then 'mh'/'ms'.
+  - `sunLayers` takes `uc`: the upper sweep copied from the cache, with only the crowns' boxes (they sway) swept each frame. The wck check covers 'upper' too (still: 0 off).
+  - ULTRA GPU 24.2 → 16.5 ms (40 → 56 fps); HIGH 82 fps.
