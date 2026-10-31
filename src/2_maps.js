@@ -119,7 +119,7 @@ function buildMap(id) {
       return null;
     })) k++;
   };
-  const addStatic = (o, mirrorIt) => { m.statics.push(o); if (mirrorIt) { const [x, y] = mirrorPt(o.x, o.y); m.statics.push({ ...o, x, y, a: (o.a || 0) + Math.PI }); } };
+  const addStatic = (o, mirrorIt) => { if (o.type === 'tree' && !o.pine) o.r = treeTrunk(o.sc) || o.r; m.statics.push(o); if (mirrorIt) { const [x, y] = mirrorPt(o.x, o.y); m.statics.push({ ...o, x, y, a: (o.a || 0) + Math.PI }); } };
   const crescent = (x, y, face, mi) => {   // face = direction the cover protects against
     const mk1 = (cx, cy, f) => { const A = { x: cx, y: cy, a: f + Math.PI, bags: [], lost: 0 }; m.arcs.push(A); const c = Math.cos(A.a), sn = Math.sin(A.a);
       for (const [px, py] of EXTRA.bagPts) { const st = { type: 'bag', x: cx + px * c - py * sn, y: cy + px * sn + py * c, a: 0, r: 8, alive: true, arc: A }; A.bags.push(st); m.statics.push(st); } };

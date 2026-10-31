@@ -3,18 +3,19 @@
    A scene is one set of params, laid round a window of a house on the map (testSpots picks it, room round it):
      spots   INSIDE (in the room, in view through the window), POST (just in from it), WINDOW, OUTSIDE (in front of it),
              BESIDE (to one side of OUTSIDE: room for a tank), FAR (further out), DOOR (outside the nearest door),
-             ROOF (the house's middle); PLAYER is wherever the player is
+             ROOF (the house's middle), TREE (the nearest standing tree, if one is near); PLAYER is wherever the player is
      at      { SPOT: what stands there } - none, dummy, bot, mate, jeep, tank, nest, husk jeep, husk tank
      drv     { SPOT: who drives the vehicle there } - dummy, bot, mate;  move { SPOT: throttle 0-1 } a dummy driver drives on
      player  the spot the player stands on (none: left where they are);  pick: which window (0, 1, ...)
+     fell    [SPOT, ...] the tree there is felled (stood up again when the scene clears)
      smoke   [SPOT, ...] a smoke grenade at each;  shots [[FROM, TO, after s], ...] a shot from whoever is at FROM
              (a dummy, made if nobody is) straight at TO
      and the live switches in TEST_KEYS (roofs, los, sun, time, hud, cam, zoom, brain, auto, sight, spots, ts)
    The standard: a new scene is an entry in SCENES (params only); a new switch is a TEST_KEYS entry (its options and
    what it sets); a new place is a spot in testSpots. The panel and the runner pick them up as they are.
    ===================================================================== */
-const TEST = { on: false, p: null, name: 'window', S: null, log: [], t0: 0, shots: [], noHud: false, bare: false, spots: false };
-const TEST_SPOTS = ['INSIDE', 'POST', 'OUTSIDE', 'BESIDE', 'FAR', 'DOOR'];
+const TEST = { on: false, p: null, name: 'window', S: null, log: [], t0: 0, shots: [], fell: [], noHud: false, bare: false, spots: false };
+const TEST_SPOTS = ['INSIDE', 'POST', 'OUTSIDE', 'BESIDE', 'FAR', 'DOOR', 'TREE'];
 const TEST_WHAT = ['none', 'dummy', 'bot', 'mate', 'jeep', 'tank', 'nest', 'husk jeep', 'husk tank'];
 const TEST_TIMES = { day: [0.7, -2.36], dusk: [0.14, -2.8], night: [-0.26, -2.36] };     // the sun's height, direction
 /* live switches: set at once, no re-run. o: the options (the panel steps through them), set: what each does */
@@ -24,15 +25,16 @@ const TEST_KEYS = {
   sun: { n: 'SUN', o: [true, false], set: v => CFG.sun = v },
   time: { n: 'TIME', o: ['day', 'dusk', 'night'], set: v => { DEV.cyc = 0; [SUN.el, SUN.az] = TEST_TIMES[v] || TEST_TIMES.day; } },
   hud: { n: 'HUD', o: [true, false], set: v => TEST.noHud = !v },
-  cam: { n: 'CAM', o: ['SCENE', 'PLAYER', 'INSIDE', 'WINDOW', 'OUTSIDE', 'BESIDE', 'FAR', 'off'], set: () => {} },
+  cam: { n: 'CAM', o: ['SCENE', 'PLAYER', 'INSIDE', 'WINDOW', 'OUTSIDE', 'BESIDE', 'FAR', 'TREE', 'off'], set: () => {} },
   zoom: { n: 'ZOOM', o: [1, 1.5, 2, 0.75, 0.5], set: () => {} },
   brain: { n: 'BRAINS', o: [false, true], set: v => DEV.brain = v },
   auto: { n: 'AS AI', o: [false, true], set: v => DEV.auto = v },
   sight: { n: 'SIGHT', o: [false, true], set: v => DEV.sightDbg = v },
   spots: { n: 'SPOTS', o: [false, true], set: v => TEST.spots = v },
   ts: { n: 'SPEED', o: [1, 0.25, 0.5, 2, 0], set: v => DEV.ts = v },
+  trees: { n: 'TREES', o: ['high', 'ultra', 'low'], set: v => CFG.trees = v },
 };
-const SCENE_BASE = { pick: 0, player: 'OUTSIDE', at: {}, drv: {}, move: {}, smoke: [], shots: [], roofs: true, los: true, sun: true, time: 'day', hud: true, cam: 'SCENE', zoom: 1, brain: false, sight: false, spots: false, ts: 1 };
+const SCENE_BASE = { pick: 0, player: 'OUTSIDE', at: {}, drv: {}, move: {}, smoke: [], shots: [], fell: [], roofs: true, los: true, sun: true, time: 'day', hud: true, cam: 'SCENE', zoom: 1, brain: false, sight: false, spots: false, ts: 1 };
 const SCENES = {
   window: { n: 'BY A WINDOW', at: { INSIDE: 'dummy', FAR: 'dummy', BESIDE: 'tank' } },
   husk: { n: 'HUSKS', at: { INSIDE: 'dummy', BESIDE: 'husk tank', FAR: 'husk jeep' } },
@@ -41,6 +43,8 @@ const SCENES = {
   drive: { n: 'DRIVING PAST', at: { BESIDE: 'jeep', INSIDE: 'dummy' }, drv: { BESIDE: 'dummy' }, move: { BESIDE: 0.6 }, cam: 'PLAYER' },
   night: { n: 'NIGHT', at: { INSIDE: 'dummy', BESIDE: 'jeep' }, drv: { BESIDE: 'dummy' }, time: 'night' },
   indoors: { n: 'INDOORS', player: 'INSIDE', at: { POST: 'dummy', OUTSIDE: 'dummy' }, cam: 'INSIDE', zoom: 1.5 },
+  tree: { n: 'UNDER A TREE', player: 'TREE', at: { OUTSIDE: 'dummy' }, cam: 'TREE', zoom: 1.5 },
+  felled: { n: 'A FELLED TREE', player: 'OUTSIDE', at: { TREE: 'jeep' }, fell: ['TREE'], cam: 'TREE', zoom: 1.5 },
   brawl: { n: 'LIVE BOTS', at: { INSIDE: 'bot', DOOR: 'bot', FAR: 'mate' }, brain: true, cam: 'PLAYER' },
 };
 const sceneParams = (name, over) => { const s = SCENES[name] || {}, o = over || {}; return { ...SCENE_BASE, ...s, ...o, at: { ...(s.at || {}), ...(o.at || {}) }, drv: { ...(s.drv || {}), ...(o.drv || {}) }, move: { ...(s.move || {}), ...(o.move || {}) } }; };
@@ -59,6 +63,8 @@ function testSpots() {
       if (!open(S.OUTSIDE, 8, 6) || !open(S.FAR, 8, 6) || !open(S.BESIDE, 40, 40) || !sees(S.OUTSIDE[0], S.OUTSIDE[1], S.INSIDE[0], S.INSIDE[1])) continue;
       let dp = null, dd = 1e9; for (const q of P) if (q.door && houseAt(q.x, q.y) && houseAt(q.x, q.y)[0] === H) { const d = Math.hypot(q.x - p.x, q.y - p.y); if (d < dd) { dd = d; dp = q; } }
       S.DOOR = dp ? [dp.x + Math.cos(dp.a) * SUB * 2.5, dp.y + Math.sin(dp.a) * SUB * 2.5] : at(SUB * 5, -40);
+      let tr = null, td = 500; for (const o of MAP.statics) if (o.type === 'tree' && o.alive) { const d = Math.hypot(o.x - S.OUTSIDE[0], o.y - S.OUTSIDE[1]); if (d < td) { td = d; tr = o; } }
+      if (tr) { S.TREE = [tr.x, tr.y]; S.tree = tr; }
       S.out = p.a; S.va = p.a + Math.PI / 2; S.H = H;     // facing out of the window; along the wall (vehicles)
       C.push(S);
     }
@@ -74,6 +80,7 @@ function testClear() {
   M.sol = M.sol.filter(s => !s.scene);
   for (const v of M.vehicles) if (v.scene) { engineOff(v); v.gone = true; }
   M.vehicles = M.vehicles.filter(v => !v.gone); M.wrecks = M.wrecks.filter(w => !w.scene); navDirty = 1;
+  for (const t of TEST.fell) { t.alive = true; navDirty = 1; } TEST.fell = [];
   TEST.on = false; TEST.S = null; TEST.shots = []; EVHOOK = null;
 }
 function testRun(name, over) { TEST.name = name; return testApply(sceneParams(name, over)); }
@@ -84,6 +91,7 @@ function testApply(p) {
   const S = TEST.S = C[((p.pick || 0) % C.length + C.length) % C.length]; TEST.on = true; EVHOOK = testEv;
   const face = k => k === 'WINDOW' || k === 'POST' ? S.out : Math.atan2(S.WINDOW[1] - S[k][1], S.WINDOW[0] - S[k][0]);
   tlog(`SCENE ${TEST.name} · WINDOW ${C.indexOf(S) + 1} OF ${C.length} · ${M.mapId}`);
+  if (S.tree) tlog(`TREE ${S.tree.pine ? 'PINE' : 'ATLAS'} · TRUNK R ${S.tree.r.toFixed(1)} · SCALE ${S.tree.sc.toFixed(2)}`);
   const me = (LOCALS()[0] || {}).sol;
   if (me && p.player && p.player !== 'none' && S[p.player]) {
     const [x, y] = S[p.player]; if (me.veh) exitVehicle(me, true);
@@ -99,6 +107,7 @@ function testApply(p) {
     s.scene = k + ' DRIVER'; const th = p.move[k]; if (th && s.dummy) s.dummy.I = () => ({ mx: Math.cos(v.a) * th, my: Math.sin(v.a) * th });
     tlog(`${who.toUpperCase()} DRIVING THE ${v.type.toUpperCase()} AT ${k}` + (th ? ` · THROTTLE ${th}` : ''));
   }
+  for (const k of p.fell || []) { const t = k === 'TREE' ? S.tree : null; if (t && t.alive) { destroyStatic(t); TEST.fell.push(t); tlog(`TREE AT ${k} FELLED`); } }
   for (const k of p.smoke) { const q = testPos(k); if (q) { popSmoke(q[0], q[1]); tlog(`SMOKE AT ${k}`); } }
   for (const [a, b, t] of p.shots) { if (!testWho(a) && S[a]) { const s = devDummyAt(S[a][0], S[a][1], face(a), 1); s.scene = a; } TEST.shots.push({ a, b, at: TEST.t0 + (t || 0) }); }
   for (const k in TEST_KEYS) if (p[k] !== undefined) TEST_KEYS[k].set(p[k]);

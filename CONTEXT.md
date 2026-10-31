@@ -912,3 +912,18 @@ ROOF_STYLES, MAP_ROOFS and roofPaint(H, st, list, snow, grit) live in src/2d_hou
 
 ## Build 301
 Art drop (drop.py): atlas 384x818 -> 384x1154; new sprites: tree0, tree1, tree2; atlas_m.png: pool; atlas.png: no paint change.
+
+## Atlas trees (tree0-2)
+- Non-pine trees are the atlas's tree0, tree1, tree2 stacked (5_ui.js: TREE_L, treeLayers), drawn at sc x TREE_K (0.9).
+  One shadow span for the crown (SUNH.tree, as before). tree0 is in the draw queue (over units); tree1-2 are drawn with
+  the roofs (with the sun: after the smoke, lit by roofLit; without: the queue just over the roofs), so the top is over smoke.
+- Sway: each layer moves a few px and turns a few degrees, more higher up, in gusts rolling across the map (treeSway).
+- Whoever is under a crown (soldiers, crewed vehicles: treeFade, s._u) fades it to 50% quickly (s.tf).
+- Felled: tree0 alone, flat, 60%, still, under everything (queue z 0.5); the fog memory remembers it so. No stump paint.
+- The solid trunk: the underside (under_tree) painted to full depth is the trunk; its area as a circle (treeTrunk), times
+  the tree's scale, is s.r (set in addStatic). Shots, sight, aim, lasers and lamp heights use s.r for trees now.
+- TREE DETAIL (settings › PERFORMANCE; presets: ULTRA ultra, HIGH/MEDIUM high, LOW and below low):
+  ULTRA: sway + fade + a soft cut round whoever is under it (a 64 px mask, maskedImage: clearest in the middle);
+  HIGH: sway + fade; LOW: still + fade.
+- Scenes: spot TREE (the nearest standing tree), param fell [SPOT], switch TREES; scenes 'tree' and 'felled'.
+- drop.py runs the tests 10 at a time.

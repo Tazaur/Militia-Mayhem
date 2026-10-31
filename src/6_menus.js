@@ -463,6 +463,7 @@ const SETS = {
   refl: choice('REFLECTIONS', 'refl', [[true, 'ON'], [false, 'OFF']]),
   fogQ: choice('FOG QUALITY', 'fogQ', [['high', 'HIGH'], ['low', 'LOW']]),
   smk: choice('SMOKE DETAIL', 'smk', [['high', 'HIGH'], ['low', 'LOW']]),
+  trees: choice('TREE DETAIL', 'trees', [['ultra', 'ULTRA'], ['high', 'HIGH'], ['low', 'LOW']]),
   rec: { n: 'RECORDER', o: [[false, 'OFF'], [true, 'ON']], get: () => REC.on, set: v => v ? recStart() : recStop(), lab: v => v ? 'RECORDING · OFF SAVES IT' : null },     // 5f_rec: a log of the frame, to share
   fps: choice('FPS COUNTER', 'fps', [[0, 'OFF'], [1, 'FPS'], [2, 'FPS + FRAME TIMES'], ...(GL ? [[3, 'FPS + GPU STAGES']] : [])]),
   minimap: choice('MINIMAP', 'minimap', [[true, 'ON'], [false, 'OFF']]),
@@ -480,7 +481,7 @@ const SETS = {
   tAuto: { n: 'DRAG TO AIM', o: [['on', 'AIMS + FIRES'], ['off', 'AIMS ONLY'], ['range', 'FIRES IN RANGE']], get: () => TOUCH.auto, set: v => { TOUCH.auto = v; store.set('autofire', v); } }
 };
 /* core tabs (title row), each with its pages (sub tabs, the row under it); Q / E or LB / RB step through every page */
-const SET_TABS = [['VIDEO', [['GRAPHICS', ['style', 'clearLos', 'fullscreen', 'camera']], ['FOG OF WAR', ['fogStyle', 'fogD', 'fogK', 'fogE', 'fogW', 'roofFog']], ['PERFORMANCE', ['quality', 'res', 'lightQ', 'fogQ', 'smk', 'rec']], ['LIGHTS', ['lights', 'refl']], ['SHADOWS', ['sun', 'shLay', 'shLen', 'shMem', 'shPt']]]],
+const SET_TABS = [['VIDEO', [['GRAPHICS', ['style', 'clearLos', 'fullscreen', 'camera']], ['FOG OF WAR', ['fogStyle', 'fogD', 'fogK', 'fogE', 'fogW', 'roofFog']], ['PERFORMANCE', ['quality', 'res', 'lightQ', 'fogQ', 'smk', 'trees', 'rec']], ['LIGHTS', ['lights', 'refl']], ['SHADOWS', ['sun', 'shLay', 'shLen', 'shMem', 'shPt']]]],
   ['AUDIO', [['VOLUME', ['volMaster', 'volSfx', 'volMus']], ['SOUND', ['sound']]]], ['HUD', [['DISPLAY', ['fps', 'minimap', 'teams']], ['DEV', ['dev']]]],
   ['CONTROLS', [['TOUCH', ['tSize', 'tAlpha', 'tFireX', 'tFireY', 'tLfire', 'tAuto']], ['BINDINGS', null]]]];
 const SET_PAGES = SET_TABS.flatMap(([, P], i) => P.map((_, j) => [i, j]));

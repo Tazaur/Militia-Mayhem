@@ -1,6 +1,58 @@
 /* =====================================================================
    RENDERING, HUD, DEPLOY SCREEN, MENUS, MAIN LOOP
    ===================================================================== */
+/* ---------------- trees: the atlas's tree0-2, a crown of three layers stacked (pines stay the drawn SPR.pines) ----------------
+   One shadow span for the lot (SUNH.tree: the crown's underside to its top). tree0 stands in the draw queue (over the men
+   under it), tree1-2 go up with the roofs (over the smoke; with the sun, lit as the roofs are). Whoever is under a crown
+   fades it to half quickly (s.tf). Felled: tree0 alone, flat on the ground at 60%, still, under everything.
+   TREE DETAIL (CFG.trees): ULTRA sways and also cuts a hole round whoever is under it; HIGH sways; LOW stands still. */
+const TREE_L = ['tree0', 'tree1', 'tree2'], TREE_K = 0.9, TREE_HOLE = 26;     // TREE_HOLE: the cut's radius round a man (clear in the middle, faded out by its edge)
+const atlasTree = s => s.type === 'tree' && !s.pine && !!ATLAS.tree0;
+const treeR = s => (atlasTree(s) ? ATLAS.tree0[2] * TREE_K : (s.pine ? SPR.pines : SPR.trees)[s.v].width) / 2 * s.sc * 0.85;
+/* layer k's sway now: a few px and a few degrees, in gusts that roll across the map */
+function treeSway(s, k) {
+  if (CFG.trees === 'low') return [0, 0, 0];
+  const t = M.time, ph = s.x * 0.011 + s.y * 0.007, g = 0.6 + 0.4 * Math.sin(t * 0.31 + ph * 0.5), A = [0.6, 1.5, 2.4][k] * g;
+  return [Math.sin(t * 1.4 + ph + k * 0.6) * A, Math.sin(t * 1.1 + ph * 1.3 + k * 0.6) * A * 0.6, Math.sin(t * 0.9 + ph + k * 0.8) * 0.045 * (k + 1) / 3 * g];
+}
+/* who is under the crown (s._u: soldiers on foot, vehicles with anyone aboard), and the fade, eased (once a frame: the queue's draw) */
+function treeFade(s) {
+  const now = M.time, dt = clamp(now - (s.tfT ?? now), 0, 0.1), U = s._u || (s._u = []), r = treeR(s); s.tfT = now; U.length = 0;
+  for (const o of M.sol) { if (!o.alive) continue; const p = o.veh || o; if (!U.includes(p) && Math.hypot(p.x - s.x, p.y - s.y) < r + (o.veh ? p.T.hw : 4)) U.push(p); }
+  s.tf = clamp((s.tf || 0) + (U.length ? 1 : -1) * dt * 6, 0, 1);
+}
+/* layers k0..k1, swaying, at the crown's fade; ULTRA (GL): a soft hole round whoever is under it, clearest in the middle */
+const TREE_M = { c: null, R: 0 };
+function treeMask(s) {     // the crown's box (world, s.x +- R) as a 64 px mask: opaque, with a radial fade cut at each one under it
+  const R = treeR(s) / 0.85 + 4, c = TREE_M.c || (TREE_M.c = gCv(64, 64)), g = c.getContext('2d'), k = 64 / (2 * R), f = s.tf || 0;
+  g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-over'; g.fillStyle = '#fff'; g.fillRect(0, 0, 64, 64); g.globalCompositeOperation = 'destination-out';
+  for (const p of s._u) {
+    const x = (p.x - s.x + R) * k, y = (p.y - s.y + R) * k, r = (p.T ? p.T.hl * 1.1 : TREE_HOLE) * k, gr = g.createRadialGradient(x, y, 0, x, y, r);
+    gr.addColorStop(0, `rgba(0,0,0,${0.9 * f})`); gr.addColorStop(0.45, `rgba(0,0,0,${0.65 * f})`); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  g.globalCompositeOperation = 'source-over'; c._gv = (c._gv || 0) + 1; TREE_M.R = R; return c;
+}
+function treeLayers(s, k0, k1) {
+  const al = 1 - 0.5 * (s.tf || 0), sc = s.sc * TREE_K, mask = CFG.trees === 'ultra' && ctx.maskedImage && s._u && s._u.length && s.tf > 0 ? treeMask(s) : null;
+  const R = TREE_M.R, D = DPR, mx = ((s.x - R) * VZ + VOX) * D, my = ((s.y - R) * VZ + VOY) * D, mw = 2 * R * VZ * D;
+  for (let k = k0; k <= k1; k++) {
+    const [dx, dy, da] = treeSway(s, k);
+    if (!mask) { spr(TREE_L[k], s.x + dx, s.y + dy, s.a + da, sc, sc, al); continue; }
+    const m = ATLAS[TREE_L[k]], c = Math.cos(s.a + da), n = Math.sin(s.a + da), z = VZ * D;
+    ctx.setTransform(c * z * sc, n * z * sc, -n * z * sc, c * z * sc, ((s.x + dx) * VZ + VOX) * D, ((s.y + dy) * VZ + VOY) * D); ctx.globalAlpha = al;
+    ctx.maskedImage(SRC, m[0], m[1], m[2], m[3], -m[4], -m[5], m[2], m[3], mask, mx, my, mw, mw); ctx.globalAlpha = 1;
+  }
+  worldT();
+}
+/* the solid trunk's radius (world px, at scale sc): the tree's underside painted to full depth (down to the ground) is its
+   trunk; as a circle of the same area. 0 until the atlas's heights are in (the map keeps its r then) */
+let TRUNK = 0;
+function treeTrunk(sc) {
+  if (!TRUNK) { const D = matData(), m = ATLAS.under_tree; if (!D || !m) return 0; let n = 0; for (let y = 0; y < m[3]; y++) for (let x = 0; x < m[2]; x++) if (D.mp[((m[1] + y) * D.w + m[0] + x) * 4] >= 248) n++; TRUNK = Math.sqrt(n / Math.PI) || 0; }
+  return TRUNK * sc * TREE_K;
+}
+function drawTreeTops(vis) { for (const s of MAP.statics) if (s.alive && atlasTree(s) && vis(s.x, s.y, 60)) treeLayers(s, 1, 2); }
 function drawWorld(vw) {
   FRAMEN++;
   const sh = vw.shake;
@@ -47,7 +99,9 @@ function drawWorld(vw) {
   AK = 'soldier'; for (const s of M.sol) if (s.alive && !s.veh && vis(s.x, s.y, 30) && !hidden(s) && sightNear(vw, s)) at(solZ(s), () => drawSoldier(s, vw));
   AK = 'sandbags'; for (const A of MAP.arcs) if (vis(A.x, A.y, 50)) at(artMax('bagarc0'), () => { const f = A.lost / A.bags.length; spr(f < 0.25 ? 'bagarc0' : f < 0.75 ? 'bagarc1' : 'bagarc2', A.x, A.y, A.a); });
   for (const s of MAP.statics) {
-    if (!s.alive || !vis(s.x, s.y, s.type === 'tree' ? 40 : 16)) continue; AK = s.type;
+    if (!s.alive) { if (atlasTree(s) && vis(s.x, s.y, 60)) { AK = 'felled tree'; at(0.5, () => { const k = s.sc * TREE_K; spr('tree0', s.x, s.y, s.a, k, k, 0.6); worldT(); }); } continue; }
+    if (!vis(s.x, s.y, s.type === 'tree' ? 60 : 16)) continue; AK = s.type;
+    if (atlasTree(s)) { treeFade(s); at(SUNH.tree[1], () => { if (!SUNNOW) { worldT(); ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.beginPath(); ctx.arc(s.x + 6, s.y + 7, treeR(s), 0, TAU); ctx.fill(); } treeLayers(s, 0, 0); }); continue; }     // no sun: one flat shadow, offset
     if (s.type === 'fence') at(SUNH.fence, () => { worldT(); ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.a); ctx.fillStyle = 'rgba(0,0,0,0.3)'; if (!SUNNOW) ctx.fillRect(-7, 2, 15, 3); ctx.fillStyle = CFG.style === 'grit' ? '#5a4632' : '#8a6a42'; ctx.fillRect(-7, -1, 14, 2.5); ctx.fillStyle = CFG.style === 'grit' ? '#3e3022' : '#5e4428'; ctx.fillRect(-2, -3, 4, 6); ctx.restore(); });
     else if (s.type === 'bag' && !s.arc) at(SUNH.fence, () => { worldT(); img(SPR.bag, s.x, s.y, s.a, 1); });     // a loose sandbag (a wall's are its arc sprite)
     else if (s.type === 'hay') at(SUNH.hay, () => { worldT(); ctx.fillStyle = 'rgba(0,0,0,0.3)'; if (!SUNNOW) { ctx.beginPath(); ctx.arc(s.x + 3, s.y + 4, 13, 0, TAU); ctx.fill(); } img(SPR.hay, s.x, s.y, s.a, 1); });
@@ -61,6 +115,7 @@ function drawWorld(vw) {
   // roofs over everything under them (vehicles, smoke): with the sun, after the smoke (lit already: roofView); without, the top of the queue's ground things
   const roofDraw = () => { if (rv) { worldT(); ctx.imageSmoothingEnabled = false; const f = () => ctx.drawImage(rv.c, 0, 0, rv.w, rv.h, rv.x, rv.y, rv.w, rv.h); if (SUNNOW) roofLit(f); else f(); } };
   AK = 'roofs'; if (!SUNNOW) at(SUNH.tree[0] - 1, roofDraw);
+  AK = 'tree tops'; if (!SUNNOW) at(SUNH.tree[0], () => drawTreeTops(vis));
   AK = 'killer glow'; at(99, () => drawKillerGlow(vw), true);
   Q.sort((a, b) => a.z - b.z || a.i - b.i);
   for (const d of Q) if (!d.post) { d.f(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; pipe('q', d); }
@@ -73,7 +128,7 @@ function drawWorld(vw) {
   if (fogged && !devOff('fog')) drawSoftFog(vw); pipe('softfog');
   drawLasers(vis); pipe('lasers');     // under the smoke: a man in it doesn't give himself away
   if (!devOff('smoke')) drawSmokes(vw); pipe('smokes');
-  if (SUNNOW) { roofDraw(); pipe('roofs'); }
+  if (SUNNOW) { roofDraw(); pipe('roofs'); roofLit(() => drawTreeTops(vis)); pipe('tree tops'); }
   // the remembered world over what's out of sight (everything above was drawn whole; dev views: the whole screen)
   if (fogged && !(SUNNOW && SUNDBG)) { const H = new Path2D(); polyPath(H, fogPolys); worldT(); fogOverlay(vw, H); if (SUNNOW && !CFG.roofFog) roofsOver(vw, rv, H); }
   // tags, reticles
@@ -208,7 +263,7 @@ function smokeShadows(g, X0, Y0, pw, ph, el, T, col) {
   }
   for (const s of MAP.statics) {     // a crown: from its underside's shadow to its top's
     if (!s.alive || s.type !== 'tree' || !near(s.x - 40, s.y - 40, s.x + 40, s.y + 40)) continue;
-    const r = (s.pine ? SPR.pines : SPR.trees)[s.v].width / 2 * s.sc * 0.85, d0 = Math.max(0, SUNH.tree[1] - SMK_Z), d1 = SUNH.tree[0] - SMK_Z;
+    const r = treeR(s), d0 = Math.max(0, SUNH.tree[1] - SMK_Z), d1 = SUNH.tree[0] - SMK_Z;
     g.lineWidth = r * 2; g.beginPath(); g.moveTo(s.x + ux * d0, s.y + uy * d0); g.lineTo(s.x + ux * d1 + 0.01, s.y + uy * d1); g.stroke();
   }
   if (g.blur) { g.setTransform(1, 0, 0, 1, 0, 0); g.blur(1.5, 0, 0, Math.ceil(pw / q), Math.ceil(ph / q)); } else g.filter = 'none';
@@ -312,7 +367,7 @@ function drawLasers(vis) {
     const [x, y] = gunTip(s), x1 = x + Math.cos(s.a) * 900, y1 = y + Math.sin(s.a) * 900; let t = 1;
     const hit = k => { if (k >= 0 && k < t) t = k; };
     for (const b of rectsOnSeg(MAP.buildings, x, y, x1, y1, _rq)) if (!b.glass) hit(segRect(x, y, x1, y1, b, 0));
-    for (const o of staticsNear((x + x1) / 2, (y + y1) / 2, 462, _near)) if (o.type === 'tree' || o.type === 'hay') hit(segCirc(x, y, x1, y1, o.x, o.y, o.type === 'hay' ? 12 : 9));
+    for (const o of staticsNear((x + x1) / 2, (y + y1) / 2, 462, _near)) if (o.type === 'tree' || o.type === 'hay') hit(segCirc(x, y, x1, y1, o.x, o.y, o.type === 'hay' ? 12 : o.r - 1));
     for (const v of M.vehicles) if (v.active) { const [ax, ay] = toLocal(v, x, y), [bx, by] = toLocal(v, x1, y1); hit(segRect(ax, ay, bx, by, { x: -v.T.hl, y: -v.T.hw, w: v.T.hl * 2, h: v.T.hw * 2 }, 0)); }
     for (const o of M.sol) if (o !== s && o.alive) hit(segRect(x, y, x1, y1, { x: o.x - 8, y: o.y - 8, w: 16, h: 16 }, 0));
     const ex = x + (x1 - x) * t, ey = y + (y1 - y) * t;

@@ -406,6 +406,7 @@ function destroyStatic(s) {
   ev('prop.break', s.x, s.y, { type: s.type });
   if (s.type === 'tree') {
     for (let i = 0; i < 14; i++) { const a = rnd(0, TAU), sp = rnd(30, 140); part({ k: 'leaf', x: s.x, y: s.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rnd(0.5, 1.2), max: 1.2, sz: rnd(2, 4), rot: rnd(0, TAU), vr: rnd(-8, 8), drag: 3 }); }
+    if (atlasTree(s)) { navDirty = 1; return; }     // the atlas tree lies felled where it stood (drawn: 5_ui.js)
     gx.fillStyle = '#3d2a14'; gx.beginPath(); gx.arc(s.x, s.y, 6, 0, TAU); gx.fill();
     gx.fillStyle = CFG.style === 'grit' ? 'rgba(45,50,28,0.6)' : 'rgba(20,60,15,0.6)'; for (let i = 0; i < 10; i++) { gx.beginPath(); gx.arc(s.x + rnd(-22, 22), s.y + rnd(-22, 22), rnd(3, 7), 0, TAU); gx.fill(); }
   } else if (s.type === 'hay') {
@@ -846,7 +847,7 @@ function aimRay(x, y, a, max, skip, all) {
     const qx = x + c * d, qy = y + sn * d;
     for (const b of rectsOnSeg(MAP.buildings, px, py, qx, qy, _rq)) if (!b.glass && segRect(px, py, qx, qy, b, 0) >= 0) return { d, top: Infinity };
     px = qx; py = qy;
-    if (all) for (const o of staticsNear(qx, qy, 14, _near)) if (o.type !== 'fence' && !(d < AIM.min && lowCover(o)) && Math.hypot(o.x - qx, o.y - qy) < (o.type === 'tree' ? 9 : o.type === 'hay' ? 12 : o.r || 8)) return { d, top: LH[o.type] || LH.bag };
+    if (all) for (const o of staticsNear(qx, qy, 14, _near)) if (o.type !== 'fence' && !(d < AIM.min && lowCover(o)) && Math.hypot(o.x - qx, o.y - qy) < (o.type === 'tree' ? o.r - 1 : o.type === 'hay' ? 12 : o.r || 8)) return { d, top: LH[o.type] || LH.bag };
     for (const v of M.vehicles) if (v !== skip && v.active && !v.dead && box(v, v.T.hl, v.T.hw, qx, qy)) return { d, top: topOf(v) };
     for (const w of M.wrecks) if (box(w, w.hl, w.hw, qx, qy)) return { d, top: topOf(w) };
   }
@@ -975,7 +976,7 @@ function los(x0, y0, x1, y1) {
   for (const w of M.wrecks) if (segWreck(x0, y0, x1, y1, w) >= 0) return false;
   const mx = (x0 + x1) / 2, my = (y0 + y1) / 2, r = Math.hypot(x1 - x0, y1 - y0) / 2 + 20;
   staticsNear(mx, my, r, _near);
-  for (const s of _near) if ((s.type === 'tree' || s.type === 'hay') && segCirc(x0, y0, x1, y1, s.x, s.y, s.type === 'hay' ? 12 : 9) >= 0) return false;
+  for (const s of _near) if ((s.type === 'tree' || s.type === 'hay') && segCirc(x0, y0, x1, y1, s.x, s.y, s.type === 'hay' ? 12 : s.r - 1) >= 0) return false;
   return true;
 }
 /* bullets fall: each leaves the gun at its height (shotZ) and loses height (its own random rate), so low
@@ -1012,7 +1013,7 @@ function updateProjectiles(dt) {
     staticsNear(mx, my, Math.hypot(x1 - x0, y1 - y0) / 2 + 14, _near);
     for (const s of _near) {
       if (s.type === 'fence') continue;
-      const t = segCirc(x0, y0, x1, y1, s.x, s.y, s.type === 'tree' ? 9 : s.type === 'hay' ? 12 : s.r); if (t < 0 || t >= bt) continue;
+      const t = segCirc(x0, y0, x1, y1, s.x, s.y, s.type === 'tree' ? s.r - 1 : s.type === 'hay' ? 12 : s.r); if (t < 0 || t >= bt) continue;
       if (s.type === 'bag' ? !bagBlocks(p, s, zt(t)) : s.type === 'hay' && (zt(t) >= LH.hay || Math.hypot(s.x - p.ox, s.y - p.oy) < AIM.min)) continue;     // over it
       bt = t; hit = { k: 'static', s };
     }

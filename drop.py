@@ -63,7 +63,9 @@ if check: sys.exit(0)
 def run(*c):
     r = subprocess.run(c); r.returncode and die(' '.join(c) + ' failed')
 run(sys.executable, 'build.py')
-fails = [t for t in sorted(glob.glob('tests/*.js')) if subprocess.run(['node', t], capture_output=True).returncode]
+from concurrent.futures import ThreadPoolExecutor     # the tests side by side (each its own node)
+with ThreadPoolExecutor(10) as ex: rc = dict(zip(sorted(glob.glob('tests/*.js')), ex.map(lambda t: subprocess.run(['node', t], capture_output=True).returncode, sorted(glob.glob('tests/*.js')))))
+fails = [t for t, c in rc.items() if c]
 if fails: die('tests failed: ' + ', '.join(fails) + ' (the files are in and built; nothing committed)')
 v = json.load(open('version.json'))['build']; print('build', v, 'tests ok')
 

@@ -130,7 +130,7 @@ function drawLight(l) {
   const hull = (o, hl, hw, h) => { const R = Math.hypot(hl, hw); put(o.x - R, o.y - R, o.x + R, o.y + R, h, (x, y) => { const [lx, ly] = toLocal(o, x, y); return Math.abs(lx) < hl && Math.abs(ly) < hw; }); };
   const near = o => Math.abs(o.x - l.x) < l.r + 60 && Math.abs(o.y - l.y) < l.r + 60;
   for (const b of rectsIn(MAP.buildings, X0, Y0, X0 + S * lc, Y0 + S * lc, _rb)) if (!b.glass) { if (b.f) put(...rectBox(b), 255, (x, y) => inRect(x, y, b)); else put(b.x, b.y, b.x + b.w, b.y + b.h, 255); }   // glass lets light through
-  for (const s of staticsNear(l.x, l.y, l.r + 16, _near)) { const h = LH[s.type]; if (!h) continue; const r = s.type === 'tree' ? 6 : s.r; put(s.x - r, s.y - r, s.x + r, s.y + r, h, (x, y) => (x - s.x) ** 2 + (y - s.y) ** 2 < r * r); }
+  for (const s of staticsNear(l.x, l.y, l.r + 16, _near)) { const h = LH[s.type]; if (!h) continue; const r = s.type === 'tree' ? s.r * 0.6 : s.r; put(s.x - r, s.y - r, s.x + r, s.y + r, h, (x, y) => (x - s.x) ** 2 + (y - s.y) ** 2 < r * r); }
   for (const v of M.vehicles) {
     if (!v.active || v.dead || v === l.skip || !near(v)) continue;
     if (v.type === 'nest') put(v.x - 21, v.y - 21, v.x + 21, v.y + 21, LH.nest, (x, y) => { const d = (x - v.x) ** 2 + (y - v.y) ** 2; return d > 169 && d < 441; });   // the ring of bags
@@ -611,7 +611,7 @@ function sunHeights(vis, hidden, vw) {
   const [t0, tb] = shp(SUNH.tree[0], 'tree'), t1 = shp(SUNH.tree[1], 'tree')[0], [h0, hb] = shp(SUNH.hay, 'hay'), [ft, fb] = shp(SUNH.fence, 'fence');
   for (const s of MAP.statics) {
     if (!s.alive || !vis(s.x, s.y, 40)) continue;
-    if (s.type === 'tree') { const r = (s.pine ? SPR.pines : SPR.trees)[s.v].width / 2 * s.sc * 0.85; hbox(HL.t, s.x, s.y, r, r, 0, 2, t0, t1, tb); }
+    if (s.type === 'tree') { const r = treeR(s); hbox(HL.t, s.x, s.y, r, r, 0, 2, t0, t1, tb); }
     else if (s.type === 'hay') hbox(HL.a, s.x, s.y, 13, 13, 0, 2, h0, h0 - SUNH.hay * 0.4, hb);
     else if (s.type === 'fence') hbox(HL.a, s.x, s.y, 7, 1.5, s.a, 1, ft, fb, 0);
   }
