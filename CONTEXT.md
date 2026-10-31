@@ -901,3 +901,11 @@ ROOF_STYLES, MAP_ROOFS and roofPaint(H, st, list, snow, grit) live in src/2d_hou
 - heightmap/index.html: the Blur tool (was Art only) now works on Height, Refl and Glow too: the same 3x3 tent as the art
   blur (blurAt), of the pixels as they were when the stroke began, once per pixel per stroke. Only pixels the brush may
   paint count (on the art, in the selection), so a sprite's edge doesn't get pulled down to 0.
+
+## Height Painter: Auto height; shorter menus
+- Edit › Auto height…: heights from the art for the selection (else the sprite), on Height. A dome from each pixel's
+  distance to the art's edge (Edge px to full height), lifted by the art's brightness round the sprite's average (Detail,
+  Contrast, Invert detail), between Base and Height, then Smooth passes of the blur's tent. Previewed live in one open
+  stroke (autoRun: unput, redo); Apply = one undo step, Cancel puts it back. Painting is blocked while it's open; the
+  sliders are remembered (st.auto).
+- Menu wording shortened (Center pivot, Fit to art, Save heights, Mask to art, Show strays, Clear, Move, ...).
