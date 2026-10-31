@@ -941,3 +941,11 @@ Art drop (drop.py): atlas 384x818 -> 384x1154; new sprites: tree0, tree1, tree2;
 - ROOF & TREETOP LIGHT (CFG.tops; ULTRA/HIGH/MEDIUM lit, LOW and below flat = roofLit tint). SHADOW LENGTH FULL = 128.
 - GXLC unpremultiplies and keeps alpha (can light a layer). scene.mjs logs console warnings (failed shaders).
 - Scene switches: TOPS, LIGHT VIEW (SUNDBG).
+
+## Crowns as upper surfaces, like roofs (build 329)
+- An atlas tree's parts are an upper surface (q.up; HP kind -10 - hs): written floating (G/A, even at the trunk) with B 0.4,
+  so they cast (the sweep) and are the top for upperLit, but the lit surface under them is what's there (gm/hg: R). No
+  materials from them. The unit see-through marks (kind 4) are gone. With the sun all three layers draw in upperLit (after
+  the smoke); without, tree0 stays in the queue.
+- Smoke light: a crown's shadow is its parts' art swept from max(base, SMK_Z) to the top (SMK_TS, coloured T.sh), not a capsule.
+- HP material depth is 1 - top / HZ (was / 32: tops past 32 px were clipped out of the material pass).

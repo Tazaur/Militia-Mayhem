@@ -2,8 +2,9 @@
    RENDERING, HUD, DEPLOY SCREEN, MENUS, MAIN LOOP
    ===================================================================== */
 /* ---------------- trees: the atlas's tree0-2, a crown of three layers stacked (pines stay the drawn SPR.pines) ----------------
-   One shadow span for the lot (SUNH.tree: the crown's underside to its top). tree0 stands in the draw queue (over the men
-   under it), tree1-2 go up with the roofs (over the smoke; with the sun, lit as the roofs are). Whoever is under a crown
+   With the sun the crown is an upper surface, as a roof: it casts by its painted heights (treeParts) and all three layers are
+   drawn after the smoke, lit as their own surface (upperLit); what's under it is lit as itself, in its shade. Without: tree0
+   in the draw queue (over the men under it), tree1-2 over the roofs. Whoever is under a crown
    fades it to half quickly (s.tf). Felled: tree0 alone, flat on the ground at 60%, still, under everything.
    TREE DETAIL (CFG.trees): ULTRA sways and also cuts a hole round whoever is under it; HIGH sways; LOW stands still. */
 const TREE_L = ['tree0', 'tree1', 'tree2'], TREE_K = 0.9, TREE_HOLE = 26;     // TREE_HOLE: the cut's radius round a man (clear in the middle, faded out by its edge)
@@ -52,7 +53,7 @@ function treeTrunk(sc) {
   if (!TRUNK) { const D = matData(), m = ATLAS.under_tree; if (!D || !m) return 0; let n = 0; for (let y = 0; y < m[3]; y++) for (let x = 0; x < m[2]; x++) if (D.mp[((m[1] + y) * D.w + m[0] + x) * 4] >= 248) n++; TRUNK = Math.sqrt(n / Math.PI) || 0; }
   return TRUNK * sc * TREE_K;
 }
-function drawTreeTops(vis) { for (const s of MAP.statics) if (s.alive && atlasTree(s) && vis(s.x, s.y, 60)) treeLayers(s, 1, 2); }
+function drawTreeTops(vis, k0 = 1) { for (const s of MAP.statics) if (s.alive && atlasTree(s) && vis(s.x, s.y, 60)) treeLayers(s, k0, 2); }
 function drawWorld(vw) {
   FRAMEN++;
   const sh = vw.shake;
@@ -101,7 +102,7 @@ function drawWorld(vw) {
   for (const s of MAP.statics) {
     if (!s.alive) { if (atlasTree(s) && vis(s.x, s.y, 60)) { AK = 'felled tree'; at(0.5, () => { const k = s.sc * TREE_K; spr('tree0', s.x, s.y, s.a, k, k, 0.6); worldT(); }); } continue; }
     if (!vis(s.x, s.y, s.type === 'tree' ? 60 : 16)) continue; AK = s.type;
-    if (atlasTree(s)) { treeFade(s); at(SUNH.tree[1], () => treeLayers(s, 0, 0)); continue; }     // its shadow: the sun's (its painted heights, treeParts), or without, the shadow layer's
+    if (atlasTree(s)) { treeFade(s); if (!SUNNOW) at(SUNH.tree[1], () => treeLayers(s, 0, 0)); continue; }     // with the sun: the whole crown up with the roofs (drawTreeTops)
     if (s.type === 'fence') at(SUNH.fence, () => { worldT(); ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.a); ctx.fillStyle = 'rgba(0,0,0,0.3)'; if (!SUNNOW) ctx.fillRect(-7, 2, 15, 3); ctx.fillStyle = CFG.style === 'grit' ? '#5a4632' : '#8a6a42'; ctx.fillRect(-7, -1, 14, 2.5); ctx.fillStyle = CFG.style === 'grit' ? '#3e3022' : '#5e4428'; ctx.fillRect(-2, -3, 4, 6); ctx.restore(); });
     else if (s.type === 'bag' && !s.arc) at(SUNH.fence, () => { worldT(); img(SPR.bag, s.x, s.y, s.a, 1); });     // a loose sandbag (a wall's are its arc sprite)
     else if (s.type === 'hay') at(SUNH.hay, () => { worldT(); ctx.fillStyle = 'rgba(0,0,0,0.3)'; if (!SUNNOW) { ctx.beginPath(); ctx.arc(s.x + 3, s.y + 4, 13, 0, TAU); ctx.fill(); } img(SPR.hay, s.x, s.y, s.a, 1); });
@@ -131,7 +132,7 @@ function drawWorld(vw) {
   if (fogged && !devOff('fog')) drawSoftFog(vw); pipe('softfog');
   drawLasers(vis); pipe('lasers');     // under the smoke: a man in it doesn't give himself away
   if (!devOff('smoke')) drawSmokes(vw); pipe('smokes');
-  if (SUNNOW) { upperLit(() => { roofDraw(); pipe('roofs'); drawTreeTops(vis); }); pipe('tree tops'); }     // lit as their own surface (upperLit)
+  if (SUNNOW) { upperLit(() => { roofDraw(); pipe('roofs'); drawTreeTops(vis, 0); }); pipe('tree tops'); }     // lit as their own surface (upperLit)
   // the remembered world over what's out of sight (everything above was drawn whole; dev views: the whole screen)
   if (fogged && !(SUNNOW && SUNDBG)) { const H = new Path2D(); polyPath(H, fogPolys); worldT(); fogOverlay(vw, H); if (SUNNOW && !CFG.roofFog) roofsOver(vw, rv, H); }
   // tags, reticles
@@ -242,7 +243,7 @@ function smokePuffs(bx, eyes, cb) {
 /* the light smoke takes, at 1 / SMK_LQ the size: the day (or night) as it falls at the smoke's height (SMK_Z), shaded only by
    what stands still and taller (walls, trees: their shadows cast down to it), never by the vehicles and men in it; and the
    point lights, flat a puff (smokeLamps) */
-const SMK_LO = mkG(1, 1), SMK_LP = mkG(1, 1), SMK_LQ = 4, SMK_Z = 14, SMK_PF = [];
+const SMK_LO = mkG(1, 1), SMK_LP = mkG(1, 1), SMK_LQ = 4, SMK_Z = 14, SMK_PF = [], SMK_TS = {};     // SMK_TS: the crowns' shadows, drawn apart then coloured
 function smokeLight(X0, Y0, pw, ph) {
   const c = SMK_LO, q = SMK_LQ, w = Math.ceil(pw / q), h = Math.ceil(ph / q), T = sunTone(), col = a => `rgb(${a.map(v => clamp(v, 0, 1) * 255 | 0)})`;
   if (c.width < w || c.height < h) { c.width = Math.max(c.width, w); c.height = Math.max(c.height, h); }
@@ -264,11 +265,18 @@ function smokeShadows(g, X0, Y0, pw, ph, el, T, col) {
     const C = rectPts(b);
     quad(C.map(([x, y]) => [x + vx, y + vy])); for (let k = 0; k < 4; k++) { const a = C[k], e = C[(k + 1) % 4]; quad([a, e, [e[0] + vx, e[1] + vy], [a[0] + vx, a[1] + vy]]); }
   }
-  for (const s of MAP.statics) {     // a crown: from its underside's shadow to its top's
-    if (!s.alive || s.type !== 'tree' || !near(s.x - 40, s.y - 40, s.x + 40, s.y + 40)) continue;
-    const r = treeR(s), d0 = Math.max(0, SUNH.tree[1] - SMK_Z), d1 = SUNH.tree[0] - SMK_Z;
-    g.lineWidth = r * 2; g.beginPath(); g.moveTo(s.x + ux * d0, s.y + uy * d0); g.lineTo(s.x + ux * d1 + 0.01, s.y + uy * d1); g.stroke();
+  const tc = SMK_TS.c || (SMK_TS.c = mkG(1, 1)), tw = Math.ceil(pw / q), th = Math.ceil(ph / q); let tg = null;     // the crowns: their art swept down their spans (above the smoke), as the sun's sweep does
+  for (const s of MAP.statics) {
+    if (!s.alive || s.type !== 'tree' || !near(s.x - 80, s.y - 80, s.x + 80, s.y + 80)) continue;
+    if (!atlasTree(s)) { const r = treeR(s), d0 = Math.max(0, SUNH.tree[1] - SMK_Z), d1 = SUNH.tree[0] - SMK_Z; g.lineWidth = r * 2; g.beginPath(); g.moveTo(s.x + ux * d0, s.y + uy * d0); g.lineTo(s.x + ux * d1 + 0.01, s.y + uy * d1); g.stroke(); continue; }     // a pine: no art yet, its dome
+    if (!tg) { if (tc.width < tw || tc.height < th) { tc.width = Math.max(tc.width, tw); tc.height = Math.max(tc.height, th); } tg = tc.getContext('2d'); tg.setTransform(1, 0, 0, 1, 0, 0); tg.clearRect(0, 0, tw, th); }
+    for (const p of partsOf(s)) {
+      const m = ATLAS[p.n], hs = p.hs || 1, k = p.k || 1, b = Math.max(p.b * hs, SMK_Z), t = (p.b + p.add + artMax(p.n)) * hs; if (!m || t <= b) continue;
+      const n = Math.min(48, Math.max(1, Math.ceil((t - b) * Math.hypot(ux, uy) / q))), c = Math.cos(p.a) * k, sn = Math.sin(p.a) * k, fy = p.fy || 1;
+      for (let i = 0; i <= n; i++) { const d = b + (t - b) * i / n - SMK_Z, x = p.x + ux * d, y = p.y + uy * d; tg.setTransform(c / q, sn / q, -sn * fy / q, c * fy / q, (x - X0) / q, (y - Y0) / q); tg.drawImage(SRC, m[0], m[1], m[2], m[3], -m[4], -m[5], m[2], m[3]); }
+    }
   }
+  if (tg) { tg.setTransform(1, 0, 0, 1, 0, 0); tg.globalCompositeOperation = 'source-in'; tg.fillStyle = col(T.sh); tg.fillRect(0, 0, tw, th); tg.globalCompositeOperation = 'source-over'; g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(tc, 0, 0, tw, th, 0, 0, tw, th); g.restore(); }
   if (g.blur) { g.setTransform(1, 0, 0, 1, 0, 0); g.blur(1.5, 0, 0, Math.ceil(pw / q), Math.ceil(ph / q)); } else g.filter = 'none';
 }
 /* the point lights, one flat colour a puff (SMK_PF: what drawSmokeField laid, x y r alpha): each puff's light at its middle,

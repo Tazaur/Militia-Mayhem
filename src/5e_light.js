@@ -292,8 +292,8 @@ function sunInit() {
 vec4 tx(vec2 p) { return texture2D(H, clamp(p, R.xy, R.zw) / S); }
 float hh(vec2 p) { vec4 c = tx(p); return max(c.r, c.g) * ${HZS}; }     // the top: grounded (R) or floating (G), whichever's higher
 float hv(vec2 p, bool o) { if (o) { vec4 c = texture2D(HS, clamp(p, R.xy, R.zw) / S); return max(c.r, c.g) * ${HZS}; } return hh(p); }     // the top that shows: out of sight (o), only what's remembered
-bool gm(vec2 p) { float b = tx(p).b; return b > 0.2 && b < 0.6; }     // a unit seen through a crown over it (HP kind 4)
-float hg(vec2 p, bool o, bool g) { return g ? tx(p).r * ${HZS} : hv(p, o); }     // the top that shows; g: the grounded one (the unit under the crown: the crown still shades it)
+bool gm(vec2 p) { float b = tx(p).b; return b > 0.2 && b < 0.6; }     // under an upper surface (a crown: HP kind -10 - s)
+float hg(vec2 p, bool o, bool g) { return g ? tx(p).r * ${HZS} : hv(p, o); }     // the top that shows; g: the grounded one (under a crown: what's under it, the crown still shading it)
 float un(vec2 c) { return (c.x * 255. + c.y) / 255. * 256. - 128.; }     // a height packed in two bytes (sunSweep)
 float sunIn(vec4 c, float h) { float g = un(c.rg), lo = c.b * 144. - 16., hi = c.a * 144. - 16.; return max(clamp((g - h + 0.75) / 1.5, 0., 1.), clamp((min(h - lo, hi - h) + 0.75) / 1.5, 0., 1.)); }`;     // how far height h is in the sun's shadow by a sweep's record c: under its skyline, or inside its floating span
     /* the point lights, once per pixel (pl: falloff, slope toward each, its own shadow march, each its colour PC) and their
@@ -384,11 +384,12 @@ void main() {
        p2 half angle), 5 material only (p0 reflectivity, p1 water, p2 2: a
        disc). Out: what stands on the ground (bottom under 1 px): R its top x 4; what floats (a gun past the hull, a jumper): G its
        top x 4, A 255 - its bottom x 4 (MAX: the highest top, the lowest bottom), so one over the other never fills the gap; B a roof over it (a slab ROOF_Z: casts, isn't the surface). Kind -s: a sprite
-       with its painted heights (and its underside's) x s (a tree: painted taller than the buffer holds); 4: a unit seen through what floats over it (a crown):
-       B 0.4 where its art is, nothing else (the light takes the grounded top there: TX hg). With MM: the materials (R reflectivity, G glow, B water), the
+       with its painted heights (and its underside's) x s; -10 - s: the same, an upper surface (a crown, as a roof): floating (G / A, its
+       bottom 0 or more) and B 0.4, so it casts and is lit as the top (upperLit) but isn't the surface under it (TX gm / hg: what's
+       under it, a man, the ground, is lit as itself, in its shade); no materials (what's under it keeps its own). With MM: the materials (R reflectivity, G glow, B water), the
        highest top winning (depth) */
     const HP = prog(`attribute vec2 c; attribute vec4 i0, i1, i2, i3, i4; uniform vec3 X; uniform vec2 F; uniform float MM; varying vec2 q, uv; varying vec4 k, ur; varying float ov;
-void main() { vec2 w = i0.xy + i0.zw * c.x + i1.xy * c.y; gl_Position = vec4((w * X.x + X.yz) / F * 2. - 1., MM > 0.5 ? 1. - i3.z / 32. : 0., 1.); q = c; uv = mix(i2.zw, i3.xy, c * 0.5 + 0.5); k = vec4(i1.zw, i2.xy); ur = i4; ov = i3.w; }`,
+void main() { vec2 w = i0.xy + i0.zw * c.x + i1.xy * c.y; gl_Position = vec4((w * X.x + X.yz) / F * 2. - 1., MM > 0.5 ? 1. - i3.z / ${HZS} : 0., 1.); q = c; uv = mix(i2.zw, i3.xy, c * 0.5 + 0.5); k = vec4(i1.zw, i2.xy); ur = i4; ov = i3.w; }`,
 `precision highp float; uniform sampler2D A; uniform float MM; uniform vec2 AZ; varying vec2 q, uv; varying vec4 k, ur; varying float ov;
 float hb(float r0) { vec2 t = uv * AZ - 0.5, f = fract(t), b = (floor(t) + 0.5) / AZ, e = 1. / AZ; vec4 a = texture2D(A, b), c = texture2D(A, b + vec2(e.x, 0.)), d = texture2D(A, b + vec2(0., e.y)), g = texture2D(A, b + e);
   vec4 w = vec4((1. - f.x) * (1. - f.y), f.x * (1. - f.y), (1. - f.x) * f.y, f.x * f.y) * step(0.5, vec4(a.a, c.a, d.a, g.a)); float n = dot(w, vec4(1.)); return n > 0. ? dot(w, vec4(a.r, c.r, d.r, g.r)) / n : r0; }     // the painted height between its 4 nearest px (the art's only): a turned, scaled sprite read nearest is a staircase, its steps stripes in the slope's light
@@ -396,10 +397,9 @@ vec4 span(float t, float b, float z) { float T = clamp(t / ${HZS}, 0., 1.); retu
 void main() {
   float r2 = dot(q, q);
   if (k.x > 4.5) { if (MM < 0.5 || (k.w > 1.5 && r2 > 1.)) discard; gl_FragColor = vec4(k.y, 0., k.z, 1.); return; }
-  if (k.x > 3.5) { vec4 m = texture2D(A, uv); if (MM > 0.5 || m.a < 0.5) discard; gl_FragColor = vec4(0., 0., 0.4, 0.); return; }     // the see-through mark
-  if (k.x < 0.5) { vec4 m = texture2D(A, uv); if (m.a < 0.5) discard; if (MM > 0.5) { gl_FragColor = vec4(m.g, m.b, 0., 1.); return; }
-    float hs = k.x < -0.001 ? -k.x : 1., b = k.y; if (all(greaterThanEqual(uv, ur.xy)) && all(lessThan(uv, ur.zw))) { float d = texture2D(A, ov > 2. ? vec2(uv.x + k.w, ov - 4. - uv.y) : uv + vec2(k.w, ov)).r; if (d > 0.) b = max(k.y - d * 63.75 * hs, 0.); }     // over its underside (ur): the base lowered by its painted depth
-    gl_FragColor = span(hb(m.r) * 63.75 * hs + k.y + k.z, b, 0.); return; }
+  if (k.x < 0.5) { vec4 m = texture2D(A, uv); bool u = k.x < -9.5; if (m.a < 0.5 || (u && MM > 0.5)) discard; if (MM > 0.5) { gl_FragColor = vec4(m.g, m.b, 0., 1.); return; }
+    float hs = u ? -k.x - 10. : k.x < -0.001 ? -k.x : 1., b = k.y; if (all(greaterThanEqual(uv, ur.xy)) && all(lessThan(uv, ur.zw))) { float d = texture2D(A, ov > 2. ? vec2(uv.x + k.w, ov - 4. - uv.y) : uv + vec2(k.w, ov)).r; if (d > 0.) b = max(k.y - d * 63.75 * hs, 0.); }     // over its underside (ur): the base lowered by its painted depth
+    float t = hb(m.r) * 63.75 * hs + k.y + k.z; gl_FragColor = u ? vec4(0., clamp(t / ${HZS}, 0., 1.), 0.4, 1. - clamp(b / ${HZS}, 0., 1.)) : span(t, b, 0.); return; }
   else if (k.x < 1.5) gl_FragColor = span(k.y, k.z, k.w);
   else if (k.x < 2.5) { if (r2 > 1.) discard; gl_FragColor = span(mix(k.y, k.z, sqrt(r2)), k.w, 0.); }
   else { float r = sqrt(r2); if (r > 1. || r < k.z || abs(atan(q.y, q.x)) > k.w) discard; gl_FragColor = span(k.y, 0., 0.); }
@@ -436,7 +436,7 @@ void main() {
     const RC = prog(VS, `precision highp float; uniform sampler2D M; uniform vec3 X; uniform vec2 F; uniform float Z;
 void main() { vec2 t = floor((gl_FragCoord.xy - X.yz) / X.x * Z); gl_FragColor = any(lessThan(t, vec2(0.))) || any(greaterThanEqual(t, F)) ? vec4(0.) : texture2D(M, (t + 0.5) / F); }`, ['p']);
     // a channel's sweep (B) to how far the surfaces here are in its shadow, into the channels' shade (MAX: any of them): R the one
-    // that shows (a unit under a crown: his), G the upper one (the roof's slab, the crown's top: upperLit)
+    // that shows (under a crown: what's under it), G the upper one (the roof's slab, the crown's top: upperLit)
     const RS = prog(VS, `precision highp float; ${TX} uniform sampler2D B;
 void main() { vec2 p = gl_FragCoord.xy; vec4 b = texture2D(B, (floor(p) + 0.5) / S); gl_FragColor = vec4(sunIn(b, hg(p, false, gm(p)) + 0.75), sunIn(b, max(hh(p), tx(p).b > 0.5 ? ${ROOF_Z[1].toFixed(1)} : 0.) + 0.75), 0., 1.); }`, ['p']);
     const buf = d => { const o = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, o); gl.bufferData(gl.ARRAY_BUFFER, d, gl.STATIC_DRAW); return o; };
@@ -473,10 +473,9 @@ function hq(L, cx, cy, ux, uy, vx, vy, k, p0, p1, p2, u0, v0, u1, v1, z, w, R) {
 function hbox(L, cx, cy, hw, hh, a, k, p0, p1, p2, z) { const c = Math.cos(a), s = Math.sin(a); hq(L, cx, cy, c * hw, s * hw, -s * hh, c * hh, k, p0, p1, p2, 0, 0, 0, 0, z ?? (k === 2 ? Math.max(p0, p1) : p0)); }
 let HLA = HL.a;     // the list a sprite's heights go in (HL.u while units go in)
 /* a sprite's painted heights from base up (each add px taller), where the art is opaque; pivot at (x, y), turned a */
-function hspr(n, x, y, a, base, add, fy = 1, U, hs = 1, k = 1, mark) {     // fy -1: mirrored over its pivot's row (as spr's sy); U: its underside (undQ); hs: its heights x (HP kind -hs); k: drawn at that scale; mark: HP kind 4
+function hspr(n, x, y, a, base, add, fy = 1, U, hs = 1, k = 1, up) {     // fy -1: mirrored over its pivot's row (as spr's sy); U: its underside (undQ); hs: its heights x (HP kind -hs); k: drawn at that scale; up: an upper surface (HP kind -10 - hs)
   const m = ATLAS[n]; if (!m) return; const c = Math.cos(a) * k, s = Math.sin(a) * k, ox = m[2] / 2 - m[4], oy = (m[3] / 2 - m[5]) * fy, S = _sun;
-  hq(HLA, x + c * ox - s * oy, y + s * ox + c * oy, c * m[2] / 2, s * m[2] / 2, -s * m[3] / 2 * fy, c * m[3] / 2 * fy, mark ? 4 : hs !== 1 ? -hs : 0, mark ? 0 : (base || 0) * hs, mark ? 0 : (add || 0) * hs, U ? U[0] : 0, m[0] / S.aw, m[1] / S.ah, (m[0] + m[2]) / S.aw, (m[1] + m[3]) / S.ah, mark ? 0 : ((base || 0) + (add || 0) + artMax(n)) * hs, U ? U[1] : 0, U && U.slice(2));
-  if (mark) return;
+  hq(HLA, x + c * ox - s * oy, y + s * ox + c * oy, c * m[2] / 2, s * m[2] / 2, -s * m[3] / 2 * fy, c * m[3] / 2 * fy, up ? -10 - hs : hs !== 1 ? -hs : 0, (base || 0) * hs, (add || 0) * hs, U ? U[0] : 0, m[0] / S.aw, m[1] / S.ah, (m[0] + m[2]) / S.aw, (m[1] + m[3]) / S.ah, ((base || 0) + (add || 0) + artMax(n)) * hs, U ? U[1] : 0, U && U.slice(2));
   HMAT |= artMat(n);
 }
 /* a frame's underside (n under the frame o): its painted heights hang down from the frame's base (to the ground: a track, a
@@ -529,10 +528,11 @@ function partH(q, x, y) { const c = Math.cos(q.a), s = Math.sin(q.a), dx = x - q
 function jeepGunner(v) { const [mx, my] = mgPos(v); return [mx - Math.cos(v.mgA) * 12, my - Math.sin(v.mgA) * 12]; }
 function topOf(o) { let t = 0; for (const q of partsOf(o)) if (!q.who) t =Math.max(t, q.b + q.add + artMax(q.n)); return t; }
 /* a tree: tree0 on its underside (the trunk down to the ground), tree1 on tree0, tree2 on tree1, each swaying as drawn
-   (treeSway), at its scale (q.k); its heights as painted (q.hs: scaled down only past the buffer's top, HZ) */
+   (treeSway), at its scale (q.k); its heights as painted (q.hs: scaled down only past the buffer's top, HZ). An upper surface
+   (q.up), as a roof: it casts and is lit on top (upperLit), what's under it is lit as itself */
 function treeParts(s) {
   const k = s.sc * TREE_K, P = TREE_L.map((n, i) => { const [dx, dy, da] = treeSway(s, i); return hpart(n, s.x + dx, s.y + dy, s.a + da, { keep: i < 2, flat: i > 0 }); }).filter(Boolean);
-  const top = Math.max(1, ...P.map(q => q.b + q.add + artMax(q.n))), hs = Math.min(1, (HZ - 0.5) / top); for (const q of P) { q.k = k; q.hs = hs; }
+  const top = Math.max(1, ...P.map(q => q.b + q.add + artMax(q.n))), hs = Math.min(1, (HZ - 0.5) / top); for (const q of P) { q.k = k; q.hs = hs; q.up = 1; }
 }
 function solParts(s) {
   if (s.down) { hpart('sol_dead', s.x, s.y, s.a + Math.PI); return; }
@@ -565,7 +565,7 @@ function vehParts(v) {
 function hParts(o) {
   for (const q of partsOf(o)) {
     const fl = q.b > 0.5 && _sun && _sun.ly, L = HLA, i = HL.f.n, hs = q.hs || 1; if (fl) HLA = HL.f;
-    hspr(q.n, q.x, q.y, q.a, q.b, q.add, q.fy, q.un && undQ(...q.un), hs, q.k); HLA = L;
+    hspr(q.n, q.x, q.y, q.a, q.b, q.add, q.fy, q.un && undQ(...q.un), hs, q.k, q.up); HLA = L;
     if (fl && HL.f.n > i) HLY.p.push({ o, q, i, k: L === HL.a, b: q.b * hs, hi: (q.b + q.add + artMax(q.n)) * hs });
   }
 }
@@ -654,7 +654,6 @@ function sunHeights(vis, hidden, vw) {
     if (v.type === 'nest') hbox(HL.u, v.x, v.y, 22, 22, v.a, 3, nt, 14 / 22, 1.35);     // the bags: an arc 8 wide round 18
     hParts(v);
   }
-  for (const s of MAP.statics) if (s.alive && s._u && s._u.length && atlasTree(s) && vis(s.x, s.y, 60)) for (const p of s._u) for (const q of partsOf(p)) hspr(q.n, q.x, q.y, q.a, 0, 0, q.fy, null, 1, q.k || 1, 1);     // whoever is under a crown: seen through it, lit as itself (HP kind 4), the crown's shade still on him
   HLA = HL.a;
   const mat = (L, refl, wave, z) => { for (const w of L) if (vis(w.x + w.w / 2, w.y + w.h / 2, Math.max(w.w, w.h))) { hbox(HL.m, w.x + w.w / 2, w.y + w.h / 2, w.w / 2, w.h / 2, 0, 5, refl, wave, 0, z); if (refl) HMAT |= 1; } };
   mat(MAP.water, 0.75, 1, 0.2); mat(MAP.ice || [], 0.45, 0, 0.2); mat(MAP.bridges, 0, 0, 0.4);     // water mirrors the sky and ripples; ice, stiller
