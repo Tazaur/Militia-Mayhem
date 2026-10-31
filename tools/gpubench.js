@@ -3,7 +3,8 @@
    At the frame's light maps draw (pipe 'gpu-map', MRT) it takes that draw's textures and uniforms, times N draws of the GL
    program (a timer query), then runs the same shader ported to WGSL on WebGPU over the same textures (timestamp queries),
    and compares the two outputs (max byte difference). SHADOW CACHE off ({"shCache":0}): a sweep pass too (N 8 or past).
-   Back: { maps, sweep: { webgl: ms a draw, webgpu: ms a draw, diff } } */
+   Back: { maps, sweep: { webgl, webgpu: ms a draw (GPU timers), webgl_wall, webgpu_wall (the clock: phones without timers), diff } }.
+   In the game: dev WORLD › GPU BENCH (devGpuBench) */
 const N = 60;
 const RZ = [36, 42], HZ = 127.5;
 
@@ -93,8 +94,8 @@ const bound = (gl, u) => { gl.activeTexture(gl.TEXTURE0 + u); return gl.getParam
 
 /* the maps draw, caught at its pipe: its inputs, its uniforms, N draws timed, its outputs */
 function catchMaps() {
-  return new Promise(res => {
-    const old = PIPE;
+  return new Promise((res, rej) => {
+    const old = PIPE; setTimeout(() => { if (PIPE !== old) { PIPE = old; rej(new Error('no light maps pass (play a match, WebGL2)')); } }, 6000);
     PIPE = (k, o) => {
       if (old) old(k, o);
       if (k !== 'gpu-map' || o.q !== 'mrt') return;
@@ -109,19 +110,19 @@ function catchMaps() {
       if (q) gl.beginQuery(ext.TIME_ELAPSED_EXT, q);
       for (let i = 0; i < N; i++) gl.drawArrays(gl.TRIANGLES, 0, 3);
       if (q) gl.endQuery(ext.TIME_ELAPSED_EXT);
-      const t0 = performance.now(); gl.finish(); const cpu = (performance.now() - t0) / N;
+      const t0 = performance.now(); for (let i = 0; i < N; i++) gl.drawArrays(gl.TRIANGLES, 0, 3); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4)); const wall = (performance.now() - t0) / N;     // no timer (phones): the wall clock, a 1 px read to wait
       const out = [0, 1, 2].map(i => { gl.bindFramebuffer(gl.READ_FRAMEBUFFER, S.MR.fb); gl.readBuffer(gl.COLOR_ATTACHMENT0 + i); const d = new Uint8Array(w * h * 4); gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, d); return d; });
       gl.readBuffer(gl.COLOR_ATTACHMENT0);
       const data = {}; for (const [k, [t, tw, th]] of Object.entries(tex)) data[k] = t && !(k === 'SWL' && !(U.LY > 0.5)) && !(k === 'UT' && !(U.UL > 0.5)) ? { d: glRead(gl, t, tw, th), w: tw, h: th } : null;     // the channels' only when read
       gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.viewport(...vp); gl.scissor(...sc);
-      res({ U, data, out, w, h, sc, q, ext, cpu });
+      res({ U, data, out, w, h, sc, q, wall });
     };
   });
 }
 /* a sweep pass (N 8 or past), caught at its pipe: its heights and the pass before's, its uniforms, N draws timed, its output */
 function catchSweep() {
-  return new Promise(res => {
-    const old = PIPE;
+  return new Promise((res, rej) => {
+    const old = PIPE; setTimeout(() => { if (PIPE !== old) { PIPE = old; rej(new Error('no sweep pass (sun down?)')); } }, 6000);
     PIPE = (k, o) => {
       if (old) old(k, o);
       if (k !== 'gpu-sweep' || !(o.n >= 8)) return;
@@ -133,8 +134,9 @@ function catchSweep() {
       for (let i = 0; i < N; i++) gl.drawArrays(gl.TRIANGLES, 0, 3);
       if (q) gl.endQuery(ext.TIME_ELAPSED_EXT);
       gl.finish(); const d = new Uint8Array(w * h * 4); gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, d);
+      const t0 = performance.now(); for (let i = 0; i < N; i++) gl.drawArrays(gl.TRIANGLES, 0, 3); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4)); const wall = (performance.now() - t0) / N;     // no timer (phones): the wall clock, a 1 px read to wait
       const data = { H: { d: glRead(gl, tH, w, h), w, h }, B: { d: glRead(gl, tB, w, h), w, h } }; gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-      res({ U, data, out: [d], w, h, sc, q });
+      res({ U, data, out: [d], w, h, sc, q, wall });
     };
   });
 }
@@ -163,7 +165,7 @@ async function gpuRun(code, keys, f, n, c) {
     dev.queue.submit([e.finish()]);
   };
   run(2); await dev.queue.onSubmittedWorkDone();     // warm
-  const t0 = performance.now(); run(N); await dev.queue.onSubmittedWorkDone(); const cpu = (performance.now() - t0) / N;
+  const t0 = performance.now(); run(N); await dev.queue.onSubmittedWorkDone(); const wall = (performance.now() - t0) / N;
   let ms = null; if (ts) { await rb.mapAsync(GPUMapMode.READ); const v = new BigUint64Array(rb.getMappedRange()); ms = Number(v[1] - v[0]) / 1e6 / N; rb.unmap(); }
   // the outputs against GL's (rows flipped: GL's bottom-up), over the scissor
   const diff = [];
@@ -175,7 +177,7 @@ async function gpuRun(code, keys, f, n, c) {
     diff.push({ max: mx, over2: +(over / m * 100).toFixed(3) + '%' }); b.unmap();
   }
   dev.destroy();
-  return { ms, cpu, diff };
+  return { ms, wall, diff };
 }
 
 export async function run() {
@@ -183,9 +185,9 @@ export async function run() {
   const gl = _sun.gl, r = {}, fx = v => v == null ? null : +v.toFixed(3);
   { const c = await catchMaps(), t = await glTime(gl, c), U = c.U, f = new Float32Array(40), set = (i, ...v) => f.set(v, i * 4);
     set(0, U.S[0], U.S[1], U.K, U.V); set(1, ...U.R); set(2, U.P[0], U.P[1], U.O[0], U.O[1]); set(3, ...U.L, U.TM); set(4, ...U.C, U.BL); set(5, ...U.W, U.RFL); set(6, ...U.LI, U.LB); set(7, ...U.SKY, U.UL); set(8, ...U.WX, U.LY); set(9, U.G[0], U.G[1], U.Q, U.UP);
-    const g = await gpuRun(MAPS, ['H', 'MT', 'SWT', 'UT', 'SWL', 'LT', 'smp'], f, 3, c); r.maps = { px: c.sc[2] * c.sc[3], webgl: fx(t), webgpu: fx(g.ms), diff: g.diff, error: g.error }; }
+    const g = await gpuRun(MAPS, ['H', 'MT', 'SWT', 'UT', 'SWL', 'LT', 'smp'], f, 3, c); r.maps = { px: c.sc[2] * c.sc[3], webgl: fx(t), webgpu: fx(g.ms), webgl_wall: fx(c.wall), webgpu_wall: fx(g.wall), diff: g.diff, error: g.error }; }
   if (CFG.shCache) return r;     // the sweep: with SHADOW CACHE off (its passes each frame)
   { const c = await catchSweep(), t = await glTime(gl, c), U = c.U, f = new Float32Array([U.S[0], U.S[1], U.D[0], U.D[1], ...U.R, U.N, U.DH, 0, 0]);
-    const g = await gpuRun(SWEEP, ['H', 'B'], f, 1, c); r.sweep = { px: c.sc[2] * c.sc[3], N: U.N, webgl: fx(t), webgpu: fx(g.ms), diff: g.diff, error: g.error }; }
+    const g = await gpuRun(SWEEP, ['H', 'B'], f, 1, c); r.sweep = { px: c.sc[2] * c.sc[3], N: U.N, webgl: fx(t), webgpu: fx(g.ms), webgl_wall: fx(c.wall), webgpu_wall: fx(g.wall), diff: g.diff, error: g.error }; }
   return r;
 }

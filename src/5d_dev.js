@@ -466,6 +466,14 @@ function devKill(s, src, kind, wname) {
   devLog(`${w} · ${(M.time - t.t0).toFixed(2)} s · ${t.hits} HIT${t.hits === 1 ? '' : 'S'} · ${d.toFixed(1)} TILES`, '#7dff7a');
 }
 function devNum(x, y, v, c) { DEV.nums.push({ x: x + rnd(-4, 4), y, v: Math.round(v), c, t: 0.9 }); if (DEV.nums.length > 60) DEV.nums.shift(); }
+/* dev WORLD › GPU BENCH: tools/gpubench.js on this device (the light maps and a sweep pass, WebGL vs WebGPU on this
+   frame's inputs; SHADOW CACHE off meanwhile, so the sweep runs), into the log: ms a draw, GPU timers or else the clock */
+function devGpuBench() {
+  if (DEV.gb) return; DEV.gb = 1; const sc = CFG.shCache; CFG.shCache = 0; devLog('GPU BENCH: RUNNING…', '#ffd34d');
+  const f = v => v == null ? '–' : v.toFixed(2), ln = (n, o) => o && devLog(o.error ? `${n}: ${o.error}` : `${n}  WEBGL ${f(o.webgl ?? o.webgl_wall)} · WEBGPU ${f(o.webgpu ?? o.webgpu_wall)} MS${o.webgl == null ? ' (CLOCK)' : ''}`, '#7fe08a');
+  import('./tools/gpubench.js').then(m => m.run()).then(r => { if (r.error) devLog('GPU BENCH: ' + r.error.toUpperCase(), '#ff5a45'); ln('SWEEP', r.sweep); ln('LIGHT MAPS', r.maps); })
+    .catch(e => devLog('GPU BENCH: ' + String(e.message || e).toUpperCase(), '#ff5a45')).finally(() => { CFG.shCache = sc; DEV.gb = 0; });
+}
 function devLog(text, c) { DEV.log.unshift({ text, c }); if (DEV.log.length > 9) DEV.log.length = 9; }
 
 /* ---------------- vehicles / world ---------------- */
@@ -761,6 +769,8 @@ function devDrawPanel() {
     row([`‹  DAY CYCLE ${['OFF', '10 MIN', '4 MIN', '1 MIN'][DEV.cyc]}${DEV.cyc ? ' · ' + dayClock() : ''}  ›`, d => { DEV.cyc = (DEV.cyc + d + DAY_CYC.length) % DAY_CYC.length; DEV.ph = dayPhOf(SUN.el); }, undefined, true]);
     row([`‹  SUN DIR ${Math.round(SUN.az * 180 / Math.PI)}°  ›`, d => SUN.az = Math.atan2(Math.sin(SUN.az + d * Math.PI / 12), Math.cos(SUN.az + d * Math.PI / 12)), undefined, true]);
     { const e = Math.round(SUN.el * 180 / Math.PI); row([`‹  SUN HEIGHT ${e}°${e < -6 ? ' · NIGHT' : e < 14 ? ' · DUSK' : ''}  ›`, d => SUN.el = clamp(SUN.el + d * Math.PI / 36, -Math.PI / 6, Math.PI * 0.45), undefined, true]); }     // below the horizon: night
+    head('RENDERER');
+    row([DEV.gb ? 'GPU BENCH: RUNNING…' : 'GPU BENCH: WEBGL VS WEBGPU', devGpuBench]);
     row(['CLEAR LOG', () => DEV.log.length = 0]);
   }
   if (DEV.tab !== 2 && DEV.tab !== 4) { head('LOG'); for (const l of DEV.log) { txt(l.text, L, y + 6 * u, 10 * u, l.c, 'left', 'middle', FD); y += 15 * u; } }
