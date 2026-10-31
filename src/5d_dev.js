@@ -471,7 +471,8 @@ function devNum(x, y, v, c) { DEV.nums.push({ x: x + rnd(-4, 4), y, v: Math.roun
 function devGpuBench() {
   if (DEV.gb) return; DEV.gb = 1; const sc = CFG.shCache; CFG.shCache = 0; devLog('GPU BENCH: RUNNING…', '#ffd34d');
   const f = v => v == null ? '–' : v.toFixed(2), ln = (n, o) => o && devLog(o.error ? `${n}: ${o.error}` : `${n}  WEBGL ${f(o.webgl ?? o.webgl_wall)} · WEBGPU ${f(o.webgpu ?? o.webgpu_wall)} MS${o.webgl == null ? ' (CLOCK)' : ''}`, '#7fe08a');
-  import('./tools/gpubench.js').then(m => m.run()).then(r => { if (r.error) devLog('GPU BENCH: ' + r.error.toUpperCase(), '#ff5a45'); ln('SWEEP', r.sweep); ln('LIGHT MAPS', r.maps); })
+  import('./tools/gpubench.js').then(m => m.run()).then(r => { if (REC.on) { REC.bench.push({ t: Math.round(recNow()), ...r }); recEvent('gpuBench', []); }     // in a recording: its result, and when (its draws stall the frame)
+    if (r.error) devLog('GPU BENCH: ' + r.error.toUpperCase(), '#ff5a45'); ln('SWEEP', r.sweep); ln('LIGHT MAPS', r.maps); })
     .catch(e => devLog('GPU BENCH: ' + String(e.message || e).toUpperCase(), '#ff5a45')).finally(() => { CFG.shCache = sc; DEV.gb = 0; });
 }
 function devLog(text, c) { DEV.log.unshift({ text, c }); if (DEV.log.length > 9) DEV.log.length = 9; }

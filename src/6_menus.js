@@ -993,6 +993,7 @@ function drawFps() {
 }
 let last = performance.now();
 function frame(now) {
+  if (HOLD) { last = now; requestAnimationFrame(frame); return; }
   const dt = Math.min(0.05, Math.max(0, (now - last) / 1000)); last = now;
   try { const dv = M && M.dev, t0 = performance.now(); update(dv ? dt * DEV.ts : dt); const t1 = performance.now(); render(); devTime(dt, t1 - t0, performance.now() - t1); audioTick(); } catch (err) { console.error(err); if (M && M.dev) devLog('ERROR ' + String(err && err.message || err).slice(0, 60), '#ff5a45'); }
   endInputFrame();

@@ -22,7 +22,7 @@ const store = {
 };
 let UID = 0;
 /* the pipeline viewer (pipeline/): when set, called at every step of drawing a frame (step name, details) */
-let PIPE = null;
+let PIPE = null, HOLD = false;     // HOLD: the loop idles (a benchmark timing the GPU alone: tools/gpubench.js)
 const pipe = (k, o) => { if (PIPE) PIPE(k, o || {}); };
 /* a rect in a frame (r.f: a house's {ox, oy, c, s, a}, its local origin in the world and its turn): x, y, w, h are in
    the frame. Every rect test takes a world point into the rect's frame first (toF); fromF goes back */

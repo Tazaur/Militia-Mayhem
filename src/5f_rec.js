@@ -8,11 +8,12 @@
      uploaded, texture uploads, framebuffer switches, GPU syncs (readPixels, getError, query reads), canvas 2D calls
    - per second: each function's time and calls, each GL / canvas method's calls, the GPU stage timers (FPS COUNTER › GPU STAGES on, where the browser has them), the JS heap
    - the slowest frames whole: every function in them
+   - dev WORLD › GPU BENCH's results (bench: WebGL vs WebGPU on this device, each with its time; its draws stall a frame or two)
    - events on the same clock: every sound (each shot, hit, blast, pickup plays one), kills, spawns, blasts, vehicles in and
      out, state changes, errors, browser long tasks
    Off: saved in this browser (IndexedDB mm-rec, the newest 5) and shared / downloaded as JSON; perf/ opens them.
    ===================================================================== */
-const REC = { on: false, t0: 0, S: new Map(), L: [], st: [], fr: null, sec: [], worst: [], ev: [], lastS: 0, n: 0, wrapped: new Map(), proto: [], obs: null, cnt: null, pc: {}, note: '' };
+const REC = { bench: [], on: false, t0: 0, S: new Map(), L: [], st: [], fr: null, sec: [], worst: [], ev: [], lastS: 0, n: 0, wrapped: new Map(), proto: [], obs: null, cnt: null, pc: {}, note: '' };
 const REC_MAX = 10 * 60e3;     // ms: a recording stops (and saves) by itself after this
 const REC_EVENTS = new Set(['sfx', 'explosion', 'destroyVehicle', 'destroyStatic', 'enterVehicle', 'exitVehicle', 'kill', 'spawnSoldier', 'newMatch', 'setState', 'throwNade', 'fireCannon', 'fireRocket', 'pickupCrate', 'toast']);
 const REC_COLS = ['t', 'dt', 'upd', 'draw', 'sol', 'veh', 'proj', 'parts', 'wrecks', 'glDraw', 'glKB', 'glTex', 'glFB', 'glSync', 'c2d', 'calls'];
@@ -50,7 +51,7 @@ function recProto() {
 }
 function recStart() {
   if (REC.on || typeof window === 'undefined') return;
-  Object.assign(REC, { on: true, t0: performance.now(), S: new Map(), L: [], st: [], sec: [], worst: [], ev: [], lastS: 0, n: 0, wrapped: new Map(), proto: [], note: '' });
+  Object.assign(REC, { on: true, t0: performance.now(), S: new Map(), L: [], st: [], sec: [], worst: [], ev: [], lastS: 0, n: 0, wrapped: new Map(), proto: [], note: '', bench: [] });
   REC.fr = Object.fromEntries(REC_COLS.map(c => [c, []]));
   for (const k of Object.keys(window)) {
     if (k.startsWith('rec') || k === 'frame' || k === 'devTime' || k === 'drawRec') continue; let f; try { f = window[k]; } catch (e) { continue; }
@@ -100,7 +101,7 @@ function recReport() {
   const fns = [...REC.S.values()].filter(s => s.n).map(s => [s.k, Math.round(s.s * 10) / 10, Math.round(s.t * 10) / 10, s.n, s.hot]).sort((a, b) => b[1] - a[1]);
   return { v: 1, build: VERSION.build, date: new Date().toISOString(), ms: Math.round(recNow()), note: REC.note,
     dev: { ua: navigator.userAgent, w: innerWidth, h: innerHeight, dpr: devicePixelRatio, cv: [cv.width, cv.height], gl: !!GL, gpu, cores: navigator.hardwareConcurrency || 0, mem: navigator.deviceMemory || 0 },
-    cfg: { ...CFG }, cols: REC_COLS, frames: REC.fr, sec: REC.sec, worst: REC.worst, fns, ev: REC.ev };
+    cfg: { ...CFG }, bench: REC.bench, cols: REC_COLS, frames: REC.fr, sec: REC.sec, worst: REC.worst, fns, ev: REC.ev };
 }
 /* kept in this browser (perf/ lists them) and handed to the share sheet, else downloaded */
 function recDB() { return new Promise((ok, no) => { const r = indexedDB.open('mm-rec', 1); r.onupgradeneeded = () => r.result.createObjectStore('recs', { keyPath: 'id' }); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); }); }

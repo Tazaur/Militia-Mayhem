@@ -110,7 +110,7 @@ function catchMaps() {
       if (q) gl.beginQuery(ext.TIME_ELAPSED_EXT, q);
       for (let i = 0; i < N; i++) gl.drawArrays(gl.TRIANGLES, 0, 3);
       if (q) gl.endQuery(ext.TIME_ELAPSED_EXT);
-      const t0 = performance.now(); for (let i = 0; i < N; i++) gl.drawArrays(gl.TRIANGLES, 0, 3); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4)); const wall = (performance.now() - t0) / N;     // no timer (phones): the wall clock, a 1 px read to wait
+      gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4)); const t0 = performance.now(); for (let i = 0; i < N; i++) gl.drawArrays(gl.TRIANGLES, 0, 3); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4)); const wall = (performance.now() - t0) / N;     // no timer (phones): the wall clock, a 1 px read to wait
       const out = [0, 1, 2].map(i => { gl.bindFramebuffer(gl.READ_FRAMEBUFFER, S.MR.fb); gl.readBuffer(gl.COLOR_ATTACHMENT0 + i); const d = new Uint8Array(w * h * 4); gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, d); return d; });
       gl.readBuffer(gl.COLOR_ATTACHMENT0);
       const data = {}; for (const [k, [t, tw, th]] of Object.entries(tex)) data[k] = t && !(k === 'SWL' && !(U.LY > 0.5)) && !(k === 'UT' && !(U.UL > 0.5)) ? { d: glRead(gl, t, tw, th), w: tw, h: th } : null;     // the channels' only when read
@@ -134,7 +134,7 @@ function catchSweep() {
       for (let i = 0; i < N; i++) gl.drawArrays(gl.TRIANGLES, 0, 3);
       if (q) gl.endQuery(ext.TIME_ELAPSED_EXT);
       gl.finish(); const d = new Uint8Array(w * h * 4); gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, d);
-      const t0 = performance.now(); for (let i = 0; i < N; i++) gl.drawArrays(gl.TRIANGLES, 0, 3); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4)); const wall = (performance.now() - t0) / N;     // no timer (phones): the wall clock, a 1 px read to wait
+      gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4)); const t0 = performance.now(); for (let i = 0; i < N; i++) gl.drawArrays(gl.TRIANGLES, 0, 3); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4)); const wall = (performance.now() - t0) / N;     // no timer (phones): the wall clock, a 1 px read to wait
       const data = { H: { d: glRead(gl, tH, w, h), w, h }, B: { d: glRead(gl, tB, w, h), w, h } }; gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
       res({ U, data, out: [d], w, h, sc, q, wall });
     };
@@ -164,8 +164,8 @@ async function gpuRun(code, keys, f, n, c) {
     if (ts) { e.resolveQuerySet(qs, 0, 2, qb, 0); e.copyBufferToBuffer(qb, 0, rb, 0, 16); }
     dev.queue.submit([e.finish()]);
   };
-  run(2); await dev.queue.onSubmittedWorkDone();     // warm
-  const t0 = performance.now(); run(N); await dev.queue.onSubmittedWorkDone(); const wall = (performance.now() - t0) / N;
+  HOLD = true; let wall;     // the game idles meanwhile: the clock then times this work alone, as GL's is (drawn in one go)
+  try { run(2); await dev.queue.onSubmittedWorkDone(); const t0 = performance.now(); run(N); await dev.queue.onSubmittedWorkDone(); wall = (performance.now() - t0) / N; } finally { HOLD = false; }
   let ms = null; if (ts) { await rb.mapAsync(GPUMapMode.READ); const v = new BigUint64Array(rb.getMappedRange()); ms = Number(v[1] - v[0]) / 1e6 / N; rb.unmap(); }
   // the outputs against GL's (rows flipped: GL's bottom-up), over the scissor
   const diff = [];
