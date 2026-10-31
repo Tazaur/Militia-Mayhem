@@ -950,7 +950,7 @@ Art drop (drop.py): atlas 384x818 -> 384x1154; new sprites: tree0, tree1, tree2;
 - Smoke light: a crown's shadow is its parts' art swept from max(base, SMK_Z) to the top (SMK_TS, coloured T.sh), not a capsule.
 - HP material depth is 1 - top / HZ (was / 32: tops past 32 px were clipped out of the material pass).
 
-## Upper things on their own heights and sweep (build 331)
+## Upper things on their own heights and sweep (build 354)
 - The bug: the sweep keeps one floating span a pixel. Roof slabs and crowns shared it with what floats under them (a
   soldier's body on his legs, hulls, turrets): two spans got joined (bridging), a joined one reaching the ground folded
   into the skyline (a solid column: the unit's own sprite shaded), or the lower one kept (the roof's / crown's shade lost
