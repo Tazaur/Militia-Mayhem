@@ -366,51 +366,44 @@ vec3 hr(float t) { t = clamp(t, 0., 1.) * 4.; return t < 1. ? mix(vec3(0.04, 0.0
 float hs(vec2 p) { vec3 q = fract(p.xyx * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }     // fract hash: no big sin (it splits between cells)
 float vn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); return mix(mix(hs(i), hs(i + vec2(1., 0.)), f.x), mix(hs(i + vec2(0., 1.)), hs(i + vec2(1., 1.)), f.x), f.y); }
 float wv(vec2 w) { return vn(w * 0.06 + vec2(TM * 0.35, TM * 0.25)) + 0.5 * vn(w * 0.14 - vec2(TM * 0.45, -TM * 0.2)); }
+// the sun's shadow at p, height h0 (the frame's sweep, and the other channels' (SWL, LY: any)); ou: the memory's, from what it keeps (SWS)
+float sunSh(vec2 p, bool up, bool ou, float h0) {
+  vec2 q = (floor(p) + 0.5) / S; vec4 sw = ou ? texture2D(SWS, q) : texture2D(SWT, q); bool ur = !ou && rf(p) && h0 < ${ROOF_Z[0].toFixed(1)}; vec4 lw = LY > 0.5 && !ou ? texture2D(SWL, q) : vec4(0.);     // ur: indoors, the roof in the frame's sweep (no channels: UL 0): its skyline alone (the roof's span folds into it, mixed with what floats)
+  return 1. - max(ur && UL < 0.5 ? clamp((un(sw.rg) - h0 + 0.75) / 1.5, 0., 1.) : sunIn(sw, h0 + 0.75),     // lifted past the soft edge: a surface's sunward neighbour (DH lower, a height step higher at most) doesn't shade it (no stripes down a slope, a roof as bright as the remembered one)
+    up ? lw.g : max(lw.r, lw.b)); }
+/* a surface's maps at p (f: GC px): c0 shade, c1 highlights, c2 glow (w2: wanted); up the upper surface (the sun alone: the
+   lamps' light is the ground's), ou the memory's (from what it keeps, HS: shade only, no point lights or gloss, roofs whole) */
+void lit(vec2 f, vec2 p, bool up, bool ou, bool w2, out vec4 c0, out vec4 c1, out vec4 c2) {
+  bool g = !up && !ou && gm(p); float h0 = hz(p, ou, g, up);
+  vec3 N = normalize(vec3(-vec2(hz(p + vec2(1., 0.), ou, g, up) - hz(p - vec2(1., 0.), ou, g, up), hz(p + vec2(0., 1.), ou, g, up) - hz(p - vec2(0., 1.), ou, g, up)) * K * 0.5, 1.));
+  float lam = (0.45 + 0.55 * max(dot(N, L), 0.)) / (0.45 + 0.55 * L.z), sh = sunSh(p, up, ou, h0);
+  vec4 a = LB < 0.5 || up || ou ? vec4(0.) : (texture2D(LT, (f + vec2(-1., -1.)) / G) + texture2D(LT, (f + vec2(1., -1.)) / G) + texture2D(LT, (f + vec2(-1., 1.)) / G) + texture2D(LT, (f + vec2(1., 1.)) / G)) * 0.25, m = mt(p);     // the lights blurred (4 linear taps: a 4 x 4 px footprint): their soft shadows' jittered steps blend, not dither; LB 0: no point lights, LT not read
+  float r = ou ? 0. : m.r * RFL, gw = m.g; vec3 pl = a.rgb * 4., tint = pl.r + pl.g + pl.b > 0.004 ? pl / max(max(pl.r, pl.g), pl.b) : PLT;     // the point lights (LT: their colours summed); tint: their colour here (a red light's haze is red)
+  float ra = roofA(p, ou);     // the roof shows: lit as a flat top in the sun (as is: no shade, no highlight)
+  c0 = vec4(mix(min(mix(C, LI, sh) * min(lam, 1.) + pl, vec3(1.)) * (1. - r * 0.55), min(LI + pl, vec3(1.)), ra), 1.);     // C: shade, LI: sunlit (both the night's ambient after dark)
+  vec3 hi = W * max(lam - 1., 0.) * 1.6 * sh + pl * 0.6 + gw * 1.5; c1 = vec4(hi / (1. + hi) * (1. - ra), 1.);     // dodge by h / (1 + h): x (1 + h)
+  c2 = vec4(0., 0., 0., 1.); if (!w2) return;
+  vec2 w = (p - WX.xy) / WX.z;     // water ripples (the glint's slope alone)
+  if (m.b > 0.5) { vec2 e = vec2(1.5, 0.); N = normalize(N + vec3(wv(w - e.xy) - wv(w + e.xy), wv(w - e.yx) - wv(w + e.yx), 0.) * 0.9); }
+  vec3 Rv = reflect(vec3(0., 0., -1.), N); float spec = pow(max(dot(Rv, L), 0.), mix(12., 160., r)) * sh, b = 0.;
+  if (BL > 0.) for (int i = 0; i < 12; i++) { float t = float(i), q = (1. + t) / 12. * 9. * K; b += mt(p + vec2(cos(t * 2.39996), sin(t * 2.39996)) * q).g; }
+  vec3 sky = mix(SKY * 1.2, SKY, Rv.z);
+  c2 = vec4((pl * 0.45 + a.a * 2. * tint + r * (sky * 0.5 * (0.55 + 0.45 * sh) + W * spec * 2.5) + vec3(1., 0.86, 0.62) * b / 12. * BL) * (1. - ra), 1.);
+}
 void main() {
   vec2 f = gl_FragCoord.xy - O, p = vec2(f.x, V - f.y) + P;     // O: where this map sits in GC (GL pixels)
-  // the sun: its slope (lam) and shadow (sh: the frame's sweep, and the other channels' (SWL, LY: any)); FG: the memory's map, from what it keeps (HS, SWS)
-  bool up = UP > 0.5, ou = !up && FG > 0.5, g = !up && !ou && gm(p); float h0 = hz(p, ou, g, up), sh;
-  vec3 N = normalize(vec3(-vec2(hz(p + vec2(1., 0.), ou, g, up) - hz(p - vec2(1., 0.), ou, g, up), hz(p + vec2(0., 1.), ou, g, up) - hz(p - vec2(0., 1.), ou, g, up)) * K * 0.5, 1.));
-  float lam = (0.45 + 0.55 * max(dot(N, L), 0.)) / (0.45 + 0.55 * L.z);
-  { vec2 q = (floor(p) + 0.5) / S; vec4 sw = ou ? texture2D(SWS, q) : texture2D(SWT, q); bool ur = !ou && rf(p) && h0 < ${ROOF_Z[0].toFixed(1)}; vec4 lw = LY > 0.5 && !ou ? texture2D(SWL, q) : vec4(0.);     // ur: indoors, the roof in the frame's sweep (no channels: UL 0): its skyline alone (the roof's span folds into it, mixed with what floats)
-    sh = 1. - max(ur && UL < 0.5 ? clamp((un(sw.rg) - h0 + 0.75) / 1.5, 0., 1.) : sunIn(sw, h0 + 0.75),     // lifted past the soft edge: a surface's sunward neighbour (DH lower, a height step higher at most) doesn't shade it (no stripes down a slope, a roof as bright as the remembered one)
-    up ? lw.g : max(lw.r, lw.b)); }     // the channels' (R), the upper things' (B: a roof shades its room, the sun in at its doors and windows), on the upper surface (G)
-#ifndef MRT
-  if (Q > 4.5) { vec4 a = texture2D(LT, f / G); gl_FragColor = vec4(Q > 5.5 ? min(a.rgb * 4. + a.a * 2. * PLT, 1.) : vec3(sh), 1.); return; }     // dev: the sun's shadow alone, the point lights alone
+  bool up = UP > 0.5, ou = !up && FG > 0.5; vec4 c0, c1, c2;     // FG: the memory's map
+#ifdef MRT
+  lit(f, p, up, false, Q > 1.5, c0, c1, c2); o0 = c0; o1 = c1; o2 = c2;     // MRT: a surface's maps at once (Q: the last one wanted)
+#else
+  if (Q > 4.5) { vec4 a = texture2D(LT, f / G); bool g = !up && !ou && gm(p); gl_FragColor = vec4(Q > 5.5 ? min(a.rgb * 4. + a.a * 2. * PLT, 1.) : vec3(sunSh(p, up, ou, hz(p, ou, g, up))), 1.); return; }     // dev: the sun's shadow alone, the point lights alone
   if (Q > 3.5) { gl_FragColor = vec4(mt(p).rgb, 1.); return; }
   if (Q > 2.5) {     // dev HEIGHTS: the top (whatever it is) on one ramp, 0 dark blue .. 64 px red; hatched where it floats over air (not where it rests on a wheel / track): the hatch is its underside
     vec4 c = tx(p); float t = hu(p), fb = (1. - c.a) * ${HZS};
     vec3 col = hr(t / 128.); if (c.g > c.r && fb > c.r * ${HZS} + 0.5 && mod(floor(p.x + p.y), 6.) < 2.) col = hr(fb / 128.);
     gl_FragColor = vec4(col, 1.); return; }
-#endif
-  vec4 a = LB < 0.5 ? vec4(0.) : (texture2D(LT, (f + vec2(-1., -1.)) / G) + texture2D(LT, (f + vec2(1., -1.)) / G) + texture2D(LT, (f + vec2(-1., 1.)) / G) + texture2D(LT, (f + vec2(1., 1.)) / G)) * 0.25, m = mt(p);     // the lights blurred (4 linear taps: a 4 x 4 px footprint): their soft shadows' jittered steps blend, not dither; LB 0: no point lights, LT not read
-  float r = m.r * RFL, gw = m.g; vec3 pl = a.rgb * 4., tint = pl.r + pl.g + pl.b > 0.004 ? pl / max(max(pl.r, pl.g), pl.b) : PLT;     // the point lights (LT: their colours summed); tint: their colour here (a red light's haze is red)
-  if (up) pl = vec3(0.);     // the upper surface: the sun alone (the lamps' light is the ground's)
-  vec2 w = (p - WX.xy) / WX.z;
-  if (m.b > 0.5) { vec2 e = vec2(1.5, 0.); N = normalize(N + vec3(wv(w - e.xy) - wv(w + e.xy), wv(w - e.yx) - wv(w + e.yx), 0.) * 0.9); }
-  vec3 Rv = reflect(vec3(0., 0., -1.), N); float spec = pow(max(dot(Rv, L), 0.), mix(12., 160., r)) * sh;
-  // the memory's map (ou): shade only (no highlights, glow, gloss), roofs whole
-#ifndef MRT
-  if (ou && Q > 0.5) { gl_FragColor = vec4(0., 0., 0., 1.); return; }
-#endif
-  if (ou) { pl = vec3(0.); r = 0.; }
-  float ra = roofA(p, ou);     // the roof shows: lit as a flat top in the sun (as is: no shade, no highlight)
-  vec4 c0 = vec4(mix(min(mix(C, LI, sh) * min(lam, 1.) + pl, vec3(1.)) * (1. - r * 0.55), min(LI + pl, vec3(1.)), ra), 1.);     // C: shade, LI: sunlit (both the night's ambient after dark)
-  vec3 hi = W * max(lam - 1., 0.) * 1.6 * sh + pl * 0.6 + gw * 1.5; vec4 c1 = vec4(hi / (1. + hi) * (1. - ra), 1.);     // dodge by h / (1 + h): x (1 + h)
-#ifdef MRT
-  o0 = c0; o1 = c1; if (Q < 1.5) { o2 = vec4(0., 0., 0., 1.); return; }     // MRT: the maps at once (Q: the last one wanted)
-#else
-  if (Q < 0.5) { gl_FragColor = c0; return; }
-  if (Q < 1.5) { gl_FragColor = c1; return; }
-#endif
-  float b = 0.;
-  if (BL > 0.) for (int i = 0; i < 12; i++) { float t = float(i), q = (1. + t) / 12. * 9. * K; b += mt(p + vec2(cos(t * 2.39996), sin(t * 2.39996)) * q).g; }
-  vec3 sky = mix(SKY * 1.2, SKY, Rv.z);
-  vec4 c2 = vec4((pl * 0.45 + a.a * 2. * tint + r * (sky * 0.5 * (0.55 + 0.45 * sh) + W * spec * 2.5) + vec3(1., 0.86, 0.62) * b / 12. * BL) * (1. - ra), 1.);
-#ifdef MRT
-  o2 = c2;
-#else
-  gl_FragColor = c2;
+  if (ou && Q > 0.5) { gl_FragColor = vec4(0., 0., 0., 1.); return; }     // the memory's: shade alone
+  lit(f, p, up, ou, Q > 1.5, c0, c1, c2); gl_FragColor = Q < 0.5 ? c0 : Q < 1.5 ? c1 : c2;
 #endif
 }`, CP = prog(VS, CPS, ['p']);
     /* WebGL2: the same, its maps (shade, highlights, glow) in one pass into three targets (MRT: drawSun copies them into GC) */
@@ -1048,14 +1041,16 @@ function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory
   const to0 = () => [vw.x * DPR, vw.y * DPR, vw.w * DPR, vw.h * DPR];
   const at = n => [(n & 1) * w + rx, (n >> 1) * h + ry];     // map n's view in GC (canvas pixels): 0 1 / 2 3 / 4 5
   const map = (q, n, B) => {     // B: only this world box of the view
-    const o = (n & 1) * w, oy = (2 - (n >> 1)) * h; let x0 = rx, y0 = ry, x1 = rx + rw, y1 = ry + rh;
-    if (B) { x0 = Math.max(x0, Math.floor(B[0] * K + VOX * k)); y0 = Math.max(y0, Math.floor(B[1] * K + VOY * k)); x1 = Math.min(x1, Math.ceil(B[2] * K + VOX * k)); y1 = Math.min(y1, Math.ceil(B[3] * K + VOY * k)); if (x1 <= x0 || y1 <= y0) return false; }
+    const o = (n & 1) * w, oy = (2 - (n >> 1)) * h, b = vbox(B); if (!b) return false; const [x0, y0, x1, y1] = b;
     gl.viewport(o, oy, w, h); gl.scissor(o + x0, oy + h - y1, x1 - x0, y1 - y0); gl.uniform2f(CU.O, o, oy); gl.uniform1f(CU.Q, q); gl.drawArrays(gl.TRIANGLES, 0, 3); pipe('gpu-map', { q, o }); return true; };
+  const vbox = B => {     // the view's rect (buffer px), but for B (a world box) only its part
+    let x0 = rx, y0 = ry, x1 = rx + rw, y1 = ry + rh;
+    if (B) { x0 = Math.max(x0, Math.floor(B[0] * K + VOX * k)); y0 = Math.max(y0, Math.floor(B[1] * K + VOY * k)); x1 = Math.min(x1, Math.ceil(B[2] * K + VOX * k)); y1 = Math.min(y1, Math.ceil(B[3] * K + VOY * k)); if (x1 <= x0 || y1 <= y0) return null; }
+    return [x0, y0, x1, y1]; };
   /* MRT (WebGL2): the maps wanted at once into S.MR, then each copied to its place in GC (n: 0 1 2, or 4 5 the upper
      surface over B); Q tells the shader the last one wanted */
   const mrt = (ns, up, B) => {
-    const R = S.MR; let x0 = rx, y0 = ry, x1 = rx + rw, y1 = ry + rh;
-    if (B) { x0 = Math.max(x0, Math.floor(B[0] * K + VOX * k)); y0 = Math.max(y0, Math.floor(B[1] * K + VOY * k)); x1 = Math.min(x1, Math.ceil(B[2] * K + VOX * k)); y1 = Math.min(y1, Math.ceil(B[3] * K + VOY * k)); if (x1 <= x0 || y1 <= y0) return false; }
+    const R = S.MR, b = vbox(B); if (!b) return false; const [x0, y0, x1, y1] = b;
     gl.useProgram(S.CPM); const C = S.CMU; gl.uniform1f(C.UP, up ? 1 : 0); gl.uniform2f(C.O, 0, 0); gl.uniform1f(C.Q, ns.length - 1);
     gl.bindFramebuffer(gl.FRAMEBUFFER, R.fb); gl.drawBuffers([0, 1, 2].map(i => i < ns.length ? gl.COLOR_ATTACHMENT0 + i : gl.NONE));
     gl.viewport(0, 0, w, h); gl.scissor(x0, h - y1, x1 - x0, y1 - y0); gl.drawArrays(gl.TRIANGLES, 0, 3); pipe('gpu-map', { q: 'mrt', o: 0 });
@@ -1066,7 +1061,8 @@ function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory
   gl.uniform1f(CU.UP, 0); if (useM) mrt(maps, false); else maps.forEach((q, n) => map(q, n));
   if (fog) { gl.uniform1f(CU.FG, 1); map(0, 3); gl.uniform1f(CU.FG, 0); }     // the memory's shade, map 3 (out of sight: fogOverlay): what it keeps, no point lights
   S.up = null;     // the upper surface (roofs, tree tops: drawn over the smoke, upperLit), its shade and highlights, maps 4 and 5, over their box (UPB)
-  if (UPB && CFG.tops !== 'flat' && !SUNDBG && ctx.lightComp) { if (useM) { if (mrt([4, 5], true, UPB)) S.up = [at(4), at(5), rw, rh, to0()]; } else { gl.uniform1f(CU.UP, 1); if (map(0, 4, UPB)) { map(1, 5, UPB); S.up = [at(4), at(5), rw, rh, to0()]; } gl.uniform1f(CU.UP, 0); } }
+  const upS = () => [at(4), at(5), rw, rh, to0()];
+  if (UPB && CFG.tops !== 'flat' && !SUNDBG && ctx.lightComp) { if (useM) { if (mrt([4, 5], true, UPB)) S.up = upS(); } else { gl.uniform1f(CU.UP, 1); if (map(0, 4, UPB)) { map(1, 5, UPB); S.up = upS(); } gl.uniform1f(CU.UP, 0); } }
   gxYield(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = true;
   const to = to0();
   if (SUNDBG) ctx.drawImage(GC, ...at(0), rw, rh, ...to);       // dev: 1 heights, 2 shade, 3 highlights, 4 glow, 5 materials, 6 sun shadow, 7 point lights

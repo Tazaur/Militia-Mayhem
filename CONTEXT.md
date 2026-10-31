@@ -1050,3 +1050,7 @@ SHADOW CACHE setting (`CFG.shCache`: 2 SUN + MEMORY, the default; 1 SUN; 0 OFF),
 - Sun down: the height buffer no longer reaches toward the sun (nothing is swept); it keeps a margin of LPAD (48 world px) all round instead, for the lamps' shadows from just off the view. Night ULTRA GPU 17.2 -> 11.6 ms.
 - LIGHT CULLING (the point-light pass scissored to the lights' joined boxes) was tried and removed: the shader already skips each light per pixel past its reach and outside its cone before the march, and flashlights / headlights reach 340 px, so the boxes cover the whole view. Night with every lamp on: POINT LIGHTS 4.67 ms culled vs 4.39 ms not; brawl 2.03 vs 2.20 (noise).
 - Bench tools: scene param `lamps: true` (every flashlight and vehicle's lights on); `tools/scene.mjs --probe EXPR` adds an expression's value to the BENCH line.
+
+## Merged passes: the maps' shader split by surface (build 400)
+- The maps shader's body is now lit(f, p, up, ou, w2): a surface's shade / highlights / glow; sunSh() its sun shadow. The upper surface and the memory's map skip the point lights' 4 LT taps, and the water ripples, bloom and glint run only when the glow map is wanted (all exact: they only fed outputs those maps don't use). LIGHT MAPS (ONE PASS) 4.09 -> ~3.45 ms on ULTRA; ONE A MAP ~6.3.
+- Tried and dropped: ALL IN ONE PASS (one MRT draw, six targets: the frame's, the memory's and the upper surface's maps). Slower, 5.1 ms vs 3.5, even as its own program: the bigger shader and six targets cost more than the draws saved.
