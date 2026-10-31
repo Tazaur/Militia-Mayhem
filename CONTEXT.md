@@ -909,3 +909,6 @@ ROOF_STYLES, MAP_ROOFS and roofPaint(H, st, list, snow, grit) live in src/2d_hou
   stroke (autoRun: unput, redo); Apply = one undo step, Cancel puts it back. Painting is blocked while it's open; the
   sliders are remembered (st.auto).
 - Menu wording shortened (Center pivot, Fit to art, Save heights, Mask to art, Show strays, Clear, Move, ...).
+
+## Build 301
+Art drop (drop.py): atlas 384x818 -> 384x1154; new sprites: tree0, tree1, tree2; atlas_m.png: pool; atlas.png: no paint change.
