@@ -872,3 +872,14 @@ ROOF_STYLES, MAP_ROOFS and roofPaint(H, st, list, snow, grit) live in src/2d_hou
 ## Roofs: same in and out of sight; true hip roofs
 - roofsOver (5d_dev): with the sun, after fogOverlay, the roof is drawn whole over the out-of-sight memory (clipped out of the sight hole), lit by sunTone().li through the GL colour matrix (roofLit; the in-sight rv too, no CPU tint). Tiles that fell unseen are kept per memory (m.pend, cleared in applyFog when seen) and drawn from H.rf. Setting FOG OF WAR > ROOFS OUT OF SIGHT: AS IN SIGHT (default) / FOGGED (CFG.roofFog: the old look).
 - roofPaint: height = square (Chebyshev) distance to the nearest point off the roof (8-neighbour vector distance transform), face = steepest fall of that height: hips, ridges and valleys on any shape (L houses joined properly).
+
+## Dev mode is a setting; scenes (the dev tester)
+- No dev yard any more (buildDevMap, startDev, the menu's DEV MODE button gone). Settings › HUD › DEV › DEV MODE: any local match gets the tool panel (`M.dev = cfg.dev && !demo && !NET.role`; `devMatch()` resets panel/log/scene). Tickets are the match's own. RESET MAP rebuilds `M.mapId`. The dev strip sits under the ticket bar.
+- PLAYER tab: PLAY AS AI (`DEV.auto`: `devAI(s)` → `autoControl`, the bot brain on the player's own `s.auto` = `newBot()`, deploys itself), BOT BRAINS (`DEV.brain`: path, goal ring, cover box, target line, heard-shot X, `botThought` text over each bot).
+- TEST tab = **src/5g_test.js** (the standard):
+  - spots round a window (`testSpots`, from MAP.posts with room round it): INSIDE, POST, WINDOW, OUTSIDE, BESIDE, FAR, DOOR, ROOF, plus PLAYER.
+  - params: `at {SPOT: none|dummy|bot|mate|jeep|tank|nest|husk jeep|husk tank}`, `drv`, `move`, `player`, `pick`, `smoke [SPOT]`, `shots [[FROM, TO, s]]`, and live switches `TEST_KEYS` (roofs, los, sun, time, hud, cam, zoom, brain, auto, sight, spots, ts).
+  - add a scene = an entry in `SCENES` (params only); a switch = a `TEST_KEYS` entry; a place = a spot in `testSpots`. The panel and the runner pick them up.
+  - Log: `EVHOOK` (1b ev) → `testEv`; `testState()` = log + spots + soldiers (with thoughts) + vehicles + wrecks. Dummies take scripted input (`dummy.I`, `dummyInput`). `wreckOf(v)` (3_sim) makes husks; `newBot()` is the one bot-brain literal.
+- **Visual checks go through the runner**: `node tools/scene.mjs <scene> '<params json>' --shots 0.6,2 [--map outskirts] [--phone] [--keep-hud]` (serves the repo, headless Chrome, camera snapped on the scene, HUD off) → PNGs + `<scene>.log` in %TEMP%/mm-scenes. `node tools/scene.mjs list` prints scenes/spots/switches.
+- t25 now runs on OUTSKIRTS in dev mode and runs every scene + play-as-AI; t12 has no DEV button. harness: Path2D stub.

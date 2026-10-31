@@ -40,23 +40,24 @@ function newMatch(cfg, demo) {
   TEAMHEX = teamColor.map(c => CHEX[c]);
   TEAMNAME = teamNames(cfg, demo, ffa, teamColor);
   buildRings();
-  const mapId = MAPNAMES[cfg.map % MAPNAMES.length][0], town = !cfg.dev && mapId === 'outskirts';
-  const gm = !cfg.dev && mapId.startsWith('g:') && gMapOf(mapId);     // a map from the map editor (2b_ground.js)
-  setWorld(cfg.dev ? DEV_COLS * TILE : town ? 3072 : gm ? gm.w : 3000, cfg.dev ? DEV_ROWS * TILE : town ? 2048 : gm ? gm.h : 2000, cfg.dev || !gm || (gm.objs || []).some(o => o.k === 'house') ? SUB : 30);     // houses (every built-in map has them): nav on the wall grid
-  if (cfg.dev) buildDevMap(); else buildMap(mapId);
+  const mapId = MAPNAMES[cfg.map % MAPNAMES.length][0], town = mapId === 'outskirts';
+  const gm = mapId.startsWith('g:') && gMapOf(mapId);     // a map from the map editor (2b_ground.js)
+  setWorld(town ? 3072 : gm ? gm.w : 3000, town ? 2048 : gm ? gm.h : 2000, !gm || (gm.objs || []).some(o => o.k === 'house') ? SUB : 30);     // houses (every built-in map has them): nav on the wall grid
+  buildMap(mapId);
   paintGround(); buildNav();
   MAP.statics.forEach((s, i) => s.idx = i);
   const tk = LIMITS.team[cfg.limit] || 200;
   M = {
-    cfg, demo: !!demo, mode: mode.id, ffa, time: 0, sol: [], vehicles: [], wrecks: [], proj: [], parts: [], flings: [], corpses: [], crates: [], items: [], feed: [], toasts: [],
+    cfg, mapId, demo: !!demo, mode: mode.id, ffa, time: 0, sol: [], vehicles: [], wrecks: [], proj: [], parts: [], flings: [], corpses: [], crates: [], items: [], feed: [], toasts: [],
     flags: [], tickets: [tk, tk], limit: ffa ? LIMITS.ffa[cfg.limit] : 0, bleedT: 0, over: false, overT: 0, winner: -1, views: [], skill: SKILL[cfg.skill] || SKILL[1],
     brass: [], scoreHeld: false, lowWarn: [false, false], ff: !!cfg.ff && !demo, rain: cfg.weather === 'rain' && MAPNAMES[cfg.map][0] !== 'snowfield', snow: cfg.weather === 'snow' || (cfg.weather === 'rain' && MAPNAMES[cfg.map][0] === 'snowfield'), teamColor,
     coop, wv: coop ? { n: 0, queue: 0, left: 0, brk: 8, spT: 0, lim: LIMITS.surv[cfg.limit] || 0 } : null
   };
   if (mode.id === 'conquest') M.flags = MAP.flags.map(f => ({ ...f, r: f.r || 96, owner: -1, prog: 0, contested: false, wave: rnd(0, 6), cnt: [0, 0] }));
   if (mode.id === 'koth') M.flags = [{ ...MAP.flags[MAP.flags.length >> 1], name: 'HILL', r: 120, owner: -1, prog: 0, contested: false, wave: 0, cnt: [0, 0] }];
-  M.dev = !!cfg.dev && !demo;
-  if (demo || coop || M.dev) M.tickets = [99999, 99999];
+  M.dev = !!cfg.dev && !demo && !NET.role;     // settings › DEV MODE: the tool panel in any local match
+  if (M.dev) devMatch();
+  if (demo || coop) M.tickets = [99999, 99999];
   if (mode.id === 'conquest' && M.flags.length > 1) { const L = M.flags[M.flags.length - 1]; M.flags[0].owner = 0; M.flags[0].prog = -1; L.owner = 1; L.prog = 1; }     // the ends start held (editor maps can have any number)
   for (const s of MAP.vehSpawns) M.vehicles.push(makeVehicle(s));
   for (const c of MAP.crateSpots) M.crates.push({ x: c.x, y: c.y, a: rnd(-0.4, 0.4), live: true, t: 0 });
@@ -101,7 +102,7 @@ function teamNames(cfg, demo, ffa, tc) {
 function makeSoldier(o) {
   return {
     id: ++UID, x: 0, y: 0, a: 0, vx: 0, vy: 0, r: 7, hp: 100, mhp: o.player && M && M.coop ? 200 : 100, team: o.team, color: o.color, name: o.name, player: o.player || null,
-    bot: o.bot ? { thinkT: 0, goal: null, goalT: 0, path: null, pathI: 0, pathT: 0, target: null, burst: 0, rest: 0, strafe: 1, strafeT: 0, stuckT: 0, lx: 0, ly: 0, nadeCd: 3, vehCd: rnd(2, 6), react: 0, err: 0, wantSeat: null, exitCd: 0, gadCd: rnd(4, 10), proneT: 0 } : null,
+    bot: o.bot ? newBot() : null,
     alive: false, respawnT: 1, kit: 0, var: 0, w: null, wi: 0, nades: 2, mines: 0, gcd: 0, fireCd: 0, reloadT: 0, nadeCd: 0, lastHurt: -9, protect: 0,
     stance: 0, throwT: 0, stanceT: 0, swim: false, torch: false, lamp: false, ads: false, bloom: 0, jumpT: 0, jdx: 0, jdy: 0, meleeCd: 0, meleeT: 0, spotCd: 0, stepAcc: 0, stepSide: 1,
     veh: null, seat: -1, seatT: 0, seatFrom: null, seatMax: 0.5, walkT: 0, moving: false, flash: 0, hurtT: 0,
@@ -109,6 +110,8 @@ function makeSoldier(o) {
     spawnSel: 0, msg: null, hitT: 0, firedT: 0, spotT: 0, spotTeam: -1, deployIdle: 0
   };
 }
+/* a bot's brain (botControl's state); a player set to play as AI (dev) gets one too */
+const newBot = () => ({ thinkT: 0, goal: null, goalT: 0, path: null, pathI: 0, pathT: 0, target: null, burst: 0, rest: 0, strafe: 1, strafeT: 0, stuckT: 0, lx: 0, ly: 0, nadeCd: 3, vehCd: rnd(2, 6), react: 0, err: 0, wantSeat: null, exitCd: 0, gadCd: rnd(4, 10), proneT: 0 });
 function makeVehicle(sp) {
   const T = VT[sp.type];
   return {
@@ -184,7 +187,7 @@ function spawnSoldier(s, opt) {
   afterSpawn(s);
 }
 function afterSpawn(s) {
-  if (s.bot) { s.bot.path = null; s.bot.goal = null; s.bot.target = null; s.bot.vehCd = rnd(0.5, 3); }
+  const B = s.bot || s.auto; if (B) { B.path = null; B.goal = null; B.target = null; B.vehCd = rnd(0.5, 3); }
   if (s.player) { ev('spawn', s.x, s.y, { s, revive: 0 }); Object.assign(s.player, { kit: s.kit, var: s.var, sec: s.sec, nt: s.nt }); }
 }
 function pickKit() { const r = Math.random(); return r < 0.35 ? 0 : r < 0.6 ? 1 : r < 0.8 ? 2 : 3; }
@@ -335,6 +338,8 @@ function hurtVehicle(v, dmg, src) {
   for (const s of v.seats) if (s && s.player) rumble(s.player, Math.min(1, dmg / 200), 0.2);
   if (v.hp <= 0) destroyVehicle(v, src);
 }
+/* the burnt-out husk a vehicle leaves */
+const wreckOf = v => ({ type: v.type, x: v.x, y: v.y, a: v.a, ta: v.ta, t: 180, T: 180, burn: 14, ...(([hl, hw]) => ({ hl, hw }))(wreckBox(v.type)), vx: 0, vy: 0, bw: v.type === 'jeep' && Math.random() < JEEP_BW ? rint(0, 3) : -1, bf: Math.random() < 0.5, tr: v.type === 'tank' ? rint(-1, 1) : 0 });
 function destroyVehicle(v, src) {
   v.dead = true; v.hp = 0;
   // who was aboard, before the blast: it kills anyone in an exposed seat (jeep, tank riders, nest) and empties their seat
@@ -342,7 +347,7 @@ function destroyVehicle(v, src) {
   explosion(v.x, v.y, v.type === 'tank' ? 110 : 80, 120, 150, src, -2, true, undefined, 'vehicle');
   if (src && occupied && isEnemy(src.team, vt)) { src.vk++; addPts(src, v.type === 'tank' ? 300 : 200, (v.type === 'nest' ? 'NEST' : v.type.toUpperCase()) + ' DESTROYED'); }
   for (const s of crew) if (s.alive) { s.protect = 0; kill(s, src, 'explosion', rnd(-1, 1), rnd(-1, 1)); }
-  if (v.type !== 'nest') M.wrecks.push({ type: v.type, x: v.x, y: v.y, a: v.a, ta: v.ta, t: 180, T: 180, burn: 14, ...(([hl, hw]) => ({ hl, hw }))(wreckBox(v.type)), vx: 0, vy: 0, bw: v.type === 'jeep' && Math.random() < JEEP_BW ? rint(0, 3) : -1, bf: Math.random() < 0.5, tr: v.type === 'tank' ? rint(-1, 1) : 0 }) && (navDirty = 1, wreckWheel(M.wrecks[M.wrecks.length - 1]));
+  if (v.type !== 'nest') { M.wrecks.push(wreckOf(v)); navDirty = 1; wreckWheel(M.wrecks[M.wrecks.length - 1]); }
   else for (let i = 0; i < 10; i++) part({ k: 'dirt', x: v.x, y: v.y, vx: rnd(-90, 90), vy: rnd(-90, 90), life: 0.8, max: 0.8, sz: 3, drag: 3 });
   if (src && src.player && !occupied) src.msg = { t: 1.4, txt: 'EMPTY ' + v.type.toUpperCase() + ' DESTROYED' };
   feed(src, 'DESTROYED', { name: v.type === 'nest' ? 'MG NEST' : v.type.toUpperCase(), color: 'white' });

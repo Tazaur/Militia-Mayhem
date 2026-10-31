@@ -351,12 +351,12 @@ function updateMatch(dt) {
     if (!s.alive) {
       if (M.over) continue;
       s.respawnT -= sdt;
-      if (s.player) { if (s.deathT > 0) { s.deathT -= sdt; trackKiller(s); } else if (isNet(s.player)) netDeployHost(s); else deployInput(s, sdt); }
+      if (s.player) { if (s.deathT > 0) { s.deathT -= sdt; trackKiller(s); } else if (isNet(s.player)) netDeployHost(s); else if (devAI(s)) { if (s.respawnT <= 0 && canDeploy(s)) spawnSoldier(s); } else deployInput(s, sdt); }
       else if (s.dummy) { if (DEV.respawn && s.respawnT <= 0) devReviveDummy(s); }
       else if (!M.coop && s.respawnT <= 0 && (M.ffa || M.tickets[s.team] > 0)) spawnSoldier(s);
       continue;
     }
-    const I = s.player ? (isNet(s.player) ? netInputHost(s.player) : humanInput(s.player)) : s.dummy || s.down ? newI() : botControl(s, sdt);   // a downed player's input is still read (and dropped)
+    const I = s.player ? (isNet(s.player) ? netInputHost(s.player) : devAI(s) ? autoControl(s, sdt) : humanInput(s.player)) : s.down ? newI() : s.dummy ? dummyInput(s) : botControl(s, sdt);   // a downed player's input is still read (and dropped)
     if (s.down) { downTick(s, sdt); continue; }
     const n0 = M.proj.length;
     controlSoldier(s, I, sdt);
@@ -471,8 +471,9 @@ function updateCams(dt) {
       if (M.demoFocus) { tx = M.demoFocus.veh ? M.demoFocus.veh.x : M.demoFocus.x; ty = M.demoFocus.veh ? M.demoFocus.veh.y : M.demoFocus.y; } else { tx = WW / 2; ty = WH / 2; }
       tz = baseZ * 0.75;
     }
-    const k = 1 - Math.exp(-dt * (vw.p && vw.p.sol && !vw.p.sol.alive && vw.p.sol.deathT > 0 ? 7 : 4.5));
-    vw.cam.x = lerp(vw.cam.x, tx, k); vw.cam.y = lerp(vw.cam.y, ty, k); vw.cam.z = lerp(vw.cam.z, tz, 1 - Math.exp(-dt * 3));
+    const tc = M.dev && testCam(vw, baseZ); if (tc) [tx, ty, tz] = tc;     // a scene's camera: snapped, not eased
+    const k = tc ? 1 : 1 - Math.exp(-dt * (vw.p && vw.p.sol && !vw.p.sol.alive && vw.p.sol.deathT > 0 ? 7 : 4.5));
+    vw.cam.x = lerp(vw.cam.x, tx, k); vw.cam.y = lerp(vw.cam.y, ty, k); vw.cam.z = tc ? tz : lerp(vw.cam.z, tz, 1 - Math.exp(-dt * 3));
     const hw = vw.w / 2 / vw.cam.z, hh = vw.h / 2 / vw.cam.z;
     vw.cam.x = hw * 2 > WW ? WW / 2 : clamp(vw.cam.x, hw, WW - hw); vw.cam.y = hh * 2 > WH ? WH / 2 : clamp(vw.cam.y, hh, WH - hh);     // the out-of-bounds band is inside the world (the battlefield edge)
   }

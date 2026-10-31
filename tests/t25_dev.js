@@ -1,6 +1,6 @@
 require('../harness.js');
-// dev mode: the yard on a 32 px tile / 16 px wall grid, generated houses (rooms, doors, windows), no-AI dummies with a
-// TTK log, wall sections that collapse into rubble, windows you can see and shoot through; then back to a normal world.
+// dev mode (a setting: OUTSKIRTS here): generated houses (rooms, doors, windows), no-AI dummies with a TTK log,
+// scenes (5g_test.js), playing as AI, wall sections that collapse into rubble, windows you can see and shoot through; then back to a normal world.
 setImmediate(()=>{
   let errs=0; const clampN=(v,a,b)=>Math.max(a,Math.min(b,v)); const ok=(c,m)=>{if(!c){errs++;console.log('FAIL',m);}};
   // ---- the generator, many seeds
@@ -28,20 +28,20 @@ setImmediate(()=>{
     let wins=0; for(let i=0;i<W*H;i++) if(g[i]===WI) wins++; ok(wins>=2*h.rooms,'at least one window per room');
   }
   ok(made===300,'all seeds made a house'); ok(Ls>20&&Ls<280,'mix of L and rectangle '+Ls);
-  // ---- the yard
-  step(30); G.startDev({type:'kb'}); step(5);
+  // ---- a dev match on OUTSKIRTS
+  step(30); G.testStart('outskirts'); step(5);
   const M=G.M, P=G.PLAYERS[0], SECS=()=>G.MAP.secs;
   // a rect's world box as a rect (the yard's houses aren't turned, so it is the rect itself, moved)
   const W_=b=>{const q=G.rectBox(b); return {x:q[0],y:q[1],w:q[2]-q[0],h:q[3]-q[1]};};
-  ok(M.dev&&G.WW===48*32&&G.WH===32*32,'dev yard '+G.WW+'x'+G.WH); ok(G.NGW===G.WW/16,'nav grid on the wall grid');
-  ok(G.MAP.houses.length===3,'three houses'); ok(M.sol.length===1,'no bots'); ok(G.MAP.buildings.length===SECS().reduce((a,s)=>a+s.bs.length,0),'one rect list per section');
+  ok(M.dev&&G.MAP.id==='outskirts','dev match on outskirts'); ok(G.NGW===G.WW/16,'nav grid on the wall grid');
+  ok(G.MAP.houses.length>3,'houses'); ok(M.sol.length===1,'no bots'); ok(G.MAP.buildings.length===SECS().reduce((a,s)=>a+s.bs.length,0),'one rect list per section');
   ok(SECS().every(s=>s.n<=7&&s.n===s.bs.reduce((a,b)=>a+b.w*b.h/256,0)),'sections are short runs'); ok(SECS().every(s=>s.glass||s.n>1),'no wall cell on its own');
   { let lone=0; for(const H of G.MAP.houses) for(let k=0;k<H.cell.length;k++) if(H.cell[k]===2&&H.sec[k]<0) lone++; ok(!lone,'every wall cell in a section '+lone); }
   ok(G.MAP.sight.length>0&&G.MAP.sight.length<SECS().length,'merged sight walls');
   for(let i=0;i<60*20&&!(P.sol&&P.sol.alive);i++){ if(i%30===0){G.KB.keys.Space=true;} step(1); G.KB.keys.Space=false; }
   const me=P.sol; if(!me.alive){ G.spawnSoldier(me); } ok(me.alive,'player in');
   // dummy: stands still, no AI
-  me.x=3.5*32; me.y=16.5*32; G.DEV.lastA=0; G.DEV.range=6; G.devSpawnDummy();
+  me.x=6.5*32; me.y=32.5*32; G.DEV.lastA=0; G.DEV.range=6; G.devSpawnDummy();
   const d=M.sol.find(s=>s.dummy); ok(d&&d.alive,'dummy spawned'); const x0=d.x,y0=d.y; step(120); ok(d.x===x0&&d.y===y0&&d.alive,'dummy holds still');
   for(let k=0;k<4;k++){ G.hurtSoldier(d,30,me,'bullet',1,0,'M4A1'); step(6); }
   ok(!d.alive,'dummy dies'); ok(G.DEV.log[0]&&/M4A1 · .* s · 4 HITS · 6\.0 TILES/.test(G.DEV.log[0].text),'ttk log: '+(G.DEV.log[0]&&G.DEV.log[0].text));
@@ -65,8 +65,7 @@ setImmediate(()=>{
   // vehicles
   const nv=M.vehicles.length; G.devSpawnVeh('jeep'); ok(M.vehicles.length===nv+1,'jeep spawned');
   G.devClearVehicles(); ok(M.vehicles.length===0,'vehicles cleared');
-  G.devResetMap(); ok(SECS().every(s=>s.alive)&&G.MAP.buildings.length===SECS().reduce((a,s)=>a+s.bs.length,0),'map reset'); ok(M.vehicles.length===3,'default vehicles back');
-  const hs=()=>JSON.stringify(G.MAP.houses.map(H=>[H.W,H.H,Array.from(H.cell)])), before=hs(); G.DEV.seed++; G.devResetMap(); ok(hs()!==before,'new houses');
+  G.devResetMap(); ok(SECS().every(s=>s.alive)&&G.MAP.buildings.length===SECS().reduce((a,s)=>a+s.bs.length,0),'map reset'); ok(M.vehicles.length===G.MAP.vehSpawns.length,'default vehicles back');
   // ---- roofs: every floor cell in a house has one, held up by a wall section through its own patch; it falls with that section
   { const HS=G.MAP.houses; let fl=0, rf=0, bad=0;
     for(const H of HS) for(let k=0;k<H.W*H.H;k++){ if(H.cell[k]) fl++; if(H.roof[k]===1){ rf++; const s=H.secs[H.rsec[k]]; if(!s||s.glass) bad++; } }
@@ -111,8 +110,9 @@ setImmediate(()=>{
     const w1=G3[0]; shoot(w1); ok(w1.hp===w1.mhp-1,'shot cracks window '+w1.hp); shoot(w1); ok(w1.hp===w1.mhp-1,'a cracked window takes no more from shots');
     const w2=G3[1]; { const [a,,dx,dy]=across(w2,30); const n={k:'nade',smoke:true,x:a[0],y:a[1],vx:dx*150,vy:dy*150,life:9,src:me,team:0,h:10,vh:220,rot:0}; M.proj.push(n); step(30);
       ok(w2.hp===w2.mhp-1,'grenade through cracks window'); ok((n.x-(W_(w2.bs[0]).x+W_(w2.bs[0]).w/2))*dx+(n.y-(W_(w2.bs[0]).y+W_(w2.bs[0]).h/2))*dy>8,'grenade went through'); M.proj.splice(M.proj.indexOf(n),1); }
+    if(!me.alive) G.spawnSoldier(me);     // the blasts above can kill you (a bigger map: more in reach)
     const w3=G3[2]; { const [a,,dx,dy]=across(w3,20), cx=W_(w3.bs[0]).x+W_(w3.bs[0]).w/2, cy=W_(w3.bs[0]).y+W_(w3.bs[0]).h/2; me.x=a[0]; me.y=a[1]; me.vx=me.vy=0; me.stance=0; me.jumpT=0.42; me.jdx=dx; me.jdy=dy; step(45);
-      ok(w3.hp===w3.mhp-1,'vault cracks window'); ok((me.x-cx)*dx+(me.y-cy)*dy>10,'vaulted through the window'); ok(!G.solidAt(me.x,me.y,me.r-1)||true,'landed clear'); }
+      ok(w3.hp===w3.mhp-1,'vault cracks window '+[w3.hp,w3.mhp,a.map(Math.round),me.x|0,me.y|0,dx,dy,cx,cy]); ok((me.x-cx)*dx+(me.y-cy)*dy>10,'vaulted through the window'); ok(!G.solidAt(me.x,me.y,me.r-1)||true,'landed clear'); }
   // ---- ramming: a jeep is wrecked by a wall and stops; a tank shrugs it off and ploughs through
     const pickWall=()=>S.find(s=>s.alive&&s.bs.length===1&&s.cw>=5&&s.mhp<=150&&!S.some(o=>o!==s&&!o.alive));
     const jeep=M.vehicles.find(v=>v.type==='jeep'), tank=M.vehicles.find(v=>v.type==='tank');
@@ -160,10 +160,19 @@ setImmediate(()=>{
     const dd=M.sol.find(s=>s.dummy&&s.alive); me.x=dd.x-5*32; me.y=dd.y; me.vx=me.vy=0; G.cw(me).id='ar';
     ok(G.autoLined(me,0),'lined up in range'); ok(!G.autoLined(me,0.5),'not lined up'); ok(!G.autoLined(me,Math.PI),'facing away');
     me.x=dd.x-20*32; ok(!G.autoLined(me,0),'out of range'); me.x=dd.x-5*32; }
+  // ---- scenes: each lays out round a window; the shot goes through it; the dummy driver drives; the log has it all
+  for(const n of Object.keys(G.SCENES)){ ok(G.testRun(n),'scene '+n); step(40); const st=G.testState(); ok(Object.keys(st.spots).length>=7,'spots '+n);
+    const want=Object.values(G.sceneParams(n).at).filter(w=>w==='dummy'||w==='bot'||w==='mate').length; ok(st.soldiers.filter(o=>o.scene&&!/DRIVER/.test(o.scene)).length>=want,'soldiers placed '+n);
+    if(n==='shot'){ step(30); const L=G.testState().log.join('|'); ok(/SHOT FAR › INSIDE · \d+ PX · IN SIGHT/.test(L),'shot in sight through the window'); }
+    if(n==='drive'){ const v=M.vehicles.find(o=>o.scene==='BESIDE'), x0=v.x, y0=v.y; step(60); ok(Math.hypot(v.x-x0,v.y-y0)>30,'dummy driver drives '+Math.round(Math.hypot(v.x-x0,v.y-y0))); }
+    if(n==='husk') ok(G.testState().wrecks.length>=2,'husks laid'); }
+  G.testClear(); ok(!M.sol.some(s=>s.scene)&&!M.vehicles.some(v=>v.scene),'scene cleared');
+  // ---- play as AI: the player moves on its own, with a thought to show
+  { G.DEV.auto=true; G.testRun('brawl'); const p0=[me.x,me.y]; step(240); ok(me.alive?Math.hypot(me.x-p0[0],me.y-p0[1])>20:true,'AI player moves'); ok(me.auto&&typeof G.botThought(me,me.auto)==='string','AI player thinks: '+(me.auto&&G.botThought(me,me.auto))); G.DEV.auto=false; G.testClear(); }
   step(2); const r=G.DEV.R; ok(r&&G.devClick(r.x+r.w/2,r.y+r.h-2),'panel swallows clicks');
   step(60);
   // normal match afterwards gets the full world back
   G.CFG.mode=1; G.CFG.bots=2; G.toMenu(); step(5); G.newMatch({...G.CFG},false); step(30);
-  ok(G.WW===3000&&G.WH===2000&&!G.MAP.houses.length&&G.MAP.sight.length===G.MAP.buildings.filter(b=>!b.glass).length&&!G.M.dev,'normal world restored'); ok(G.NGW===100,'nav grid restored');
+  ok(!G.M.dev&&G.MAP.sight.length>0,'a normal match: no dev');
   console.log('errs',errs+global.errs());
 });

@@ -94,7 +94,6 @@ function enterLobby(dev) { PLAYERS = []; LOBBY.sel = 0; setState('lobby'); if (d
 function menuAct(i, dev) {
   if (i === 0) enterLobby(dev);
   else if (i === 1) openNetMenu(dev);
-  else if (i === 3) startDev(dev);
   else openSettings('menu');
 }
 function updateMenu(ins, dt) {
@@ -102,7 +101,7 @@ function updateMenu(ins, dt) {
   for (const { dev, st } of ins) {
     const dx = st.navX || (st.tabR ? 1 : st.tabL ? -1 : 0);
     if (dx) { MENU.sel = MENU.sel >= 2 ? (dx > 0 ? 1 : 0) : clamp(MENU.sel + dx, 0, 1); ev('menu'); }
-    if (st.navY) { MENU.sel = st.navY < 0 ? (MENU.sel === 3 ? 0 : 2) : MENU.sel === 2 ? 0 : 3; ev('menu'); }
+    if (st.navY) { MENU.sel = st.navY < 0 ? 2 : 0; ev('menu'); }
     if (st.opt) { openSettings('menu'); return; }
     if ((st.confirm || st.pause) && stateT > 0.25) { menuAct(MENU.sel, dev); return; }
   }
@@ -159,7 +158,6 @@ function drawMenu() {
     if (sel && !off) { ctx.font = `${fpx(26, u, 18)}px ${FD}`; const tw2 = ctx.measureText(i === 0 ? 'LOCAL PLAY' : 'NETWORK PLAY').width; keyTag('select', dv, { x: x + cw / 2 - tw2 / 2, y: ly - 17, w: 0, h: 34 }, 'left'); }
   }
   netToast(u);
-  { const bw = fpx(110, u, 92), bh = fpx(24, u, 22); button({ x: R - bw, y: B - foot / 2 - bh / 2, w: bw, h: bh, fn: d => menuAct(3, d), sel: MENU.sel === 3, label: 'DEV MODE', size: fpx(12, u, 11), focus: 3 }); }
   txt(`v${VERSION.build}  ·  ${VERSION.date}`, L, B - foot / 2, fpx(11, u, 10), 'rgba(242,230,196,0.45)', 'left', 'middle', FD);
 }
 
@@ -468,6 +466,7 @@ const SETS = {
   rec: { n: 'RECORDER', o: [[false, 'OFF'], [true, 'ON']], get: () => REC.on, set: v => v ? recStart() : recStop(), lab: v => v ? 'RECORDING · OFF SAVES IT' : null },     // 5f_rec: a log of the frame, to share
   fps: choice('FPS COUNTER', 'fps', [[0, 'OFF'], [1, 'FPS'], [2, 'FPS + FRAME TIMES'], ...(GL ? [[3, 'FPS + GPU STAGES']] : [])]),
   minimap: choice('MINIMAP', 'minimap', [[true, 'ON'], [false, 'OFF']]),
+  dev: { ...choice('DEV MODE', 'dev', [[false, 'OFF'], [true, 'ON']]), note: () => inMatch() && !M.dev ? '  (NEXT MATCH)' : '' },
   teams: { ...choice('TEAM COLORS', 'teamColors', [['player', 'PLAYER COLOR'], ['classic', 'BLUE VS RED']]), note: () => inMatch() ? '  (NEXT MATCH)' : '' },
   volMaster: slider('MASTER VOLUME', 'volMaster', 0, 100, 10, '%', applyMute),
   volSfx: slider('EFFECTS VOLUME', 'volSfx', 0, 100, 10, '%', applyMute),
@@ -482,7 +481,7 @@ const SETS = {
 };
 /* core tabs (title row), each with its pages (sub tabs, the row under it); Q / E or LB / RB step through every page */
 const SET_TABS = [['VIDEO', [['GRAPHICS', ['style', 'clearLos', 'fullscreen', 'camera']], ['FOG OF WAR', ['fogStyle', 'fogD', 'fogK', 'fogE', 'fogW', 'roofFog']], ['PERFORMANCE', ['quality', 'res', 'lightQ', 'fogQ', 'smk', 'rec']], ['LIGHTS', ['lights', 'refl']], ['SHADOWS', ['sun', 'shLay', 'shLen', 'shMem', 'shPt']]]],
-  ['AUDIO', [['VOLUME', ['volMaster', 'volSfx', 'volMus']], ['SOUND', ['sound']]]], ['HUD', [['DISPLAY', ['fps', 'minimap', 'teams']]]],
+  ['AUDIO', [['VOLUME', ['volMaster', 'volSfx', 'volMus']], ['SOUND', ['sound']]]], ['HUD', [['DISPLAY', ['fps', 'minimap', 'teams']], ['DEV', ['dev']]]],
   ['CONTROLS', [['TOUCH', ['tSize', 'tAlpha', 'tFireX', 'tFireY', 'tLfire', 'tAuto']], ['BINDINGS', null]]]];
 const SET_PAGES = SET_TABS.flatMap(([, P], i) => P.map((_, j) => [i, j]));
 const setRows = () => SET_TABS[SET.tab][1][SET.sub][1];
@@ -668,7 +667,7 @@ function settingLabel(key) {
   }
 }
 /* same settings again (a dev match keeps its own) */
-function rematch() { newMatch({ ...(M.dev ? M.cfg : CFG) }, false); setState('play'); }
+function rematch() { newMatch({ ...CFG }, false); setState('play'); }
 function demoMatch() { newMatch({ mode: 0, map: CFG.map, bots: 7, limit: 1, skill: 1, camera: 'shared', weather: CFG.weather }, true); }
 /* controllers have to ready up; keyboard and touch players are readied by pressing START themselves */
 const canStart = () => PLAYERS.length > 0 && PLAYERS.every(p => p.ready || (p.dev.type !== 'pad' && !isNet(p)));
@@ -807,8 +806,7 @@ const PAUSE_ITEMS = ['RESUME', 'SETTINGS', 'REDEPLOY', 'RESTART MATCH', 'BACK TO
 function openPause(p) { if (state !== 'play') return; PAUSE.by = p; PAUSE.sel = 0; setState('pause'); ev('menu'); }
 const pauseItems = () => {
   const l = NET.role === 'client' ? ['RESUME', 'SETTINGS', 'REDEPLOY', 'LEAVE GAME'] : NET.role === 'host' ? ['RESUME', 'SETTINGS', 'REDEPLOY', 'RESTART MATCH', 'BACK TO LOBBY', 'END GAME'] : PAUSE_ITEMS;
-  const l2 = M && M.dev ? l.filter(x => x !== 'BACK TO LOBBY') : l;
-  return pauseMe() ? l2 : l2.filter(x => x !== 'REDEPLOY');
+  return pauseMe() ? l : l.filter(x => x !== 'REDEPLOY');
 };
 /* who REDEPLOY kills: whoever opened the menu (or the first local player who's alive); never in co-op */
 function pauseMe() {
@@ -962,12 +960,11 @@ function render() {
   else if (state === 'lobby') uiScaled(drawLobby);
   else {
     if (M.views.length > 1) onGL(() => { ctx.fillStyle = '#0a0a08'; for (const vw of M.views) { if (vw.x > 0) ctx.fillRect(vw.x - 2, vw.y, 4, vw.h); if (vw.y > 0) ctx.fillRect(vw.x, vw.y - 2, vw.w, 4); } });     // on GL: under the minimap
-    for (const vw of hudViews()) drawViewHUD(vw);
-    drawGlobalHUD();
+    if (!(M.dev && TEST.noHud)) { for (const vw of hudViews()) drawViewHUD(vw); drawGlobalHUD(); }
     if (M.scoreHeld && state === 'play') uiScaled(drawScoreboard);
     if (state === 'pause') uiScaled(drawPause);
     { const tp = touchPlayer(); if (state === 'play' && tp && tp.sol && tp.sol.alive && !(M.dev && DEV.open)) { screenT(); drawTouch(tp.sol); } }
-    if (M.dev && state === 'play') devDrawPanel();      // over the touch controls
+    if (M.dev && state === 'play' && !TEST.bare) devDrawPanel();      // over the touch controls
     if (state === 'end') uiScaled(drawEnd);
     netOverlay();
   }

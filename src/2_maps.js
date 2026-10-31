@@ -318,7 +318,6 @@ function pattern(w, h, fn) { const c = mk(w, h), g = c.getContext('2d'); fn(g, w
 function paintGround() {
   const grit = CFG.style === 'grit', P = SNOWY() ? (grit ? PALS.snowGrit : PALS.snow) : (PALS[CFG.style] || PALS.classic);
   px_.setTransform(1, 0, 0, 1, 0, 0); px_.clearRect(0, 0, WW, WH); dgx.setTransform(1, 0, 0, 1, 0, 0); dgx.clearRect(0, 0, WW, WH); if (typeof M !== 'undefined' && M) M.fogMem = null;
-  if (MAP.id === 'devyard') { paintDevGround(); return; }
   GMAT = null; if (MAP.gmap) { paintStamped(); if (MAP.houses.length) paintTiled(); return; }
   const R = mulberry(4242);
   gx.setTransform(1, 0, 0, 1, 0, 0); gx.globalAlpha = 1; gx.globalCompositeOperation = 'source-over';

@@ -29,7 +29,9 @@ const SEVU = store.get('sevlab', {});
 addEventListener('storage', e => { if (e.key !== 'mmgl.sevlab') return; for (const k in SEVU) delete SEVU[k]; Object.assign(SEVU, store.get('sevlab', {})); });
 /* the soldiers this screen plays as (alive or not) */
 function evMine() { const a = LOCALS().map(p => p.sol).filter(Boolean); if (NET.me && NET.me.sol && !a.includes(NET.me.sol)) a.push(NET.me.sol); return a; }
+let EVHOOK = null;     // the scene tester's log (5g_test.js)
 function ev(name, x, y, c) {
+  if (EVHOOK) EVHOOK(name, x, y, c);
   const D = EVD[name]; if (!D) return; c = c || {};
   if (NET.role === 'host' && D[3].includes('n') && !c._net) evSend(name, x, y, c);      // only the host sees it: tell the others
   if (!AU.ctx || !AU.sfxOn) return;

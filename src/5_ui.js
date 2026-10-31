@@ -853,13 +853,13 @@ function drawTouch_(s) {
 function drawGlobalHUD() {
   screenT();
   const top = SAFE.t + 10, u = clamp(W / 1100, 0.7, 1.15);
+  if (M.dev) devHUD(u, top + 40 * u);
   if (M.coop) {
     const V = M.wv, cx = W / 2, bw = 300 * u;
     ctx.fillStyle = 'rgba(8,12,6,0.7)'; ctx.fillRect(cx - bw / 2, top, bw, 34 * u);
     stxt(V.n ? 'WAVE ' + V.n + (V.lim ? ' / ' + V.lim : '') : 'GET READY', cx - 8 * u, top + 23 * u, 17 * u, '#ffe08a', 'right', 'alphabetic', FD);
     stxt(V.brk > 0 ? 'NEXT WAVE IN ' + Math.ceil(V.brk) : V.left + ' RAIDERS LEFT', cx + 8 * u, top + 22 * u, 13 * u, V.brk > 0 ? '#7dff7a' : '#f2e6c4', 'left', 'alphabetic', FD);
-  } else if (M.dev) devHUD(u, top);
-  else if (!M.ffa) {
+  } else if (!M.ffa) {
     const bw = Math.min(230 * u, W * 0.25), cx = W / 2, lim = LIMITS.team[M.cfg.limit] || 200;
     ctx.fillStyle = 'rgba(8,12,6,0.7)'; ctx.fillRect(cx - bw - 90 * u, top, bw * 2 + 180 * u, 34 * u);
     for (const t of [0, 1]) {

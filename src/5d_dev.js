@@ -1,5 +1,6 @@
 /* =====================================================================
-   DEV MODE: a small tile-based test yard plus tools (no-AI dummies, vehicle spawns, toggles, a TTK log).
+   DEV MODE (settings › HUD › DEV): the tool panel in any local match (no-AI dummies, vehicle spawns, toggles, a TTK
+   log, playing as AI, the bots' thinking, scenes: 5g_test.js). The tiled houses (OUTSKIRTS, editor maps) live here too.
    Two grids: TILE (32 px, about a soldier) and the SUB grid (16 px) that walls are built on.
    Houses come from genHouse: an outline (rectangle or L), split into 3-4 rooms, the fewest inner doors that join
    them, a front and a back door, 1-2 windows per room. Wall cells are drawn from the 16 px tile sheet (art/walls16.png).
@@ -11,13 +12,13 @@
    Roofs: every floor cell has a roof tile held up by one wall section (devRoof); it comes down with that section and
    hurts whoever is under it. It covers the whole house (walls too): opaque out of sight; in sight it fades by distance (roofOp).
    ===================================================================== */
-const TILE = 32, DEV_COLS = 48, DEV_ROWS = 32, SEC_MAX = 6;
+const TILE = 32, SEC_MAX = 6;
 /* ramming, per unit of speed: damage to the wall, damage to the vehicle, speed kept; a tank always hits at least min */
 const RAM = { tank: { wall: 2.6, self: 0.15, keep: 0.8, min: 50, go: 12 }, jeep: { wall: 0.45, self: 1, keep: 0.15, min: 0, go: 25 } };
 const DEV = { cyc: 0, ph: 0, panH: 0, tab: 0, ts: 1, L: { shade: true, hi: true, add: true, smoke: true, parts: true, roofs: true, fog: true }, hit: false, lpts: false, hts: false, aim: false, stats: false, lp: [], nq: 0, fps: 60, um: 0, rm: 0,
   roofQ: [], open: true, god: false, ammo: true, respawn: true, grid: false, secs: false, sightDbg: false, smokeDbg: false, range: 6, sel: 1, padNav: false, log: [], nums: [], lastA: 0, over: false, B: [], R: null, seed: 1 };
 const DEV_RANGES = [2, 4, 6, 8, 10, 15, 20, 30];
-const DEV_TABS = ['SPAWN', 'PLAYER', 'GFX', 'WORLD'], DEV_TS = [0, 0.1, 0.25, 0.5, 1, 2], DEV_WX = ['clear', 'rain', 'snow'];
+const DEV_TABS = ['SPAWN', 'PLAYER', 'GFX', 'WORLD', 'TEST'], DEV_TS = [0, 0.1, 0.25, 0.5, 1, 2], DEV_WX = ['clear', 'rain', 'snow'];
 const DEV_VIEWS = ['NORMAL', 'HEIGHTS (BLUE 0 › RED 64)', 'SHADE', 'HIGHLIGHTS', 'GLOW + LIGHTS', 'MATERIALS', 'SUN SHADOWS', 'POINT LIGHTS'];     // SUNDBG
 const devOff = k => M.dev && !DEV.L[k];     // a layer switched off in the GFX tab
 /* the frame's cost (smoothed): fps, update and draw ms (CPU; the GPU's share shows as fps) */
@@ -58,7 +59,6 @@ function gpuEnd() { if (PIPE !== gpuHook) return; gxFlush(); gpuClose('rest'); P
 const STRUCT_K = { 62: 1.6, 78: 2, 88: 0.35 };
 const tileC = t => (t + 0.5) * TILE;
 /* house slots in SUB cells: top-left corner and the largest size a house there may take */
-const DEV_LOTS = [[12, 4, 24, 20], [56, 4, 24, 20], [28, 38, 26, 22]];
 
 /* ---------------- the tile sheet ---------------- */
 const WALL_IMG = new Image();
@@ -113,26 +113,6 @@ function tiledPosts() {
       if (!P.some(p => Math.hypot(p.x - px, p.y - py) < 24)) P.push({ x: px, y: py, a: Math.atan2(dy, dx) + H.a, door: v === C_FLOOR });
     }
   }
-}
-function buildDevMap() {
-  const m = { id: 'devyard', houses: [], secs: [], arcs: [], roads: [], buildings: [], water: [], bridges: [], statics: [], flags: [], bases: [], crateSpots: [], vehSpawns: [], ffaSpawns: [], fields: [], fwd: [], ice: [] };
-  MAP = m; BOUNDM = null;
-  DEV_LOTS.forEach(([ox, oy, mw, mh], k) => {     // each lot: a house in its top-left corner
-    const seed = DEV.seed * 101 + k, h = genHouse(mulberry(seed * 7919 + 13), mw, mh); if (!h) return;
-    m.houses.push(mkHouse({ x: (ox + h.W / 2) * SUB, y: (oy + h.H / 2) * SUB, a: 0, seed, mw, mh }, m.houses.length));
-  });
-  tiledFinish();
-  const pad = { x: 0, y: 0, w: 0, h: 0 };
-  m.bases = [{ team: 0, x: tileC(3), y: tileC(16), pad }, { team: 1, x: tileC(44), y: tileC(16), pad }];
-  m.fwd = m.bases.map(b => ({ x: b.x, y: b.y }));
-  m.ffaSpawns = [[3, 16], [44, 16], [8, 29], [40, 29]].map(([i, j]) => ({ x: tileC(i), y: tileC(j) }));
-  m.vehSpawns.push({ type: 'jeep', x: tileC(4), y: tileC(4), a: 0, team: 0 }, { type: 'tank', x: 6 * TILE, y: tileC(28), a: 0, team: 0 }, { type: 'nest', x: tileC(26), y: tileC(14), a: Math.PI, team: -1 });
-  [[9, 13], [24, 13], [41, 26], [12, 28]].forEach(([i, j], k) => m.statics.push({ type: 'tree', x: tileC(i), y: tileC(j), r: 10, v: k % 4, sc: 0.9, a: k * 1.3, alive: true, pine: false }));
-  [[6, 22], [30, 14]].forEach(([i, j]) => m.statics.push({ type: 'hay', x: tileC(i), y: tileC(j), r: 13, a: 0.4, alive: true }));
-  { const A = { x: tileC(20), y: tileC(15), a: 0, bags: [], lost: 0 }; m.arcs.push(A); const c = Math.cos(A.a), sn = Math.sin(A.a);
-    for (const [px, py] of EXTRA.bagPts) { const st = { type: 'bag', x: A.x + px * c - py * sn, y: A.y + px * sn + py * c, a: 0, r: 8, alive: true, arc: A }; A.bags.push(st); m.statics.push(st); } }
-  tiledClear(m);
-  buildHash();
 }
 /* a house's wall and window cells -> straight runs (corners and junctions join the run along their row) */
 function wallRuns(H, ok) {
@@ -310,11 +290,6 @@ function roofView(vw, x0, y0, x1, y1) {
 }
 
 /* ---------------- painting ---------------- */
-function paintDevGround() {
-  gx.setTransform(1, 0, 0, 1, 0, 0); gx.globalAlpha = 1; gx.globalCompositeOperation = 'source-over'; gx.imageSmoothingEnabled = false;
-  gx.fillStyle = '#5b6248'; gx.fillRect(0, 0, WW, WH);
-  paintTiled();
-}
 /* the houses (and their roofs) over whatever ground is painted */
 function paintTiled() {
   for (const H of MAP.houses) for (let j = 0; j < H.H; j++) for (let i = 0; i < H.W; i++) if (H.cell[j * H.W + i] !== C_OUT) paintCell(H, i, j);
@@ -417,10 +392,21 @@ function devSpawnDummy() {
   const v = M.vehicles.find(v => { if (!v.active || v.dead) return false; const [lx, ly] = toLocal(v, q[0], q[1]); return Math.abs(lx) < v.T.hl + TILE / 2 && Math.abs(ly) < v.T.hw + TILE / 2; });     // on a vehicle: it gets in
   if (v && dummySeat(v, q[0], q[1]) < 0) { devLog('VEHICLE FULL', '#ff7a60'); return; }
   if (!v && solidAt(q[0], q[1], 6)) { devLog('NO ROOM THERE', '#ff7a60'); return; }
-  const s = makeSoldier({ team: 1, color: M.teamColor[1], name: 'DUMMY ' + (M.sol.filter(o => o.dummy).length + 1), bot: true });
-  s.dark = true; s.kit = 0; s.dummy = { x: q[0], y: q[1], a: q[2] + Math.PI, v };
-  M.sol.push(s); devReviveDummy(s);
+  devDummyAt(q[0], q[1], q[2] + Math.PI, 1, v);
 }
+/* a dummy standing at (x, y) facing a (in v if given: its nearest free seat), on team t */
+function devDummyAt(x, y, a, t, v) {
+  const s = makeSoldier({ team: t, color: M.teamColor[t], name: 'DUMMY ' + (M.sol.filter(o => o.dummy).length + 1), bot: true });
+  s.dark = true; s.kit = 0; s.dummy = { x, y, a, v };
+  M.sol.push(s); devReviveDummy(s); return s;
+}
+/* a dummy's input: nothing, or what a scene gives it (dummy.I: an input, or a function of the soldier giving one) */
+function dummyInput(s) { const f = s.dummy.I; return f ? Object.assign(newI(), typeof f === 'function' ? f(s) : f) : newI(); }
+/* PLAY AS AI: a local player is driven by the bots' brain (their own, s.auto), deploying on their own too */
+const devAI = s => M.dev && DEV.auto && !!s.player && !isNet(s.player);
+function autoControl(s, dt) { if (!s.auto) s.auto = newBot(); const b = s.bot; s.bot = s.auto; try { return botControl(s, dt); } finally { s.bot = b; } }
+/* a dev match starting: the panel shut, the log clear, the scene (if one ran) gone */
+function devMatch() { DEV.log.length = 0; DEV.nums.length = 0; DEV.open = false; testClear(); }
 function devReviveDummy(s) {
   giveLoadout(s); const d = s.dummy;
   Object.assign(s, { x: d.x, y: d.y, a: d.a, hp: s.mhp, alive: true, down: false, protect: 0, respawnT: 1e9, veh: null, seat: -1, seatT: 0, stance: 0, stanceT: 0, swim: false, vx: 0, vy: 0, reloadT: 0, fireCd: 0, lastHurt: -9, ttk: null });
@@ -457,8 +443,8 @@ function devClearVehicles() {
   M.vehicles = M.vehicles.filter(v => !v.gone); M.wrecks.length = 0; navDirty = 1;
 }
 function devResetMap() {
-  buildDevMap(); MAP.statics.forEach((s, i) => s.idx = i); paintGround(); buildNav(); M.fogMem = null; M.wrecks.length = 0; M.gsf = null;
-  for (const sp of MAP.vehSpawns) if (!M.vehicles.some(v => v.sp.type === sp.type && !v.sp.dev)) M.vehicles.push(makeVehicle(sp));
+  buildMap(M.mapId); MAP.statics.forEach((s, i) => s.idx = i); paintGround(); buildNav(); M.fogMem = null; M.wrecks.length = 0; M.gsf = null;
+  for (const sp of MAP.vehSpawns) if (!M.vehicles.some(v => v.sp.type === sp.type && v.sp.x === sp.x && v.sp.y === sp.y)) M.vehicles.push(makeVehicle(sp));
   for (const s of M.sol) if (s.alive && !s.veh && solidAt(s.x, s.y, 4)) [s.x, s.y] = freeSpot(s.x, s.y);
   devLog('MAP RESET', '#ffe08a');
 }
@@ -472,6 +458,7 @@ function tiledTick(dt) {
 }
 /* every frame of a dev match */
 function devTick(dt) {
+  testTick();
   if (KB.pressed.has('Backquote')) DEV.open = !DEV.open;
   for (const n of DEV.nums) { n.t -= dt; n.y -= dt * 18; }
   prune(DEV.nums, n => n.t > 0);
@@ -545,7 +532,7 @@ function devDrawWorld(vw) {
   for (const s of M.sol) if (s.dummy && s.alive) { bar(s.x, s.y - 20, 26, s.hp / s.mhp); stxt(String(Math.ceil(s.hp)), s.x, s.y - 28, 8, '#fff', 'center', 'middle', FD); }
   for (const v of M.vehicles) if (v.active && !v.dead) { const y = v.y - (v.T.hw || 16) - 16; bar(v.x, y, 40, v.hp / v.T.hp); stxt(Math.ceil(v.hp) + '/' + v.T.hp, v.x, y - 9, 8, '#fff', 'center', 'middle', FD); }
   if (DEV.smokeDbg) devSmokeDbg(vw);
-  devOverlays();
+  testDraw(); devOverlays();
   if (DEV.sightDbg) devSightDbg(vw, (vw.x - VOX) / VZ - 4, (vw.y - VOY) / VZ - 4, (vw.x + vw.w - VOX) / VZ + 4, (vw.y + vw.h - VOY) / VZ + 4);     // the same box applyFog uses
   for (const n of DEV.nums) { ctx.globalAlpha = Math.min(1, n.t * 2); stxt(String(n.v), n.x, n.y, 10, n.c, 'center', 'middle', FD); }
   ctx.globalAlpha = 1;
@@ -557,6 +544,16 @@ function devDrawWorld(vw) {
    the nest's arc as a wedge) and the spots you get in from (hollow) */
 function devOverlays() {
   const k = 1 / VZ, lab = (t, x, y, c) => stxt(t, x, y, 7, c, 'center', 'middle', FD);
+  if (DEV.brain) for (const s of M.sol) {
+    const B = s.bot && !s.dummy ? s.bot : devAI(s) ? s.auto : null; if (!B || !s.alive) continue;
+    const o = s.veh || s; ctx.lineWidth = 1.2 * k;
+    if (B.path) { ctx.strokeStyle = 'rgba(255,224,138,0.75)'; ctx.setLineDash([4 * k, 3 * k]); ctx.beginPath(); ctx.moveTo(o.x, o.y); for (let i = B.pathI; i < B.path.length; i++) ctx.lineTo(B.path[i][0], B.path[i][1]); ctx.stroke(); ctx.setLineDash([]); }
+    if (B.goal) { ctx.strokeStyle = '#ffe08a'; ctx.beginPath(); ctx.arc(B.goal.x, B.goal.y, 6 * k, 0, TAU); ctx.stroke(); }
+    if (B.cover && !s.veh) { ctx.strokeStyle = '#7dff7a'; ctx.strokeRect(B.cover.x - 5 * k, B.cover.y - 5 * k, 10 * k, 10 * k); }
+    if (B.target) { ctx.strokeStyle = B.react > 0 ? 'rgba(255,90,69,0.45)' : '#ff5a45'; ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.lineTo(B.target.x, B.target.y); ctx.stroke(); }
+    else if (B.blind) { const h = B.blind, r = 5 * k; ctx.strokeStyle = '#ffb040'; ctx.beginPath(); ctx.moveTo(h.x - r, h.y - r); ctx.lineTo(h.x + r, h.y + r); ctx.moveTo(h.x + r, h.y - r); ctx.lineTo(h.x - r, h.y + r); ctx.stroke(); }
+    lab(botThought(s, B), o.x, o.y - (s.veh ? (s.veh.T.hw || 16) + 26 : 22), s.player ? '#4fe0ff' : '#f2e6c4');
+  }
   if (DEV.piv) {
     const line = (x, y, a, l, c) => { ctx.strokeStyle = c; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); ctx.stroke(); };
     const piv = (x, y, a, l) => { ctx.fillStyle = '#fff'; ctx.fillRect(x - 2 * k, y - 2 * k, 4 * k, 4 * k); line(x, y, a, l, '#fff'); };
@@ -621,6 +618,20 @@ function devOverlays() {
     for (const p of M.proj) lab(String(Math.round(shotZ(p))), p.x, p.y - 6, '#9fffb0');
   }
 }
+/* what a bot is up to, in words: botControl's choices in the order it makes them */
+function botThought(s, B) {
+  const T = B.target, who = T ? (T.o ? T.o.name : T.veh ? T.veh.type.toUpperCase() : 'SOMETHING') : '', at = T ? (B.react > 0 ? 'SPOTTED ' : 'FIRING AT ') + who : '';
+  const goal = g => !g ? '' : g.post ? 'A POST' : g.flag ? 'FLAG ' + g.flag.name : g.crate ? 'A CRATE' : 'THE ENEMY';
+  if (s.veh) { const r = s.veh.T.seats[s.seat].role; return (r === 'drive' ? 'DRIVING' : r === 'mg' ? 'ON THE MG' : 'RIDING') + (at ? ' · ' + at : B.goal && r === 'drive' ? ' TO ' + goal(B.goal) : ''); }
+  if (B.wantSeat) return 'GETTING IN THE ' + B.wantSeat.w.type.toUpperCase();
+  if (B.repairV) return 'REPAIRING THE ' + B.repairV.type.toUpperCase();
+  if (T && B.goal && B.goal.post && Math.hypot(B.goal.x - s.x, B.goal.y - s.y) < 14) return 'HOLDING A POST · ' + at;
+  if (B.cover && T) return 'IN COVER · ' + at;
+  if (T) return at;
+  if (B.blind) return 'FIRING WHERE IT HEARD SHOTS';
+  if (B.unstick > 0) return 'STUCK: BACKING OFF';
+  return B.goal ? 'HEADING TO ' + goal(B.goal) : 'IDLE';
+}
 /* STATS: top left, under the player tag */
 function devStats() {
   const u = clamp(W / 1100, 0.75, 1.1), x = SAFE.l + 10 * u, S = _sun, f = M.gsf;
@@ -636,7 +647,7 @@ function devStats() {
 function devHUD(u, top) {
   const cx = W / 2, bw = 360 * u;
   ctx.fillStyle = 'rgba(8,12,6,0.7)'; ctx.fillRect(cx - bw / 2, top, bw, 34 * u);
-  stxt('DEV MODE', cx, top + 15 * u, 13 * u, '#ffe08a', 'center', 'middle', FD);
+  stxt(DEV.auto ? 'DEV MODE · PLAYING AS AI' : 'DEV MODE', cx, top + 15 * u, 13 * u, '#ffe08a', 'center', 'middle', FD);
   const l = DEV.log[0], dt = PLAYERS[0] && PLAYERS[0].dev.type; txt(l ? l.text : (dt === 'pad' ? 'VIEW OPENS THE TOOLS' : TOUCH.active ? 'TAP DEV FOR TOOLS' : '` OPENS THE TOOLS'), cx, top + 27 * u, 10 * u, l ? l.c : 'rgba(242,230,196,0.6)', 'center', 'middle', FD);
 }
 /* the tool panel (right side); clicks are taken in pointerdown via devClick so they never fire the gun */
@@ -659,14 +670,14 @@ function devDrawPanel() {
   let y = y0 + 34 * u;
   if (DEV.stats) devStats();
   const head = t => { txt(t, L, y + 8 * u, 10 * u, 'rgba(255,224,138,0.8)', 'left', 'middle', FD); y += 18 * u; };
-  const row = (a, b) => { if (a) btn(...a.slice(0, 2), L, y, b ? cw2 : cw2 * 2 + gap, a[2], a[3]); if (b) btn(...b.slice(0, 2), R2, y, cw2, b[2]); y += rh + gap; };
+  const row = (a, b) => { if (a) btn(...a.slice(0, 2), L, y, b ? cw2 : cw2 * 2 + gap, a[2], a[3]); if (b) btn(...b.slice(0, 2), R2, y, cw2, b[2], b[3]); y += rh + gap; };
   // the backdrop fits what was laid out last frame (DEV.panH, in u), so it grows with any row added
   const H0 = (DEV.panH || 560) * u;
   ctx.fillStyle = 'rgba(6,10,5,0.86)'; ctx.fillRect(x0, y0, pw, H0); ctx.strokeStyle = 'rgba(255,224,138,0.5)'; ctx.strokeRect(x0 + 0.5, y0 + 0.5, pw - 1, H0 - 1);
   DEV.R = { x: x0, y: y0, w: pw, h: H0 };
   stxt('DEV TOOLS', L, y0 + 18 * u, 15 * u, '#ffe08a', 'left', 'middle', FD);
   btn('×', () => DEV.open = false, x0 + pw - 34 * u, y0 + 6 * u, 26 * u);
-  { const tw = (pw - 24 * u - gap * 3) / 4; DEV_TABS.forEach((t, i) => btn(t, () => DEV.tab = i, L + i * (tw + gap), y, tw, DEV.tab === i)); y += rh + gap * 2; }
+  { const n = DEV_TABS.length, tw = (pw - 24 * u - gap * (n - 1)) / n; DEV_TABS.forEach((t, i) => btn(t, () => DEV.tab = i, L + i * (tw + gap), y, tw, DEV.tab === i)); y += rh + gap * 2; }
   const step = (A, v, d) => A[clamp(A.indexOf(v) + d, 0, A.length - 1)], tog = (label, o, k) => [label, () => o[k] = !o[k], !!o[k]], s = (devPlayer() || {}).sol;
   if (DEV.tab === 0) {
     head('SPAWN AHEAD');
@@ -679,6 +690,7 @@ function devDrawPanel() {
   } else if (DEV.tab === 1) {
     head('ME');
     row(tog('GOD MODE', DEV, 'god'), tog('INF AMMO', DEV, 'ammo'));
+    row(tog('PLAY AS AI', DEV, 'auto'), tog('BOT BRAINS', DEV, 'brain'));
     row(['HEAL ME', devHeal], ['KILL ME', () => { if (s && s.alive) kill(s, null, 'dev', 0, 0); }]);
     if (s && s.alive) {
       row([`‹  HP ${Math.ceil(s.hp)} / ${s.mhp}  ›`, d => s.hp = clamp(Math.round(s.hp + d * s.mhp * 0.1), 1, s.mhp), undefined, true]);
@@ -700,9 +712,11 @@ function devDrawPanel() {
     row(tog('HITBOXES', DEV, 'hit'), tog('LIGHT POINTS', DEV, 'lpts'));
     row(tog('HEIGHTS', DEV, 'hts'), tog('STATS', DEV, 'stats'));
     row(tog('PIVOTS + SEATS', DEV, 'piv'), tog('AIM RAYS', DEV, 'aim'));
-  } else {
+    row(tog('BOT BRAINS', DEV, 'brain'));
+  } else if (DEV.tab === 4) testPanel(row, head, tog);
+  else {
     head('WORLD');
-    row(['RESET MAP', devResetMap], ['NEW HOUSES', () => { DEV.seed++; devResetMap(); }]);
+    row(['RESET MAP', devResetMap]);
     row([`‹  TIME ${DEV.ts ? '×' + DEV.ts : 'PAUSED'}  ›`, d => DEV.ts = step(DEV_TS, DEV.ts, d), undefined, true]);
     const wx = M.snow ? 'snow' : M.rain ? 'rain' : 'clear';
     row([`‹  WEATHER ${wx.toUpperCase()}  ›`, d => { const w = DEV_WX[(DEV_WX.indexOf(wx) + d + 3) % 3]; M.rain = w === 'rain'; M.snow = w === 'snow'; }, undefined, true]);
@@ -713,7 +727,7 @@ function devDrawPanel() {
     { const e = Math.round(SUN.el * 180 / Math.PI); row([`‹  SUN HEIGHT ${e}°${e < -6 ? ' · NIGHT' : e < 14 ? ' · DUSK' : ''}  ›`, d => SUN.el = clamp(SUN.el + d * Math.PI / 36, -Math.PI / 6, Math.PI * 0.45), undefined, true]); }     // below the horizon: night
     row(['CLEAR LOG', () => DEV.log.length = 0]);
   }
-  if (DEV.tab !== 2) { head('LOG'); for (const l of DEV.log) { txt(l.text, L, y + 6 * u, 10 * u, l.c, 'left', 'middle', FD); y += 15 * u; } }
+  if (DEV.tab !== 2 && DEV.tab !== 4) { head('LOG'); for (const l of DEV.log) { txt(l.text, L, y + 6 * u, 10 * u, l.c, 'left', 'middle', FD); y += 15 * u; } }
   DEV.panH = (y + 4 * u - y0) / u;
 }
 /* pointerdown on the panel: run the button, swallow the click (true); a tap off the open panel closes it */
@@ -745,13 +759,4 @@ function devPad(st) {
   let best = -1, bd = 1e9;      // the nearest button wholly that way; edge to edge, sideways gaps count double
   B.forEach((o, j) => { const along = dx ? ahead(b.x, b.x + b.w, o.x, o.x + o.w, dx) : ahead(b.y, b.y + b.h, o.y, o.y + o.h, dy), side = dx ? gapTo(b.y, b.y + b.h, o.y, o.y + o.h) : gapTo(b.x, b.x + b.w, o.x, o.x + o.w), d = along + 2 * side; if (j !== i && along >= -1 && d < bd) { bd = d; best = j; } });
   if (best >= 0) { DEV.sel = best; ev('menu'); }
-}
-/* from the main menu: straight into the yard, one player, no bots */
-function startDev(dev) {
-  if (NET.role) return;
-  engineKillAll(); PLAYERS = []; lobbyJoin(dev && dev.type ? dev : { type: 'kb' });
-  const p = PLAYERS[0]; if (!p) return; p.team = 0; p.ready = true;
-  DEV.log.length = 0; DEV.nums.length = 0; DEV.open = !dev || !dev.type || dev.type === 'kb';     // a pad / touch player starts with the panel shut (it takes their controls)
-  newMatch({ ...CFG, dev: true, mode: 1, bots: 0, ff: false, weather: 'clear', fog: 'los', limit: 1, camera: 'split' }, false);
-  setState('play'); Music.mode = 'battle';
 }
