@@ -3,6 +3,8 @@
 //   node tools/scene.mjs list                       the scenes, spots and switches
 // params: any of the scene's (see SCENES / TEST_KEYS), e.g. '{"at":{"BESIDE":"husk tank"},"smoke":["INSIDE"],"cam":"INSIDE","zoom":1.5}'
 // shots: seconds of game time after the scene is laid out; each one is <out>/<scene>_<t>.png. The log: <out>/<scene>.log
+// --gpu: this machine's GPU (D3D11, WebGPU on), frame rate unlocked, not SwiftShader;  --cfg '{"lightQ":2}': settings first
+// --bench S: after the last shot, S s of frames timed (uncapped): mean / p95 frame ms, fps, and the GPU stages if timers work
 import { spawn } from 'child_process';
 import http from 'http';
 import fs from 'fs';
@@ -13,6 +15,7 @@ import { fileURLToPath } from 'url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2), flag = (k, d) => { const i = args.indexOf('--' + k); if (i < 0) return d; const v = args[i + 1]; args.splice(i, 2); return v; }, bool = k => { const i = args.indexOf('--' + k); if (i < 0) return false; args.splice(i, 1); return true; };
 const map = flag('map', 'outskirts'), bots = +flag('bots', 0), shots = flag('shots', '0.6').split(',').map(Number), size = flag('size', '1280x720').split('x').map(Number);
+const cfg = JSON.parse(flag('cfg', '{}')), bench = +flag('bench', 0), gpu = bool('gpu');
 const phone = bool('phone'), keepHud = bool('keep-hud'), out = path.resolve(flag('out', path.join(os.tmpdir(), 'mm-scenes')));
 const scene = args[0] || 'window', over = args[1] ? JSON.parse(args[1]) : {};
 const [vw, vh] = phone ? [844, 390] : size;
@@ -26,7 +29,7 @@ const srv = http.createServer((q, r) => { const f = path.join(ROOT, decodeURICom
 await new Promise(r => srv.listen(0, '127.0.0.1', r));
 const port = srv.address().port, dbg = 9300 + (process.pid % 500);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const ch = spawn(CHROME, ['--headless=new', '--remote-debugging-port=' + dbg, '--user-data-dir=' + path.join(out, '.prof'), `--window-size=${vw},${vh}`, '--autoplay-policy=no-user-gesture-required', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', 'about:blank'], { stdio: 'ignore' });
+const ch = spawn(CHROME, ['--headless=new', '--remote-debugging-port=' + dbg, '--user-data-dir=' + path.join(out, '.prof'), `--window-size=${vw},${vh}`, '--autoplay-policy=no-user-gesture-required', ...(gpu ? ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--enable-unsafe-webgpu', '--disable-gpu-vsync', '--disable-frame-rate-limit'] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader']), 'about:blank'], { stdio: 'ignore' });
 let list; for (let k = 0; k < 40; k++) { try { list = await (await fetch(`http://127.0.0.1:${dbg}/json`)).json(); if (list.find(t => t.type === 'page')) break; } catch (_) { } await sleep(250); }
 const ws = new WebSocket(list.find(t => t.type === 'page').webSocketDebuggerUrl);
 await new Promise(r => ws.onopen = r);
@@ -43,6 +46,7 @@ if (phone) await send('Emulation.setTouchEmulationEnabled', { enabled: true });
 await send('Page.navigate', { url: `http://127.0.0.1:${port}/index.html` });
 if (!await until("typeof testStart === 'function' && typeof imgReady !== 'undefined' && imgReady")) { console.error('the game did not load', errs.join('\n')); done(1); }
 if (scene === 'list') { console.log(await js("JSON.stringify({ scenes: Object.fromEntries(Object.entries(SCENES).map(([k, s]) => [k, s.n])), spots: [...TEST_SPOTS, 'WINDOW', 'ROOF', 'PLAYER'], what: TEST_WHAT, switches: Object.fromEntries(Object.entries(TEST_KEYS).map(([k, K]) => [k, K.o])) }, null, 1)")); done(0); }
+await js(`Object.assign(CFG, ${JSON.stringify(cfg)}); if (typeof resize === 'function') resize()`);
 await js(`testStart(${JSON.stringify(map)}, ${bots})`); await sleep(800);
 const ok = await js(`(TEST.bare = ${!keepHud}, testRun(${JSON.stringify(scene)}, ${JSON.stringify(keepHud ? over : { hud: false, ...over })}))`);
 if (!ok) { console.error('the scene did not lay out:', await js('DEV.log.map(l => l.text).join(" | ")')); done(1); }
@@ -52,8 +56,15 @@ for (const t of shots) {
   const r = await send('Page.captureScreenshot', { format: 'png' }), f = path.join(out, `${scene}_${t}.png`);
   fs.writeFileSync(f, Buffer.from(r.data, 'base64')); files.push(f);
 }
+let bres = '';
+if (bench) {     // frames timed by rAF (the page's own loop draws them); the GPU stages from the FPS counter's timers when there are some
+  await js(`(window._bt = [], CFG.fps = 3, (function f(t) { if (window._bp) window._bt.push(t - window._bp); window._bp = t; if (window._bt.length < 1e5) requestAnimationFrame(f); })(performance.now()), 1)`);
+  await sleep(bench * 1000);
+  const b = await js(`(() => { const a = window._bt.slice(10).sort((x, y) => x - y), n = a.length, m = a.reduce((x, y) => x + y, 0) / n; return { n, mean: m, p95: a[Math.floor(n * 0.95)], gt: GPUP.X ? GPUP.out.reduce((a, e) => a + e[1], 0) : 0, gpu: GPUP.X ? GPUP.out.map(([k, v]) => k + ' ' + v.toFixed(2)).join(' · ') : 'n/a', light: typeof HS !== 'undefined' ? HS : 0 } })()`);
+  bres = `BENCH ${b.n} frames · mean ${b.mean.toFixed(2)} ms (${(1000 / b.mean).toFixed(0)} fps) · p95 ${b.p95.toFixed(2)} ms · light ${b.light} · GPU ${b.gt.toFixed(2)} ms: ${b.gpu}`;
+}
 const st = await js('testState()');
 const text = [`${scene} on ${st.map} · ${st.time} s · ${st.fps} fps`, '', ...st.log, '', 'SPOTS ' + JSON.stringify(st.spots), '', 'SOLDIERS', ...st.soldiers.map(s => '  ' + JSON.stringify(s)), 'VEHICLES', ...st.vehicles.map(v => '  ' + JSON.stringify(v)), 'WRECKS ' + JSON.stringify(st.wrecks), '', ...(errs.length ? ['ERRORS', ...errs] : ['no errors'])].join('\n');
 fs.writeFileSync(path.join(out, scene + '.log'), text);
-console.log(text + '\n\n' + files.join('\n'));
+console.log(text + '\n\n' + files.join('\n') + (bres ? '\n' + bres : ''));
 done(errs.length ? 2 : 0);

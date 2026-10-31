@@ -1003,3 +1003,16 @@ ADAPTIVE LIGHTING (`lightA`, default OFF; 5e_light.js `lightAdapt`, called from 
 - It steps down once the smoothed frame has been slower than 1/50 s for 0.6 s, and up once it has been quicker than 1/57 s for `LA.wait` s (3 s).
 - A step up that slows it again within 4 s doubles the wait, up to 60 s.
 - The FPS counter (FPS + FRAME TIMES) shows LIGHT n%. t25 checks it.
+
+## LIGHT MAPS in one pass (build 370)
+- LIGHT MAPS setting (`CFG.mrt`, default ONE PASS; ONE A MAP is the old way). It sits in PERFORMANCE after LIGHTING QUALITY.
+- The CP shader source `CPS` builds twice:
+  - per map, as before;
+  - with `#define MRT` as a GLSL 300 es program (`CPM`) that writes the main light maps to 3 targets in a single pass (`MR` textures/fb, sized beside LT).
+- `mrt(ns, up, B)` (drawSun) then blits each target into its GC grid cell. The main maps take one pass, the upper maps 4 and 5 another. The fog map 3 still goes per map.
+- Fixed: the `uniform3f(CU.WX, …)` call had been swallowed by a comment.
+- Bench (window scene, `--gpu`): LIGHT MAPS 6.42 → 3.96 ms, GPU total 26.7 → 24.4 ms. The images match.
+- tools/scene.mjs:
+  - `--gpu` (D3D11 ANGLE, no vsync or frame cap);
+  - `--cfg '{json}'` (CFG overrides);
+  - `--bench S` (S seconds of rAF; prints "BENCH … GPU total ms: stages").
