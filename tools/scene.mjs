@@ -5,6 +5,7 @@
 // shots: seconds of game time after the scene is laid out; each one is <out>/<scene>_<t>.png. The log: <out>/<scene>.log
 // --gpu: this machine's GPU (D3D11, WebGPU on), frame rate unlocked, not SwiftShader;  --cfg '{"lightQ":2}': settings first
 // --bench S: after the last shot, S s of frames timed (uncapped): mean / p95 frame ms, fps, and the GPU stages if timers work
+// --probe EXPR: an expression evaluated after the bench, its value added to the BENCH line
 import { spawn } from 'child_process';
 import http from 'http';
 import fs from 'fs';
@@ -16,6 +17,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2), flag = (k, d) => { const i = args.indexOf('--' + k); if (i < 0) return d; const v = args[i + 1]; args.splice(i, 2); return v; }, bool = k => { const i = args.indexOf('--' + k); if (i < 0) return false; args.splice(i, 1); return true; };
 const map = flag('map', 'outskirts'), bots = +flag('bots', 0), shots = flag('shots', '0.6').split(',').map(Number), size = flag('size', '1280x720').split('x').map(Number);
 const cfg = JSON.parse(flag('cfg', '{}')), bench = +flag('bench', 0), gpu = bool('gpu');
+const probe = flag('probe', '');     // --probe EXPR: its value (JSON) after the bench line
 const phone = bool('phone'), keepHud = bool('keep-hud'), out = path.resolve(flag('out', path.join(os.tmpdir(), 'mm-scenes')));
 const scene = args[0] || 'window', over = args[1] ? JSON.parse(args[1]) : {};
 const [vw, vh] = phone ? [844, 390] : size;
@@ -61,6 +63,7 @@ if (bench) {     // frames timed by rAF (the page's own loop draws them); the GP
   await js(`(window._bt = [], CFG.fps = 3, (function f(t) { if (window._bp) window._bt.push(t - window._bp); window._bp = t; if (window._bt.length < 1e5) requestAnimationFrame(f); })(performance.now()), 1)`);
   await sleep(bench * 1000);
   const b = await js(`(() => { const a = window._bt.slice(10).sort((x, y) => x - y), n = a.length, m = a.reduce((x, y) => x + y, 0) / n; return { n, mean: m, p95: a[Math.floor(n * 0.95)], gt: GPUP.X ? GPUP.out.reduce((a, e) => a + e[1], 0) : 0, gpu: GPUP.X ? GPUP.out.map(([k, v]) => k + ' ' + v.toFixed(2)).join(' · ') : 'n/a', light: typeof HS !== 'undefined' ? HS : 0 } })()`);
+  if (probe) b.gpu += ' · PROBE ' + JSON.stringify(await js(probe));
   bres = `BENCH ${b.n} frames · mean ${b.mean.toFixed(2)} ms (${(1000 / b.mean).toFixed(0)} fps) · p95 ${b.p95.toFixed(2)} ms · light ${b.light} · GPU ${b.gt.toFixed(2)} ms: ${b.gpu}`;
 }
 const st = await js('testState()');

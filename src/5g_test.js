@@ -27,6 +27,7 @@ const TEST_KEYS = {
   sun: { n: 'SUN', o: [true, false], set: v => CFG.sun = v },
   time: { n: 'TIME', o: ['day', 'dusk', 'night'], set: v => { DEV.cyc = 0; [SUN.el, SUN.az] = typeof v === 'number' ? sunPath((v - 6) / 24 * TAU) : TEST_TIMES[v] || TEST_TIMES.day; } },     // a number: that hour of the day cycle's real sun
   hud: { n: 'HUD', o: [true, false], set: v => TEST.noHud = !v },
+  lamps: { n: 'LAMPS', o: [false, true], set: v => { for (const o of M.sol) o.lamp = v; for (const o of M.vehicles) if (o.type !== 'nest') o.lights = v; } },     // every flashlight and vehicle's lights
   cam: { n: 'CAM', o: ['SCENE', 'PLAYER', 'INSIDE', 'WINDOW', 'OUTSIDE', 'BESIDE', 'FAR', 'TREE', 'off'], set: () => {} },
   zoom: { n: 'ZOOM', o: [1, 1.5, 2, 0.75, 0.5], set: () => {} },
   brain: { n: 'BRAINS', o: [false, true], set: v => DEV.brain = v },

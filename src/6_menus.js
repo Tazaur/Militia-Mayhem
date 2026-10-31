@@ -455,9 +455,9 @@ const SETS = {
   res: slider('RENDER RESOLUTION', 'res', 50, 100, 5, '%', () => resize()),
   quality: { n: 'PRESET', o: QUALITY.map(([n], i) => [i, n]), get: qualPreset, set: i => { const r = CFG.res; Object.assign(CFG, QUALITY[i][1]); if (CFG.res !== r) resize(); }, lab: i => i < 0 ? 'CUSTOM' : null },
   lightQ: choice('LIGHTING QUALITY', 'lightQ', [[0, 'LOW'], [1, 'MEDIUM'], [2, 'HIGH']]),
-  lightA: choice('ADAPTIVE LIGHTING', 'lightA', [[false, 'OFF'], [true, 'ON']]),
-  mrt: choice('LIGHT MAPS', 'mrt', [[true, 'ONE PASS'], [false, 'ONE A MAP']]),
-  shCache: choice('SHADOW CACHE', 'shCache', [[2, 'SUN + MEMORY'], [1, 'SUN'], [0, 'OFF']]),     // what stands still swept once, kept round the view (wcPlan)     // WebGL2: the light's maps in one pass (MRT), or each its own     // the light's resolution follows the frame time, up to LIGHTING QUALITY (lightAdapt)
+  lightA: choice('ADAPTIVE LIGHTING', 'lightA', [[false, 'OFF'], [true, 'ON']]),     // the light's resolution follows the frame time, up to LIGHTING QUALITY (lightAdapt)
+  mrt: choice('LIGHT MAPS', 'mrt', [[true, 'ONE PASS'], [false, 'ONE A MAP']]),     // WebGL2: the light's maps in one pass (MRT), or each its own
+  shCache: choice('SHADOW CACHE', 'shCache', [[2, 'SUN + MEMORY'], [1, 'SUN'], [0, 'OFF']]),     // what stands still swept once, kept round the view (wcPlan)
   shLay: choice('FLOATING SHADOWS', 'shLay', [[true, 'SEPARATE'], [false, 'MERGED']]),
   shLen: choice('SHADOW LENGTH', 'shLen', [[128, 'FULL'], [32, 'SHORT']]),
   tops: choice('ROOF & TREETOP LIGHT', 'tops', [['lit', 'FULL'], ['flat', 'FLAT']]),

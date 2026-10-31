@@ -199,7 +199,7 @@ function sunTone() {
   _toneK = key; return _tone = { day, s, li, sh: mx(li, mx(NIGHT, mx(SUN.tint, DUSK, g), day), s), w: SUN.warm.map((v, i) => v * lit[i] * day), sky: sky.map(v => v * lerp(0.25, 1, day)) };
 }
 const HZ = 127.5, HZS = '127.5', SUN_LMAX = Math.ceil(HZ / Math.tan(SUN_MIN));     // the height buffer's top (px; a byte, 0.5 px a step): a stacked tree reaches ~125; SUN_LMAX: the longest shadow (that top at 5°)
-const sunReach = () => CFG.lightQ >= 2 ? SUN_LMAX : 720;     // how far off the view a caster's shadow is taken in: LIGHTING QUALITY ULTRA all of it, else 720 px (its buffer margin)
+const sunReach = () => CFG.lightQ >= 2 ? SUN_LMAX : 720, LPAD = 48;     // how far off the view a caster's shadow is taken in: LIGHTING QUALITY ULTRA all of it, else 720 px (its buffer margin); LPAD: the sun down, the height buffer's margin (world px) round the view for the lamps
 let HS = 0.5; const LIGHT_Q = [0.35, 0.5, 0.75];                                     // height buffer resolution vs the screen (settings › LIGHTING QUALITY)
 /* settings › ADAPTIVE LIGHTING: the light's resolution (HS) follows the frame time, a step of LIGHT_A at a time, never
    above LIGHTING QUALITY's own: down once the smoothed frame has been slower than 1/50 s for LA_DN s, up once it has been
@@ -975,8 +975,8 @@ function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory
   const rx = Math.floor(vw.x * dpr * HS), ry = Math.floor(vw.y * dpr * HS), rw = Math.min(w - rx, Math.ceil(vw.w * dpr * HS)), rh = Math.min(h - ry, Math.ceil(vw.h * dpr * HS));
   // the height buffer reaches past the view toward the sun by the longest shadow (64 px tall), so what's off screen
   // that side still throws its shadow in (no pop-in); the view sits at (px, py) in it
-  const SL = Math.min(CFG.shLen || HZ, MAP._ht ??= MAP.statics.some(atlasTree) ? HZ : 64), L = Math.min(SL / Math.tan(sunEl()), sunReach()), dx = Math.cos(SUN.az) * L * K, dy = Math.sin(SUN.az) * L * K;     // SL: SHADOW LENGTH, no further than the map's tallest needs
-  const px = Math.ceil(Math.max(0, -dx)) + 2, py = Math.ceil(Math.max(0, -dy)) + 2, bw = rw + px + Math.ceil(Math.max(0, dx)) + 2, bh = rh + py + Math.ceil(Math.max(0, dy)) + 2;
+  const up = sunTone().s > 0, SL = Math.min(CFG.shLen || HZ, MAP._ht ??= MAP.statics.some(atlasTree) ? HZ : 64), L = up ? Math.min(SL / Math.tan(sunEl()), sunReach()) : 0, dx = Math.cos(SUN.az) * L * K, dy = Math.sin(SUN.az) * L * K;     // SL: SHADOW LENGTH, no further than the map's tallest needs; the sun down: no reach (nothing swept)
+  const pm = up ? 2 : Math.ceil(LPAD * K) + 2, px = Math.ceil(Math.max(0, -dx)) + pm, py = Math.ceil(Math.max(0, -dy)) + pm, bw = rw + px + Math.ceil(Math.max(0, dx)) + pm, bh = rh + py + Math.ceil(Math.max(0, dy)) + pm;     // pm: the sun down, a margin all round for the lamps' shadows from just off the view
   const size = (t, w, h) => { gl.bindTexture(gl.TEXTURE_2D, t); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null); };
   const attach = (f, t) => { gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0); };
   if (S.fw < rx + bw || S.fh < ry + bh) {     // the height and material targets grow only
@@ -995,7 +995,7 @@ function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory
   gl.enable(gl.SCISSOR_TEST); HMAT = 0; HMAX = 0;
   const fog = vw._fog && fogged && !SUNDBG && CFG.shMem !== false ? 1 : 0;     // SHADOWS OUT OF SIGHT off: no memory sweep
   gl.useProgram(S.CP); gl.uniform1f(S.CU.FG, 0);
-  const X = [VZ * k, VOX * k + px, VOY * k + py], box = [rx, ry, bw, bh], vr = [rx + px, ry + py, rw, rh], up = sunTone().s > 0, fv0 = (x, y, r) => vis(x, y, r + L);
+  const X = [VZ * k, VOX * k + px, VOY * k + py], box = [rx, ry, bw, bh], vr = [rx + px, ry + py, rw, rh], fv0 = (x, y, r) => vis(x, y, r + (up ? L : LPAD));
   const W = S.wc = up && CFG.shCache && !SUNDBG ? wcFor(S, vw) : null, FB = [(rx - X[1]) / X[0], (ry - X[2]) / X[0], (rx + bw - X[1]) / X[0], (ry + bh - X[2]) / X[0]];     // FB: the buffer's world box
   if (fog) memOf(S, vw);     // a new memory: the map as it starts (its own lists, emptied), before this frame's
   const vs = W && wcAnchor(W, FB, Math.max(rw, rh) / 4 / X[0]);     // what stands still: over the cache's box (and the frame's, out of it)

@@ -1045,3 +1045,8 @@ SHADOW CACHE setting (`CFG.shCache`: 2 SUN + MEMORY, the default; 1 SUN; 0 OFF),
   - The cycle: 's', then 'uh'/'us' (roofs into the cache heights, MAX, swept into wc.u), then 'mh'/'ms'.
   - `sunLayers` takes `uc`: the upper sweep copied from the cache, with only the crowns' boxes (they sway) swept each frame. The wck check covers 'upper' too (still: 0 off).
   - ULTRA GPU 24.2 → 16.5 ms (40 → 56 fps); HIGH 82 fps.
+
+## Night buffer; LIGHT CULLING measured and dropped (build 394)
+- Sun down: the height buffer no longer reaches toward the sun (nothing is swept); it keeps a margin of LPAD (48 world px) all round instead, for the lamps' shadows from just off the view. Night ULTRA GPU 17.2 -> 11.6 ms.
+- LIGHT CULLING (the point-light pass scissored to the lights' joined boxes) was tried and removed: the shader already skips each light per pixel past its reach and outside its cone before the march, and flashlights / headlights reach 340 px, so the boxes cover the whole view. Night with every lamp on: POINT LIGHTS 4.67 ms culled vs 4.39 ms not; brawl 2.03 vs 2.20 (noise).
+- Bench tools: scene param `lamps: true` (every flashlight and vehicle's lights on); `tools/scene.mjs --probe EXPR` adds an expression's value to the BENCH line.
