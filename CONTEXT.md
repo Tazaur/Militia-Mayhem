@@ -867,3 +867,8 @@ ROOF_STYLES, MAP_ROOFS and roofPaint(H, st, list, snow, grit) live in src/2d_hou
 
 ## Window shadows
 - SUNH.glass 6: windows are in the sun heights as a low box (frame and sill), a short shadow; the sun comes in over them. Point lights still pass through glass.
+- Then: free strip ends at the face's own end (the wall's end) 45 degrees; elsewhere along the face (sight cut off by something nearer) along the sight ray, k deep, within the face.
+
+## Roofs: same in and out of sight; true hip roofs
+- roofsOver (5d_dev): with the sun, after fogOverlay, the roof is drawn whole over the out-of-sight memory (clipped out of the sight hole), lit by sunTone().li through the GL colour matrix (roofLit; the in-sight rv too, no CPU tint). Tiles that fell unseen are kept per memory (m.pend, cleared in applyFog when seen) and drawn from H.rf. Setting FOG OF WAR > ROOFS OUT OF SIGHT: AS IN SIGHT (default) / FOGGED (CFG.roofFog: the old look).
+- roofPaint: height = square (Chebyshev) distance to the nearest point off the roof (8-neighbour vector distance transform), face = steepest fall of that height: hips, ridges and valleys on any shape (L houses joined properly).

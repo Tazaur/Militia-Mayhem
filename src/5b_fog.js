@@ -75,15 +75,21 @@ function visPoly(ex, ey, box, walls, pad) {
   for (let i = 0; i < P.length; i++) {
     const a = P[i], b = P[(i + 1) % P.length], f = [a[3], a[4], b[3], b[4]].find(f => f && f[5] && on(a, f) && on(b, f)) || segs.find(f => f[5] && on(a, f) && on(b, f)); EF.push(f || null);
   }
-  // every strip end at a wall's vertex is cut at 45 degrees: a free end (no wall face beyond it) inward; where the outline
-  // turns onto another face (a wall's corner, a room's), both strips end on the diagonal between their inner edges, so
-  // they meet edge to edge (no overlap). The same face running on: square. A short edge: a shallower strip, still 45
+  // a strip's ends: where the outline turns onto another face (a wall's corner, a room's), both strips end on the diagonal
+  // between their inner edges, so they meet edge to edge; the same face running on: square. A free end (no face beyond
+  // it) at the face's own end (the wall's end): 45 degrees inward; anywhere else along the face (sight cut off by
+  // something nearer): along the sight ray through it, k deep, within the face. A short edge: a shallower strip
   for (let i = 0, n = P.length; i < n; i++) {
     const f = EF[i]; if (!f) continue;
     const a = P[i], b = P[(i + 1) % n], k = f[5], L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, tx = (b[0] - a[0]) / L, ty = (b[1] - a[1]) / L;
-    const cut = (g, out) => !g ? k : g === f || Math.abs(f[6] * g[7] - f[7] * g[6]) < 0.5 ? 0 : (g[6] * tx + g[7] * ty) * out * g[5];     // inward along the edge (toward the other end)
-    let s0 = cut(EF[(i + n - 1) % n], -1), s1 = cut(EF[(i + 1) % n], 1), r = s0 + s1 > L ? L / (s0 + s1) : 1;
-    const d = k * r, bx = a[0] - f[6] * d, by = a[1] - f[7] * d; s0 *= r; s1 *= r;
+    const p0 = (f[0] - a[0]) * tx + (f[1] - a[1]) * ty, p1 = (f[2] - a[0]) * tx + (f[3] - a[1]) * ty, lo = Math.min(p0, p1), hi = Math.max(p0, p1);     // the face's span along the edge (a at 0, b at L)
+    const ray = v => { const dx = v[0] - ex, dy = v[1] - ey, dl = Math.hypot(dx, dy) || 1, ci = Math.max(0.05, -(dx * f[6] + dy * f[7]) / dl); return (dx * tx + dy * ty) / dl * k / ci; };     // along the edge, where the ray through v is k into the wall
+    const end = v => Math.hypot(v[0] - f[0], v[1] - f[1]) < 0.5 || Math.hypot(v[0] - f[2], v[1] - f[3]) < 0.5;
+    const cut = (g, out) => !g ? null : g === f || Math.abs(f[6] * g[7] - f[7] * g[6]) < 0.5 ? 0 : (g[6] * tx + g[7] * ty) * out * g[5];     // inward along the edge (toward the other end)
+    let s0 = cut(EF[(i + n - 1) % n], -1), s1 = cut(EF[(i + 1) % n], 1);
+    if (s0 === null) s0 = end(a) ? k : clamp(ray(a), lo, L);
+    if (s1 === null) s1 = end(b) ? k : clamp(-ray(b), L - hi, L);
+    const r = s0 + s1 > L ? L / (s0 + s1) : 1, d = k * r, bx = a[0] - f[6] * d, by = a[1] - f[7] * d; s0 *= r; s1 *= r;
     strips.push([[a[0], a[1]], [b[0], b[1]], [bx + tx * (L - s1), by + ty * (L - s1)], [bx + tx * s0, by + ty * s0]]);
   }
   const out = P.map(v => v[2] ? [v[0], v[1], 1] : [v[0], v[1]]); out.strips = strips; out.faces = segs;   // [x, y, 1] = a corner
@@ -144,6 +150,7 @@ function applyFog(vw, vis, x0, y0, x1, y1, rv) {
     pipe('fog-now'); m.g.save(); m.g.setTransform(FOGK, 0, 0, FOGK, 0, 0); polyPath(m.g, polys); m.g.clip();
     m.g.drawImage(FOG_NOW, 0, 0, bw, bh, bx0, by0, bw, bh); m.g.restore();
   }
+  if (m.pend) for (const [H, S] of m.pend) { for (const k of S) { const [x, y] = cellW(H, k % H.W, (k / H.W) | 0); if (polys.some(P => inPoly(x, y, P))) S.delete(k); } if (!S.size) m.pend.delete(H); }     // fallen roof tiles seen gone at last
   pipe('fog-mem'); const seen = (x, y) => polys.some(P => inPoly(x, y, P)) && eyes.some(([ex, ey]) => 1 - softOcc(ex, ey, x, y) >= SIGHT_MIN);
   for (const s of MAP.statics) if (vis(s.x, s.y, 20) && (s.type === 'fence' || s.type === 'hay' || s.type === 'tree') && seen(s.x, s.y)) m.st.set(s, s.alive);
   for (const A of MAP.arcs) if (vis(A.x, A.y, 40) && seen(A.x, A.y)) m.arc.set(A, A.lost);

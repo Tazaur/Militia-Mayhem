@@ -453,6 +453,7 @@ const SETS = {
   fogK: slider('DARKNESS', 'fogK', 0, 80, 2, '%'),
   fogE: slider('EDGE SHADOW', 'fogE', 0, 100, 5, '%'),
   fogW: slider('EDGE WIDTH', 'fogW', 8, 64, 4, ' PX'),
+  roofFog: { n: 'ROOFS OUT OF SIGHT', o: [[false, 'AS IN SIGHT'], [true, 'FOGGED']], get: () => !!CFG.roofFog, set: v => CFG.roofFog = v },
   res: slider('RENDER RESOLUTION', 'res', 50, 100, 5, '%', () => resize()),
   quality: { n: 'PRESET', o: QUALITY.map(([n], i) => [i, n]), get: qualPreset, set: i => { const r = CFG.res; Object.assign(CFG, QUALITY[i][1]); if (CFG.res !== r) resize(); }, lab: i => i < 0 ? 'CUSTOM' : null },
   lightQ: choice('LIGHTING QUALITY', 'lightQ', [[0, 'LOW'], [1, 'MEDIUM'], [2, 'HIGH']]),
@@ -480,7 +481,7 @@ const SETS = {
   tAuto: { n: 'DRAG TO AIM', o: [['on', 'AIMS + FIRES'], ['off', 'AIMS ONLY'], ['range', 'FIRES IN RANGE']], get: () => TOUCH.auto, set: v => { TOUCH.auto = v; store.set('autofire', v); } }
 };
 /* core tabs (title row), each with its pages (sub tabs, the row under it); Q / E or LB / RB step through every page */
-const SET_TABS = [['VIDEO', [['GRAPHICS', ['style', 'clearLos', 'fullscreen', 'camera']], ['FOG OF WAR', ['fogStyle', 'fogD', 'fogK', 'fogE', 'fogW']], ['PERFORMANCE', ['quality', 'res', 'lightQ', 'fogQ', 'smk', 'rec']], ['LIGHTS', ['lights', 'refl']], ['SHADOWS', ['sun', 'shLay', 'shLen', 'shMem', 'shPt']]]],
+const SET_TABS = [['VIDEO', [['GRAPHICS', ['style', 'clearLos', 'fullscreen', 'camera']], ['FOG OF WAR', ['fogStyle', 'fogD', 'fogK', 'fogE', 'fogW', 'roofFog']], ['PERFORMANCE', ['quality', 'res', 'lightQ', 'fogQ', 'smk', 'rec']], ['LIGHTS', ['lights', 'refl']], ['SHADOWS', ['sun', 'shLay', 'shLen', 'shMem', 'shPt']]]],
   ['AUDIO', [['VOLUME', ['volMaster', 'volSfx', 'volMus']], ['SOUND', ['sound']]]], ['HUD', [['DISPLAY', ['fps', 'minimap', 'teams']]]],
   ['CONTROLS', [['TOUCH', ['tSize', 'tAlpha', 'tFireX', 'tFireY', 'tLfire', 'tAuto']], ['BINDINGS', null]]]];
 const SET_PAGES = SET_TABS.flatMap(([, P], i) => P.map((_, j) => [i, j]));

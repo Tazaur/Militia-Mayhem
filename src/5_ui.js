@@ -59,7 +59,7 @@ function drawWorld(vw) {
   AK = 'thrown body'; for (const f of M.flings) if (vis(f.x, f.y, 40)) { const k = f.t / f.T, h = Math.sin(Math.PI * k); at(ZH.body + h * 34, () => solDraw(f, solSpr(f.color, 'dead'), f.x, f.y - h * 34, f.rot, 1 + h * 0.6, 1 + h * 0.6)); }
   if (!devOff('parts')) partsInto(at, vis);
   // roofs over everything under them (vehicles, smoke): with the sun, after the smoke (lit already: roofView); without, the top of the queue's ground things
-  const roofDraw = () => { if (rv) { worldT(); ctx.imageSmoothingEnabled = false; ctx.drawImage(rv.c, 0, 0, rv.w, rv.h, rv.x, rv.y, rv.w, rv.h); } };
+  const roofDraw = () => { if (rv) { worldT(); ctx.imageSmoothingEnabled = false; const f = () => ctx.drawImage(rv.c, 0, 0, rv.w, rv.h, rv.x, rv.y, rv.w, rv.h); if (SUNNOW) roofLit(f); else f(); } };
   AK = 'roofs'; if (!SUNNOW) at(SUNH.tree[0] - 1, roofDraw);
   AK = 'killer glow'; at(99, () => drawKillerGlow(vw), true);
   Q.sort((a, b) => a.z - b.z || a.i - b.i);
@@ -75,7 +75,7 @@ function drawWorld(vw) {
   if (!devOff('smoke')) drawSmokes(vw); pipe('smokes');
   if (SUNNOW) { roofDraw(); pipe('roofs'); }
   // the remembered world over what's out of sight (everything above was drawn whole; dev views: the whole screen)
-  if (fogged && !(SUNNOW && SUNDBG)) { const H = new Path2D(); polyPath(H, fogPolys); worldT(); fogOverlay(vw, H); }
+  if (fogged && !(SUNNOW && SUNDBG)) { const H = new Path2D(); polyPath(H, fogPolys); worldT(); fogOverlay(vw, H); if (SUNNOW && !CFG.roofFog) roofsOver(vw, rv, H); }
   // tags, reticles
   worldT(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   pipe('overlay-done'); const eyN = viewEyes(vw);

@@ -139,8 +139,9 @@ function genHouse(R, maxW, maxH, minW, minH) {     // minW / minH: the smallest 
 }
 
 /* ---------------- roofs ---------------- */
-/* roof styles. Pitched ones are hipped, whatever the house's shape: each point slopes to its nearest eave (the four ways
-   along its row / column of roof), so faces meet in ridges and hips; the sun (top left) lights the faces that way.
+/* roof styles. Pitched ones are hipped, whatever the house's shape: each point slopes to its nearest eave, as far as the
+   roof rises at 45 degrees (the square distance to the nearest point off the roof), so faces meet in ridges, hips and,
+   where wings join, valleys; the sun (top left) lights each face by which way it slopes.
    rows / tab: shingle courses (px) and tab width; wave: clay barrels; seam: standing-seam metal; straw: thatch; flat:
    a parapet. pals: its colours (one per house), bits: what stands on it */
 const ROOF_STYLES = {
@@ -160,19 +161,29 @@ function roofPaint(H, st, list, snow, grit) {
   const  S = ROOF_STYLES[st], pal = S.pals[Math.floor(R() * S.pals.length)];
   const W = H.W * SUB, HH = H.H * SUB, N = H.W * H.H, on = (i, j) => i >= 0 && j >= 0 && i < H.W && j < H.H && H.roof[j * H.W + i] === 1;
   const c = gCv(W, HH), g = c.getContext('2d'), im = g.createImageData(W, HH), D = im.data;
-  // each cell's roof run: the first / last cell of it left-right (rl, rr) and up-down (ru, rd)
-  const rl = new Int16Array(N), rr = new Int16Array(N), ru = new Int16Array(N), rd = new Int16Array(N);
-  for (let j = 0; j < H.H; j++) { for (let i = 0; i < H.W; i++) { const k = j * H.W + i; rl[k] = on(i - 1, j) ? rl[k - 1] : i; } for (let i = H.W - 1; i >= 0; i--) { const k = j * H.W + i; rr[k] = on(i + 1, j) ? rr[k + 1] : i; } }
-  for (let i = 0; i < H.W; i++) { for (let j = 0; j < H.H; j++) { const k = j * H.W + i; ru[k] = on(i, j - 1) ? ru[k - H.W] : j; } for (let j = H.H - 1; j >= 0; j--) { const k = j * H.W + i; rd[k] = on(i, j + 1) ? rd[k + H.W] : j; } }
-  const dist = (x, y) => { const k = Math.floor(y / SUB) * H.W + Math.floor(x / SUB); return [y - ru[k] * SUB + 0.5, (rr[k] + 1) * SUB - x - 0.5, (rd[k] + 1) * SUB - y - 0.5, x - rl[k] * SUB + 0.5]; };     // to the eave up, right, down, left
+  // the nearest point off the roof (ex, ey: pixel offsets, on a 1 px border round the canvas: off it is off the roof), two
+  // passes passing it on to the 8 neighbours; DM: how far (square distance, to the eave line), FC: which way it slopes down
+  // (0 up, 1 right, 2 down, 3 left)
+  const PW = W + 2, PH = HH + 2, ex = new Int16Array(PW * PH), ey = new Int16Array(PW * PH), BIG = 30000;
+  for (let y = 0; y < PH; y++) for (let x = 0; x < PW; x++) { const k = y * PW + x, inn = x > 0 && y > 0 && x <= W && y <= HH && on(Math.floor((x - 1) / SUB), Math.floor((y - 1) / SUB)); ex[k] = inn ? BIG : 0; ey[k] = inn ? BIG : 0; }
+  const cd = k => Math.max(Math.abs(ex[k]), Math.abs(ey[k]));
+  const pass = (y0, y1, sy, x0, x1, sx, nb) => { for (let y = y0; y !== y1; y += sy) for (let x = x0; x !== x1; x += sx) { const k = y * PW + x; if (!ex[k] && !ey[k]) continue; for (const [dx, dy] of nb) { const n = (y + dy) * PW + x + dx; if (ex[n] === BIG) continue; const vx = ex[n] + dx, vy = ey[n] + dy; if (Math.max(Math.abs(vx), Math.abs(vy)) < cd(k)) { ex[k] = vx; ey[k] = vy; } } } };
+  pass(1, PH - 1, 1, 1, PW - 1, 1, [[-1, -1], [0, -1], [1, -1], [-1, 0]]); pass(PH - 2, 0, -1, PW - 2, 0, -1, [[1, 1], [0, 1], [-1, 1], [1, 0]]);
+  pass(1, PH - 1, 1, PW - 2, 0, -1, [[1, -1], [0, -1], [-1, -1], [1, 0]]); pass(PH - 2, 0, -1, 1, PW - 1, 1, [[-1, 1], [0, 1], [1, 1], [-1, 0]]);
+  const DM = new Float32Array(W * HH), FC = new Int8Array(W * HH).fill(-1);
+  for (let y = 0; y < HH; y++) for (let x = 0; x < W; x++) { const k = (y + 1) * PW + x + 1; if (ex[k] === BIG || (!ex[k] && !ey[k])) continue; DM[y * W + x] = Math.max(Math.abs(ex[k]), Math.abs(ey[k])) - 0.5; }
+  // the face: the way the roof falls fastest there (its slope from the heights round it; off the roof: the eave, -0.5)
+  const hA = (x, y) => x < 0 || y < 0 || x >= W || y >= HH || !on(Math.floor(x / SUB), Math.floor(y / SUB)) ? -0.5 : DM[y * W + x];
+  for (let y = 0; y < HH; y++) for (let x = 0; x < W; x++) { if (!on(Math.floor(x / SUB), Math.floor(y / SUB))) continue; const gx = hA(x + 1, y) - hA(x - 1, y), gy = hA(x, y + 1) - hA(x, y - 1); FC[y * W + x] = Math.abs(gy) >= Math.abs(gx) ? (gy > 0 ? 0 : 2) : (gx < 0 ? 1 : 3); }
+  const dmAt = (x, y) => DM[Math.min(HH - 1, Math.floor(y)) * W + Math.min(W - 1, Math.floor(x))];
+  // how far to where the face changes (a ridge, hip or valley line), up to 4 px: the line, then its cap
+  const fl = (x, y, f) => { for (let r = 1; r < 4; r++) for (const [dx, dy] of [[r, 0], [-r, 0], [0, r], [0, -r]]) { const a = x + dx, b = y + dy; if (a < 0 || b < 0 || a >= W || b >= HH) continue; const o = FC[b * W + a]; if (o >= 0 && o !== f) return r; } return 9; };
   const hs = (a, b) => ((Math.imul(a, 73856093) ^ Math.imul(b, 19349663) ^ Math.imul(H.seed | 0, 83492791)) >>> 0) / 4294967296;
   const blots = []; for (let n = 0; n < W * HH / 7000 + 2; n++) blots.push([R() * W, R() * HH, 10 + R() * 34, 0.05 + R() * 0.12]);     // weathering
   const SUNF = [1.1, 0.86, 0.76, 1.0]; grit = grit ? 0.8 : 1;
   for (let y = 0; y < HH; y++) for (let x = 0; x < W; x++) {
     const p = (y * W + x) * 4; if (!on(Math.floor(x / SUB), Math.floor(y / SUB))) { D[p + 3] = 0; continue; }
-    const q = dist(x, y); let f = 0; for (let n = 1; n < 4; n++) if (q[n] < q[f]) f = n;
-    let d2 = 1e9; for (let n = 0; n < 4; n++) if (n !== f && q[n] < d2) d2 = q[n];
-    const d = q[f], al = f % 2 ? y : x;     // across the face (from its eave), along it
+    const f = FC[y * W + x], d = DM[y * W + x], al = f % 2 ? y : x, lr = S.flat ? 9 : fl(x, y, f);     // its face, across it (from its eave), along it; lr: to the face's edge
     let t = 1, v = S.flat ? 1 : SUNF[f];
     if (S.flat) {
       if (hs(x, y) < 0.09) t += (hs(y, x) - 0.5) * 0.5;     // gravel
@@ -185,7 +196,7 @@ function roofPaint(H, st, list, snow, grit) {
         if (d % S.rows < 1.6) t *= 0.68; else if (!S.wave && a % S.tab < 1.2) t *= 0.8;
       } else if (S.seam) { const m = al % S.seam; t = (m < 1.5 ? 1.2 : m < 3 ? 0.76 : 1) * (0.97 + hs(Math.floor(al / S.seam), Math.floor(d / 6)) * 0.06); }
       else if (S.straw) { t = 0.82 + 0.34 * hs(Math.floor(al / 2), Math.floor(d / 6) * 31 + f); if (d % 6 < 1) t *= 0.86; }
-      if (d2 - d < 1.1) t *= 0.62; else if (d2 - d < 3.5) t *= 1.12;     // ridge / hip: a line, then the cap
+      if (lr < 2) t *= 0.62; else if (lr < 4) t *= 1.12;     // ridge / hip / valley: a line, then the cap
       if (d < 2) t *= 0.5; else if (d < 3) t *= 0.8;     // the eave
     }
     for (const [bx, by, br, bk] of blots) { const e = Math.hypot(x - bx, y - by); if (e < br) t *= 1 - bk * (1 - e / br); }
@@ -200,7 +211,7 @@ function roofPaint(H, st, list, snow, grit) {
     for (let n = 0; n < 40; n++) {
       const x = 4 + R() * (W - w - 8), y = 4 + R() * (HH - h - 8);
       if (took.some(o => x < o[0] + o[2] + 5 && x + w + 5 > o[0] && y < o[1] + o[3] + 5 && y + h + 5 > o[1])) continue;
-      if ([[x, y], [x + w, y], [x, y + h], [x + w, y + h], [x + w / 2, y + h / 2]].every(([a, b]) => on(Math.floor(a / SUB), Math.floor(b / SUB)) && Math.min(...dist(Math.min(W - 1, a), Math.min(HH - 1, b))) >= m)) { took.push([x, y, w, h]); return [x, y]; }
+      if ([[x, y], [x + w, y], [x, y + h], [x + w, y + h], [x + w / 2, y + h / 2]].every(([a, b]) => on(Math.floor(a / SUB), Math.floor(b / SUB)) && dmAt(a, b) >= m)) { took.push([x, y, w, h]); return [x, y]; }
     }
     return null;
   };

@@ -225,6 +225,26 @@ function roofBlit(H) {
     g.restore();
   });
 }
+/* roofs drawn over the light (with the sun): lit as the light lit a flat top (sunTone's sunlit colour, the GL's colour matrix).
+   In sight: rv (roofView, faded round the eyes). Out of sight (H: the sight hole, clipped out), after the memory: the roof
+   whole as it stands, and the tiles that fell where this view's memory hasn't seen (m.pend) as it remembers them, so a
+   roof looks the same in and out of sight (no fog look on it: the hole's wall-shaped edge showed on it) */
+function roofLit(fn) { const [r, g, b] = sunTone().li; if (ctx.withMatrix) ctx.withMatrix(new Float32Array([r, 0, 0, 0, g, 0, 0, 0, b]), [0, 0, 0], null, fn); else fn(); }
+function roofsOver(vw, rv, H) {
+  if (!rv || !ctx.clipOut) return;
+  const m = M.fogMem && M.fogMem[vw.p ? 'p' + vw.p.id : 'shared'];
+  worldT(); ctx.save(); ctx.clipOut(H); ctx.imageSmoothingEnabled = false;
+  roofLit(() => {
+    ctx.drawImage(ROOF_C, rv.x, rv.y, rv.w, rv.h, rv.x, rv.y, rv.w, rv.h);
+    if (m && m.pend) for (const [o, S] of m.pend) {
+      if (o.bb[2] < rv.x || o.bb[0] > rv.x + rv.w || o.bb[3] < rv.y || o.bb[1] > rv.y + rv.h) continue;
+      ctx.save(); ctx.transform(o.f.c, o.f.s, -o.f.s, o.f.c, o.f.ox, o.f.oy);
+      for (const k of S) { const i = k % o.W, j = (k / o.W) | 0; ctx.drawImage(o.rf, i * SUB, j * SUB, SUB, SUB, i * SUB, j * SUB, SUB, SUB); }
+      ctx.restore();
+    }
+  });
+  ctx.restore(); worldT();
+}
 /* the house's whole roof (2d_house.js roofPaint: its style, else one that fits the map), painted once */
 const roofOf = H => { H.rf = roofPaint(H, H.rs, MAP_ROOFS[MAP.id] || MAP_ROOFS.outskirts, SNOWY(), CFG.style === 'grit'); };
 /* a roof tile from the painted roof; a torn dark edge where the roof beside it has fallen in */
@@ -255,6 +275,7 @@ function devRoofTile(H, k, fall) {
   if (H.roof[k] !== 1) return; H.roof[k] = 2;
   const i = k % H.W, j = (k / H.W) | 0, [cx, cy] = cellW(H, i, j);
   paintCell(H, i, j); repaintRoofAround(H, [k]);
+  if (M.fogMem) for (const m of Object.values(M.fogMem)) { if (!m.pend) m.pend = new Map(); if (!m.pend.has(H)) m.pend.set(H, new Set()); m.pend.get(H).add(k); }     // the memories keep it till they see it gone (applyFog)
   if (i % 2 === 0 && j % 2 === 0) devDust(cx, cy);          // dust from roof tiles on an even row and even column
   { const a = rnd(0, TAU), sp = rnd(30, 120); part({ k: 'debris', x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rnd(0.4, 0.9), max: 0.9, sz: rnd(2, 4), rot: rnd(0, TAU), vr: rnd(-12, 12), drag: 3 }); }
   shakeAt(cx, cy, 2.5, 420); ev('roof.fall', cx, cy);
@@ -274,10 +295,6 @@ function roofView(vw, x0, y0, x1, y1) {
   const x = Math.max(0, Math.floor(x0)), y = Math.max(0, Math.floor(y0)), w = Math.min(WW, Math.ceil(x1)) - x, h = Math.min(WH, Math.ceil(y1)) - y; if (w <= 0 || h <= 0) return null;
   if (ROOF_V.width < w || ROOF_V.height < h) { ROOF_V.width = Math.max(ROOF_V.width, w); ROOF_V.height = Math.max(ROOF_V.height, h); }
   const g = ROOF_V.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, w, h); g.drawImage(ROOF_C, x, y, w, h, 0, 0, w, h);
-  if (SUNNOW) {     // drawn over the light: lit here as the light lit a flat top (sunTone's sunlit colour)
-    const [r, gg, b] = sunTone().li; g.globalCompositeOperation = 'multiply'; g.fillStyle = `rgb(${r * 255 | 0},${gg * 255 | 0},${b * 255 | 0})`; g.fillRect(0, 0, w, h);
-    g.globalCompositeOperation = 'destination-in'; g.drawImage(ROOF_C, x, y, w, h, 0, 0, w, h); g.globalCompositeOperation = 'source-over';
-  }
   const eyes = viewSols(vw).map(posOf), inside = CFG.clearLos !== false || eyes.some(o => roofAt(o.x, o.y) === 1);
   const dt = Math.min(0.1, Math.max(0, M.time - (vw.rfT ?? M.time))); vw.rfT = M.time; vw.rf = clamp((vw.rf || 0) + (inside ? dt : -dt) * 4, 0, 1);
   const f = vw.rf; if (f <= 0) return { c: ROOF_V, x, y, w, h };
