@@ -138,7 +138,7 @@ button.hov { outline: 2px solid #ff4fd8; outline-offset: -2px; }
   <div class="bar" id="tools">
     <button data-t="pen" data-i="pen" class="on">Pen</button><button data-t="erase" data-i="eraser">Erase</button><button data-t="fill" data-i="bucket">Fill</button>
     <button data-t="sel" data-i="select">Select</button><button data-t="arr" data-i="array">Array</button><button data-t="pick" data-i="pipette">Pick</button>
-    <button data-t="shade" data-i="shade" class="art">Shade</button><button data-t="blur" data-i="blur" class="art">Blur</button><button data-t="grad" data-i="grad" class="art">Gradient</button>
+    <button data-t="shade" data-i="shade" class="art">Shade</button><button data-t="blur" data-i="blur">Blur</button><button data-t="grad" data-i="grad" class="art">Gradient</button>
   </div>
 </div>
 <div class="menu" id="mFile">
@@ -242,7 +242,7 @@ const ICONS = {
 const TIPS = { pen: 'Pen: paint (Set writes the value, Nudge adds to it)', erase: 'Erase to 0', fill: 'Fill: flood the area (Set / Nudge, Tol = how alike)', sel: 'Select: drag a box (New / + add / − take away); tap to deselect',
   arr: 'Array: drag from the selection to repeat it', pick: 'Pick the value under a pixel (or hold anywhere on the canvas)', chH: 'Height channel (0–63)', chR: 'Reflectivity channel', chE: 'Glow channel',
   set: 'Set: pen and fill write this value', nudge: 'Nudge: pen and fill add this (− lowers), once per pixel per stroke', vDn: 'One less', vUp: 'One more', val: 'Value / nudge step', tol: 'Fill tolerance: how close a pixel must be to join',
-  chA: 'Art: paint the colours (atlas.png)', shade: 'Shade: moves colours along their palette row (lighter / darker), once per pixel per stroke', blur: 'Blur: softens what it passes over, once per pixel per stroke',
+  chA: 'Art: paint the colours (atlas.png)', shade: 'Shade: moves colours along their palette row (lighter / darker), once per pixel per stroke', blur: 'Blur: softens what it passes over, once per pixel per stroke (colours, or the heights / reflection / glow)',
   grad: 'Gradient: drag across the selection (or the area you start in), main colour to second', gap: 'Gap between the array copies', pch: 'Which channels the paste / array writes', sel0: 'New selection', sel1: 'Add to the selection', sel2: 'Take from the selection' };
 const ico = k => `<svg viewBox="0 0 24 24">${ICONS[k]}</svg>`;
 const tipOf = e => TIPS[e.dataset.t] || TIPS[e.id] || TIPS[e.dataset.m] || (e.closest('#smode') && TIPS['sel' + e.dataset.m]) || e.dataset.tip || '';
@@ -661,6 +661,7 @@ function apply(x, y) {
   if (st.ch === ART) { artApply(x, y); return; }
   if (st.tool === 'pen') brush(x, y, i => put(i, amt(i)));
   else if (st.tool === 'erase') brush(x, y, i => put(i, 0));
+  else if (st.tool === 'blur') brush(x, y, i => { if (!DONE.has(i)) { DONE.add(i); put(i, blurAt(i)); } });
 }
 function flood(x, y) {
   if (st.ch === ART) { const c = C1(); for (const i of regionArt(x, y)) putC(i, c); return; }
@@ -697,9 +698,14 @@ function shadeOf(c, d) {
   for (const r of st.pal) { const j = r.indexOf(h); if (j >= 0) { const k = clamp(j + d, 0, r.length - 1); return k === j ? null : [...rgb(r[k]), c[3]]; } }
   return null;
 }
-/* blur: a 3x3 tent of the pixels as they were, weighted by their alpha (alpha lock keeps this pixel's own) */
+/* blur: a 3x3 tent of the pixels as they were. Art: weighted by their alpha (alpha lock keeps this pixel's own); a height,
+   reflection or glow plane: of the pixels it may paint (on the art, in the selection), so the sprite's edge doesn't pull to 0 */
 function blurAt(i) {
   const x = i % W, y = (i - x) / W; let r = 0, g = 0, b = 0, a = 0, n = 0;
+  if (st.ch !== ART) {
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const X = x + dx, Y = y + dy; if (!can(X, Y)) continue; const w = dx && dy ? 1 : dx || dy ? 2 : 4; r += was(Y * W + X) * w; n += w; }
+    return n ? Math.round(r / n) : was(i);
+  }
   for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
     const X = x + dx, Y = y + dy; if (!inRect(X, Y)) continue; const j = Y * W + X, w = dx && dy ? 1 : dx || dy ? 2 : 4, A = was(j, ACH[3]) * w;
     r += was(j, ACH[0]) * A; g += was(j, ACH[1]) * A; b += was(j, ACH[2]) * A; a += A; n += w * 255;
@@ -1288,7 +1294,7 @@ function ui() {
   $('views').className = ['', 'only2', 'only3'][st.lay]; $('mShare').hidden = !navigator.canShare; $('info').hidden = !st.rdo;
   need2 = need3 = true; savePrefs(); requestAnimationFrame(() => { need2 = need3 = true; });
 }
-const setCh = c => { pasteEnd(false); st.ch = c; if (c !== ART && /^(shade|blur|grad)$/.test(st.tool)) st.tool = 'pen'; full2 = true; dirty3 = true; ui(); };
+const setCh = c => { pasteEnd(false); st.ch = c; if (c !== ART && /^(shade|grad)$/.test(st.tool)) st.tool = 'pen'; full2 = true; dirty3 = true; ui(); };
 $('chH').onclick = () => setCh(0); $('chR').onclick = () => setCh(1); $('chE').onclick = () => setCh(2); $('chA').onclick = () => setCh(ART);
 $('alock').onclick = () => { st.alock = !st.alock; ui(); }; $('glock').onclick = () => { st.glock = !st.glock; ui(); }; $('gsz').onclick = () => { st.gsz = (st.gsz + 1) % GRIDS.length; ui(); };
 $('shd').onclick = () => { st.shd = -st.shd; ui(); }; $('gdi').onclick = () => { st.gdi = !st.gdi; ui(); };

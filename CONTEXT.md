@@ -896,3 +896,8 @@ ROOF_STYLES, MAP_ROOFS and roofPaint(H, st, list, snow, grit) live in src/2d_hou
   Changes to harness.js, build.py or 1_core.js run everything. Render-only files are checked with tools/scene.mjs.
 - t18 was flaky (a random open strip sometimes out of bounds or beside a crate): its strip now avoids both.
 - t23 (co-op: "bled out", "no respawn mid-wave") still fails, as it did before these changes.
+
+## Height Painter: Blur on the heights
+- heightmap/index.html: the Blur tool (was Art only) now works on Height, Refl and Glow too: the same 3x3 tent as the art
+  blur (blurAt), of the pixels as they were when the stroke began, once per pixel per stroke. Only pixels the brush may
+  paint count (on the art, in the selection), so a sprite's edge doesn't get pulled down to 0.
