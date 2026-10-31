@@ -160,7 +160,8 @@ function testCam(vw, baseZ) {
   let q;
   if (p.cam === 'SCENE') { const L = ['INSIDE', 'OUTSIDE', ...Object.keys(p.at).filter(k => p.at[k] !== 'none')].map(testPos).filter(Boolean); q = [L.reduce((a, b) => a + b[0], 0) / L.length, L.reduce((a, b) => a + b[1], 0) / L.length]; }
   else q = testPos(p.cam);
-  return q ? [q[0], q[1], baseZ * (p.zoom || 1)] : null;
+  const pn = p.pan || [0, 0];     // pan: the camera moving (world px a s of the scene: [vx, vy])
+  return q ? [q[0] + pn[0] * (M.time - TEST.t0), q[1] + pn[1] * (M.time - TEST.t0), baseZ * (p.zoom || 1)] : null;
 }
 /* SPOT NAMES: each spot, named, on the ground */
 function testDraw() {
@@ -175,7 +176,7 @@ function testState() {
     spots: Object.fromEntries([...TEST_SPOTS, 'WINDOW', 'ROOF'].filter(k => S[k]).map(k => [k, r(S[k])])),
     soldiers: M.sol.filter(s => s.alive).map(s => ({ name: s.name, team: s.team, at: r([s.x, s.y]), hp: Math.round(s.hp), veh: s.veh ? s.veh.type : undefined, scene: s.scene, think: s.bot && !s.dummy ? botThought(s, s.bot) : devAI(s) && s.auto ? botThought(s, s.auto) : undefined })),
     vehicles: M.vehicles.filter(v => v.active && !v.dead).map(v => ({ type: v.type, at: r([v.x, v.y]), hp: Math.round(v.hp), spd: Math.round(v.spd || 0), scene: v.scene })),
-    wrecks: M.wrecks.map(w => ({ type: w.type, at: r([w.x, w.y]) })), cam: M.views[0] && r([M.views[0].cam.x, M.views[0].cam.y])
+    wrecks: M.wrecks.map(w => ({ type: w.type, at: r([w.x, w.y]) })), cam: M.views[0] && r([M.views[0].cam.x, M.views[0].cam.y]), wck: TEST.wck
   };
 }
 /* the runner's way in: a local dev match on a map (one keyboard player, bots as asked) */

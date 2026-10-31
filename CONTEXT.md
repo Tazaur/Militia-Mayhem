@@ -1016,3 +1016,28 @@ ADAPTIVE LIGHTING (`lightA`, default OFF; 5e_light.js `lightAdapt`, called from 
   - `--gpu` (D3D11 ANGLE, no vsync or frame cap);
   - `--cfg '{json}'` (CFG overrides);
   - `--bench S` (S seconds of rAF; prints "BENCH … GPU total ms: stages").
+
+## SHADOW CACHE (perf plan 2 + 3)
+SHADOW CACHE setting (`CFG.shCache`: 2 SUN + MEMORY, the default; 1 SUN; 0 OFF), in PERFORMANCE. All in 5e_light.js `wc*`.
+- **What's cached.** What stands still (lists a, w, t and the ground: walls, hay, fences, sandbags, wrecks, roofs without channels) is swept once into a world-anchored cache.
+  - The cache covers the buffer's world box plus a margin of a quarter of the view, at the frame's scale.
+  - Each view has its own cache (`wcFor`, split screen).
+- **Each frame.**
+  - Only the boxes round list u (units, vehicles, crates, items, nades, flags), stretched away from the sun by each quad's shadow (`wcRegions`, ≤16, `joinR`), are swept.
+  - The rest is copied from the cache (program CC, `wcCopy`: nearest texel; boxes discarded).
+  - The memory sweep (out of sight) is all copied.
+- **Rebuilds.**
+  - A rebuild goes into the back (`wc.b`) while the front is still used. The heights come from the frame's own lists (`wcHeights`, in sunDrawHeights), then 4 sweep passes a frame (`wcStep`; `sunSweep` takes a pass range and target size now). A finished sweep is swapped into the front.
+  - A rebuild starts (`wcPlan`) when the view nears the box edge (a third of the margin), or once the key (scale, sun, SHADOW LENGTH) or the static lists' hash (`wcHash`, plus GMATV, the painted ground's version) has changed and then held for 3 frames. Until then the whole sweep runs, as with the cache off.
+  - The memory's cache is refreshed every 3 s for 30 s after a static change (`MEM_T`, `MEM_C`).
+- **Statics are gathered over the cache's box.** sunHeights takes `vs`, the vis for what stands still (`wcAnchor`).
+- **Correctness.** Scene param `wck` reads the cached sweep back against the whole one each frame. Its line "SHADOW CACHE CHECK" is in the log, and `<scene>_wck_<sun|memory>.png` is saved for the worst frame: the skyline grey, misses red, swept boxes blue.
+  - Still camera: sun 0 texels off.
+  - Panning: a 1 px edge shift only (core ≤48 texels).
+  - Memory: only the swaying crowns in sight (the memory is used out of sight only).
+- **Bench, window scene, ULTRA.**
+  - GPU 24.1 → 18.1 ms; SUN SHADOWS 3.7 → 1.7, MEMORY 3.8 → 0.1.
+  - HIGH: 66 → 77 fps.
+  - Panning 150 px/s on ULTRA: mean 21.4 → 16.8 ms, p95 43.5 → 33.6.
+- **GPU STAGES split.** New labels MEMORY SHADOWS, UPPER SHADOWS (the u=9 channel/roof/crown sweeps, until now counted under POINT LIGHTS) and SHADOW CACHE.
+- **Scene param `pan: [vx, vy]`** moves the camera (world px/s).

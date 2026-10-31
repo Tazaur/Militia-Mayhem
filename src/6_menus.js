@@ -456,7 +456,8 @@ const SETS = {
   quality: { n: 'PRESET', o: QUALITY.map(([n], i) => [i, n]), get: qualPreset, set: i => { const r = CFG.res; Object.assign(CFG, QUALITY[i][1]); if (CFG.res !== r) resize(); }, lab: i => i < 0 ? 'CUSTOM' : null },
   lightQ: choice('LIGHTING QUALITY', 'lightQ', [[0, 'LOW'], [1, 'MEDIUM'], [2, 'HIGH']]),
   lightA: choice('ADAPTIVE LIGHTING', 'lightA', [[false, 'OFF'], [true, 'ON']]),
-  mrt: choice('LIGHT MAPS', 'mrt', [[true, 'ONE PASS'], [false, 'ONE A MAP']]),     // WebGL2: the light's maps in one pass (MRT), or each its own     // the light's resolution follows the frame time, up to LIGHTING QUALITY (lightAdapt)
+  mrt: choice('LIGHT MAPS', 'mrt', [[true, 'ONE PASS'], [false, 'ONE A MAP']]),
+  shCache: choice('SHADOW CACHE', 'shCache', [[2, 'SUN + MEMORY'], [1, 'SUN'], [0, 'OFF']]),     // what stands still swept once, kept round the view (wcPlan)     // WebGL2: the light's maps in one pass (MRT), or each its own     // the light's resolution follows the frame time, up to LIGHTING QUALITY (lightAdapt)
   shLay: choice('FLOATING SHADOWS', 'shLay', [[true, 'SEPARATE'], [false, 'MERGED']]),
   shLen: choice('SHADOW LENGTH', 'shLen', [[128, 'FULL'], [32, 'SHORT']]),
   tops: choice('ROOF & TREETOP LIGHT', 'tops', [['lit', 'FULL'], ['flat', 'FLAT']]),
@@ -484,7 +485,7 @@ const SETS = {
   tAuto: { n: 'DRAG TO AIM', o: [['on', 'AIMS + FIRES'], ['off', 'AIMS ONLY'], ['range', 'FIRES IN RANGE']], get: () => TOUCH.auto, set: v => { TOUCH.auto = v; store.set('autofire', v); } }
 };
 /* core tabs (title row), each with its pages (sub tabs, the row under it); Q / E or LB / RB step through every page */
-const SET_TABS = [['VIDEO', [['GRAPHICS', ['style', 'clearLos', 'fullscreen', 'camera']], ['FOG OF WAR', ['fogStyle', 'fogD', 'fogK', 'fogE', 'fogW', 'roofFog']], ['PERFORMANCE', ['quality', 'res', 'lightQ', 'lightA', 'mrt', 'fogQ', 'smk', 'trees', 'tops', 'rec']], ['LIGHTS', ['lights', 'refl']], ['SHADOWS', ['sun', 'shLay', 'shLen', 'shMem', 'shPt']]]],
+const SET_TABS = [['VIDEO', [['GRAPHICS', ['style', 'clearLos', 'fullscreen', 'camera']], ['FOG OF WAR', ['fogStyle', 'fogD', 'fogK', 'fogE', 'fogW', 'roofFog']], ['PERFORMANCE', ['quality', 'res', 'lightQ', 'lightA', 'mrt', 'shCache', 'fogQ', 'smk', 'trees', 'tops', 'rec']], ['LIGHTS', ['lights', 'refl']], ['SHADOWS', ['sun', 'shLay', 'shLen', 'shMem', 'shPt']]]],
   ['AUDIO', [['VOLUME', ['volMaster', 'volSfx', 'volMus']], ['SOUND', ['sound']]]], ['HUD', [['DISPLAY', ['fps', 'minimap', 'teams']], ['DEV', ['dev']]]],
   ['CONTROLS', [['TOUCH', ['tSize', 'tAlpha', 'tFireX', 'tFireY', 'tLfire', 'tAuto']], ['BINDINGS', null]]]];
 const SET_PAGES = SET_TABS.flatMap(([, P], i) => P.map((_, j) => [i, j]));

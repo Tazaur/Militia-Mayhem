@@ -260,15 +260,15 @@ function gMapList() {
 gMapList();
 if (typeof addEventListener !== 'undefined' && typeof store !== 'undefined') addEventListener('storage', e => { if (e.key !== 'mmgl.maplab') return; for (const k in GMAP_LAB) delete GMAP_LAB[k]; Object.assign(GMAP_LAB, store.get('maplab', {})); gMapList(); });
 /* the ground of a stamped map: colour into the ground, material into GMAT (GL only: the sun pass is GL only) */
-let GMAT = null, GMAX = 0;
+let GMAT = null, GMAX = 0, GMATV = 0;
 function paintStamped() {
   const G = MAP.gmap;
   if (typeof GL !== 'undefined' && GL) { if (!GMAT || GMAT.width !== WW || GMAT.height !== WH) GMAT = mkG(WW, WH); } else GMAT = null;
-  GMAX = gBake(G, gx, GMAT && GMAT.getContext('2d'), null);
+  GMAX = gBake(G, gx, GMAT && GMAT.getContext('2d'), null); GMATV++;     // GMATV: its version (the shadow cache's hash)
   if (!gReady(IMG) || (typeof MIMG !== 'undefined' && MIMG && !gReady(MIMG))) for (const im of [IMG, typeof MIMG !== 'undefined' ? MIMG : null]) if (im && !gReady(im)) im.addEventListener('load', () => { if (MAP && MAP.gmap === G) paintGround(); }, { once: true });     // the atlas came late: again with the real textures
 }
 /* one more stamp, baked over only its box (destruction later: a crater, scorch) */
 function gStampAdd(s) {
   const G = MAP.gmap; if (!G) return; G.stamps.push(s); const b = gBox(s), x = Math.max(0, b.x), y = Math.max(0, b.y);
-  GMAX = Math.max(GMAX, gBake(G, gx, GMAT && GMAT.getContext('2d'), { x, y, w: Math.min(G.w, b.x + b.w) - x, h: Math.min(G.h, b.y + b.h) - y }) || 0);     // the whole box again (the stamps under it, the edge's tint)
+  GMAX = Math.max(GMAX, gBake(G, gx, GMAT && GMAT.getContext('2d'), { x, y, w: Math.min(G.w, b.x + b.w) - x, h: Math.min(G.h, b.y + b.h) - y }) || 0); GMATV++;     // the whole box again (the stamps under it, the edge's tint)
 }

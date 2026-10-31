@@ -64,7 +64,8 @@ if (bench) {     // frames timed by rAF (the page's own loop draws them); the GP
   bres = `BENCH ${b.n} frames · mean ${b.mean.toFixed(2)} ms (${(1000 / b.mean).toFixed(0)} fps) · p95 ${b.p95.toFixed(2)} ms · light ${b.light} · GPU ${b.gt.toFixed(2)} ms: ${b.gpu}`;
 }
 const st = await js('testState()');
-const text = [`${scene} on ${st.map} · ${st.time} s · ${st.fps} fps`, '', ...st.log, '', 'SPOTS ' + JSON.stringify(st.spots), '', 'SOLDIERS', ...st.soldiers.map(s => '  ' + JSON.stringify(s)), 'VEHICLES', ...st.vehicles.map(v => '  ' + JSON.stringify(v)), 'WRECKS ' + JSON.stringify(st.wrecks), '', ...(errs.length ? ['ERRORS', ...errs] : ['no errors'])].join('\n');
+const text = [`${scene} on ${st.map} · ${st.time} s · ${st.fps} fps`, '', ...st.log, '', 'SPOTS ' + JSON.stringify(st.spots), '', 'SOLDIERS', ...st.soldiers.map(s => '  ' + JSON.stringify(s)), 'VEHICLES', ...st.vehicles.map(v => '  ' + JSON.stringify(v)), 'WRECKS ' + JSON.stringify(st.wrecks), ...(st.wck ? ['SHADOW CACHE CHECK ' + JSON.stringify(st.wck)] : []), '', ...(errs.length ? ['ERRORS', ...errs] : ['no errors'])].join('\n');
 fs.writeFileSync(path.join(out, scene + '.log'), text);
+for (const [k, u] of Object.entries(await js('JSON.stringify(TEST.wckPng || {})').then(JSON.parse))) fs.writeFileSync(path.join(out, `${scene}_wck_${k}.png`), Buffer.from(u.split(',')[1], 'base64'));     // the shadow cache check's worst frames
 console.log(text + '\n\n' + files.join('\n') + (bres ? '\n' + bres : ''));
 done(errs.length ? 2 : 0);

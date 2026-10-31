@@ -47,7 +47,7 @@ function devTime(dt, um, rm) {
 /* settings › FPS COUNTER › GPU STAGES (GL): every pipe() hook in the frame closes a GPU timer named for the work just done
    (grouped: GPUG), read back a few frames late; averaged a frame over each second (GPUP.out: [label, ms] slowest first) */
 const GPUP = { X: undefined, q: null, pend: [], A: {}, n: 0, t: 0, out: [], worst: 0, wk: 0, wt: 0 };
-const GPUG = [[/^(memory|fog-)/, 'FOG MEMORY'], [/^(ground|flags|q|lights2d)/, 'SPRITES'], [/^(cpu-heights|gpu-h|gpu-mat)/, 'HEIGHTS'], [/^gpu-sweep/, 'SUN SHADOWS'],
+const GPUG = [[/^(memory|fog-)/, 'FOG MEMORY'], [/^(ground|flags|q|lights2d)/, 'SPRITES'], [/^(cpu-heights|gpu-h|gpu-mat)/, 'HEIGHTS'], [/^gpu-sweep/, 'SUN SHADOWS'], [/^gpu-msweep/, 'MEMORY SHADOWS'], [/^gpu-layers/, 'UPPER SHADOWS'], [/^gpu-cache/, 'SHADOW CACHE'],
   [/^gpu-light/, 'POINT LIGHTS'], [/^gpu-map/, 'LIGHT MAPS'], [/^comp/, 'LIGHT COMPOSITE'], [/^(softfog|ov-|overlay-done)/, 'FOG OVERLAY'], [/^(smk-|smokes)/, 'SMOKE'],
   [/^(lasers|tags|reticle)/, 'MARKS'], [/^grade/, 'WEATHER + GRADE']];
 const gpuOn = () => GL && CFG.fps === 3;

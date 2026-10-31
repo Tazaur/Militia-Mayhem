@@ -479,6 +479,9 @@ void main() { vec2 t = floor((gl_FragCoord.xy - X.yz) / X.x * Z); gl_FragColor =
     // that shows (under a crown: what's under it; MD 1, the upper things' own sweep: into B, left out indoors), G the upper one (the roof's slab, the crown's top: upperLit)
     const RS = prog(VS, `precision highp float; ${TX} uniform sampler2D B; uniform float MD;
 void main() { vec2 p = gl_FragCoord.xy; vec4 b = texture2D(B, (floor(p) + 0.5) / S); float l = sunIn(b, hg(p, false, gm(p)) + 0.75), u = sunIn(b, hu(p) + 0.75); gl_FragColor = MD > 0.5 ? vec4(0., u, l, 1.) : vec4(l, u, 0., 1.); }`, ['p']);
+    // the shadow cache's copy (wcCopy): its texel under each buffer px (O: buffer px to the cache's), but in the boxes RR (RN of them)
+    const CC = prog(VS, `precision highp float; uniform sampler2D C; uniform vec2 O, F; uniform vec4 RR[16]; uniform float RN;
+void main() { vec2 p = gl_FragCoord.xy; for (int i = 0; i < 16; i++) { if (float(i) >= RN) break; vec4 r = RR[i]; if (p.x > r.x && p.y > r.y && p.x < r.z && p.y < r.w) discard; } gl_FragColor = texture2D(C, (floor(p + O) + 0.5) / F); }`, ['p']);
     const buf = d => { const o = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, o); gl.bufferData(gl.ARRAY_BUFFER, d, gl.STATIC_DRAW); return o; };
     const tri = buf(new Float32Array([-1, -1, 3, -1, -1, 3])), quad = buf(new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1])), ib = {};
     for (const n in HL) ib[n] = gl.createBuffer();
@@ -498,7 +501,9 @@ void main() { vec2 p = gl_FragCoord.xy; vec4 b = texture2D(B, (floor(p) + 0.5) /
     gl.useProgram(HP); gl.uniform1i(HU.A, 1); for (const [p, u] of CPM ? [[CP, CU], [CPM, CMU]] : [[CP, CU]]) { gl.useProgram(p); gl.uniform1i(u.H, 0); gl.uniform1i(u.MT, 2); gl.uniform1i(u.LT, 3); gl.uniform1i(u.SWT, 4); gl.uniform1i(u.SWS, 6); gl.uniform1i(u.HS, 7); gl.uniform1i(u.SWL, ly ? 10 : 4); gl.uniform1i(u.UT, ly ? 11 : 0); gl.uniform1f(u.UL, 0); } gl.useProgram(P); gl.uniform1i(U.H, 0); gl.useProgram(SP); gl.uniform1i(SU.H, 0); gl.uniform1i(SU.B, 4); gl.useProgram(RC); gl.uniform1i(RU.M, 5); gl.useProgram(RS); gl.uniform1i(LU.H, 0); gl.uniform1i(LU.B, ly ? 9 : 4);
     for (const [p, u] of [[P, U], [CP, CU], [RS, LU]]) { gl.useProgram(p); gl.uniform1i(u.UT, ly ? 11 : 0); gl.uniform1f(u.UL, 0); }
     const MR = CPM ? { t: [0, 1, 2].map(() => texture(gl.NEAREST)), fb: gl.createFramebuffer(), w: 0, h: 0 } : null;     // the MRT pass's three targets
-    _sun = { out: GL ? GC.fb : null, gl, GC, IA, MX, P, CP, CPM, CMU, MR, HP, SP, PP, RC, RS, U, CU, HU, SU, PU, RU, LU, ly, L2, pb: gl.createBuffer(), pv: new Float32Array(4096), mem: new Map(), ST, FS, SS, FSS, HTS, FBS, tri, quad, ib, AT, HT, MT, LT, FB, FM, FL, DB, fw: 0, fh: 0, lw: 0, lh: 0, aw: w, ah: h, pl: new Float32Array(LMAX * 4), pd: new Float32Array(LMAX * 4), pk: new Float32Array(LMAX), pc: new Float32Array(LMAX * 3), ev: new Float32Array(8) };
+    const CCU = uni(CC, ['C', 'O', 'F', 'RR', 'RN']); gl.useProgram(CC); gl.uniform1i(CCU.C, 13);
+    const wcOK = gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS) >= 14;     // the shadow caches (wcFor): 12 their heights, 13 their pair and fronts
+    _sun = { out: GL ? GC.fb : null, gl, GC, IA, MX, P, CP, CPM, CMU, MR, CC, CCU, wcOK, wcs: new Map(), wc: null, texture, HP, SP, PP, RC, RS, U, CU, HU, SU, PU, RU, LU, ly, L2, pb: gl.createBuffer(), pv: new Float32Array(4096), mem: new Map(), ST, FS, SS, FSS, HTS, FBS, tri, quad, ib, AT, HT, MT, LT, FB, FM, FL, DB, fw: 0, fh: 0, lw: 0, lh: 0, aw: w, ah: h, pl: new Float32Array(LMAX * 4), pd: new Float32Array(LMAX * 4), pk: new Float32Array(LMAX), pc: new Float32Array(LMAX * 3), ev: new Float32Array(8) };
   } catch (e) { console.warn('sun off:', e.message); _sun = false; }
   return _sun;
 }
@@ -667,14 +672,14 @@ function hLayers() {
 /* a shape's [top, bottom]: SUNH height h (+ add) standing on its lift */
 const shp = (h, n) => { const P = sunP(n), b = P.lift || 0; return [h + b + (P.add || 0), b]; };
 /* everything solid, as heights (the same things, and the same hidden ones left out, as the frame draws) */
-function sunHeights(vis, hidden, vw) {
+function sunHeights(vis, hidden, vw, vs = vis) {     // vs: what stands still, over the shadow cache's box (wcVis)
   UPX = null;
   if (GMAT && MAP.gmap) { hq(HL.g, WW / 2, WH / 2, WW / 2, 0, 0, WH / 2, 0, 0, 0, 0, 0, 1, 1, 0, 0.01); HMAX = Math.max(HMAX, GMAX); }     // the map editor's ground: its painted heights (a GL surface: rows bottom up)
   const [wt, wb] = shp(SUNH.wall, 'wall');
-  for (const b of MAP.buildings) { const [cx, cy] = b.f ? fromF(b.f, b.x + b.w / 2, b.y + b.h / 2) : [b.x + b.w / 2, b.y + b.h / 2]; if (vis(cx, cy, Math.max(b.w, b.h))) hbox(HL.w, cx, cy, b.w / 2, b.h / 2, b.f ? b.f.a : 0, 1, b.glass ? SUNH.glass : wt, b.glass ? 0 : wb, 0); }
+  for (const b of MAP.buildings) { const [cx, cy] = b.f ? fromF(b.f, b.x + b.w / 2, b.y + b.h / 2) : [b.x + b.w / 2, b.y + b.h / 2]; if (vs(cx, cy, Math.max(b.w, b.h))) hbox(HL.w, cx, cy, b.w / 2, b.h / 2, b.f ? b.f.a : 0, 1, b.glass ? SUNH.glass : wt, b.glass ? 0 : wb, 0); }
   const [t0, tb] = shp(SUNH.tree[0], 'tree'), t1 = shp(SUNH.tree[1], 'tree')[0], [h0, hb] = shp(SUNH.hay, 'hay'), [ft, fb] = shp(SUNH.fence, 'fence');
   for (const s of MAP.statics) {
-    if (!s.alive || !vis(s.x, s.y, 40)) continue;
+    if (!s.alive || !vs(s.x, s.y, 40)) continue;
     if (atlasTree(s)) hParts(s);     // its painted heights (treeParts)
     else if (s.type === 'tree') { const r = treeR(s); hbox(HL.t, s.x, s.y, r, r, 0, 2, t0, t1, tb); }     // a pine: no art yet, a dome
     else if (s.type === 'hay') hbox(HL.a, s.x, s.y, 13, 13, 0, 2, h0, h0 - SUNH.hay * 0.4, hb);
@@ -684,9 +689,9 @@ function sunHeights(vis, hidden, vw) {
   for (const it of M.items) if ((it.k === 'med' || it.k === 'ammo') && vis(it.x, it.y, 8)) hbox(HL.u, it.x, it.y, 6, 5, 0, 1, SUNH.item, 0, 0);
   for (const p of M.proj) if (p.k === 'nade' && vis(p.x, p.y, 8)) hbox(HL.u, p.x, nadeY(p), 3, 3, 0, 2, p.h + 3, p.h + 3, p.h);
   const [ct, cb] = shp(SUNH.crate, 'crate'); for (const c of M.crates) if (c.live && vis(c.x, c.y, 14)) hbox(HL.u, c.x, c.y, 8, 8, c.a, 1, ct, cb, 0);
-  for (const A of MAP.arcs) { if (!vis(A.x, A.y, 50)) continue; const f = A.lost / A.bags.length; hpart(f < 0.25 ? 'bagarc0' : f < 0.75 ? 'bagarc1' : 'bagarc2', A.x, A.y, A.a); }
-  for (const w of M.wrecks) if (vis(w.x, w.y, 70) && w.t >= 1) hParts(w);
-  for (const H of MAP.houses) if (H.roof && vis((H.bb[0] + H.bb[2]) / 2, (H.bb[1] + H.bb[3]) / 2, Math.max(H.bb[2] - H.bb[0], H.bb[3] - H.bb[1]) / 2 + SUB)) for (let j = 0; j < H.H; j++) for (let i = 0; i < H.W; i++) {     // the roof, a run of cells a quad, turned with its house
+  for (const A of MAP.arcs) { if (!vs(A.x, A.y, 50)) continue; const f = A.lost / A.bags.length; hpart(f < 0.25 ? 'bagarc0' : f < 0.75 ? 'bagarc1' : 'bagarc2', A.x, A.y, A.a); }
+  for (const w of M.wrecks) if (vs(w.x, w.y, 70) && w.t >= 1) hParts(w);
+  for (const H of MAP.houses) if (H.roof && vs((H.bb[0] + H.bb[2]) / 2, (H.bb[1] + H.bb[3]) / 2, Math.max(H.bb[2] - H.bb[0], H.bb[3] - H.bb[1]) / 2 + SUB)) for (let j = 0; j < H.H; j++) for (let i = 0; i < H.W; i++) {     // the roof, a run of cells a quad, turned with its house
     if (H.roof[j * H.W + i] !== 1) continue; let e = i; while (e + 1 < H.W && H.roof[j * H.W + e + 1] === 1) e++;
     const [cx, cy] = fromF(H.f, (i + e + 1) * SUB / 2, (j + 0.5) * SUB), hw = (e + 1 - i) * SUB / 2; i = e;
     hbox(_sun && _sun.ly ? HL.p : HL.t, cx, cy, hw, SUB / 2, H.a, 1, 0, 64, 1, 0); HMAX = Math.max(HMAX, ROOF_Z[1]);
@@ -714,18 +719,24 @@ function hKept(S) { const { gl, MX } = S; gl.blendEquation(MX.MAX_EXT); gl.enabl
 /* the quads (uploaded once, one buffer per list) into the height texture HT (box cleared, then a MAX, w over, t MAX)
    and the materials MT (depth: the highest top wins); fog: into the memory's heights where you see, then read back for
    out of sight (HTS) */
+/* the frame's heights (a MAX, u MAX: left out of the shadow cache's, w over, t MAX), ground first; p after each */
+function hMain(S, u, p = () => {}) {
+  const { gl, MX } = S, ground = () => { if (!HL.g.n || !GMAT.tex) return; gxFlushIf(GMAT); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, GMAT.tex); hDraw(S, 'g'); gl.bindTexture(gl.TEXTURE_2D, S.AT); gl.activeTexture(gl.TEXTURE0); };     // the stamped ground: its own material map where the atlas is
+  gl.blendEquation(MX.MAX_EXT); gl.enable(gl.BLEND); ground(); hDraw(S, 'a'); p('a'); if (u) { hDraw(S, 'u'); p('u'); } gl.disable(gl.BLEND); hDraw(S, 'w'); p('w'); gl.enable(gl.BLEND); hDraw(S, 't'); gl.disable(gl.BLEND); p('t');
+}
 function sunDrawHeights(S, X, box, fog, vw) {
-  const { gl, MX } = S, lists = ['a', 'u', 'w', 't', 'm', 'x'], draw = n => hDraw(S, n);
-  const ground = () => { if (!HL.g.n || !GMAT.tex) return; gxFlushIf(GMAT); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, GMAT.tex); hDraw(S, 'g'); gl.bindTexture(gl.TEXTURE_2D, S.AT); gl.activeTexture(gl.TEXTURE0); };     // the stamped ground: its own material map where the atlas is     // x: the channels past the first, into HT after the frame's sweep (sunLayers)
+  const { gl } = S, lists = ['a', 'u', 'w', 't', 'm', 'x'], draw = n => hDraw(S, n);     // x: the channels past the first, into HT after the frame's sweep (sunLayers)
+  const ground = () => { if (!HL.g.n || !GMAT.tex) return; gxFlushIf(GMAT); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, GMAT.tex); hDraw(S, 'g'); gl.bindTexture(gl.TEXTURE_2D, S.AT); gl.activeTexture(gl.TEXTURE0); };
   hBegin(S, X, [S.fw, S.fh]); hUp(S, [...lists, 'k', 'g', 'p']);
   gl.viewport(0, 0, S.fw, S.fh); gl.scissor(...box); gl.clearColor(0, 0, 0, 0);
   gl.bindFramebuffer(gl.FRAMEBUFFER, S.FB); gl.clear(gl.COLOR_BUFFER_BIT);
-  gl.blendEquation(MX.MAX_EXT); gl.enable(gl.BLEND); ground(); draw('a'); pipe('gpu-h', { l: 'a' }); draw('u'); pipe('gpu-h', { l: 'u' }); gl.disable(gl.BLEND); draw('w'); pipe('gpu-h', { l: 'w' }); gl.enable(gl.BLEND); draw('t'); gl.disable(gl.BLEND); pipe('gpu-h', { l: 't' });
+  hMain(S, true, l => pipe('gpu-h', { l }));
   S.ul = !!(S.ly && HL.p.n); S.upx = UPX;     // the upper things apart: their own heights (L2.U, MAX)
   if (S.ly) { gl.bindFramebuffer(gl.FRAMEBUFFER, S.L2.FU); gl.clear(gl.COLOR_BUFFER_BIT); if (S.ul) { gl.enable(gl.BLEND); draw('p'); gl.disable(gl.BLEND); } pipe('gpu-h', { l: 'p' }); }
   gl.bindFramebuffer(gl.FRAMEBUFFER, S.FM); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); gl.uniform1f(S.HU.MM, 1);
   gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS); ground(); for (const n of lists) draw(n); gl.disable(gl.DEPTH_TEST); pipe('gpu-mat');
   if (fog) { memStamp(S, vw); memRecall(S, vw, X, box); pipe('gpu-hs'); }     // the remembered things alone
+  if (S.wc && S.wc.b.st === 'h') wcHeights(S);     // a shadow cache starting: its heights from these lists
   hInst(S, 0);
   if (M.dev) DEV.nq = lists.reduce((a, n) => a + HL[n].n, 0);
   for (const n in HL) HL[n].n = 0;
@@ -764,10 +775,10 @@ function memStamp(S, vw) {
   gl.bindBuffer(gl.ARRAY_BUFFER, S.pb); gl.bufferData(gl.ARRAY_BUFFER, S.pv.subarray(0, n), gl.STREAM_DRAW); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.drawArrays(gl.TRIANGLES, 0, n / 2);
   gl.stencilFunc(gl.EQUAL, 1, 0xff); gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP); hBegin(S, [FOGK, 0, 0], [e.W, e.H]); hKept(S); gl.disable(gl.STENCIL_TEST);
 }
-/* the memory's heights read back into HTS over the view's box (buffer px by X) */
-function memRecall(S, vw, X, box) {
+/* the memory's heights read back into HTS over the view's box (buffer px by X), or into fb */
+function memRecall(S, vw, X, box, fb = S.FBS, F = [S.fw, S.fh]) {     // fb, F: another target (the shadow cache's heights)
   const { gl, RU } = S, e = memOf(S, vw); hInst(S, 0);
-  gl.bindFramebuffer(gl.FRAMEBUFFER, S.FBS); gl.viewport(0, 0, S.fw, S.fh); gl.scissor(...box);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.viewport(0, 0, ...F); gl.scissor(...box);
   gl.useProgram(S.RC); gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_2D, e.t); gl.activeTexture(gl.TEXTURE0);
   gl.uniform3f(RU.X, ...X); gl.uniform2f(RU.F, e.W, e.H); gl.uniform1f(RU.Z, FOGK);
   gl.bindBuffer(gl.ARRAY_BUFFER, S.tri); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -777,21 +788,22 @@ function memRecall(S, vw, X, box) {
    left on unit u for the light: enough doublings to reach the tallest thing's shadow (mxh / DH px; DH: how much lower a
    blocker reads per buffer px it's sunward). Each pass only over what the passes after it read (vrs: the boxes wanted in the
    buffer (the view; a channel's regions), each reaching sunward by their steps still to come; the last: those alone) */
-function sunSweep(S, K, mxh, box, reg, vrs, T, FS, u, hu) {
+function sunSweep(S, K, mxh, box, reg, vrs, T, FS, u, hu, F = [S.fw, S.fh], j0 = 0, j1 = 99) {     // F: the targets' size; j0..j1: only those passes (a cache built a few a frame: wcStep); the passes' count back
   const { gl, SU } = S, DH = Math.tan(sunEl()) / K, len = mxh / DH, dx = Math.cos(SUN.az), dy = Math.sin(SUN.az), st = u === 6;
-  gl.useProgram(S.SP); gl.uniform2f(SU.S, S.fw, S.fh); gl.uniform4f(SU.R, ...reg); gl.uniform2f(SU.D, dx, dy); gl.uniform1f(SU.DH, DH); gl.uniform1i(SU.H, hu); gl.uniform1i(SU.B, u);
-  gl.bindBuffer(gl.ARRAY_BUFFER, S.tri); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.viewport(0, 0, S.fw, S.fh); gl.activeTexture(gl.TEXTURE0 + u);
+  gl.useProgram(S.SP); gl.uniform2f(SU.S, ...F); gl.uniform4f(SU.R, ...reg); gl.uniform2f(SU.D, dx, dy); gl.uniform1f(SU.DH, DH); gl.uniform1i(SU.H, hu); gl.uniform1i(SU.B, u);
+  gl.bindBuffer(gl.ARRAY_BUFFER, S.tri); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.viewport(0, 0, ...F); gl.activeTexture(gl.TEXTURE0 + u);
   const N = [0]; for (let n = 1; n < len; n *= 2) N.push(n);
   let left = N.reduce((a, n) => a + n, 0);     // the reach still to come after each pass (N 0 reads 1 px)
-  const pass = (n, t, f) => {
-    gl.bindTexture(gl.TEXTURE_2D, t); gl.bindFramebuffer(gl.FRAMEBUFFER, f); if (gl.invalidateFramebuffer) gl.invalidateFramebuffer(gl.FRAMEBUFFER, [gl.COLOR_ATTACHMENT0]);     // nothing kept from before (a tiler: no load)
+  for (let j = 0; j < N.length; j++) {     // pass j: from the pair's other (the heights, the first) into FS[j & 1]
+    left -= N[j]; if (j < j0 || j >= j1) continue;
+    const n = N[j], f = FS[j & 1]; gl.bindTexture(gl.TEXTURE_2D, T[(j + 1) & 1]); gl.bindFramebuffer(gl.FRAMEBUFFER, f); if (gl.invalidateFramebuffer) gl.invalidateFramebuffer(gl.FRAMEBUFFER, [gl.COLOR_ATTACHMENT0]);     // nothing kept from before (a tiler: no load)
     gl.uniform1f(SU.N, n);
     for (const vr of vrs) { const ex = dx * left, ey = dy * left, x0 = Math.max(box[0], Math.floor(vr[0] + Math.min(0, ex)) - 2), y0 = Math.max(box[1], Math.floor(vr[1] + Math.min(0, ey)) - 2);
       gl.scissor(x0, y0, Math.min(box[0] + box[2], Math.ceil(vr[0] + vr[2] + Math.max(0, ex)) + 2) - x0, Math.min(box[1] + box[3], Math.ceil(vr[1] + vr[3] + Math.max(0, ey)) + 2) - y0); gl.drawArrays(gl.TRIANGLES, 0, 3); }
-    if (u !== 9) pipe('gpu-sweep', { fb: f, n, st }); };
-  let i = 0; pass(0, T[1], FS[0]);
-  for (const n of N.slice(1)) { left -= n; pass(n, T[i], FS[i ^ 1]); i ^= 1; }
-  gl.bindFramebuffer(gl.FRAMEBUFFER, S.out); gl.bindTexture(gl.TEXTURE_2D, T[i]); gl.activeTexture(gl.TEXTURE0);
+    if (u === 4 || u === 6) pipe(st ? 'gpu-msweep' : 'gpu-sweep', { fb: f, n, st });
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, S.out); gl.bindTexture(gl.TEXTURE_2D, T[(N.length - 1) & 1]); gl.activeTexture(gl.TEXTURE0);
+  return N.length;
 }
 /* the channels past the first (hLayers): their quads into the frame's heights too (its surfaces, the point lights), then
    each alone: its heights (L2.H), swept over its regions in the view (L2.T), how far the top there is in its shadow into
@@ -816,7 +828,7 @@ function sunLayers(S, X, box, reg, vr, K, mxh) {
     hBegin(S, X, [S.fw, S.fh]); gl.bindFramebuffer(gl.FRAMEBUFFER, L2.FH); gl.scissor(...box); gl.clear(gl.COLOR_BUFFER_BIT); gl.enable(gl.BLEND); hDraw(S, 'x', c.s, c.n); gl.disable(gl.BLEND); hInst(S, 0);
     sunSweep(S, K, mxh, box, reg, rs, L2.T, L2.F, 9, 8); rsDo(rs, 0);
   }
-  hInst(S, 0); gl.bindFramebuffer(gl.FRAMEBUFFER, S.out);
+  hInst(S, 0); gl.bindFramebuffer(gl.FRAMEBUFFER, S.out); pipe('gpu-layers');
   return any;
 }
 /* the upper surface (roofs, tree tops), drawn by fn over the smoke into a layer, lit there by its own maps (S.up: the
@@ -835,8 +847,117 @@ function sunNoSweep(S, box, T, FS, u) {
   const { gl } = S; gl.bindFramebuffer(gl.FRAMEBUFFER, FS[0]); gl.viewport(0, 0, S.fw, S.fh); gl.scissor(...box); gl.clearColor(0, 0, 1, 0); gl.clear(gl.COLOR_BUFFER_BIT);
   gl.bindFramebuffer(gl.FRAMEBUFFER, S.out); gl.activeTexture(gl.TEXTURE0 + u); gl.bindTexture(gl.TEXTURE_2D, T[0]); gl.activeTexture(gl.TEXTURE0);
 }
+/* settings › SHADOW CACHE: what stands still (lists a, w, t and the ground: walls, hay, fences, sandbags, wrecks, roofs
+   without channels) swept once into a cache anchored to the world (wc.f), round the view with a margin, at the frame's
+   scale; each frame only the boxes round what moves (list u with its shadows: wcRegions) are swept, the rest copied in
+   (CC: wcCopy). The cache is rebuilt into the back (wc.b: its heights, then WCP sweep passes a frame) while the front is
+   still used: when the view nears its edge, or once the scale, the sun, SHADOW LENGTH or what stands still (its lists'
+   hash, wcHash) have changed and held still WC_STILL frames (till then the whole sweep, as without). 2: the memory's
+   sweep too (wc.m: its heights over the same box), again every MEM_T s for MEM_C s after what stands still changed (what
+   you've seen of it since) */
+const WCP = 4, WC_STILL = 3, MEM_T = 3, MEM_C = 30;
+const wcIn = (B, b) => !!B && B[0] <= b[0] && B[1] <= b[1] && B[2] >= b[2] && B[3] >= b[3];
+const wcVis = B => (x, y, r) => x + r > B[0] && x - r < B[2] && y + r > B[1] && y - r < B[3];
+function wcHash() {
+  let h = Math.imul(2166136261 ^ GMATV, 16777619);
+  for (const n of ['a', 'w', 't', 'g']) { const L = HL[n], I = new Int32Array(L.f.buffer, 0, L.n * HQ); h = Math.imul(h ^ L.n, 16777619); for (let i = 0; i < I.length; i++) h = Math.imul(h ^ I[i], 16777619); }
+  return h;
+}
+/* the world box what stands still is taken from (the back's while it builds, else the front's, else one round FB, m out), for sunHeights */
+function wcAnchor(W, FB, m) {
+  const A = W.b.st !== 'idle' ? W.b.B : W.f.B && wcIn(W.f.B, FB) ? W.f.B : [FB[0] - m, FB[1] - m, FB[2] + m, FB[3] + m];
+  W.same = W.A === A; W.A = A; W.m0 = m; return wcVis(A);
+}
+/* boxes [x0, y0, x1, y1]: the overlapping ones joined, then past cap the two whose join grows least */
+function joinR(R, cap = 1e9) {
+  const U = (a, b) => [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.max(a[3], b[3])], A = b => (b[2] - b[0]) * (b[3] - b[1]);
+  for (let i = 0; i < R.length; i++) for (let j = i + 1; j < R.length; j++) { const a = R[i], b = R[j]; if (a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3]) { R[i] = U(a, b); R.splice(j, 1); j = i; } }
+  while (R.length > cap) { let bi = 0, bj = 1, bg = Infinity; for (let i = 0; i < R.length; i++) for (let j = i + 1; j < R.length; j++) { const g = A(U(R[i], R[j])) - A(R[i]) - A(R[j]); if (g < bg) { bg = g; bi = i; bj = j; } } R[bi] = U(R[bi], R[bj]); R.splice(bj, 1); }
+  return R;
+}
+/* what moves (list u): each quad's box stretched away from the sun by its shadow, in the view (buffer px by X) */
+function wcRegions(X, vr) {
+  const L = HL.u, F = L.f, tn = Math.tan(sunEl()), dx = -Math.cos(SUN.az), dy = -Math.sin(SUN.az), lm = sunReach(), R = [];
+  for (let i = 0; i < L.n; i++) {
+    const o = i * HQ, ex = Math.abs(F[o + 2]) + Math.abs(F[o + 4]) + 1, ey = Math.abs(F[o + 3]) + Math.abs(F[o + 5]) + 1, l = Math.min(F[o + 14] / tn, lm), x0 = F[o] - ex, y0 = F[o + 1] - ey, x1 = F[o] + ex, y1 = F[o + 1] + ey;
+    const b = [Math.max(vr[0], Math.floor(Math.min(x0, x0 + dx * l) * X[0] + X[1]) - 1), Math.max(vr[1], Math.floor(Math.min(y0, y0 + dy * l) * X[0] + X[2]) - 1), Math.min(vr[0] + vr[2], Math.ceil(Math.max(x1, x1 + dx * l) * X[0] + X[1]) + 1), Math.min(vr[1] + vr[3], Math.ceil(Math.max(y1, y1 + dy * l) * X[0] + X[2]) + 1)];
+    if (b[2] > b[0] && b[3] > b[1]) R.push(b);
+  }
+  return joinR(R, 16);
+}
+/* a cached sweep (c: wc.f or wc.m) into the frame's (fb) over the view, but for the boxes R (swept this frame) */
+function wcCopy(S, c, X, vr, fb, R) {
+  const { gl, CCU } = S, W = S.wc; W.rr.fill(0); R.forEach((r, i) => W.rr.set(r, i * 4));
+  gl.useProgram(S.CC); gl.activeTexture(gl.TEXTURE13); gl.bindTexture(gl.TEXTURE_2D, c.t); if (gl.bindSampler) gl.bindSampler(13, null); gl.activeTexture(gl.TEXTURE0);
+  gl.uniform2f(CCU.O, c.X[1] - X[1], c.X[2] - X[2]); gl.uniform2f(CCU.F, W.W, W.H); gl.uniform4fv(CCU.RR, W.rr); gl.uniform1f(CCU.RN, R.length);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.viewport(0, 0, S.fw, S.fh); gl.scissor(...vr); gl.bindBuffer(gl.ARRAY_BUFFER, S.tri); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, S.out);
+}
+/* each view its own shadow cache (split screen), made when first wanted (wcPlan sizes it), dropped with its view */
+function wcFor(S, vw) {
+  const { gl } = S;
+  for (const [v, W] of S.wcs) if (!M.views.includes(v)) { for (const t of [W.HT, ...W.T, W.f.t, W.m.t]) gl.deleteTexture(t); for (const f of [W.FH, ...W.F]) gl.deleteFramebuffer(f); S.wcs.delete(v); }
+  let W = S.wcs.get(vw); if (W || !S.wcOK) return W || null;
+  gl.activeTexture(gl.TEXTURE13); const [HT, T0, T1, f, m] = [0, 1, 2, 3, 4].map(() => S.texture(gl.NEAREST)); gl.activeTexture(gl.TEXTURE0);
+  const fb = t => { const o = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, o); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0); return o; };
+  W = { W: 0, H: 0, mx: gl.getParameter(gl.MAX_TEXTURE_SIZE), HT, FH: fb(HT), T: [T0, T1], F: [fb(T0), fb(T1)], f: { t: f, key: '' }, m: { t: m, key: '' }, b: { st: 'idle' }, A: null, h: 0, still: 0, kk: 0, key: '', dirty: false, mt: -1e9, ct: -1e9, rr: new Float32Array(64) };
+  gl.bindFramebuffer(gl.FRAMEBUFFER, S.out); S.wcs.set(vw, W); return W;
+}
+/* scene param wck: the cached sweep (in fb fa) against the whole one (full(): its fb) over the view, each frame: the
+   texels whose skyline (from the ground) or span over it is a px of height off (TEST.wck: frames, the most in one, of how many) */
+function wcCheck(S, vr, fa, full, k, R) {
+  const { gl } = S, n = vr[2] * vr[3], A = new Uint8Array(n * 4), B = new Uint8Array(n * 4), rd = (f, D) => { gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.readPixels(vr[0], vr[1], vr[2], vr[3], gl.RGBA, gl.UNSIGNED_BYTE, D); };
+  rd(fa, A); rd(full(), B); gl.bindFramebuffer(gl.FRAMEBUFFER, S.out); let bad = 0, core = 0; const E = new Uint8Array(n), w = vr[2];
+  const g = (D, i) => Math.max(-1, (D[i] + D[i + 1] / 255) / 255 * 256 - 128), sp = (D, i) => { const lo = D[i + 2] / 255 * 144 - 16, hi = D[i + 3] / 255 * 144 - 16; return lo <= hi && hi > -0.75 ? [lo, hi] : null; };     // what can shade (receivers stand at 0 up): the skyline from -1, a span reaching over the ground
+  for (let j = 0, i = 0; j < n; j++, i += 4) { const a = sp(A, i), b = sp(B, i); if (Math.abs(g(A, i) - g(B, i)) > 1 || !a !== !b || a && (Math.abs(a[0] - b[0]) > 1 || Math.abs(a[1] - b[1]) > 1)) { bad++; E[j] = 1; } }
+  for (let j = w; j < n - w; j++) if (E[j] && E[j - 1] && E[j + 1] && E[j - w] && E[j + w]) core++;     // core: inside a patch of them (not an edge a px off)
+  const r = TEST.wck = TEST.wck || {}, o = r[k] = r[k] || { frames: 0, worst: 0, core: 0, of: n }; o.frames++; o.worst = Math.max(o.worst, bad); o.of = n;
+  if (core > o.core) {     // the worst frame's picture (scene.mjs saves it): the whole sweep's skyline grey, the cached one's misses red, the boxes swept blue (buffer rows: the world's, top down)
+    o.core = core; const c = document.createElement('canvas'); c.width = w; c.height = vr[3]; const x = c.getContext('2d'), d = x.createImageData(w, vr[3]);
+    for (let j = 0; j < n; j++) { const q = j * 4, v = B[j * 4]; d.data[q] = E[j] ? 255 : v; d.data[q + 1] = E[j] ? 0 : v; d.data[q + 2] = E[j] ? 0 : v; d.data[q + 3] = 255; }
+    x.putImageData(d, 0, 0); x.strokeStyle = '#3af'; for (const r of R) x.strokeRect(r[0] - vr[0] + 0.5, r[1] - vr[1] + 0.5, r[2] - r[0] - 1, r[3] - r[1] - 1); TEST.wckPng = TEST.wckPng || {}; TEST.wckPng[k] = c.toDataURL();
+  }
+}
+/* the cache's heights (from the frame's lists, a back starting: what stands still alone) */
+function wcHeights(S) {
+  const { gl } = S, W = S.wc, b = W.b; hBegin(S, b.X, [W.W, W.H]);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, W.FH); gl.viewport(0, 0, W.W, W.H); gl.scissor(0, 0, b.w, b.h); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+  hMain(S, false); b.h0 = W.h; b.st = 's'; b.j = 0;
+}
+/* the back's steps this frame (WCP passes; its memory heights one): a sweep done goes to the front (swapped with the pair's) */
+function wcStep(S, vw, key) {
+  const { gl } = S, W = S.wc, b = W.b; let k = WCP;
+  if (b.st === 'idle' || b.st === 'h') return;
+  if (b.key !== key) { b.st = 'idle'; return; }     // the sun or scale moved under it
+  gl.activeTexture(gl.TEXTURE12); gl.bindTexture(gl.TEXTURE_2D, W.HT); if (gl.bindSampler) { gl.bindSampler(12, null); gl.bindSampler(13, null); } gl.activeTexture(gl.TEXTURE0);
+  while (k > 0 && b.st !== 'idle') {
+    if (b.st === 'mh') { memRecall(S, vw, b.X, [0, 0, b.w, b.h], W.FH, [W.W, W.H]); b.e = memOf(S, vw); b.st = 'ms'; b.j = 0; k--; continue; }
+    const n = sunSweep(S, b.X[0], b.L, [0, 0, b.w, b.h], [0.5, 0.5, b.w - 0.5, b.h - 0.5], [[0, 0, b.w, b.h]], W.T, W.F, 13, 12, [W.W, W.H], b.j, b.j + k), d = Math.min(k, n - b.j); b.j += d; k -= d;
+    if (b.j < n) break;
+    const c = b.st === 's' ? W.f : W.m, i = (n - 1) & 1, t = c.t; c.t = W.T[i]; W.T[i] = t; gl.bindFramebuffer(gl.FRAMEBUFFER, W.F[i]); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+    c.B = b.B; c.X = b.X; c.key = b.key; c.w = b.w; c.h = b.h; c.L = b.L;
+    if (b.st === 's') { W.dirty = W.h !== b.h0; b.st = b.fog ? 'mh' : 'idle'; } else { c.e = b.e; W.mt = M.time; b.st = 'idle'; }
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, S.out); hInst(S, 0); pipe('gpu-cache');
+}
+/* a new back wanted? (decided after the frame: its heights next frame, from lists over its box) */
+function wcPlan(S, FB, X0, key, SL, fog, fv, mv) {
+  const W = S.wc, m = W.m0, f = W.f; if (W.b.st !== 'idle' || W.still < WC_STILL || W.kk < WC_STILL) return;
+  const edge = !!f.B && Math.min(FB[0] - f.B[0], FB[1] - f.B[1], f.B[2] - FB[2], f.B[3] - FB[3]) < m / 3, mw = fog && CFG.shCache === 2 && (!mv || M.time - W.mt > MEM_T && M.time - W.ct < MEM_C);
+  if (fv && !edge && !mw) return;
+  if (fv && !edge) { W.b = { st: 'mh', B: f.B, X: f.X, w: f.w, h: f.h, key: f.key, L: f.L, fog: true }; return; }     // the memory's alone, over the front's box
+  const { gl } = S, B = [FB[0] - m, FB[1] - m, FB[2] + m, FB[3] + m], w = Math.ceil((B[2] - B[0]) * X0) + 1, h = Math.ceil((B[3] - B[1]) * X0) + 1;
+  if (w > W.mx || h > W.mx) return;     // past the GPU's biggest texture: none (the whole sweep)
+  if (W.W < w || W.H < h) {     // grow (the fronts lost)
+    W.W = Math.min(W.mx, Math.max(W.W, w + 64)); W.H = Math.min(W.mx, Math.max(W.H, h + 64)); gl.activeTexture(gl.TEXTURE13);
+    for (const t of [W.HT, ...W.T, W.f.t, W.m.t]) { gl.bindTexture(gl.TEXTURE_2D, t); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W.W, W.H, 0, gl.RGBA, gl.UNSIGNED_BYTE, null); }
+    gl.activeTexture(gl.TEXTURE0); W.f.B = W.m.B = null; W.f.key = W.m.key = '';
+  }
+  W.b = { st: 'h', B, X: [X0, -B[0] * X0, -B[1] * X0], w, h, key, L: SL, fog: fog && CFG.shCache === 2 };
+}
 function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory's light too, map 3)
   HS = lightHS(); gxYield();
+  if (!CFG.shCache || sunTone().s <= 0) for (const W of _sun.wcs.values()) { W.b = { st: 'idle' }; W.f.key = W.m.key = ''; }     // off: started again when on
   const S = _sun, { gl, GC, U, CU } = S, w = Math.ceil(cv.width * HS), h = Math.ceil(cv.height * HS), dpr = DPR, K = VZ * dpr * HS, k = dpr * HS;
   if (GC.width !== w * 2 || GC.height !== h * 3) { GC.width = w * 2; GC.height = h * 3; S.out = GL ? GC.fb : null; gxYield(); }     // the maps 2 × 3 (4 in a row outgrew phone GPUs' 8192 px)
   const rx = Math.floor(vw.x * dpr * HS), ry = Math.floor(vw.y * dpr * HS), rw = Math.min(w - rx, Math.ceil(vw.w * dpr * HS)), rh = Math.min(h - ry, Math.ceil(vw.h * dpr * HS));
@@ -862,14 +983,31 @@ function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory
   gl.enable(gl.SCISSOR_TEST); HMAT = 0; HMAX = 0;
   const fog = vw._fog && fogged && !SUNDBG && CFG.shMem !== false ? 1 : 0;     // SHADOWS OUT OF SIGHT off: no memory sweep
   gl.useProgram(S.CP); gl.uniform1f(S.CU.FG, 0);
-  sunHeights((x, y, r) => vis(x, y, r + L), hidden, vw); pipe('cpu-heights', { n: { a: HL.a.n, u: HL.u.n, w: HL.w.n, t: HL.t.n, m: HL.m.n } });
-  if (fog) memOf(S, vw);     // a new memory: the map as it starts, before this frame's lists
-  const X = [VZ * k, VOX * k + px, VOY * k + py], box = [rx, ry, bw, bh], vr = [rx + px, ry + py, rw, rh];
+  const X = [VZ * k, VOX * k + px, VOY * k + py], box = [rx, ry, bw, bh], vr = [rx + px, ry + py, rw, rh], up = sunTone().s > 0, fv0 = (x, y, r) => vis(x, y, r + L);
+  const W = S.wc = up && CFG.shCache && !SUNDBG ? wcFor(S, vw) : null, FB = [(rx - X[1]) / X[0], (ry - X[2]) / X[0], (rx + bw - X[1]) / X[0], (ry + bh - X[2]) / X[0]];     // FB: the buffer's world box
+  if (fog) memOf(S, vw);     // a new memory: the map as it starts (its own lists, emptied), before this frame's
+  const vs = W && wcAnchor(W, FB, Math.max(rw, rh) / 4 / X[0]);     // what stands still: over the cache's box (and the frame's, out of it)
+  sunHeights(fv0, hidden, vw, vs ? (wcIn(W.A, FB) ? vs : (x, y, r) => vs(x, y, r) || fv0(x, y, r)) : fv0); pipe('cpu-heights', { n: { a: HL.a.n, u: HL.u.n, w: HL.w.n, t: HL.t.n, m: HL.m.n } });
+  let wk = '', fv = false, mv = false, wR = null;
+  if (W) {     // the shadow cache: what stands still changed (its hash; but for a new box), the key held, the fronts good for this frame
+    const h = wcHash(); wk = `${X[0]}|${SUN.az}|${sunEl()}|${SL}`;
+    if (W.same && h !== W.h) { W.dirty = true; W.still = 0; W.ct = M.time; if (W.b.st !== 'idle') W.b.st = 'idle'; } else W.still++;
+    W.h = h; W.kk = wk === W.key ? W.kk + 1 : 0; W.key = wk;
+    fv = W.f.key === wk && !W.dirty && wcIn(W.f.B, FB); mv = fog && CFG.shCache === 2 && W.m.key === wk && W.m.e === memOf(S, vw) && wcIn(W.m.B, FB);
+    if (fv) wR = wcRegions(X, vr);
+  }
   sunDrawHeights(S, X, box, fog, vw);
   const reg = [rx + 0.5, ry + 0.5, rx + bw - 0.5, ry + bh - 0.5], mxh = Math.min(SL, HMAX + 1);
-  const up = sunTone().s > 0, sweep = (T, F, u, hu) => up ? sunSweep(S, K, mxh, box, reg, [vr], T, F, u, hu) : sunNoSweep(S, box, T, F, u);
-  sweep(S.ST, S.FS, 4, 0);
-  if (fog) sweep(S.SS, S.FSS, 6, 7);     // the remembered things' shadows, for out of sight
+  const sweep = (T, F, u, hu) => up ? sunSweep(S, K, mxh, box, reg, [vr], T, F, u, hu) : sunNoSweep(S, box, T, F, u);
+  const wck = typeof TEST !== 'undefined' && TEST.on && TEST.p && TEST.p.wck;
+  const fromC = (c, R, T, FS, u, hu) => {     // the cached sweep, but over R: swept now
+    let i = 0; if (R.length) i = (sunSweep(S, K, mxh, box, reg, R.map(r => [r[0], r[1], r[2] - r[0], r[3] - r[1]]), T, FS, u, hu) - 1) & 1;
+    wcCopy(S, c, X, vr, FS[i], R); gl.activeTexture(gl.TEXTURE0 + u); gl.bindTexture(gl.TEXTURE_2D, T[i]); gl.activeTexture(gl.TEXTURE0); pipe(u === 6 ? 'gpu-msweep' : 'gpu-sweep', { c: R.length });
+    if (wck) wcCheck(S, vr, FS[i], () => FS[(sweep(T, FS, u, hu) - 1) & 1], u === 6 ? 'memory' : 'sun', R);
+  };
+  if (fv) fromC(W.f, wR, S.ST, S.FS, 4, 0); else sweep(S.ST, S.FS, 4, 0);
+  if (fog) { if (mv) fromC(W.m, [], S.SS, S.FSS, 6, 7); else sweep(S.SS, S.FSS, 6, 7); }     // the remembered things' shadows, for out of sight
+  if (W) { wcStep(S, vw, wk); wcPlan(S, FB, X[0], wk, SL, fog, fv, mv); }
   const ly = up && S.ly && (HLY.c.length > 0 || S.ul) && sunLayers(S, X, box, reg, vr, K, mxh); HLY.c = [];     // the upper things and what floats past the first channel (hLayers)
   // the light, once (into LT)
   gl.bindFramebuffer(gl.FRAMEBUFFER, S.FL); gl.viewport(0, 0, w, h); gl.scissor(rx, h - ry - rh, rw, rh);
