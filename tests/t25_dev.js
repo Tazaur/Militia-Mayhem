@@ -175,5 +175,9 @@ setImmediate(()=>{
   // normal match afterwards gets the full world back
   G.CFG.mode=1; G.CFG.bots=2; G.toMenu(); step(5); G.newMatch({...G.CFG},false); step(30);
   ok(!G.M.dev&&G.MAP.sight.length>0,'a normal match: no dev');
+  { // the day cycle is the real sun's: 75° at noon, high noon up the screen (south), rising on the right (east), set by 20:00, the clock undone by dayPhOf
+    const D=Math.PI/180, [en,an]=G.sunPath(Math.PI/2), [em,am]=G.sunPath(0.3), [ee]=G.sunPath(14/24*Math.PI*2);
+    ok(Math.abs(en/D-75)<0.01&&Math.abs(an+Math.PI/2)<1e-6,'day cycle: noon 75°, south '+(en/D).toFixed(2)); ok(Math.cos(am)>0.3&&em>0,'day cycle: morning sun east'); ok(ee<0,'day cycle: dark by 20:00');
+    ok(Math.abs(G.dayPhOf(em)-0.3)<1e-6,'day cycle: dayPhOf undoes sunPath'); }
   console.log('errs',errs+global.errs());
 });

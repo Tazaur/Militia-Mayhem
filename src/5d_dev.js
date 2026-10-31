@@ -22,14 +22,21 @@ const DEV_TABS = ['SPAWN', 'PLAYER', 'GFX', 'WORLD', 'TEST'], DEV_TS = [0, 0.1, 
 const DEV_VIEWS = ['NORMAL', 'HEIGHTS (BLUE 0 › RED 64)', 'SHADE', 'HIGHLIGHTS', 'GLOW + LIGHTS', 'MATERIALS', 'SUN SHADOWS', 'POINT LIGHTS'];     // SUNDBG
 const devOff = k => M.dev && !DEV.L[k];     // a layer switched off in the GFX tab
 /* the frame's cost (smoothed): fps, update and draw ms (CPU; the GPU's share shows as fps) */
-/* dev WORLD › DAY CYCLE: the sun runs a day (one turn of DEV.ph) in DAY_CYC[i] s: up from the east (-30°..75°), down in the west */
-const DAY_CYC = [0, 600, 240, 60];
+/* dev WORLD › DAY CYCLE: the sun runs a day (one turn of DEV.ph, the clock: even) in DAY_CYC[i] s, as the real sun
+   (sunPath): a late spring day at 35° N (DAY_LAT, DAY_DEC), rising north of east, 75° at noon, -35° at midnight. Its
+   height turns slowest at noon (the shadows swing round instead) and the shadows stretch fast near sunset, as they do */
+const DAY_CYC = [0, 600, 240, 60], DAY_LAT = 35 * Math.PI / 180, DAY_DEC = 20 * Math.PI / 180;
+function sunPath(ph) {     // [el, az] at DEV.ph (0: 6:00); az: toward the sun on screen, south up, east right
+  const H = ph - Math.PI / 2, sl = Math.sin(DAY_LAT), cl = Math.cos(DAY_LAT), sd = Math.sin(DAY_DEC), cd = Math.cos(DAY_DEC);
+  return [Math.asin(sl * sd + cl * cd * Math.cos(H)), -Math.PI / 2 - Math.atan2(Math.sin(H), Math.cos(H) * sl - Math.tan(DAY_DEC) * cl)];
+}
+const dayPhOf = el => Math.PI / 2 - Math.acos(clamp((Math.sin(el) - Math.sin(DAY_LAT) * Math.sin(DAY_DEC)) / (Math.cos(DAY_LAT) * Math.cos(DAY_DEC)), -1, 1));     // the morning's DEV.ph at that height
 function dayCycle(dt) {
   if (!DEV.cyc) return;
   DEV.ph = (DEV.ph + dt * TAU / DAY_CYC[DEV.cyc]) % TAU;
-  SUN.el = (22.5 + 52.5 * Math.sin(DEV.ph)) * Math.PI / 180; SUN.az = -Math.PI / 2 + Math.cos(DEV.ph) * 1.3;
+  [SUN.el, SUN.az] = sunPath(DEV.ph);
 }
-/* the cycle's time of day: DEV.ph 0 is 6:00 (the sun rising through 22.5°), π / 2 noon */
+/* the cycle's time of day: DEV.ph 0 is 6:00, π / 2 noon */
 const dayClock = () => { const h = ((6 + DEV.ph / TAU * 24) % 24 + 24) % 24; return `${h | 0}:${String(Math.floor(h % 1 * 60)).padStart(2, '0')}`; };
 function devTime(dt, um, rm) {
   if (M && M.dev && state === 'play') dayCycle(dt); const e = 0.08; DEV.fps += ((dt > 0 ? 1 / dt : 60) - DEV.fps) * e; DEV.um += (um - DEV.um) * e; DEV.rm += (rm - DEV.rm) * e;
@@ -750,7 +757,7 @@ function devDrawPanel() {
     row([`‹  WEATHER ${wx.toUpperCase()}  ›`, d => { const w = DEV_WX[(DEV_WX.indexOf(wx) + d + 3) % 3]; M.rain = w === 'rain'; M.snow = w === 'snow'; }, undefined, true]);
     row(tog('GRID', DEV, 'grid'), tog('SECTIONS', DEV, 'secs'));
     head('DAYLIGHT');
-    row([`‹  DAY CYCLE ${['OFF', '10 MIN', '4 MIN', '1 MIN'][DEV.cyc]}${DEV.cyc ? ' · ' + dayClock() : ''}  ›`, d => { DEV.cyc = (DEV.cyc + d + DAY_CYC.length) % DAY_CYC.length; DEV.ph = Math.asin(clamp((SUN.el * 180 / Math.PI - 22.5) / 52.5, -1, 1)); }, undefined, true]);
+    row([`‹  DAY CYCLE ${['OFF', '10 MIN', '4 MIN', '1 MIN'][DEV.cyc]}${DEV.cyc ? ' · ' + dayClock() : ''}  ›`, d => { DEV.cyc = (DEV.cyc + d + DAY_CYC.length) % DAY_CYC.length; DEV.ph = dayPhOf(SUN.el); }, undefined, true]);
     row([`‹  SUN DIR ${Math.round(SUN.az * 180 / Math.PI)}°  ›`, d => SUN.az = Math.atan2(Math.sin(SUN.az + d * Math.PI / 12), Math.cos(SUN.az + d * Math.PI / 12)), undefined, true]);
     { const e = Math.round(SUN.el * 180 / Math.PI); row([`‹  SUN HEIGHT ${e}°${e < -6 ? ' · NIGHT' : e < 14 ? ' · DUSK' : ''}  ›`, d => SUN.el = clamp(SUN.el + d * Math.PI / 36, -Math.PI / 6, Math.PI * 0.45), undefined, true]); }     // below the horizon: night
     row(['CLEAR LOG', () => DEV.log.length = 0]);

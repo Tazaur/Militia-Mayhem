@@ -973,3 +973,9 @@ Art drop (drop.py): atlas 384x818 -> 384x1154; new sprites: tree0, tree1, tree2;
 
 ## Roof crumbles outward in 1.5 s (build 361)
 - `devRoofFall`: a tile lands at `clamp(rdist / furthest + rnd(-ROOF_J, ROOF_J), 0, 1) * ROOF_T`, with ROOF_T 1.5 s and ROOF_J 0.15. It still spreads outward from the wall, with a ragged front, and never runs past 1.5 s.
+
+## Day cycle is the real sun (build 363)
+- `sunPath(ph)` (5d_dev.js) uses real solar geometry for a late spring day at 35° N (DAY_LAT 35°, DAY_DEC 20°). The hour angle is `ph - π/2`, and the clock runs evenly.
+- The sun rises about 5:00 north of east, reaches 75° at noon due south (screen up), sets about 19:00, and bottoms at -35°.
+- Its height climbs a steady ~12°/h. The old sine stalled near noon and at the bottom, then rushed between.
+- `dayPhOf(el)` is the inverse used when the cycle is switched on. An even-shadow-pace timeline was tried and dropped in favour of realism.
