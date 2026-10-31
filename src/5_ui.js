@@ -248,7 +248,7 @@ function smokeLight(X0, Y0, pw, ph) {
   const c = SMK_LO, q = SMK_LQ, w = Math.ceil(pw / q), h = Math.ceil(ph / q), T = sunTone(), col = a => `rgb(${a.map(v => clamp(v, 0, 1) * 255 | 0)})`;
   if (c.width < w || c.height < h) { c.width = Math.max(c.width, w); c.height = Math.max(c.height, h); }
   const g = c.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-over'; g.fillStyle = col(T.li); g.fillRect(0, 0, w, h);
-  const el = sunEl(); if (el >= 0.03) smokeShadows(g, X0, Y0, pw, ph, el, T, col);
+  const el = sunEl(); if (T.s > 0) smokeShadows(g, X0, Y0, pw, ph, el, T, col);
   pipe('smk-shadows'); if (CFG.smk !== 'low') smokeLamps(g, X0, Y0, w, h); pipe('smk-lamps');
   return c;
 }

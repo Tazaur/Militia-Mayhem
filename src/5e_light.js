@@ -183,10 +183,11 @@ function drawLight(l) {
    on, the light runs twice: the frame's (HT), and the memory's (FG: HTS, no point lights) into a fourth map, laid over
    what's out of sight (fogOverlay). HTS is read from the memory's heights (memOf: as last seen), so that light is now's */
 const ROOF_Z = [36, 42];     // a tiled house's roof: a slab this high (px), over the walls' tops
-const SUN_MIN = Math.PI / 36, sunEl = () => Math.max(SUN.el, SUN_MIN);     // shadows: never longer than at 5° (from 6° down the sun fades out: sunTone)
+const SUN_MIN = Math.PI / 36, SUN_FADE = 9, sunEl = () => Math.max(SUN.el, SUN_MIN);     // shadows: never longer than at 5°, and gone by then: from SUN_FADE° down they fade as they still lengthen (sunTone s)
 const SUN = { az: -2.36, el: 0.7, tint: [0.46, 0.5, 0.64], warm: [1, 0.93, 0.8], sky: [0.56, 0.7, 0.9], skyRain: [0.5, 0.53, 0.58] };     // az: toward the sun (up-left); el: its height; sky: what reflective things mirror
 /* the light's colours from the sun's height: day as set; low sun golden (and its shade bluer, purpler); below the horizon
-   it all goes to the night's dim blue (sunlit = shade: no sun shadows), so only point lights light things. day: 0 night .. 1 */
+   it all goes to the night's dim blue (sunlit = shade: no sun shadows), so only point lights light things. day: 0 night .. 1;
+   s: the sun shadows' strength, 0 from SUN_MIN (where they stop lengthening) up to 1 at SUN_FADE: the shade goes to the sunlit colour */
 const NIGHT = [0.24, 0.27, 0.42], GOLD = [1, 0.8, 0.62], DUSK = [0.42, 0.38, 0.58];
 let _tone = null, _toneK = '';
 function sunTone() {
@@ -194,9 +195,11 @@ function sunTone() {
   const a = SUN.el * 180 / Math.PI, sm = (e0, e1, x) => { const t = clamp((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
   const day = sm(-6, 6, a), g = 1 - sm(4, 30, a), mx = (A, B, t) => A.map((v, i) => lerp(v, B[i], t));
   const lit = mx([1, 1, 1], GOLD, g), sky = M && M.rain ? SUN.skyRain : SUN.sky;
-  _toneK = key; return _tone = { day, li: mx(NIGHT, lit, day), sh: mx(NIGHT, mx(SUN.tint, DUSK, g), day), w: SUN.warm.map((v, i) => v * lit[i] * day), sky: sky.map(v => v * lerp(0.25, 1, day)) };
+  const s = sm(SUN_MIN * 180 / Math.PI, SUN_FADE, a), li = mx(NIGHT, lit, day);
+  _toneK = key; return _tone = { day, s, li, sh: mx(li, mx(NIGHT, mx(SUN.tint, DUSK, g), day), s), w: SUN.warm.map((v, i) => v * lit[i] * day), sky: sky.map(v => v * lerp(0.25, 1, day)) };
 }
-const HZ = 127.5, HZS = '127.5';     // the height buffer's top (px; a byte, 0.5 px a step): a stacked tree reaches ~125
+const HZ = 127.5, HZS = '127.5', SUN_LMAX = Math.ceil(HZ / Math.tan(SUN_MIN));     // the height buffer's top (px; a byte, 0.5 px a step): a stacked tree reaches ~125; SUN_LMAX: the longest shadow (that top at 5°)
+const sunReach = () => CFG.lightQ >= 2 ? SUN_LMAX : 720;     // how far off the view a caster's shadow is taken in: LIGHTING QUALITY ULTRA all of it, else 720 px (its buffer margin)
 let HS = 0.5; const LIGHT_Q = [0.35, 0.5, 0.75];                                     // height buffer resolution vs the screen (settings › LIGHTING QUALITY)
 const SUNH = { flag: 22, item: 4, wall: 40, glass: 6, fence: 9, hay: 14, crate: 10, nest: 10, tree: [56, 36] };     // px
 const SUNB = { mgNest: SUNH.nest, jump: 4, step: 4.5 };     // px: the nest MG rests on its bags (drawn over them, so never lower); a jump's gap; walked per frame of a walk (two frames a footstep)
@@ -598,7 +601,7 @@ function partsMeet(A, B) {     // parts (q): at every px both paint, their spans
   return true;
 }
 function hLayers() {
-  const P = HLY.p, F = HL.f.f, on = P.length > 1 && CFG.shLay !== false && sunTone().day > 0, by = [];     // MERGED: all in the first channel
+  const P = HLY.p, F = HL.f.f, on = P.length > 1 && CFG.shLay !== false && sunTone().s > 0, by = [];     // MERGED: all in the first channel
   HLY.c = []; HLY.xn = 0;
   if (on) {
     const tn = Math.tan(sunEl()), dx = Math.cos(SUN.az), dy = Math.sin(SUN.az);
@@ -770,7 +773,7 @@ function sunLayers(S, X, box, reg, vr, K, mxh) {
   const rsDo = (rs, md) => { gl.useProgram(S.RS); gl.uniform2f(S.LU.S, S.fw, S.fh); gl.uniform4f(S.LU.R, ...reg); gl.uniform1f(S.LU.UL, S.ul ? 1 : 0); gl.uniform1f(S.LU.MD, md); gl.bindFramebuffer(gl.FRAMEBUFFER, L2.FM); gl.viewport(0, 0, S.fw, S.fh); gl.enable(gl.BLEND);
     gl.bindBuffer(gl.ARRAY_BUFFER, S.tri); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); for (const r of rs) { gl.scissor(...r); gl.drawArrays(gl.TRIANGLES, 0, 3); } gl.disable(gl.BLEND); any = true; };
   if (S.ul && S.upx) {     // the upper things: their box, stretched away from the sun by their shadow
-    const B = S.upx, l = Math.min(mxh / Math.tan(sunEl()), 720), ox = -Math.cos(SUN.az) * l, oy = -Math.sin(SUN.az) * l, rs = rsOf([[Math.min(B[0], B[0] + ox), Math.min(B[1], B[1] + oy), Math.max(B[2], B[2] + ox), Math.max(B[3], B[3] + oy)]]);
+    const B = S.upx, l = Math.min(mxh / Math.tan(sunEl()), sunReach()), ox = -Math.cos(SUN.az) * l, oy = -Math.sin(SUN.az) * l, rs = rsOf([[Math.min(B[0], B[0] + ox), Math.min(B[1], B[1] + oy), Math.max(B[2], B[2] + ox), Math.max(B[3], B[3] + oy)]]);
     if (rs.length) { hInst(S, 0); sunSweep(S, K, mxh, box, reg, rs, L2.T, L2.F, 9, 11); rsDo(rs, 1); }
   }
   for (const c of HLY.c) {
@@ -805,7 +808,7 @@ function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory
   const rx = Math.floor(vw.x * dpr * HS), ry = Math.floor(vw.y * dpr * HS), rw = Math.min(w - rx, Math.ceil(vw.w * dpr * HS)), rh = Math.min(h - ry, Math.ceil(vw.h * dpr * HS));
   // the height buffer reaches past the view toward the sun by the longest shadow (64 px tall), so what's off screen
   // that side still throws its shadow in (no pop-in); the view sits at (px, py) in it
-  const SL = Math.min(CFG.shLen || HZ, MAP._ht ??= MAP.statics.some(atlasTree) ? HZ : 64), L = Math.min(SL / Math.tan(sunEl()), 720), dx = Math.cos(SUN.az) * L * K, dy = Math.sin(SUN.az) * L * K;     // SL: SHADOW LENGTH, no further than the map's tallest needs
+  const SL = Math.min(CFG.shLen || HZ, MAP._ht ??= MAP.statics.some(atlasTree) ? HZ : 64), L = Math.min(SL / Math.tan(sunEl()), sunReach()), dx = Math.cos(SUN.az) * L * K, dy = Math.sin(SUN.az) * L * K;     // SL: SHADOW LENGTH, no further than the map's tallest needs
   const px = Math.ceil(Math.max(0, -dx)) + 2, py = Math.ceil(Math.max(0, -dy)) + 2, bw = rw + px + Math.ceil(Math.max(0, dx)) + 2, bh = rh + py + Math.ceil(Math.max(0, dy)) + 2;
   const size = (t, w, h) => { gl.bindTexture(gl.TEXTURE_2D, t); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null); };
   const attach = (f, t) => { gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0); };
@@ -829,7 +832,7 @@ function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory
   const X = [VZ * k, VOX * k + px, VOY * k + py], box = [rx, ry, bw, bh], vr = [rx + px, ry + py, rw, rh];
   sunDrawHeights(S, X, box, fog, vw);
   const reg = [rx + 0.5, ry + 0.5, rx + bw - 0.5, ry + bh - 0.5], mxh = Math.min(SL, HMAX + 1);
-  const up = sunTone().day > 0, sweep = (T, F, u, hu) => up ? sunSweep(S, K, mxh, box, reg, [vr], T, F, u, hu) : sunNoSweep(S, box, T, F, u);
+  const up = sunTone().s > 0, sweep = (T, F, u, hu) => up ? sunSweep(S, K, mxh, box, reg, [vr], T, F, u, hu) : sunNoSweep(S, box, T, F, u);
   sweep(S.ST, S.FS, 4, 0);
   if (fog) sweep(S.SS, S.FSS, 6, 7);     // the remembered things' shadows, for out of sight
   const ly = up && S.ly && (HLY.c.length > 0 || S.ul) && sunLayers(S, X, box, reg, vr, K, mxh); HLY.c = [];     // the upper things and what floats past the first channel (hLayers)

@@ -25,7 +25,7 @@ const TEST_KEYS = {
   roofs: { n: 'ROOFS', o: [true, false], set: v => DEV.L.roofs = v },
   los: { n: 'LOS', o: [true, false], set: v => M.cfg.fog = v ? 'los' : 'off' },
   sun: { n: 'SUN', o: [true, false], set: v => CFG.sun = v },
-  time: { n: 'TIME', o: ['day', 'dusk', 'night'], set: v => { DEV.cyc = 0; [SUN.el, SUN.az] = TEST_TIMES[v] || TEST_TIMES.day; } },
+  time: { n: 'TIME', o: ['day', 'dusk', 'night'], set: v => { DEV.cyc = 0; [SUN.el, SUN.az] = typeof v === 'number' ? sunPath((v - 6) / 24 * TAU) : TEST_TIMES[v] || TEST_TIMES.day; } },     // a number: that hour of the day cycle's real sun
   hud: { n: 'HUD', o: [true, false], set: v => TEST.noHud = !v },
   cam: { n: 'CAM', o: ['SCENE', 'PLAYER', 'INSIDE', 'WINDOW', 'OUTSIDE', 'BESIDE', 'FAR', 'TREE', 'off'], set: () => {} },
   zoom: { n: 'ZOOM', o: [1, 1.5, 2, 0.75, 0.5], set: () => {} },

@@ -979,3 +979,9 @@ Art drop (drop.py): atlas 384x818 -> 384x1154; new sprites: tree0, tree1, tree2;
 - The sun rises about 5:00 north of east, reaches 75° at noon due south (screen up), sets about 19:00, and bottoms at -35°.
 - Its height climbs a steady ~12°/h. The old sine stalled near noon and at the bottom, then rushed between.
 - `dayPhOf(el)` is the inverse used when the cycle is switched on. An even-shadow-pace timeline was tried and dropped in favour of realism.
+
+## Shadows fade out as they lengthen (build 365)
+- Shadows used to stop lengthening at 5° (SUN_MIN) but only faded between 6° and -6°, so they stood still in length while still turning.
+- `sunTone` now has `s`, the shadow strength: 1 at SUN_FADE (9°), 0 at 5°. The shade colour blends to the sunlit colour by it, so shadows are gone exactly where their length caps. The sweeps (`hLayers`, `sunLayers`/`drawSun` `up`) and `smokeShadows` gate on `s > 0`, which skips the dusk sweeps.
+- Off-view caster reach: `sunReach()` gives SUN_LMAX (the buffer top at 5°, ~1460 px) on LIGHTING QUALITY ULTRA, otherwise 720 px. It was 720 everywhere.
+- Scene `time` may be an hour number (the day cycle's `sunPath`), e.g. `"time":18.4`.
