@@ -928,7 +928,7 @@ function update(dt) {
   if (state === 'play') {
     if (M.dev) devInputs();
     runMatch(dt, false);
-    M.scoreHeld = !M.dev && LOCALS().some(p => p.raw && p.raw.score);     // dev: View is the tool panel
+    M.scoreHeld = LOCALS().some(p => p.raw && p.raw.score && !(M.dev && p.dev.type === 'pad'));     // dev: a pad's View is the tool panel (Tab and the touch button still show it)
     for (const p of LOCALS()) if (p.raw && p.raw.pause) { openPause(p); break; }
     if (M.over && M.overT > 3) setState('end');
     return;

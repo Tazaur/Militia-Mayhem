@@ -985,3 +985,7 @@ Art drop (drop.py): atlas 384x818 -> 384x1154; new sprites: tree0, tree1, tree2;
 - `sunTone` now has `s`, the shadow strength: 1 at SUN_FADE (9°), 0 at 5°. The shade colour blends to the sunlit colour by it, so shadows are gone exactly where their length caps. The sweeps (`hLayers`, `sunLayers`/`drawSun` `up`) and `smokeShadows` gate on `s > 0`, which skips the dusk sweeps.
 - Off-view caster reach: `sunReach()` gives SUN_LMAX (the buffer top at 5°, ~1460 px) on LIGHTING QUALITY ULTRA, otherwise 720 px. It was 720 everywhere.
 - Scene `time` may be an hour number (the day cycle's `sunPath`), e.g. `"time":18.4`.
+
+## Scoreboard in dev mode (build 366)
+- `M.scoreHeld` (6_menus.js) used to be off whenever `M.dev` was set, so Tab and the touch scoreboard button did nothing in dev.
+- Now only a pad's View is withheld in dev (it opens the tool panel, `devInputs` `st.opt`).
