@@ -961,3 +961,9 @@ Art drop (drop.py): atlas 384x818 -> 384x1154; new sprites: tree0, tree1, tree2;
   upper surface = SWL G. TX hu/rf read the upper heights (UL). Point lights are blocked by them too (P bk). The fog memory
   keeps them in with the rest (hKept draws p). Without channels: the old merged path (ur: skyline only).
 - Scenes: spot DOORIN (in the sun the door lets in), scene 'doorway'. PLAYER AT logs the position.
+
+## Fallen roofs remembered pixel by pixel (build 359)
+- Each memory keeps its own copy of a house's roof from the first tile that falls on it (`roofMemKeep`, 5d_dev.js). `m.pend` maps H to `{ c, S }`: c is the roof as remembered, S the cells that differ from the roof now (the tile plus its 8 neighbours, which carry the torn edges `roofCell` paints).
+- `applyFog` calls `roofMemSee`. It copies `H.rc` into c only inside the sight polygons, per pixel like the memory picture, and drops a cell once all 4 of its corners are seen. `roofsOver` draws c's S cells out of sight over ROOF_C.
+- Fixes two bugs: an unseen collapse showed its outline (the neighbours' torn edges in ROOF_C), and half-seen fallen tiles went dark (a pend tile left when its centre was seen, and its unseen part showed the fogged memory).
+- Scene tester: `breach [SPOT]` knocks the nearest wall down; any spot may be a world `[x, y]`. Repro: `window {"breach":["ROOF"],"player":[1800,1585],"cam":"ROOF"}`.

@@ -150,7 +150,7 @@ function applyFog(vw, vis, x0, y0, x1, y1, rv) {
     pipe('fog-now'); m.g.save(); m.g.setTransform(FOGK, 0, 0, FOGK, 0, 0); polyPath(m.g, polys); m.g.clip();
     m.g.drawImage(FOG_NOW, 0, 0, bw, bh, bx0, by0, bw, bh); m.g.restore();
   }
-  if (m.pend) for (const [H, S] of m.pend) { for (const k of S) { const [x, y] = cellW(H, k % H.W, (k / H.W) | 0); if (polys.some(P => inPoly(x, y, P))) S.delete(k); } if (!S.size) m.pend.delete(H); }     // fallen roof tiles seen gone at last
+  roofMemSee(m, polys, x0, y0, x1, y1);     // fallen roofs: the memory's roof takes what's seen of them
   pipe('fog-mem'); const seen = (x, y) => polys.some(P => inPoly(x, y, P)) && eyes.some(([ex, ey]) => 1 - softOcc(ex, ey, x, y) >= SIGHT_MIN);
   for (const s of MAP.statics) if (vis(s.x, s.y, 20) && (s.type === 'fence' || s.type === 'hay' || s.type === 'tree') && seen(s.x, s.y)) m.st.set(s, s.alive);
   for (const A of MAP.arcs) if (vis(A.x, A.y, 40) && seen(A.x, A.y)) m.arc.set(A, A.lost);

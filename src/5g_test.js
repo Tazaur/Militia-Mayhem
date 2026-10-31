@@ -3,11 +3,13 @@
    A scene is one set of params, laid round a window of a house on the map (testSpots picks it, room round it):
      spots   INSIDE (in the room, in view through the window), POST (just in from it), WINDOW, OUTSIDE (in front of it),
              BESIDE (to one side of OUTSIDE: room for a tank), FAR (further out), DOOR (outside the nearest door), DOORIN (just in from it, in its patch of sun),
-             ROOF (the house's middle), TREE (the nearest standing tree, if one is near); PLAYER is wherever the player is
+             ROOF (the house's middle), TREE (the nearest standing tree, if one is near); PLAYER is wherever the player is;
+             [x, y] anywhere a spot goes: that world point
      at      { SPOT: what stands there } - none, dummy, bot, mate, jeep, tank, nest, husk jeep, husk tank
      drv     { SPOT: who drives the vehicle there } - dummy, bot, mate;  move { SPOT: throttle 0-1 } a dummy driver drives on
      player  the spot the player stands on (none: left where they are);  pick: which window (0, 1, ...)
      fell    [SPOT, ...] the tree there is felled (stood up again when the scene clears)
+     breach  [SPOT, ...] the wall section nearest it is knocked down (its roof falls in)
      smoke   [SPOT, ...] a smoke grenade at each;  shots [[FROM, TO, after s], ...] a shot from whoever is at FROM
              (a dummy, made if nobody is) straight at TO
      and the live switches in TEST_KEYS (roofs, los, sun, time, hud, cam, zoom, brain, auto, sight, spots, ts)
@@ -36,7 +38,7 @@ const TEST_KEYS = {
   tops: { n: 'TOPS', o: ['lit', 'flat'], set: v => CFG.tops = v },
   sundbg: { n: 'LIGHT VIEW', o: [0, 1, 2, 3, 4, 5, 6, 7], set: v => SUNDBG = v },     // the light's dev views: 1 heights, 2 shade, 3 highlights, 4 glow, 5 materials, 6 sun shadow, 7 point lights
 };
-const SCENE_BASE = { pick: 0, player: 'OUTSIDE', at: {}, drv: {}, move: {}, smoke: [], shots: [], fell: [], roofs: true, los: true, sun: true, time: 'day', hud: true, cam: 'SCENE', zoom: 1, brain: false, sight: false, spots: false, ts: 1 };
+const SCENE_BASE = { pick: 0, player: 'OUTSIDE', at: {}, drv: {}, move: {}, smoke: [], shots: [], fell: [], breach: [], roofs: true, los: true, sun: true, time: 'day', hud: true, cam: 'SCENE', zoom: 1, brain: false, sight: false, spots: false, ts: 1 };
 const SCENES = {
   window: { n: 'BY A WINDOW', at: { INSIDE: 'dummy', FAR: 'dummy', BESIDE: 'tank' } },
   husk: { n: 'HUSKS', at: { INSIDE: 'dummy', BESIDE: 'husk tank', FAR: 'husk jeep' } },
@@ -75,7 +77,7 @@ function testSpots() {
   }
   return C;
 }
-const testPos = k => { const S = TEST.S; if (k === 'PLAYER') { const s = (LOCALS()[0] || {}).sol; return s ? [s.veh ? s.veh.x : s.x, s.veh ? s.veh.y : s.y] : null; } return S && S[k] ? S[k] : null; };
+const testPos = k => { const S = TEST.S; if (Array.isArray(k)) return k; if (k === 'PLAYER') { const s = (LOCALS()[0] || {}).sol; return s ? [s.veh ? s.veh.x : s.x, s.veh ? s.veh.y : s.y] : null; } return S && S[k] ? S[k] : null; };
 const testWho = k => k === 'PLAYER' ? (LOCALS()[0] || {}).sol : M.sol.find(s => s.scene === k && s.alive);
 /* everything a scene put down goes (its soldiers, vehicles, husks) */
 function testClear() {
@@ -93,12 +95,12 @@ function testApply(p) {
   testClear(); TEST.p = p; TEST.log = []; TEST.t0 = M.time;
   const C = testSpots(); if (!C.length) { devLog('NO WINDOW WITH ROOM ROUND IT HERE', '#ff7a60'); return false; }
   const S = TEST.S = C[((p.pick || 0) % C.length + C.length) % C.length]; TEST.on = true; EVHOOK = testEv;
-  const face = k => k === 'WINDOW' || k === 'POST' ? S.out : Math.atan2(S.WINDOW[1] - S[k][1], S.WINDOW[0] - S[k][0]);
+  const face = k => { if (k === 'WINDOW' || k === 'POST') return S.out; const q = testPos(k); return Math.atan2(S.WINDOW[1] - q[1], S.WINDOW[0] - q[0]); };
   tlog(`SCENE ${TEST.name} · WINDOW ${C.indexOf(S) + 1} OF ${C.length} · ${M.mapId}`);
   if (S.tree) tlog(`TREE ${S.tree.pine ? 'PINE' : 'ATLAS'} · TRUNK R ${S.tree.r.toFixed(1)} · SCALE ${S.tree.sc.toFixed(2)}`);
   const me = (LOCALS()[0] || {}).sol;
-  if (me && p.player && p.player !== 'none' && S[p.player]) {
-    const [x, y] = S[p.player]; if (me.veh) exitVehicle(me, true);
+  if (me && p.player && p.player !== 'none' && testPos(p.player)) {
+    const [x, y] = testPos(p.player); if (me.veh) exitVehicle(me, true);
     if (!me.alive) spawnSoldier(me, { kind: 'pt', x, y });
     Object.assign(me, { x, y, vx: 0, vy: 0, a: face(p.player), protect: 0 }); tlog(`PLAYER AT ${p.player} (${x | 0}, ${y | 0})`);
   }
@@ -112,6 +114,7 @@ function testApply(p) {
     tlog(`${who.toUpperCase()} DRIVING THE ${v.type.toUpperCase()} AT ${k}` + (th ? ` · THROTTLE ${th}` : ''));
   }
   for (const k of p.fell || []) { const t = k === 'TREE' ? S.tree : null; if (t && t.alive) { destroyStatic(t); TEST.fell.push(t); tlog(`TREE AT ${k} FELLED`); } }
+  for (const k of p.breach || []) { const q = testPos(k); let b = null, bd = 1e9; if (q) for (const sec of MAP.secs) if (sec.alive) { const [nx, ny, d] = secNear(sec, q[0], q[1]); if (d < bd) { bd = d; b = [sec, nx, ny]; } } if (b) { devDamage(b[0], 1e9, b[1], b[2]); tlog(`WALL BY ${k} DOWN`); } }
   for (const k of p.smoke) { const q = testPos(k); if (q) { popSmoke(q[0], q[1]); tlog(`SMOKE AT ${k}`); } }
   for (const [a, b, t] of p.shots) { if (!testWho(a) && S[a]) { const s = devDummyAt(S[a][0], S[a][1], face(a), 1); s.scene = a; } TEST.shots.push({ a, b, at: TEST.t0 + (t || 0) }); }
   for (const k in TEST_KEYS) if (p[k] !== undefined) TEST_KEYS[k].set(p[k]);

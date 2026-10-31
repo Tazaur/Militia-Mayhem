@@ -207,7 +207,7 @@ function roofBlit(H) {
 }
 /* roofs drawn over the light (with the sun): lit as the light lit a flat top (sunTone's sunlit colour, the GL's colour matrix).
    In sight: rv (roofView, faded round the eyes). Out of sight (H: the sight hole, clipped out), after the memory: the roof
-   whole as it stands, and the tiles that fell where this view's memory hasn't seen (m.pend) as it remembers them, so a
+   whole as it stands, and where it changed and this view's memory hasn't seen it all (m.pend) as it remembers it, so a
    roof looks the same in and out of sight (no fog look on it: the hole's wall-shaped edge showed on it) */
 function roofLit(fn) { const [r, g, b] = sunTone().li; if (ctx.withMatrix) ctx.withMatrix(new Float32Array([r, 0, 0, 0, g, 0, 0, 0, b]), [0, 0, 0], null, fn); else fn(); }
 function roofsOver(vw, rv, H) {
@@ -216,10 +216,10 @@ function roofsOver(vw, rv, H) {
   worldT(); ctx.save(); ctx.clipOut(H); ctx.imageSmoothingEnabled = false;
   roofLit(() => {
     ctx.drawImage(ROOF_C, rv.x, rv.y, rv.w, rv.h, rv.x, rv.y, rv.w, rv.h);
-    if (m && m.pend) for (const [o, S] of m.pend) {
+    if (m && m.pend) for (const [o, e] of m.pend) {
       if (o.bb[2] < rv.x || o.bb[0] > rv.x + rv.w || o.bb[3] < rv.y || o.bb[1] > rv.y + rv.h) continue;
       ctx.save(); ctx.transform(o.f.c, o.f.s, -o.f.s, o.f.c, o.f.ox, o.f.oy);
-      for (const k of S) { const i = k % o.W, j = (k / o.W) | 0; ctx.drawImage(o.rf, i * SUB, j * SUB, SUB, SUB, i * SUB, j * SUB, SUB, SUB); }
+      for (const k of e.S) { const x = (k % o.W) * SUB, y = ((k / o.W) | 0) * SUB; ctx.drawImage(e.c, x, y, SUB, SUB, x, y, SUB, SUB); }
       ctx.restore();
     }
   });
@@ -242,6 +242,32 @@ function repaintRoofAround(H, cells) {
   for (const k of cells) { const i = k % H.W, j = (k / H.W) | 0; for (let b = j - 1; b <= j + 1; b++) for (let a = i - 1; a <= i + 1; a++) { const n = b * H.W + a; if (a < 0 || b < 0 || a >= H.W || b >= H.H || done.has(n)) continue; done.add(n); roofCell(H, a, b); } }
   H.rdirty = 1;
 }
+/* a roof tile is about to fall: every memory keeps the house's roof as it last saw it (m.pend: H -> { c: its roof canvas
+   as remembered, S: the cells that differ from the roof now, the tile and the neighbours its torn edges are painted on }).
+   applyFog copies the roof now into c only where seen (pixel by pixel, as the memory picture), and drops a cell once it's
+   seen whole; roofsOver draws c's cells out of sight */
+function roofMemKeep(H, k) {
+  if (!M.fogMem) return; const i = k % H.W, j = (k / H.W) | 0;
+  for (const m of Object.values(M.fogMem)) {
+    if (!m.pend) m.pend = new Map(); let e = m.pend.get(H);
+    if (!e) { const c = mkG(H.rc.width, H.rc.height); c.getContext('2d').drawImage(H.rc, 0, 0); m.pend.set(H, e = { c, S: new Set() }); }
+    for (let b = j - 1; b <= j + 1; b++) for (let a = i - 1; a <= i + 1; a++) if (a >= 0 && b >= 0 && a < H.W && b < H.H) e.S.add(b * H.W + a);
+  }
+}
+/* applyFog: the roofs a memory kept (roofMemKeep) take the roof as it is now where in sight (polys) */
+function roofMemSee(m, polys, bx0, by0, bx1, by1) {
+  if (!m.pend) return;
+  for (const [H, e] of m.pend) {
+    if (H.bb[2] < bx0 || H.bb[0] > bx1 || H.bb[3] < by0 || H.bb[1] > by1) continue;
+    const f = H.f, g = e.c.getContext('2d'); g.save(); g.setTransform(f.c, -f.s, f.s, f.c, -(f.c * f.ox + f.s * f.oy), f.s * f.ox - f.c * f.oy); polyPath(g, polys); g.clip(); g.setTransform(1, 0, 0, 1, 0, 0);
+    const inS = (x, y) => { const [wx, wy] = fromF(f, x, y); return polys.some(P => inPoly(wx, wy, P)); };
+    for (const k of e.S) {
+      const x = (k % H.W) * SUB, y = ((k / H.W) | 0) * SUB; g.clearRect(x, y, SUB, SUB); g.drawImage(H.rc, x, y, SUB, SUB, x, y, SUB, SUB);
+      if (inS(x + 1, y + 1) && inS(x + SUB - 1, y + 1) && inS(x + 1, y + SUB - 1) && inS(x + SUB - 1, y + SUB - 1)) e.S.delete(k);     // seen whole: the roof now is the roof remembered
+    }
+    g.restore(); if (!e.S.size) m.pend.delete(H);
+  }
+}
 /* a wall section fell: its roof comes down as a cascade, each tile ROOF_STEP s later per tile it is from the wall */
 const ROOF_STEP = 0.07;
 function devRoofFall(sec) {
@@ -254,8 +280,7 @@ function devRoofFall(sec) {
 function devRoofTile(H, k, fall) {
   if (H.roof[k] !== 1) return; H.roof[k] = 2;
   const i = k % H.W, j = (k / H.W) | 0, [cx, cy] = cellW(H, i, j);
-  paintCell(H, i, j); repaintRoofAround(H, [k]);
-  if (M.fogMem) for (const m of Object.values(M.fogMem)) { if (!m.pend) m.pend = new Map(); if (!m.pend.has(H)) m.pend.set(H, new Set()); m.pend.get(H).add(k); }     // the memories keep it till they see it gone (applyFog)
+  roofMemKeep(H, k); paintCell(H, i, j); repaintRoofAround(H, [k]);
   if (i % 2 === 0 && j % 2 === 0) devDust(cx, cy);          // dust from roof tiles on an even row and even column
   { const a = rnd(0, TAU), sp = rnd(30, 120); part({ k: 'debris', x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rnd(0.4, 0.9), max: 0.9, sz: rnd(2, 4), rot: rnd(0, TAU), vr: rnd(-12, 12), drag: 3 }); }
   shakeAt(cx, cy, 2.5, 420); ev('roof.fall', cx, cy);
