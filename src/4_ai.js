@@ -443,7 +443,7 @@ function updateCams(dt) {
   for (const vw of M.views) {
     vw.shake *= Math.exp(-dt * 8);
     let tx, ty, tz;
-    const baseZ = clamp(Math.min(vw.h / 400, vw.w / 560), 0.95, 2.6);
+    const baseZ = PIXN ? Math.max(1, Math.round(baseZoom(vw.w, vw.h) * DPR)) / DPR : baseZoom(vw.w, vw.h);     // PIXEL LOCK: whole canvas pixels an art pixel
     if (vw.p) {
       const p = vw.p, s = p.sol; [tx, ty] = focusOf(p);
       tz = baseZ * (s.alive && s.veh ? (s.veh.type === 'tank' ? 0.82 : s.veh.type === 'jeep' ? 0.78 : 0.9) : 1);

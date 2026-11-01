@@ -114,20 +114,25 @@ const cv = document.getElementById('c');
 let ctx = cv.getContext('2d');
 /* soldier/vehicle shadows are drawn opaque into their own layer, then that whole layer is faded once, so overlaps never darken */
 const SHC = document.createElement('canvas'); let SHX = SHC.getContext('2d');
-let W = 0, H = 0, DPR = 1;
+let W = 0, H = 0, DPR = 1, PIXN = 0;
+const baseZoom = (w, h) => clamp(Math.min(h / 400, w / 560), 0.95, 2.6);     // the camera's zoom with nothing to change it
 const SAFE = { t: 0, r: 0, b: 0, l: 0 };
 const probe = document.createElement('div');
 probe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)';
 document.body.appendChild(probe);
 let ROT = false; const TOUCHDEV = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 function resize() {
-  DPR = Math.min(2, window.devicePixelRatio || 1) * Math.max(0.5, Math.min(1, (store.get('cfg3', {}).res || 100) / 100));     // RENDER RESOLUTION
   // a phone held upright: the canvas turns sideways so the game is always landscape
   ROT = TOUCHDEV && innerHeight > innerWidth * 1.05; W = ROT ? innerHeight : innerWidth; H = ROT ? innerWidth : innerHeight;
+  const dpr = window.devicePixelRatio || 1;
+  // PIXEL LOCK: one art pixel is one canvas pixel at the base zoom, and each canvas pixel a whole number of screen pixels
+  PIXN = CFG.pix ? Math.max(1, Math.round(baseZoom(W, H) * dpr)) : 0;
+  DPR = PIXN ? dpr / PIXN : Math.min(2, dpr) * Math.max(0.5, Math.min(1, (CFG.res || 100) / 100));     // RENDER RESOLUTION
   cv.style.width = ROT ? W + 'px' : ''; cv.style.height = ROT ? H + 'px' : ''; cv.style.right = cv.style.bottom = ROT ? 'auto' : '';
   cv.style.transformOrigin = ROT ? '0 0' : ''; cv.style.transform = ROT ? `translateX(${innerWidth}px) rotate(90deg)` : '';
   cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
-  if (GLC) { for (const k of ['width', 'height', 'right', 'bottom', 'transformOrigin', 'transform']) GLC.style[k] = cv.style[k]; GLC.width = cv.width; GLC.height = cv.height; }     // the GL canvas under it, the same
+  cv.style.imageRendering = PIXN ? 'pixelated' : '';
+  if (GLC) { for (const k of ['width', 'height', 'right', 'bottom', 'transformOrigin', 'transform', 'imageRendering']) GLC.style[k] = cv.style[k]; GLC.width = cv.width; GLC.height = cv.height; }     // the GL canvas under it, the same
   const cs = getComputedStyle(probe), st = parseFloat(cs.paddingTop) || 0, sr = parseFloat(cs.paddingRight) || 0, sb = parseFloat(cs.paddingBottom) || 0, sl = parseFloat(cs.paddingLeft) || 0;
   if (ROT) { SAFE.t = sr; SAFE.r = sb; SAFE.b = sl; SAFE.l = st; } else { SAFE.t = st; SAFE.r = sr; SAFE.b = sb; SAFE.l = sl; }
   if (typeof M !== 'undefined' && M) layoutViews();
@@ -697,7 +702,7 @@ function touchPlayer() { return PLAYERS.find(p => p.dev.type === 'touch'); }
 
 /* ---------------- settings ---------------- */
 const CFG = Object.assign({ mode: 0, map: 0, bots: 6, limit: 1, skill: 1, ff: false, board: false, midjoin: true, camera: 'split', style: 'classic', fogLook: 'grey', weather: 'clear', teamColors: 'player', fog: 'los', sound: 'exp', sun: true, clearLos: true,
-  res: 100, lightQ: 1, lightA: false, mrt: true, shCache: 2, shLay: true, shLen: 128, shMem: true, shPt: true, lights: 'all', refl: true, fogQ: 'high', smk: 'high', trees: 'high', tops: 'lit', fps: 0, minimap: true, tSize: 100, tAlpha: 100, tFireX: 96, tFireY: 92, tLfire: true, volMaster: 100, volSfx: store.get('sfx', true) ? 100 : 0, volMus: store.get('mus', true) ? 100 : 0 }, store.get('cfg3', {}));
+  res: 100, pix: false, lightQ: 1, lightA: false, mrt: true, shCache: 2, shLay: true, shLen: 128, shMem: true, shPt: true, lights: 'all', refl: true, fogQ: 'high', smk: 'high', trees: 'high', tops: 'lit', fps: 0, minimap: true, tSize: 100, tAlpha: 100, tFireX: 96, tFireY: 92, tLfire: true, volMaster: 100, volSfx: store.get('sfx', true) ? 100 : 0, volMus: store.get('mus', true) ? 100 : 0 }, store.get('cfg3', {}));
 /* settings › FOG OF WAR presets: [name, values] (drawn by fogLook / fogEdge) */
 const FOG_PRESETS = [['STANDARD', { fogD: 20, fogK: 20, fogE: 50, fogW: 16 }], ['GREYSCALE', { fogD: 100, fogK: 22, fogE: 0, fogW: 24 }], ['MUTED', { fogD: 50, fogK: 22, fogE: 0, fogW: 24 }],
   ['DARKENED', { fogD: 0, fogK: 42, fogE: 0, fogW: 24 }], ['EDGE ONLY', { fogD: 0, fogK: 0, fogE: 60, fogW: 24 }]];
