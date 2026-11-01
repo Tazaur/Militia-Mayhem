@@ -433,7 +433,7 @@ function updateNetLobby(ins) {
 }
 
 /* ================= settings (main menu corner, lobby and pause) ================= */
-const SET = { open: false, from: null, tab: 0, sub: 0, sel: 0 };
+const SET = { open: false, from: null, tab: 0, sub: 0, sel: 0, sy: 0, follow: false };     // sy: the rows' scroll (px); follow: scroll the selected row into view
 /* every setting: a choice (o: [value, label], cycles) or a slider (lo..hi by st, unit); get / set read and write it,
    after runs once it changed. Names as other games call them */
 const choice = (n, key, o, after) => ({ n, o, get: () => CFG[key], set: v => { CFG[key] = v; if (after) after(); } });
@@ -491,12 +491,12 @@ const SET_TABS = [['VIDEO', [['GRAPHICS', ['style', 'clearLos', 'fullscreen', 'c
   ['CONTROLS', [['TOUCH', ['tSize', 'tAlpha', 'tFireX', 'tFireY', 'tLfire', 'tAuto']], ['BINDINGS', null]]]];
 const SET_PAGES = SET_TABS.flatMap(([, P], i) => P.map((_, j) => [i, j]));
 const setRows = () => SET_TABS[SET.tab][1][SET.sub][1];
-function setPage(d) { const n = SET_PAGES.length, k = SET_PAGES.findIndex(([i, j]) => i === SET.tab && j === SET.sub); [SET.tab, SET.sub] = SET_PAGES[(k + d + n) % n]; SET.sel = 0; ev('menu'); }
+function setPage(d) { const n = SET_PAGES.length, k = SET_PAGES.findIndex(([i, j]) => i === SET.tab && j === SET.sub); [SET.tab, SET.sub] = SET_PAGES[(k + d + n) % n]; SET.sel = 0; SET.sy = 0; ev('menu'); }
 const CONTROLS = [['MOVE', 'LEFT STICK', 'W A S D'], ['AIM', 'RIGHT STICK', 'MOUSE'], ['FIRE', 'RT', 'LEFT CLICK'], ['AIM DOWN SIGHTS', 'LT', 'RIGHT CLICK'],
   ['SPRINT', 'L3', 'SHIFT'], ['JUMP / VAULT', 'A', 'SPACE'], ['PRONE / STAND', 'B', 'C / Z'], ['RELOAD', 'X', 'R'],
   ['USE · EXIT · SWAP', 'Y', 'E · 1 / 2'], ['GRENADE', 'RB', 'G'], ['GADGET', 'LB', 'F'], ['MELEE', 'R3', 'V'],
   ['SPOT ENEMY', 'D-PAD UP', 'Q'], ['FLASHLIGHT', 'HOLD D-PAD UP', 'L'], ['VEHICLE SEAT', 'B / D-PAD', 'F / 1-4'], ['SCOREBOARD', 'VIEW', 'TAB'], ['PAUSE', 'START', 'ESC']];
-function openSettings(from) { SET.open = true; SET.from = from; SET.tab = 0; SET.sub = 0; SET.sel = 0; ev('menu'); }
+function openSettings(from) { SET.open = true; SET.from = from; SET.tab = 0; SET.sub = 0; SET.sel = 0; SET.sy = 0; SCROLL.dy = 0; ev('menu'); }
 function closeSettings() { SET.open = false; ev('menu'); }
 const inMatch = () => M && !M.demo;
 /* [name, value shown, slider fill 0..1 or null] */
@@ -518,7 +518,7 @@ function updateSettings(ins) {
     if (st.tabL || st.tabR) setPage(st.tabR ? 1 : -1);
     const rows = setRows();
     if (rows) {
-      if (st.navY) { SET.sel = (SET.sel + st.navY + rows.length) % rows.length; ev('menu'); }
+      if (st.navY) { SET.sel = (SET.sel + st.navY + rows.length) % rows.length; SET.follow = true; ev('menu'); }
       if (st.navX) setChange(rows[SET.sel], st.navX);
       if (st.confirm) setChange(rows[SET.sel], 1);
     }
@@ -538,7 +538,7 @@ function drawSettings() {
   const dv = devOf(null), cs = Math.max(40, 40 * u); iconButton(px + pw - cs - 8, py + (hh - cs) / 2, cs, 'close', () => closeSettings(), false, ['back', dv]);
   // a row of tabs, each name shrunk to fit its tab
   const tabs = (names, on, x, y, tw, h, fsz, pick) => names.forEach((t, i) => { ctx.font = `${fsz}px ${FD}`; const fs = fsz * Math.min(1, (tw - 16) / ctx.measureText(t).width);
-    button({ x: x + i * tw, y, w: tw - 6, h, label: t, sel: on === i, fn: () => { pick(i); SET.sel = 0; ev('menu'); }, size: fs }); });
+    button({ x: x + i * tw, y, w: tw - 6, h, label: t, sel: on === i, fn: () => { pick(i); SET.sel = 0; SET.sy = 0; ev('menu'); }, size: fs }); });
   // core tabs: in the title row, between the title and the close button
   ctx.font = `${fpx(22, u, 17)}px ${FD}`; const c0 = px + pad + ctx.measureText('SETTINGS').width + 16 * u, c1 = px + pw - cs - 8 - 64 * u, ct = Math.min(150 * u, (c1 - c0) / SET_TABS.length);
   tabs(SET_TABS.map(([t]) => t), SET.tab, c1 - ct * SET_TABS.length, py + (hh - cs * 0.86) / 2, ct, cs * 0.86, fpx(14, u, 11), i => { SET.tab = i; SET.sub = 0; });
@@ -548,9 +548,16 @@ function drawSettings() {
   keyTag('prev', dv, { x: tx, y: ty, w: tw - 6, h: cs }, 'left'); keyTag('next', dv, { x: tx + (nt - 1) * tw, y: ty, w: tw - 6, h: cs }, 'right');
   const bodyY = ty + cs + 12 * u, bodyH = py + ph - bodyY - Math.max(28, 30 * u), rows = setRows();
   if (rows) {
-    const rh = clamp(bodyH / rows.length, 34, 56 * u);
+    // more rows than fit (a phone): they scroll under the page tabs (drag, wheel; the selected row kept in view), a bar at the right shows where
+    const rh = clamp(bodyH / rows.length, 34, 56 * u), over = Math.max(0, rh * rows.length - bodyH);
+    if (SET.follow) { SET.sy = clamp(SET.sy, (SET.sel + 1) * rh - bodyH, SET.sel * rh); SET.follow = false; }
+    SET.sy = clamp(SET.sy + SCROLL.dy, 0, over); SCROLL.dy = 0;
+    ctx.save(); ctx.beginPath(); ctx.rect(px, bodyY, pw, bodyH); ctx.clip();
+    if (over) { const bh = bodyH * bodyH / (bodyH + over); ctx.fillStyle = 'rgba(242,230,196,0.1)'; ctx.fillRect(px + pw - 6 * u, bodyY, 3 * u, bodyH); ctx.fillStyle = 'rgba(242,230,196,0.45)'; ctx.fillRect(px + pw - 6 * u, bodyY + (bodyH - bh) * SET.sy / over, 3 * u, bh); }
+    const hit = B => { const y0 = Math.max(B.y, bodyY), y1 = Math.min(B.y + B.h, bodyY + bodyH); if (y1 - y0 > 4) UIB.push(Object.assign(B, { y: y0, h: y1 - y0 })); };     // only the part in view is pressable
     rows.forEach((k, i) => {
-      const y = bodyY + i * rh, sel = SET.sel === i, [lab, val, fill] = setLabel(k), x = px + pad, w = pw - pad * 2;
+      const y = bodyY + i * rh - SET.sy; if (y + rh < bodyY || y > bodyY + bodyH) return;
+      const sel = SET.sel === i, [lab, val, fill] = setLabel(k), x = px + pad, w = pw - pad * 2;
       if (sel) { ctx.fillStyle = 'rgba(255,224,138,0.13)'; ctx.fillRect(x, y + 2, w, rh - 4); ctx.fillStyle = '#ffe08a'; ctx.fillRect(x, y + 2, 4, rh - 4); }
       txt(lab, x + 16 * u, y + rh / 2, fpx(15, u, 13), sel ? '#fff' : '#c8d0b8', 'left', 'middle', FD);
       const aw = Math.max(40, rh * 0.95);
@@ -565,10 +572,11 @@ function drawSettings() {
       txt('‹', x + w * 0.52, y + rh / 2, fpx(20, u, 16), 'rgba(242,230,196,0.5)', 'center', 'middle', FD);
       if (sel) keyTag('change', dv, { x: x + w * 0.52 - 12, y: y + rh * 0.2, w: 0, h: rh * 0.6 }, 'left');
       txt('›', x + w - aw / 2, y + rh / 2, fpx(20, u, 16), 'rgba(242,230,196,0.8)', 'center', 'middle', FD);
-      UIB.push({ x, y, w: w * 0.55, h: rh, focus: i, fs: k === 'fullscreen', fn: () => { SET.sel = i; SET.fsClick = true; setChange(k, -1); } });
-      UIB.push({ x: x + w * 0.55, y, w: w * 0.45, h: rh, focus: i, fs: k === 'fullscreen', fn: () => { SET.sel = i; SET.fsClick = true; setChange(k, 1); } });
-      if (bar) { const [bx, bw] = bar, B = { x: bx - 6 * u, y, w: bw + 12 * u, h: rh, focus: i, fn: (d, c) => { SET.sel = i; setChange(k, 0, clamp((c.x / (B.k || 1) - bx) / bw, 0, 1)); } }; UIB.push(B); }     // over the arrow halves
+      hit({ x, y, w: w * 0.55, h: rh, focus: i, fs: k === 'fullscreen', fn: () => { SET.sel = i; SET.fsClick = true; setChange(k, -1); } });
+      hit({ x: x + w * 0.55, y, w: w * 0.45, h: rh, focus: i, fs: k === 'fullscreen', fn: () => { SET.sel = i; SET.fsClick = true; setChange(k, 1); } });
+      if (bar) { const [bx, bw] = bar, B = { x: bx - 6 * u, y, w: bw + 12 * u, h: rh, focus: i, fn: (d, c) => { SET.sel = i; setChange(k, 0, clamp((c.x / (B.k || 1) - bx) / bw, 0, 1)); } }; hit(B); }     // over the arrow halves
     });
+    ctx.restore();
   } else {
     const cols = pw > 620 ? 2 : 1, per = Math.ceil(CONTROLS.length / cols), rh = Math.min(bodyH / (per + 1), 34 * u), colW = (pw - pad * 2) / cols, fs = fpx(13, u, 11.5);
     for (let c = 0; c < cols; c++) {

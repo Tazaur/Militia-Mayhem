@@ -5,7 +5,7 @@
 // shots: seconds of game time after the scene is laid out; each one is <out>/<scene>_<t>.png. The log: <out>/<scene>.log
 // --gpu: this machine's GPU (D3D11, WebGPU on), frame rate unlocked, not SwiftShader;  --cfg '{"lightQ":2}': settings first
 // --bench S: after the last shot, S s of frames timed (uncapped): mean / p95 frame ms, fps, and the GPU stages if timers work
-// --probe EXPR: an expression evaluated after the bench, its value added to the BENCH line
+// --probe EXPR: an expression evaluated after the bench, its value added to the BENCH line;  --after EXPR: run after the first shot
 import { spawn } from 'child_process';
 import http from 'http';
 import fs from 'fs';
@@ -18,6 +18,7 @@ const args = process.argv.slice(2), flag = (k, d) => { const i = args.indexOf('-
 const map = flag('map', 'outskirts'), bots = +flag('bots', 0), shots = flag('shots', '0.6').split(',').map(Number), size = flag('size', '1280x720').split('x').map(Number);
 const cfg = JSON.parse(flag('cfg', '{}')), bench = +flag('bench', 0), gpu = bool('gpu');
 const probe = flag('probe', '');     // --probe EXPR: its value (JSON) after the bench line
+const after = flag('after', '');     // --after EXPR: run after the first shot (a live change, e.g. the sun setting mid-scene), the later shots see it
 const phone = bool('phone'), keepHud = bool('keep-hud'), out = path.resolve(flag('out', path.join(os.tmpdir(), 'mm-scenes')));
 const scene = args[0] || 'window', over = args[1] ? JSON.parse(args[1]) : {};
 const [vw, vh] = phone ? [844, 390] : size;
@@ -57,6 +58,7 @@ for (const t of shots) {
   await until(`M.time - TEST.t0 >= ${t}`, 20000 + t * 3000);
   const r = await send('Page.captureScreenshot', { format: 'png' }), f = path.join(out, `${scene}_${t}.png`);
   fs.writeFileSync(f, Buffer.from(r.data, 'base64')); files.push(f);
+  if (after && files.length === 1) await js(after);
 }
 let bres = '';
 if (bench) {     // frames timed by rAF (the page's own loop draws them); the GPU stages from the FPS counter's timers when there are some

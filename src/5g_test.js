@@ -25,7 +25,7 @@ const TEST_KEYS = {
   roofs: { n: 'ROOFS', o: [true, false], set: v => DEV.L.roofs = v },
   los: { n: 'LOS', o: [true, false], set: v => M.cfg.fog = v ? 'los' : 'off' },
   sun: { n: 'SUN', o: [true, false], set: v => CFG.sun = v },
-  time: { n: 'TIME', o: ['day', 'dusk', 'night'], set: v => { DEV.cyc = 0; [SUN.el, SUN.az] = typeof v === 'number' ? sunPath((v - 6) / 24 * TAU) : TEST_TIMES[v] || TEST_TIMES.day; } },     // a number: that hour of the day cycle's real sun
+  time: { n: 'TIME', o: ['day', 'dusk', 'night'], set: v => { DEV.cyc = 0; [SUN.el, SUN.az] = typeof v === 'number' ? sunPath((v - 6) / 24 * TAU) : v && v.el !== undefined ? [v.el * Math.PI / 180, TEST_TIMES.day[1]] : TEST_TIMES[v] || TEST_TIMES.day; } },     // a number: that hour of the day cycle's real sun; {el}: the sun that many degrees up
   hud: { n: 'HUD', o: [true, false], set: v => TEST.noHud = !v },
   lamps: { n: 'LAMPS', o: [false, true], set: v => { for (const o of M.sol) o.lamp = v; for (const o of M.vehicles) if (o.type !== 'nest') o.lights = v; } },     // every flashlight and vehicle's lights
   cam: { n: 'CAM', o: ['SCENE', 'PLAYER', 'INSIDE', 'WINDOW', 'OUTSIDE', 'BESIDE', 'FAR', 'TREE', 'off'], set: () => {} },

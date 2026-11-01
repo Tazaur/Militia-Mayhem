@@ -536,7 +536,9 @@ const Music = {
 
 /* ---------------- input ---------------- */
 const KB = { keys: Object.create(null), pressed: new Set(), typed: [], wheel: 0, mouse: { x: 0, y: 0, down: false, rdown: false, rclick: false, lclick: null, moved: false } };
-addEventListener('wheel', e => { KB.wheel += Math.sign(e.deltaY); }, { passive: true });
+addEventListener('wheel', e => { KB.wheel += Math.sign(e.deltaY); SCROLL.dy += e.deltaY * (e.deltaMode ? 16 : 1); }, { passive: true });
+/* a menu list's scroll this frame (px, down +): the mouse wheel, and a finger dragged on a menu (a touch that hardly moves is a tap) */
+const SCROLL = { dy: 0 };
 const GAMEKEYS = ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab', 'Backspace', 'F1', 'F2', 'F3', 'F4'];
 addEventListener('keydown', e => { if (GAMEKEYS.includes(e.code)) e.preventDefault(); audioInit(); if (!e.repeat) { KB.pressed.add(e.code); KB.typed.push(e.code); } KB.keys[e.code] = true; });
 addEventListener('keyup', e => { KB.keys[e.code] = false; });
@@ -566,7 +568,7 @@ cv.addEventListener('pointerdown', e => {
       if ([...TOUCH.pts.values()].some(t => t.role === role)) { TOUCH.pts.set(e.pointerId, { role: 'stray' }); return; }
       if (role === 'move' && TOUCH.lockFree) TOUCH.sprintLock = TOUCH.lockFree = false;     // back on the stick after a locked sprint: that ends it
       TOUCH.pts.set(e.pointerId, { role, ox, oy, x, y, t0: performance.now(), full: 0, drag: false });
-    } else TOUCH.taps.push({ x, y });
+    } else TOUCH.pts.set(e.pointerId, { role: 'menu', x0: x, y0: y, x, y, moved: false });     // a tap when it lifts unmoved; a drag scrolls
   } else {
     KB.mouse.x = x; KB.mouse.y = y;
     if (e.button === 0) { KB.mouse.down = true; KB.mouse.lclick = { x, y }; }
@@ -576,14 +578,14 @@ cv.addEventListener('pointerdown', e => {
 }, { passive: false });
 cv.addEventListener('pointermove', e => {
   const [x, y] = ptXY(e);
-  if (e.pointerType === 'touch') { const t = TOUCH.pts.get(e.pointerId); if (t && t.role !== 'btn') { t.x = x; t.y = y; } }
+  if (e.pointerType === 'touch') { const t = TOUCH.pts.get(e.pointerId); if (t && t.role === 'menu') { SCROLL.dy += t.y - y; if (Math.hypot(x - t.x0, y - t.y0) > 12) t.moved = true; } if (t && t.role !== 'btn') { t.x = x; t.y = y; } }
   else { KB.mouse.x = x; KB.mouse.y = y; KB.mouse.moved = true; }
 });
 /* fullscreen must be asked for inside the tap itself (Safari refuses it from the game loop) */
 function fsGesture(x, y) { if (typeof hitUI !== 'function') return; const b = hitUI(x, y); if (b && b.fs && !b.off) toggleFullscreen(); }
 function pUp(e) {
   if (e.pointerType !== 'mouse' && e.type === 'pointerup' && state !== 'play') { const [x, y] = ptXY(e); fsGesture(x, y); }
-  if (e.pointerType === 'touch') { const t = TOUCH.pts.get(e.pointerId); if (t && t.role === 'btn') TOUCH.hold[t.k] = false; TOUCH.pts.delete(e.pointerId); }
+  if (e.pointerType === 'touch') { const t = TOUCH.pts.get(e.pointerId); if (t && t.role === 'btn') TOUCH.hold[t.k] = false; if (t && t.role === 'menu' && !t.moved && e.type === 'pointerup') TOUCH.taps.push({ x: t.x0, y: t.y0 }); TOUCH.pts.delete(e.pointerId); }
   else { if (e.button === 0 || e.type === 'pointercancel') KB.mouse.down = false; if (e.button === 2 || e.type === 'pointercancel') KB.mouse.rdown = false; }
 }
 cv.addEventListener('pointerup', pUp); cv.addEventListener('pointercancel', pUp);
