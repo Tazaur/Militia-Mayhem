@@ -1021,7 +1021,8 @@ function drawSun(vw, vis, hidden, fogged) {     // fogged: vision on (the memory
   if (fog) { if (mv) fromC(W.m, [], S.SS, S.FSS, 6, 7); else sweep(S.SS, S.FSS, 6, 7); }     // the remembered things' shadows, for out of sight
   if (W) { wcStep(S, vw, wk); wcPlan(S, FB, X[0], wk, SL, fog, fv, mv); }
   const ly = up && S.ly && (HLY.c.length > 0 || S.ul) && sunLayers(S, X, box, reg, vr, K, mxh, uv && { c: W.u, R: uR, wck }); HLY.c = [];     // the upper things and what floats past the first channel (hLayers)
-  // the light, once (into LT)
+  // the light, once (into LT). The upper heights' units bound first: with the sun down sunLayers doesn't run, and the 2D batcher may have left a sprite sheet on unit 11 (the lamps marched through its art as crowns)
+  if (S.ly) L2u(S);
   gl.bindFramebuffer(gl.FRAMEBUFFER, S.FL); gl.viewport(0, 0, w, h); gl.scissor(rx, h - ry - rh, rw, rh);
   gl.useProgram(S.P); gl.bindBuffer(gl.ARRAY_BUFFER, S.tri); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
   const el = sunEl(), ce = Math.cos(el), Ld = [Math.cos(SUN.az) * ce, Math.sin(SUN.az) * ce, Math.sin(el)];
