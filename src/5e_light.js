@@ -5,7 +5,7 @@
    So something lower than the light throws a shadow that ends (a jeep beside an MG flash), a wall's runs to the edge.
    The patch is drawn smoothed (soft shadow edges) and brightens what's under it: dodged, then a little added.
    With the sun on, the sun's shader does them instead, from its height buffer (per pixel, slopes facing a light lit more) */
-const LC = 4, LMAX = 10, LIGHTS = [], LFX = [], LSC = 4;     // LSC: every light's reach x this (a flash lights up a room)
+const LC = 4, LMAX = 10, LIGHTS = [], LFX = [], LSC = 4, LKEEP = 1.3; let LSHOWN = new Set();     // LKEEP: a light shown last frame ranks this much higher (no flicker at the cut); LSHOWN: their sources     // LSC: every light's reach x this (a flash lights up a room)
 const LAMP = { r: 85, k: 0.95, cone: 0.36, post: 8 };     // a flashlight: reach (before LSC), strength, half-angle (rad); post: a tank spotlight over its turret top
 const LH = { tank: 30, jeep: 20, nest: 12, bag: 12, hay: 16, tree: 255 };                 // how tall things are
 /* a light this frame (skip: the thing it comes from, which mustn't shade it; d: a spot's [cos, sin, cos of its half-angle],
@@ -87,12 +87,18 @@ const DAY_DIM = 0.1;     // lights at noon (the highest sun) give this share of 
 function dayDim() { return 1 - (1 - DAY_DIM) * clamp(Math.sin(SUN.el) / Math.sin(75 * Math.PI / 180), 0, 1); }
 function lightFx(x, y, r, h, T) { LFX.push({ x, y, r, h, t0: M.time, T }); }
 function lightsNow(vis) {          // this frame's strongest lights in view (and the queue emptied)
-  for (let i = LFX.length - 1; i >= 0; i--) { const f = LFX[i], u = (M.time - f.t0) / f.T; if (u >= 1 || u < 0) LFX.splice(i, 1); else light(f.x, f.y, f.r, f.h, (1 - u) ** 2); }
-  for (const w of M.wrecks) if (w.burn > 0) light(w.x, w.y, 110, topOf(w) + 6, 0.4 + 0.15 * Math.sin(M.time * 23 + w.x) * Math.sin(M.time * 9.7), w);   // still burning
-  lampsOn((x, y, h, a, o, fix) => light(x, y, LAMP.r, h, LAMP.k, null, [...lampD(a, fix), lampPool(o, a, x, y, h, fix)]));     // flashlights, headlights (from the state: one out of sight still throws its beam in)
+  const id = o => LIGHTS[LIGHTS.length - 1].id = o, mine = new Set(LOCALS().map(p => p.sol && (p.sol.veh || p.sol)));     // id: what it comes from (kept from frame to frame); mine: the local players and the vehicles they're in
+  for (let i = LFX.length - 1; i >= 0; i--) { const f = LFX[i], u = (M.time - f.t0) / f.T; if (u >= 1 || u < 0) LFX.splice(i, 1); else { light(f.x, f.y, f.r, f.h, (1 - u) ** 2); id(f); } }
+  for (const w of M.wrecks) if (w.burn > 0) { light(w.x, w.y, 110, topOf(w) + 6, 0.4 + 0.15 * Math.sin(M.time * 23 + w.x) * Math.sin(M.time * 9.7), w); id(w); }   // still burning
+  lampsOn((x, y, h, a, o, fix) => { light(x, y, LAMP.r, h, LAMP.k, null, [...lampD(a, fix), lampPool(o, a, x, y, h, fix)]); id(o); if (mine.has(o.v && o.v.T ? o.v : o)) LIGHTS[LIGHTS.length - 1].pin = true; });     // flashlights, headlights (from the state: one out of sight still throws its beam in)
   for (const v of M.vehicles) if (v.lights && v.active && !v.dead && v.type !== 'nest') { const b = brakeK(v); tailLights(v, (x, y, h) => light(x, y, TAIL.r * (1 + 0.4 * b), h, TAIL.k * (1 + TAIL.brake * b), v, null, TAIL.c)); }
   const dk = dayDim(); if (dk < 1) for (const l of LIGHTS) l.k *= dk;
-  const sp = CFG.lights === 'spot', L = LIGHTS.filter(l => l.k > 0.02 && (!sp || l.d) && vis(l.x, l.y, l.r)).sort((a, b) => b.k * b.r - a.k * a.r).slice(0, LMAX); LIGHTS.length = 0; if (M.dev) DEV.lp = L;
+  /* the LMAX strongest: a local player's own lamps always (a firefight's flashes never put out your flashlight), and last
+     frame's a little ahead (LKEEP), so two lights near the cut don't flicker by turns */
+  const sp = CFG.lights === 'spot', was = LSHOWN, rank = l => l.k * l.r * (l.pin ? 1e3 : l.id && was.has(l.id) ? LKEEP : 1);
+  const L = LIGHTS.filter(l => l.k > 0.02 && (!sp || l.d) && vis(l.x, l.y, l.r)); for (const l of L) l.q = rank(l);
+  L.sort((a, b) => b.q - a.q).length = Math.min(L.length, LMAX); LIGHTS.length = 0; if (M.dev) DEV.lp = L;
+  LSHOWN = new Set(); for (const l of L) if (l.id) LSHOWN.add(l.id);
   return L;
 }
 /* a point light's colour at (x, y, z) in the open air (as the light pass has it on flat ground: its falloff, a spotlight's
