@@ -20,7 +20,7 @@ test('frames allocate almost nothing once the code is optimised', async () => {
   const platform = createStubPlatform(1764, 822);
   const gpu = createHeadlessGpu();
   const atlasImage = await platform.decodeImage('stub');
-  startGame({ ...createNullParts(), platform, gpu, build: 0, atlasImage });
+  startGame({ ...createNullParts(), platform, gpu, build: 0, atlasImage, rotationsImage: atlasImage });
 
   // Unoptimised code boxes numbers, and when the optimiser finishes varies between runs. So measure repeatedly,
   // yielding so it can finish, and judge the best window.

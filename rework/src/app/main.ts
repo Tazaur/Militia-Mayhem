@@ -7,14 +7,15 @@ import { createNullParts } from './null-parts.ts';
 
 declare const BUILD_NUMBER: number;
 declare const ATLAS_COLOR_URL: string;
+declare const ROTATIONS_URL: string;
 
 const platform = createBrowserPlatform();
 const gpu = createWebGl2Gpu(platform.surface);
 if (gpu) {
-  platform
-    .decodeImage(ATLAS_COLOR_URL)
-    .then((atlasImage) => {
-      startGame({ ...createNullParts(), post: createFullPost(), platform, gpu, build: BUILD_NUMBER, atlasImage });
+  Promise.all([platform.decodeImage(ATLAS_COLOR_URL), platform.decodeImage(ROTATIONS_URL)])
+    .then(([atlasImage, rotationsImage]) => {
+      const parts = { ...createNullParts(), post: createFullPost(), platform, gpu };
+      startGame({ ...parts, build: BUILD_NUMBER, atlasImage, rotationsImage });
     })
     .catch((error: unknown) => platform.fatal(String(error)));
 } else {

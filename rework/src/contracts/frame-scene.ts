@@ -18,8 +18,6 @@ export interface Camera {
   readonly tilt: number;
   /** 1 on foot, the set level in moving vehicles. See DECISIONS.md D11. */
   readonly zoom: number;
-  /** Apply the fraction of a game pixel in the upscale. Only false to compare, until Stage 1 question 1 is decided. */
-  readonly subPixel: boolean;
 }
 
 export interface Environment {
@@ -40,6 +38,8 @@ export interface SpriteList {
   readonly transform: ReadonlyFloats;
   /** Four per sprite: RGBA. */
   readonly tint: ReadonlyFloats;
+  /** One per sprite: 0 nearest, 1 edge, 2 baked. Only until Stage 1 question 2 is decided. */
+  readonly method: ReadonlyFloats;
 }
 
 export interface CasterList {

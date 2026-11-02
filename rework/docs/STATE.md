@@ -2,14 +2,16 @@
 
 Update at the end of every round. Replace old content; history belongs in `DECISIONS.md`.
 
-**Stage:** 1, question 1 is with the user. Stage 0 passed: the user saw the counter on the S23 Ultra (59 FPS, worst 15 to 30 ms on a blank screen).
+**Stage:** 1, question 1 decided (`DECISIONS.md` D13). Question 2, rotation, is with the user at build 420.
 **Old game:** frozen at build 417 (`DECISIONS.md` D10), playable at the repo root.
 
 ## Next step
 
-Get the user's verdict on Stage 1 question 1 from the phone, at `/rework/`: does the camera look smooth, and is SMOOTH better than WHOLE PIXELS (tap to switch)? Also get the readout's GPU numbers and DROP count. Record them in `DECISIONS.md`, delete the comparison (`camera.subPixel`), then start question 2: rotation.
+Get the user's verdict on Stage 1 question 2 from the phone, at `/rework/`: which column looks best turning, left to right NEAREST, EDGE, BAKED (64 angles)? A tap cycles real speed, slow and stopped. Also get the readout's top three lines. Record the result in `DECISIONS.md`, keep the winner and delete the other methods (the `SYSTEMS.md` TEMP row), then start question 3: tilt.
 
-Blank-screen dropped frames on the phone are unexplained: `WORST` jumps to 30 ms with next to no GPU work. Compare with this round's GPU and CPU numbers to tell if they are ours.
+Baked cost so far: 6 sprites at 64 angles is 800 KB of PNG and a 2048x1014 sheet, with no material map yet. The page is 1.35 MB until this is decided.
+
+Phone frame timing (`DECISIONS.md` D14): if `EARLY` matches `DROP`, frames are late and caught up, not lost. If `EARLY` stays near 0 while `DROP` counts, frames are really lost, and the estimate says whether the GPU is the cause.
 
 ## Open questions for the user
 

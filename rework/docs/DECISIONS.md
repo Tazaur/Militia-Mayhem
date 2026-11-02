@@ -60,6 +60,16 @@ On the fixed grid, zooming out means a larger world target with smaller pixels. 
 
 `tools/lint.mjs` parses source with the TypeScript compiler API. TypeScript 7, the native port, does not ship that API as a stable package entry (checked on 7.0.2). Move up when it does, or when the lint has another parser. Tests run directly on Node 24's built-in type stripping, so `erasableSyntaxOnly` is on and imports use `.ts` extensions.
 
+## D13. Smooth camera: whole-pixel origin, fraction in the upscale (LOCKED, user; Stage 1 question 1)
+
+Judged on the S23 Ultra in build 419: "beautifully smooth". Whole-pixel scrolling was "not actually that bad, but it does produce a noticeable jitter". Pixel evenness at 1.71x the grid: "looks even. Hard to tell", accepted. The comparison switch is deleted.
+
+## D14. Phone measurements (S23 Ultra, Android browser)
+
+Build 419, portrait 1079x1948, 126 sprites: 59 FPS, DROP 6, WORST 31 ms, CPU 0.3 ms. The browser offers no timer queries, so `gpu/webgl2/timers` falls back to a whole-frame estimate: wait for the GPU with a one-pixel read, time one frame, once a second. It has no per-pass numbers. Checked in software rendering with the extension hidden: estimate 37.4 ms at 27 FPS, which is 37 ms a frame.
+
+Six 31 ms frames in a second would mean at most 54 FPS at 60 Hz, yet it read 59, and the user saw smooth motion. So our reading from this one sample: frames arrive late and the next ones catch up, rather than being lost. Not proven; the readout's `EARLY` count tests it. CPU is ruled out at 0.3 ms.
+
 ## Measured in the old game (do not re-try without a new reason)
 
 | Idea | Result | Source |

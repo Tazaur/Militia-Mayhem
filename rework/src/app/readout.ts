@@ -10,7 +10,8 @@ export function readoutLines(
   width: number,
   height: number,
 ): string[] {
-  const fps = `${Math.round(stats.fps)} FPS  DROP ${stats.dropped}  WORST ${Math.round(stats.worstMs)} MS`;
+  const frames = `DROP ${stats.dropped}  EARLY ${stats.early}  WORST ${Math.round(stats.worstMs)} MS`;
+  const fps = `${Math.round(stats.fps)} FPS  ${frames}`;
   let gpuTotal = 0;
   let passes = '';
   for (const timing of timings) {

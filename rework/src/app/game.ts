@@ -15,6 +15,7 @@ export interface GameParts extends RenderModules {
   readonly transport: Transport;
   readonly build: number;
   readonly atlasImage: ImageHandle;
+  readonly rotationsImage: ImageHandle;
 }
 
 function ignoreMessage(): void {}
@@ -29,6 +30,7 @@ export function startGame(parts: GameParts): void {
   const slice = createSliceScene();
   const assets = {
     atlas: gpu.createImageTexture(parts.atlasImage, 'nearest'),
+    bakedRotations: gpu.createImageTexture(parts.rotationsImage, 'nearest'),
     ground: gpu.createTexture({
       width: PLACEHOLDER_GROUND_SIZE,
       height: PLACEHOLDER_GROUND_SIZE,

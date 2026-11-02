@@ -50,7 +50,6 @@ export function updateGridView(
   cameraX: number,
   cameraY: number,
   zoom: number,
-  subPixel: boolean,
   screenWidth: number,
   screenHeight: number,
 ): void {
@@ -63,8 +62,8 @@ export function updateGridView(
   const wholeTop = Math.floor(top);
   view.originX = wholeLeft - TARGET_MARGIN;
   view.originY = wholeTop - TARGET_MARGIN;
-  view.offsetX = TARGET_MARGIN + (subPixel ? left - wholeLeft : 0);
-  view.offsetY = TARGET_MARGIN + (subPixel ? top - wholeTop : 0);
+  view.offsetX = TARGET_MARGIN + left - wholeLeft;
+  view.offsetY = TARGET_MARGIN + top - wholeTop;
 }
 
 /** For world passes: `worldToClip(vec3 world)`. Needs uniforms uOrigin (vec2), uTarget (vec2) and uTilt (float). */

@@ -1,5 +1,5 @@
 // Owns: loading the built page in headless Chrome at phone size: any error fails, and a screenshot is saved to look at.
-//   node tools/smoke.mjs [--out dir] [--size 844x390] [--scale 2.09]
+//   node tools/smoke.mjs [--out dir] [--size 844x390] [--scale 2.09] [--no-timers]
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
@@ -84,6 +84,15 @@ try {
   await send('Runtime.enable');
   await send('Page.enable');
   await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: scale, mobile: true });
+  if (process.argv.includes('--no-timers')) {
+    const source = `{
+      const real = WebGL2RenderingContext.prototype.getExtension;
+      WebGL2RenderingContext.prototype.getExtension = function (name) {
+        return name === 'EXT_disjoint_timer_query_webgl2' ? null : real.call(this, name);
+      };
+    }`;
+    await send('Page.addScriptToEvaluateOnNewDocument', { source });
+  }
   await send('Page.navigate', { url });
   await sleep(5000);
 
