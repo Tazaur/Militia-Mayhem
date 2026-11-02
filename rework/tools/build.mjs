@@ -12,7 +12,8 @@ function sourceHash(directory, hash = crypto.createHash('sha1')) {
   for (const entry of fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
     const full = path.join(directory, entry.name);
     if (entry.isDirectory()) sourceHash(full, hash);
-    else hash.update(entry.name).update(fs.readFileSync(full));
+    // Git may check files out with CRLF on Windows. That must not count as a source change.
+    else hash.update(entry.name).update(fs.readFileSync(full, 'utf8').replaceAll('\r\n', '\n'));
   }
   return hash;
 }
