@@ -36,6 +36,13 @@ export interface PostInput {
   /** The output size in device pixels. */
   readonly screenWidth: number;
   readonly screenHeight: number;
+  /** The visible game pixels, the world target's size, and where the screen's corner falls in it. */
+  readonly gridWidth: number;
+  readonly gridHeight: number;
+  readonly targetWidth: number;
+  readonly targetHeight: number;
+  readonly offsetX: number;
+  readonly offsetY: number;
 }
 
 export interface Post {

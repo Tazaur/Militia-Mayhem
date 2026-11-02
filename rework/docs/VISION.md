@@ -35,5 +35,6 @@ Not everything in the goal is literal: the light wedges falling across the roof 
 
 - Wall faces, door and window faces.
 - Lamp posts and other tall props as upright art.
+- Ground textures: the atlas has none, so the old game and the slice both use coded placeholders. This is the biggest gap to `goal.png`.
 - Ground detail stamps.
 - Sizes: 32 px tile. Soldier about 1 tile (about 34 px in the goal at 480). A house about 13 tiles wide.

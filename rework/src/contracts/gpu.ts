@@ -2,6 +2,8 @@
 export interface Handle<Kind extends string> {
   readonly __handle: Kind;
 }
+import type { ImageHandle } from './platform.ts';
+
 export type TextureHandle = Handle<'texture'>;
 export type TargetHandle = Handle<'target'>;
 export type ProgramHandle = Handle<'program'>;
@@ -85,12 +87,22 @@ export interface Pass {
   readonly instances: InstanceData | null;
 }
 
+/** GPU time of one named pass, smoothed. Empty where the device has no timers. */
+export interface PassTiming {
+  readonly name: string;
+  readonly ms: number;
+}
+
 export interface Gpu {
   createTexture(desc: TextureDesc): TextureHandle;
+  createImageTexture(image: ImageHandle, filter: Filter): TextureHandle;
   createTarget(desc: TargetDesc): TargetHandle;
   resizeTarget(target: TargetHandle, width: number, height: number): void;
   targetTexture(target: TargetHandle): TextureHandle;
   createProgram(desc: ProgramDesc): ProgramHandle;
   clear(target: TargetHandle | null, color: Rgba): void;
   draw(pass: Pass): void;
+  /** Call once per frame, after the last draw. */
+  endFrame(): void;
+  passTimings(): readonly PassTiming[];
 }

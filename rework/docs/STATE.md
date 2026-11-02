@@ -2,16 +2,14 @@
 
 Update at the end of every round. Replace old content; history belongs in `DECISIONS.md`.
 
-**Stage:** 0 built and deployed at `/rework/`. Its last exit check is the user seeing the FPS counter on the phone. The illegal-import check passes (`tests/lint.test.mjs`).
+**Stage:** 1, question 1 is with the user. Stage 0 passed: the user saw the counter on the S23 Ultra (59 FPS, worst 15 to 30 ms on a blank screen).
 **Old game:** frozen at build 417 (`DECISIONS.md` D10), playable at the repo root.
 
 ## Next step
 
-Stage 1, question 1 in `PLAN.md`: draw ground art on the 480 px grid with a moving camera and judge the scrolling. Before that round:
+Get the user's verdict on Stage 1 question 1 from the phone, at `/rework/`: does the camera look smooth, and is SMOOTH better than WHOLE PIXELS (tap to switch)? Also get the readout's GPU numbers and DROP count. Record them in `DECISIONS.md`, delete the comparison (`camera.subPixel`), then start question 2: rotation.
 
-1. Add per-pass GPU timers to `gpu/` and show them in the readout, so every Stage 1 round has phone numbers.
-2. Port the atlas pair into `rework/` (`MIGRATION.md`, read `atlas_table.py` and `drop.py` fully first).
-3. Add `render/layers` sprite drawing and a hand-written slice scene in `scene/`.
+Blank-screen dropped frames on the phone are unexplained: `WORST` jumps to 30 ms with next to no GPU work. Compare with this round's GPU and CPU numbers to tell if they are ours.
 
 ## Open questions for the user
 
@@ -28,6 +26,8 @@ Stage 1, question 1 in `PLAN.md`: draw ground art on the 480 px grid with a movi
 
 - **WebGL context loss** is not handled: a phone that drops the context shows a black screen. `gpu/` keeps no descriptors to rebuild from yet. Add it before Stage 2.
 - **Rule A8 and two browser APIs:** A8 says browser code lives in `platform/` and `gpu/`, and the lint enforces that, but `ARCHITECTURE.md` plans Web Audio under `audio/` and WebRTC under `net/`. Decide in Stage 6 and Stage 8: move them under `platform/`, or ask the user to widen A8.
+- **The `nsh_` sprites draw black, and `bagarc` shows a solid fill,** in the slice. Find out what the old game does with them (tint, or a mask) when Stage 3 reads `drawSoldier` and the bag code. Both are left out of the slice for now.
+- **Timer accuracy on a tile GPU:** per-pass numbers may land on the wrong pass, because Adreno defers work. Trust the total first.
 - **`FrameScene` list layouts and `Intent`** are first versions, written before anything reads them. Stages 1 and 2 finalise them.
 
 ## Bug class ledger (rule P1)

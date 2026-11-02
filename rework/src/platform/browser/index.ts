@@ -1,5 +1,5 @@
 // Owns: the browser: canvas, resize, frame loop, storage, and showing fatal errors on the screen.
-import type { Platform, RenderSurface } from '../../contracts/index.ts';
+import type { ImageHandle, Platform, RenderSurface } from '../../contracts/index.ts';
 
 export function createBrowserPlatform(): Platform {
   const canvas = document.createElement('canvas');
@@ -15,6 +15,9 @@ export function createBrowserPlatform(): Platform {
   };
   syncSize();
   window.addEventListener('resize', syncSize);
+
+  let taps = 0;
+  canvas.addEventListener('pointerdown', () => taps++);
 
   const fatal = (message: string) => {
     const box = document.createElement('pre');
@@ -36,6 +39,16 @@ export function createBrowserPlatform(): Platform {
         frame(nowMs);
       };
       requestAnimationFrame(step);
+    },
+    takeTaps() {
+      const taken = taps;
+      taps = 0;
+      return taken;
+    },
+    async decodeImage(url) {
+      const blob = await (await fetch(url)).blob();
+      const options: ImageBitmapOptions = { premultiplyAlpha: 'none', colorSpaceConversion: 'none' };
+      return (await createImageBitmap(blob, options)) as unknown as ImageHandle;
     },
     storageGet(key) {
       try {

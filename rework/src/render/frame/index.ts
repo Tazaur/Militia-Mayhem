@@ -1,16 +1,21 @@
 // Owns: the pass order and the render resources. Reads only FrameScene (rule A3).
 import type {
+  AirInput,
   AirModel,
+  FogInput,
   FogModel,
   FrameScene,
   Gpu,
+  LightingInput,
   LightingModel,
   Post,
+  PostInput,
+  Rgba,
   Surfaces,
-  TargetHandle,
+  TextureHandle,
 } from '../../contracts/index.ts';
-import { gridSize } from '../projection/index.ts';
-import type { GridSize } from '../projection/index.ts';
+import { createSolidLayer, createTerrainLayer } from '../layers/index.ts';
+import { createGridView, updateGridView } from '../projection/index.ts';
 
 export interface RenderModules {
   readonly lighting: LightingModel;
@@ -19,45 +24,99 @@ export interface RenderModules {
   readonly post: Post;
 }
 
+export interface RenderAssets {
+  readonly atlas: TextureHandle;
+  readonly ground: TextureHandle;
+}
+
 export interface Renderer {
   frame(scene: FrameScene, screenWidth: number, screenHeight: number): void;
 }
 
-export function createRenderer(gpu: Gpu, modules: RenderModules): Renderer {
-  const grid: GridSize = { width: 1, height: 1 };
-  const world: TargetHandle = gpu.createTarget({ width: 1, height: 1, filter: 'nearest' });
+type Mutable<T> = { -readonly [K in keyof T]: T[K] };
+
+const BACKGROUND: Rgba = { r: 0, g: 0, b: 0, a: 1 };
+
+export function createRenderer(gpu: Gpu, modules: RenderModules, assets: RenderAssets, first: FrameScene): Renderer {
+  // Linear, because the sharp upscale blends across pixel edges. Sprites use texel lookups and never sample this.
+  const world = gpu.createTarget({ width: 1, height: 1, filter: 'linear' });
   const worldTexture = gpu.targetTexture(world);
   const material = gpu.createTexture({ width: 1, height: 1, filter: 'nearest', pixels: new Uint8Array(4) });
   const surfaces: Surfaces = { color: worldTexture, material };
+  const terrain = createTerrainLayer(gpu, world, assets.ground);
+  const solid = createSolidLayer(gpu, world, assets.atlas);
+  const view = createGridView();
   let targetWidth = 1;
   let targetHeight = 1;
 
+  // One object each, refilled per frame, so a frame allocates nothing (rule L5).
+  const lightingInput: Mutable<LightingInput> = {
+    surfaces,
+    casters: first.casters,
+    lights: first.lights,
+    environment: first.environment,
+    camera: first.camera,
+  };
+  const airInput: Mutable<AirInput> = {
+    target: world,
+    volumes: first.volumes,
+    particles: first.particles,
+    lightMaps: { shade: material, highlight: material, glow: material },
+    camera: first.camera,
+  };
+  const fogInput: Mutable<FogInput> = { target: world, visibility: first.visibility, camera: first.camera };
+  const postInput: Mutable<PostInput> = {
+    world: worldTexture,
+    glow: material,
+    screenWidth: 1,
+    screenHeight: 1,
+    gridWidth: 1,
+    gridHeight: 1,
+    targetWidth: 1,
+    targetHeight: 1,
+    offsetX: 0,
+    offsetY: 0,
+  };
+
   return {
     frame(scene, screenWidth, screenHeight) {
-      gridSize(screenWidth, screenHeight, scene.camera.zoom, grid);
-      if (grid.width !== targetWidth || grid.height !== targetHeight) {
-        targetWidth = grid.width;
-        targetHeight = grid.height;
+      const camera = scene.camera;
+      updateGridView(view, camera.x, camera.y, camera.zoom, camera.subPixel, screenWidth, screenHeight);
+      if (view.targetWidth !== targetWidth || view.targetHeight !== targetHeight) {
+        targetWidth = view.targetWidth;
+        targetHeight = view.targetHeight;
         gpu.resizeTarget(world, targetWidth, targetHeight);
       }
-      const ambient = scene.environment.ambientColor;
-      gpu.clear(world, { r: ambient.r, g: ambient.g, b: ambient.b, a: 1 });
-      const lightMaps = modules.lighting.render({
-        surfaces,
-        casters: scene.casters,
-        lights: scene.lights,
-        environment: scene.environment,
-        camera: scene.camera,
-      });
-      modules.air.render({
-        target: world,
-        volumes: scene.volumes,
-        particles: scene.particles,
-        lightMaps,
-        camera: scene.camera,
-      });
-      modules.fog.render({ target: world, visibility: scene.visibility, camera: scene.camera });
-      modules.post.render({ world: worldTexture, glow: lightMaps.glow, screenWidth, screenHeight });
+      gpu.clear(world, BACKGROUND);
+      terrain.draw(view);
+      solid.draw(scene.sprites, camera, view);
+
+      lightingInput.casters = scene.casters;
+      lightingInput.lights = scene.lights;
+      lightingInput.environment = scene.environment;
+      lightingInput.camera = camera;
+      const lightMaps = modules.lighting.render(lightingInput);
+
+      airInput.volumes = scene.volumes;
+      airInput.particles = scene.particles;
+      airInput.lightMaps = lightMaps;
+      airInput.camera = camera;
+      modules.air.render(airInput);
+
+      fogInput.visibility = scene.visibility;
+      fogInput.camera = camera;
+      modules.fog.render(fogInput);
+
+      postInput.glow = lightMaps.glow;
+      postInput.screenWidth = screenWidth;
+      postInput.screenHeight = screenHeight;
+      postInput.gridWidth = view.width;
+      postInput.gridHeight = view.height;
+      postInput.targetWidth = view.targetWidth;
+      postInput.targetHeight = view.targetHeight;
+      postInput.offsetX = view.offsetX;
+      postInput.offsetY = view.offsetY;
+      modules.post.render(postInput);
     },
   };
 }

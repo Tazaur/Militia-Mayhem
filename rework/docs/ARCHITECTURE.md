@@ -123,6 +123,7 @@ No code outside `render/projection` knows this formula (rule A7). The GLSL versi
 **LOCKED: 32 px tiles, 15 tiles top to bottom in landscape, so the world target is 480 px tall.** Width follows the screen aspect: about 1030 on the user's phone, 853 at 16:9. `docs/reference/goal_at_480.png` shows that the goal picture holds up at this size.
 
 - Camera snaps to whole game pixels inside the target; the target has a 1 px margin. The leftover fraction is applied in the upscale, so scrolling is smooth (**TO PROVE**).
+- The target is the grid plus 1 px each side. `render/projection` computes the whole-pixel origin and the fraction, and supplies the GLSL for both sides.
 - Upscale is sharp-bilinear, because most screens are not a whole multiple of 480 (the phone is 1.71x).
 - HUD and text draw at full device resolution, over the upscaled world.
 - Cost is fixed by the grid, not the device: about 34% of the phone's pixels and 20% of 1080p. Old measurement: PIXEL LOCK took a phone-size scene from 13.2 to 5.2 ms of GPU.

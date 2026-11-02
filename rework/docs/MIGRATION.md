@@ -8,7 +8,7 @@ What comes from the old game (`../src`, `../CONTEXT.md`). Rewrite the logic agai
 
 | What | From | Stage | Notes |
 |---|---|---|---|
-| Atlas PNG pair and table | `atlas.png`, `atlas_m.png`, `atlas_table.py`, `drop.py`, `atlas_pack.py` | 1 | Atlas owns its own config. Keep the drop workflow |
+| Atlas PNG pair and table | `atlas.png`, `atlas_m.png`, `atlas_table.py`, `drop.py`, `atlas_pack.py` | 1 | `atlas.png` and `atlas.json` copied to `assets/`. Art is already 1:1 with the grid: tank 4 tiles, soldier 1. `atlas_m.png` comes with lighting; the drop workflow still to port, reading the table from `atlas_m` as `atlas_table.py` does |
 | Wall sheet | `art/walls16.png` | 1 | Needs faces for tilt |
 | Height, reflect, glow idea | `5e_light.js` | 1 | The idea, new code |
 | Sun colours by time of day | `sunTone`, match TIME setting | 1 | |
@@ -20,7 +20,7 @@ What comes from the old game (`../src`, `../CONTEXT.md`). Rewrite the logic agai
 | Smoke field behaviour | `updateSmokeField` | 4 | |
 | Houses: generator, sections, breach, roof fall | `2d_house.js`, `5d_dev.js` | 4 | Currently hidden in the dev file |
 | Visibility polygons | `5b_fog.js` | 4 | Also gameplay rules: sight must match the sim |
-| Stamped ground | `2b_ground.js`, `maps/` | 4, 9 | The map format's base |
+| Stamped ground | `2b_ground.js`, `maps/` | 4, 9 | The map format's base. The atlas has no `tex_` ground art; old ground is coded placeholders |
 | Bot behaviour | `4_ai.js` | 5 | |
 | Nav | `2_maps.js` | 5 | Fix: A* allocates per call |
 | Event rules and Sound Lab | `1d_sev.js`, `1c_sfx.js`, `sound/` | 6 | Best-designed part of the old code. Generalise to feedback |

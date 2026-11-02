@@ -85,7 +85,7 @@ try {
   await send('Page.enable');
   await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: scale, mobile: true });
   await send('Page.navigate', { url });
-  await sleep(2500);
+  await sleep(5000);
 
   const facts = await evaluate(`(() => {
     const canvas = document.querySelector('canvas');

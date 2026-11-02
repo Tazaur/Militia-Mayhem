@@ -2,6 +2,7 @@
 import type {
   Filter,
   Gpu,
+  ImageHandle,
   Pass,
   PassUniform,
   RenderSurface,
@@ -11,6 +12,7 @@ import type {
 } from '../../contracts/index.ts';
 import { createInternalProgram } from './program.ts';
 import type { InternalProgram, UniformSlot } from './program.ts';
+import { createTimers } from './timers.ts';
 
 interface InternalTexture extends TextureHandle {
   readonly texture: WebGLTexture;
@@ -57,6 +59,8 @@ export function createWebGl2Gpu(surface: RenderSurface): Gpu | null {
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
   gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
+  const timers = createTimers(gl);
+
   const newTexture = (filter: Filter): InternalTexture => {
     const texture = gl.createTexture();
     const mode = filter === 'linear' ? gl.LINEAR : gl.NEAREST;
@@ -94,6 +98,15 @@ export function createWebGl2Gpu(surface: RenderSurface): Gpu | null {
     createTexture(desc) {
       const created = newTexture(desc.filter);
       allocate(desc.width, desc.height, desc.pixels);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+      return created;
+    },
+    createImageTexture(image: ImageHandle, filter) {
+      const created = newTexture(filter);
+      gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      const bitmap = image as unknown as ImageBitmap;
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, bitmap);
       gl.bindTexture(gl.TEXTURE_2D, null);
       return created;
     },
@@ -169,7 +182,9 @@ export function createWebGl2Gpu(surface: RenderSurface): Gpu | null {
         gl.bufferData(gl.ARRAY_BUFFER, instances.data, gl.DYNAMIC_DRAW, 0, instances.count * program.stride);
         gl.bindBuffer(gl.ARRAY_BUFFER, null);
       }
+      timers.begin(pass.name);
       gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, instances ? instances.count : 1);
+      timers.end();
 
       gl.bindVertexArray(null);
       for (let unit = 0; unit < pass.inputs.length; unit++) {
@@ -179,5 +194,9 @@ export function createWebGl2Gpu(surface: RenderSurface): Gpu | null {
       gl.activeTexture(gl.TEXTURE0);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     },
+    endFrame() {
+      timers.poll();
+    },
+    passTimings: () => timers.rows,
   };
 }

@@ -18,6 +18,8 @@ export interface Camera {
   readonly tilt: number;
   /** 1 on foot, the set level in moving vehicles. See DECISIONS.md D11. */
   readonly zoom: number;
+  /** Apply the fraction of a game pixel in the upscale. Only false to compare, until Stage 1 question 1 is decided. */
+  readonly subPixel: boolean;
 }
 
 export interface Environment {
@@ -32,7 +34,9 @@ export interface SpriteList {
   readonly atlasRect: ReadonlyFloats;
   /** Three per sprite: world x, y, z. */
   readonly position: ReadonlyFloats;
-  /** Four per sprite: angle, scale, layer, flags. */
+  /** Two per sprite: x, y in the sprite, in atlas pixels. */
+  readonly pivot: ReadonlyFloats;
+  /** Two per sprite: angle, scale. */
   readonly transform: ReadonlyFloats;
   /** Four per sprite: RGBA. */
   readonly tint: ReadonlyFloats;

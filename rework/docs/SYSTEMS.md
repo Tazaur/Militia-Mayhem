@@ -7,8 +7,14 @@ Status: `planned`, `built`, `TEMP (remove by stage N)`.
 | Job | Owner | Replaces in old game | Status |
 |---|---|---|---|
 | All GPU calls and state | `gpu/` | `0_gx.js`, manual units in `5e_light.js` | built: draw, targets, programs. Timers come in Stage 1 |
-| Drawing sprites | `gpu/` instanced batch via `render/layers` | `spr`, `sprC`, `img`, `uiSpr`, `uiSprR`, GX | planned |
-| What's in the frame | `scene/` -> `FrameScene` | `drawWorld` closures, `sunHeights`, fog redraw, `drawShadowLayer` | planned |
+| Drawing sprites | `gpu/` instanced draw via `render/layers/solid` | `spr`, `sprC`, `img`, `uiSpr`, `uiSprR`, GX | built: one list, list order. Depth comes with Stage 1 question 4 |
+| Upscale | `render/post` with `render/projection` GLSL | PIXEL LOCK | built: sharp bilinear with the camera fraction |
+| GPU time per pass | `gpu/webgl2/timers`, shown by `app/readout` | `gpuOpen`, `gpuClose` | built |
+| Atlas table | `assets/atlas.json` -> generated `content/atlas-table.ts` | `atlas.json` in the bundle | built |
+| Placeholder ground | `content/placeholder-ground`, drawn by `render/layers/terrain` | `GTEXP` | TEMP (remove by Stage 4) |
+| Slice scene | `scene/slice`, `content/slice-props`, `platform.takeTaps` | Nothing | TEMP (remove by Stage 2) |
+| Camera comparison | `camera.subPixel` | Nothing | TEMP (remove when Stage 1 question 1 is decided) |
+| What's in the frame | `scene/` -> `FrameScene` | `drawWorld` closures, `sunHeights`, fog redraw, `drawShadowLayer` | built for the slice |
 | World <-> screen, pixel grid | `render/projection` | `VZ`, `VOX`, `VOY`, `worldT` | built: grid size and the formula. Stage 1 extends |
 | Light and shadow | `render/lighting` (`LightingModel`) | `drawLight`, `drawLights`, sun passes, drop shadows, `!SUNNOW` fakes | planned |
 | CPU light query | `LightingModel.query` | `lightAir`, `litAt`, `spotK` | planned |

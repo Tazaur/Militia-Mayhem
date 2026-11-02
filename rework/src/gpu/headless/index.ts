@@ -12,6 +12,7 @@ export function createHeadlessGpu(): HeadlessGpu {
   const newTexture = (): TextureHandle => ({ __handle: 'texture' });
   return {
     createTexture: newTexture,
+    createImageTexture: newTexture,
     createTarget() {
       const target: TargetHandle = { __handle: 'target' };
       targetTextures.set(target, newTexture());
@@ -34,6 +35,8 @@ export function createHeadlessGpu(): HeadlessGpu {
       }
       passes.push(pass.name);
     },
+    endFrame() {},
+    passTimings: () => [],
     takePasses() {
       const taken = passes;
       passes = [];

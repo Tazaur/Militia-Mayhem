@@ -7,14 +7,15 @@ import { createHeadlessGpu } from '../src/gpu/headless/index.ts';
 import { createLoopbackTransport } from '../src/net/loopback/index.ts';
 import { createStubPlatform } from '../src/platform/stub/index.ts';
 
-test('frames run on all null versions, in pass order', () => {
+test('frames run on all null versions, in pass order', async () => {
   const platform = createStubPlatform(1764, 822);
   const gpu = createHeadlessGpu();
-  startGame({ ...createNullParts(), platform, gpu, build: 0 });
+  const atlasImage = await platform.decodeImage('stub');
+  startGame({ ...createNullParts(), platform, gpu, build: 0, atlasImage });
   platform.runFrames(120, 1000 / 60);
   const passes = gpu.takePasses();
-  assert.equal(passes.length, 240);
-  assert.deepEqual(passes.slice(0, 2), ['post-plain', 'ui-stats']);
+  assert.equal(passes.length, 480);
+  assert.deepEqual(passes.slice(0, 4), ['terrain', 'solid', 'post-plain', 'ui']);
   assert.deepEqual(platform.fatalMessages, []);
 });
 
