@@ -27,7 +27,6 @@ export interface RenderModules {
 export interface RenderAssets {
   readonly atlas: TextureHandle;
   readonly ground: TextureHandle;
-  readonly bakedRotations: TextureHandle;
 }
 
 export interface Renderer {
@@ -45,7 +44,7 @@ export function createRenderer(gpu: Gpu, modules: RenderModules, assets: RenderA
   const material = gpu.createTexture({ width: 1, height: 1, filter: 'nearest', pixels: new Uint8Array(4) });
   const surfaces: Surfaces = { color: worldTexture, material };
   const terrain = createTerrainLayer(gpu, world, assets.ground);
-  const solid = createSolidLayer(gpu, world, assets.atlas, assets.bakedRotations);
+  const solid = createSolidLayer(gpu, world, assets.atlas);
   const view = createGridView();
   let targetWidth = 1;
   let targetHeight = 1;

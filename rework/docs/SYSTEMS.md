@@ -13,7 +13,6 @@ Status: `planned`, `built`, `TEMP (remove by stage N)`.
 | Atlas table | `assets/atlas.json` -> generated `content/atlas-table.ts` | `atlas.json` in the bundle | built |
 | Placeholder ground | `content/placeholder-ground`, drawn by `render/layers/terrain` | `GTEXP` | TEMP (remove by Stage 4) |
 | Slice scene | `scene/slice`, `content/slice-props`, `platform.takeTaps` | Nothing | TEMP (remove by Stage 2) |
-| Rotation comparison | `SpriteList.method`, the methods in `render/layers/solid`, `tools/bake-rotations.py`, `assets/rotations.png`, `content/rotation-frames` | Nothing | TEMP (keep the winner, delete the rest when Stage 1 question 2 is decided) |
 | What's in the frame | `scene/` -> `FrameScene` | `drawWorld` closures, `sunHeights`, fog redraw, `drawShadowLayer` | built for the slice |
 | World <-> screen, pixel grid | `render/projection` | `VZ`, `VOX`, `VOY`, `worldT` | built: grid size and the formula. Stage 1 extends |
 | Light and shadow | `render/lighting` (`LightingModel`) | `drawLight`, `drawLights`, sun passes, drop shadows, `!SUNNOW` fakes | planned |

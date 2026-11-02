@@ -13,8 +13,6 @@ in vec4 aShape;
 in vec4 aTint;
 out vec2 vAtlas;
 out vec4 vTint;
-flat out vec4 vRect;
-flat out int vMethod;
 ${WORLD_TO_CLIP_GLSL}
 void main() {
   // A whole pivot keeps art 1:1 with the grid at angle 0, whichever way the atlas table rounded.
@@ -25,54 +23,15 @@ void main() {
   gl_Position = targetPixelToClip(worldToTargetPixel(aPlace.xyz) + turned);
   vAtlas = aRect.xy + aCorner * aRect.zw;
   vTint = aTint;
-  vRect = aRect;
-  vMethod = int(aShape.w);
 }`;
 
-// The edge method: where a pixel's two neighbours round one corner match each other and not the pixel, cut that corner
-// on the diagonal. Stair-steps become straight lines at any angle, and at angle 0 pixel centres never reach a cut.
 const FRAGMENT = `
 in vec2 vAtlas;
 in vec4 vTint;
-flat in vec4 vRect;
-flat in int vMethod;
 uniform sampler2D uAtlas;
-uniform sampler2D uBaked;
 out vec4 outColor;
-vec4 fetchInside(ivec2 cell) {
-  // Outside the rect is another sprite in the atlas.
-  ivec2 low = ivec2(vRect.xy);
-  ivec2 high = low + ivec2(vRect.zw);
-  if (cell.x < low.x || cell.y < low.y || cell.x >= high.x || cell.y >= high.y) return vec4(0.0);
-  return texelFetch(uAtlas, cell, 0);
-}
-bool same(vec4 a, vec4 b) {
-  if (a.a < 0.5 || b.a < 0.5) return a.a < 0.5 && b.a < 0.5;
-  vec3 difference = abs(a.rgb - b.rgb);
-  return difference.r + difference.g + difference.b < 0.118;
-}
-vec4 edgeSample(vec2 atlas) {
-  vec2 whole = floor(atlas);
-  vec2 inCell = atlas - whole;
-  ivec2 cell = ivec2(whole);
-  vec4 center = fetchInside(cell);
-  vec4 up = fetchInside(cell + ivec2(0, -1));
-  vec4 down = fetchInside(cell + ivec2(0, 1));
-  vec4 left = fetchInside(cell + ivec2(-1, 0));
-  vec4 right = fetchInside(cell + ivec2(1, 0));
-  if (same(up, down) || same(left, right)) return center;
-  if (inCell.x + inCell.y < 0.5 && same(left, up)) return left;
-  if (1.0 - inCell.x + inCell.y < 0.5 && same(up, right)) return right;
-  if (inCell.x + 1.0 - inCell.y < 0.5 && same(left, down)) return left;
-  if (2.0 - inCell.x - inCell.y < 0.5 && same(down, right)) return right;
-  return center;
-}
 void main() {
-  vec4 color;
-  if (vMethod == 1) color = edgeSample(vAtlas);
-  else if (vMethod == 2) color = texelFetch(uBaked, ivec2(floor(vAtlas)), 0);
-  else color = texelFetch(uAtlas, ivec2(floor(vAtlas)), 0);
-  color *= vTint;
+  vec4 color = texelFetch(uAtlas, ivec2(floor(vAtlas)), 0) * vTint;
   if (color.a < 0.5) discard;
   outColor = vec4(color.rgb, 1.0);
 }`;
@@ -81,12 +40,7 @@ export interface SolidLayer {
   draw(sprites: SpriteList, camera: Camera, view: GridView): void;
 }
 
-export function createSolidLayer(
-  gpu: Gpu,
-  target: TargetHandle,
-  atlas: TextureHandle,
-  baked: TextureHandle,
-): SolidLayer {
+export function createSolidLayer(gpu: Gpu, target: TargetHandle, atlas: TextureHandle): SolidLayer {
   const program = gpu.createProgram({
     name: 'solid',
     vertex: VERTEX,
@@ -107,10 +61,7 @@ export function createSolidLayer(
     name: 'solid',
     target,
     program,
-    inputs: [
-      { sampler: 'uAtlas', texture: atlas },
-      { sampler: 'uBaked', texture: baked },
-    ],
+    inputs: [{ sampler: 'uAtlas', texture: atlas }],
     uniforms: [
       { name: 'uOrigin', value: origin },
       { name: 'uTarget', value: size },
@@ -133,7 +84,7 @@ export function createSolidLayer(
         data[out + 8] = sprites.pivot[i * 2]!;
         data[out + 9] = sprites.pivot[i * 2 + 1]!;
         data[out + 10] = sprites.transform[i * 2 + 1]!;
-        data[out + 11] = sprites.method[i]!;
+        data[out + 11] = 0;
         for (let k = 0; k < 4; k++) data[out + 12 + k] = sprites.tint[i * 4 + k]!;
       }
       instances.count = count;

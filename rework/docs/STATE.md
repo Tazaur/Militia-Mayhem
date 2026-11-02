@@ -2,16 +2,14 @@
 
 Update at the end of every round. Replace old content; history belongs in `DECISIONS.md`.
 
-**Stage:** 1, question 1 decided (`DECISIONS.md` D13). Question 2, rotation, is with the user at build 420.
+**Stage:** 1, questions 1 and 2 decided (`DECISIONS.md` D13, D15). Question 3, tilt, is next.
 **Old game:** frozen at build 417 (`DECISIONS.md` D10), playable at the repo root.
 
 ## Next step
 
-Get the user's verdict on Stage 1 question 2 from the phone, at `/rework/`: which column looks best turning, left to right NEAREST, EDGE, BAKED (64 angles)? A tap cycles real speed, slow and stopped. Also get the readout's top three lines. Record the result in `DECISIONS.md`, keep the winner and delete the other methods (the `SYSTEMS.md` TEMP row), then start question 3: tilt.
+Stage 1 question 3 in `PLAN.md`: tilt. Compare 0, 0.25 and 0.35 with a wall face, what is hidden behind walls, and whether vehicles need the side extrusion. The atlas has no wall, roof or building sprites by name, so read how the old game draws them first; the wall face may have to be a placeholder.
 
-Baked cost so far: 6 sprites at 64 angles is 800 KB of PNG and a 2048x1014 sheet, with no material map yet. The page is 1.35 MB until this is decided.
-
-Phone frame timing (`DECISIONS.md` D14): if `EARLY` matches `DROP`, frames are late and caught up, not lost. If `EARLY` stays near 0 while `DROP` counts, frames are really lost, and the estimate says whether the GPU is the cause.
+Phone frame timing is unexplained (`DECISIONS.md` D14, D15): build 419 showed DROP 6 with a moving camera; build 420 showed DROP 0 with a still one. Bring the camera back in the next scene and read `DROP` and `EARLY` again.
 
 ## Open questions for the user
 
@@ -44,8 +42,7 @@ A class seen twice gets redesigned, not patched.
 
 ## Known risks
 
-1. **Rotation at low resolution.** The biggest visual risk: a top-down shooter rotates everything, constantly. Stage 1 question 2.
-2. **Art.** Tilt needs wall-face art. Goal-quality art is not yet available, so Stage 1 can only partly match `goal.png`.
-3. **Parity scope.** The old game has about 400 builds of tuning. `MIGRATION.md` must be walked, not assumed.
-4. **Old code not fully read.** Not read in depth: most of `3_sim`, `4_ai`, `5c_net`, `5d_dev`, `6_menus`, `2b_ground`, the editors, the Python tools. Read each one fully when its stage begins, and update `MIGRATION.md`.
-5. **Measured so far: nothing on real hardware.** The smoke test runs in software rendering, so its frame numbers mean nothing. Real numbers start with Stage 1's timers.
+1. **Art.** Tilt needs wall-face art. Goal-quality art is not yet available, so Stage 1 can only partly match `goal.png`.
+2. **Parity scope.** The old game has about 400 builds of tuning. `MIGRATION.md` must be walked, not assumed.
+3. **Old code not fully read.** Not read in depth: most of `3_sim`, `4_ai`, `5c_net`, `5d_dev`, `6_menus`, `2b_ground`, the editors, the Python tools. Read each one fully when its stage begins, and update `MIGRATION.md`.
+4. **Phone numbers are so far from nearly empty scenes.** The real test of the budget starts with lighting.

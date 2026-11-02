@@ -1,18 +1,8 @@
 // Owns: Stage 1's hand-written scene: the rotation test, three columns. Stage 2 replaces it with the sim.
-import {
-  ATLAS_SPRITES,
-  ROTATION_COLUMN_SPACING,
-  ROTATION_FRAMES,
-  ROTATION_ITEMS,
-  ROTATION_TABLE,
-} from '../content/index.ts';
+import { ATLAS_SPRITES, ROTATION_COLUMN_SPACING, ROTATION_ITEMS } from '../content/index.ts';
 import type { FrameScene } from '../contracts/index.ts';
 
 const COLUMNS = 3;
-const METHOD_NEAREST = 0;
-const METHOD_EDGE = 1;
-const METHOD_BAKED = 2;
-const COLUMN_METHODS = [METHOD_NEAREST, METHOD_EDGE, METHOD_BAKED];
 const CENTER = 2000;
 const TWO_PI = Math.PI * 2;
 const SPEEDS = [
@@ -35,13 +25,11 @@ export function createSliceScene(): SliceScene {
   const pivot = new Float32Array(count * 2);
   const transform = new Float32Array(count * 2);
   const tint = new Float32Array(count * 4).fill(1);
-  const method = new Float32Array(count);
   const angles = new Float64Array(ROTATION_ITEMS.length);
 
   ROTATION_ITEMS.forEach((item, row) => {
     const sprite = ATLAS_SPRITES[item.sprite];
     if (!sprite) throw new Error(`no sprite ${item.sprite}`);
-    if (!ROTATION_TABLE[item.sprite]) throw new Error(`no baked frames for ${item.sprite}`);
     for (let column = 0; column < COLUMNS; column++) {
       const index = row * COLUMNS + column;
       atlasRect.set(sprite.slice(0, 4), index * 4);
@@ -50,7 +38,6 @@ export function createSliceScene(): SliceScene {
       pivot[index * 2] = sprite[4];
       pivot[index * 2 + 1] = sprite[5];
       transform[index * 2 + 1] = 1;
-      method[index] = COLUMN_METHODS[column]!;
     }
   });
 
@@ -63,7 +50,7 @@ export function createSliceScene(): SliceScene {
       sunColor: { r: 1, g: 1, b: 1 },
       ambientColor: { r: 0.05, g: 0.06, b: 0.05 },
     },
-    sprites: { count, atlasRect, position, pivot, transform, tint, method },
+    sprites: { count, atlasRect, position, pivot, transform, tint },
     casters: { count: 0, atlasRect: none, position: none, transform: none },
     lights: { count: 0, position: none, color: none, shape: none },
     particles: { count: 0, position: none, color: none },
@@ -86,22 +73,11 @@ export function createSliceScene(): SliceScene {
         const item = ROTATION_ITEMS[row]!;
         const angle = (angles[row]! + item.turn * seconds * SPEEDS[speed]!.factor + TWO_PI) % TWO_PI;
         angles[row] = angle;
-        const frames = ROTATION_TABLE[item.sprite]!;
-        const frame = frames[Math.round((angle / TWO_PI) * ROTATION_FRAMES) % ROTATION_FRAMES]!;
-        const first = row * COLUMNS;
-        transform[(first + 0) * 2] = angle;
-        transform[(first + 1) * 2] = angle;
-        const baked = first + 2;
-        atlasRect[baked * 4] = frame[0];
-        atlasRect[baked * 4 + 1] = frame[1];
-        atlasRect[baked * 4 + 2] = frame[2];
-        atlasRect[baked * 4 + 3] = frame[3];
-        pivot[baked * 2] = frame[4];
-        pivot[baked * 2 + 1] = frame[5];
+        for (let column = 0; column < COLUMNS; column++) transform[(row * COLUMNS + column) * 2] = angle;
       }
     },
     note() {
-      return `NEAREST  EDGE  BAKED  ${SPEEDS[speed]!.name}  TAP`;
+      return `TURNING  ${SPEEDS[speed]!.name}  TAP`;
     },
   };
 }

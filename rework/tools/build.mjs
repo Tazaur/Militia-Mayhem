@@ -64,7 +64,6 @@ const result = await esbuild.build({
   define: {
     BUILD_NUMBER: String(build),
     ATLAS_COLOR_URL: JSON.stringify(dataUrl('assets/atlas.png')),
-    ROTATIONS_URL: JSON.stringify(dataUrl('assets/rotations.png')),
   },
 });
 const code = result.outputFiles[0].text.replaceAll('</script', '<\\/script');

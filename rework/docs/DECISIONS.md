@@ -70,6 +70,14 @@ Build 419, portrait 1079x1948, 126 sprites: 59 FPS, DROP 6, WORST 31 ms, CPU 0.3
 
 Six 31 ms frames in a second would mean at most 54 FPS at 60 Hz, yet it read 59, and the user saw smooth motion. So our reading from this one sample: frames arrive late and the next ones catch up, rather than being lost. Not proven; the readout's `EARLY` count tests it. CPU is ruled out at 0.3 ms.
 
+## D15. Rotation: nearest, at runtime (user judged; baked may be reassessed)
+
+Compared on the S23 Ultra in build 420, at 480 px: nearest, an edge-cutting shader (5 texture reads), and RotSprite-style frames baked at 64 angles. The user could not tell nearest from edge, and called shimmer negligible, so nearest stays: it is the cheapest and the simplest. Baked was "the cleanest looking in terms of pixel perfection, but its a style choice": not now, reassess when there is more content. Baked costs: 800 KB of PNG for 6 sprites, before material maps.
+
+All three were built and then deleted. Commit e102718 has the edge shader (`render/layers/solid.ts`) and the bake (`tools/bake-rotations.py`).
+
+Reading on the phone in build 420 (27 sprites, static camera, portrait 1079x1948): 66 FPS, DROP 0, EARLY 0, WORST 15 ms, CPU 0.2 ms, GPU estimate 3.6 ms. 66 FPS is above 60, so this display is not fixed at 60 Hz, and D14's "at most 54 FPS" reasoning assumed it was. Why build 419 showed drops and this reading does not is still unknown: one reading each, with a moving camera only in 419.
+
 ## Measured in the old game (do not re-try without a new reason)
 
 | Idea | Result | Source |

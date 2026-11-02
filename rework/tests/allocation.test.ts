@@ -11,7 +11,7 @@ import { createStubPlatform } from '../src/platform/stub/index.ts';
 const WINDOW_FRAMES = 3000;
 const MAX_WINDOWS = 40;
 // Measured at 242 once warm, including the test GPU's own pass list. That is 15 KB/s: harmless. The limit catches
-// allocating per sprite: 126 sprites at even 32 bytes each is 4 KB per frame, in every window.
+// allocating per sprite: 27 sprites at even 32 bytes each is 864 bytes per frame, in every window.
 const MAX_BYTES_PER_FRAME = 400;
 
 test('frames allocate almost nothing once the code is optimised', async () => {
@@ -20,7 +20,7 @@ test('frames allocate almost nothing once the code is optimised', async () => {
   const platform = createStubPlatform(1764, 822);
   const gpu = createHeadlessGpu();
   const atlasImage = await platform.decodeImage('stub');
-  startGame({ ...createNullParts(), platform, gpu, build: 0, atlasImage, rotationsImage: atlasImage });
+  startGame({ ...createNullParts(), platform, gpu, build: 0, atlasImage });
 
   // Unoptimised code boxes numbers, and when the optimiser finishes varies between runs. So measure repeatedly,
   // yielding so it can finish, and judge the best window.

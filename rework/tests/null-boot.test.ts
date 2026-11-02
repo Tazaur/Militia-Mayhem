@@ -11,7 +11,7 @@ test('frames run on all null versions, in pass order', async () => {
   const platform = createStubPlatform(1764, 822);
   const gpu = createHeadlessGpu();
   const atlasImage = await platform.decodeImage('stub');
-  startGame({ ...createNullParts(), platform, gpu, build: 0, atlasImage, rotationsImage: atlasImage });
+  startGame({ ...createNullParts(), platform, gpu, build: 0, atlasImage });
   platform.runFrames(120, 1000 / 60);
   const passes = gpu.takePasses();
   assert.equal(passes.length, 480);
