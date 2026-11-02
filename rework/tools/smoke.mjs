@@ -1,5 +1,5 @@
 // Owns: loading the built page in headless Chrome at phone size: any error fails, and a screenshot is saved to look at.
-//   node tools/smoke.mjs [--out dir] [--size 844x390] [--scale 2.09] [--no-timers]
+//   node tools/smoke.mjs [--out dir] [--size 844x390] [--scale 2.09] [--no-timers] [--taps n]
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
@@ -107,6 +107,26 @@ try {
   const { canvas, errorBox } = JSON.parse(facts);
   if (errorBox) errors.push(errorBox);
   if (!canvas) errors.push('no canvas');
+  const taps = Number(option('taps', '0'));
+  if (taps > 0) {
+    await evaluate(`for (let i = 0; i < ${taps}; i++) {
+      document.querySelector('canvas').dispatchEvent(new PointerEvent('pointerdown'));
+    }`);
+    await sleep(1500);
+  }
+  const reportText = await evaluate(`(() => {
+    let copied = null;
+    const real = navigator.clipboard;
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: (text) => ((copied = text), Promise.resolve()) },
+      configurable: true,
+    });
+    document.querySelector('button').click();
+    if (real) Object.defineProperty(navigator, 'clipboard', { value: real, configurable: true });
+    return copied;
+  })()`);
+  if (!reportText || !reportText.startsWith('MM REPORT')) errors.push('no report from the button');
+  else fs.writeFileSync(path.join(out, 'report.txt'), reportText);
   const shot = await send('Page.captureScreenshot', { format: 'png' });
   const shotFile = path.join(out, 'smoke.png');
   fs.writeFileSync(shotFile, Buffer.from(shot.data, 'base64'));

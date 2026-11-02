@@ -37,6 +37,7 @@ export function createHeadlessGpu(): HeadlessGpu {
     },
     endFrame() {},
     passTimings: () => [],
+    deviceName: () => 'headless gpu',
     takePasses() {
       const taken = passes;
       passes = [];

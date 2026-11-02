@@ -38,6 +38,11 @@ export interface SpriteList {
   readonly transform: ReadonlyFloats;
   /** Four per sprite: RGBA. */
   readonly tint: ReadonlyFloats;
+  /**
+   * One per sprite. Bit 1: upright, so it stands on the ground and tilt foreshortens it (wall faces, posts).
+   * Bit 2: from the placeholder sheet, until the atlas has wall art.
+   */
+  readonly flags: ReadonlyFloats;
 }
 
 export interface CasterList {

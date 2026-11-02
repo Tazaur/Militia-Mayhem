@@ -11,7 +11,7 @@ import { createStubPlatform } from '../src/platform/stub/index.ts';
 const WINDOW_FRAMES = 3000;
 const MAX_WINDOWS = 40;
 // Measured at 242 once warm, including the test GPU's own pass list. That is 15 KB/s: harmless. The limit catches
-// allocating per sprite: 27 sprites at even 32 bytes each is 864 bytes per frame, in every window.
+// allocating per sprite: about 50 sprites at even 32 bytes each is 1600 bytes per frame, in every window.
 const MAX_BYTES_PER_FRAME = 400;
 
 test('frames allocate almost nothing once the code is optimised', async () => {

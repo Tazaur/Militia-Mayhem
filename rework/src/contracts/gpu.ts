@@ -105,4 +105,6 @@ export interface Gpu {
   /** Call once per frame, after the last draw. */
   endFrame(): void;
   passTimings(): readonly PassTiming[];
+  /** What the graphics chip calls itself, for reports. */
+  deviceName(): string;
 }

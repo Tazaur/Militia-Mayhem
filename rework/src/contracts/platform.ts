@@ -23,6 +23,10 @@ export interface Platform {
   decodeImage(url: string): Promise<ImageHandle>;
   storageGet(key: string): string | null;
   storageSet(key: string, value: string): void;
+  /** The browser and screen, for reports. */
+  deviceInfo(): string;
+  /** Puts a way on screen to take a report off the device. `make` runs only when the player asks. */
+  offerReport(make: () => string): void;
   /** Tells the player the game cannot continue. */
   fatal(message: string): void;
 }

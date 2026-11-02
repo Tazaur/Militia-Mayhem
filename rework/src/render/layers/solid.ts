@@ -13,25 +13,32 @@ in vec4 aShape;
 in vec4 aTint;
 out vec2 vAtlas;
 out vec4 vTint;
+flat out int vPlaceholder;
 ${WORLD_TO_CLIP_GLSL}
 void main() {
   // A whole pivot keeps art 1:1 with the grid at angle 0, whichever way the atlas table rounded.
   vec2 local = (aCorner * aRect.zw - floor(aShape.xy + 0.5)) * aShape.z;
+  int flags = int(aShape.w);
+  if ((flags & 1) != 0) local.y *= uTilt;
   float c = cos(aPlace.w);
   float s = sin(aPlace.w);
   vec2 turned = vec2(c * local.x - s * local.y, s * local.x + c * local.y);
   gl_Position = targetPixelToClip(worldToTargetPixel(aPlace.xyz) + turned);
   vAtlas = aRect.xy + aCorner * aRect.zw;
   vTint = aTint;
+  vPlaceholder = (flags & 2) >> 1;
 }`;
 
 const FRAGMENT = `
 in vec2 vAtlas;
 in vec4 vTint;
+flat in int vPlaceholder;
 uniform sampler2D uAtlas;
+uniform sampler2D uPlaceholder;
 out vec4 outColor;
 void main() {
-  vec4 color = texelFetch(uAtlas, ivec2(floor(vAtlas)), 0) * vTint;
+  ivec2 texel = ivec2(floor(vAtlas));
+  vec4 color = (vPlaceholder == 1 ? texelFetch(uPlaceholder, texel, 0) : texelFetch(uAtlas, texel, 0)) * vTint;
   if (color.a < 0.5) discard;
   outColor = vec4(color.rgb, 1.0);
 }`;
@@ -40,7 +47,12 @@ export interface SolidLayer {
   draw(sprites: SpriteList, camera: Camera, view: GridView): void;
 }
 
-export function createSolidLayer(gpu: Gpu, target: TargetHandle, atlas: TextureHandle): SolidLayer {
+export function createSolidLayer(
+  gpu: Gpu,
+  target: TargetHandle,
+  atlas: TextureHandle,
+  placeholder: TextureHandle,
+): SolidLayer {
   const program = gpu.createProgram({
     name: 'solid',
     vertex: VERTEX,
@@ -61,7 +73,10 @@ export function createSolidLayer(gpu: Gpu, target: TargetHandle, atlas: TextureH
     name: 'solid',
     target,
     program,
-    inputs: [{ sampler: 'uAtlas', texture: atlas }],
+    inputs: [
+      { sampler: 'uAtlas', texture: atlas },
+      { sampler: 'uPlaceholder', texture: placeholder },
+    ],
     uniforms: [
       { name: 'uOrigin', value: origin },
       { name: 'uTarget', value: size },
@@ -84,7 +99,7 @@ export function createSolidLayer(gpu: Gpu, target: TargetHandle, atlas: TextureH
         data[out + 8] = sprites.pivot[i * 2]!;
         data[out + 9] = sprites.pivot[i * 2 + 1]!;
         data[out + 10] = sprites.transform[i * 2 + 1]!;
-        data[out + 11] = 0;
+        data[out + 11] = sprites.flags[i]!;
         for (let k = 0; k < 4; k++) data[out + 12 + k] = sprites.tint[i * 4 + k]!;
       }
       instances.count = count;

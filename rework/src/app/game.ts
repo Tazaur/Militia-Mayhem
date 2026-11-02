@@ -1,12 +1,19 @@
 // Owns: the main loop and the wiring of whichever implementations it is handed.
-import { DEFAULT_QUALITY, makePlaceholderGround, PLACEHOLDER_GROUND_SIZE } from '../content/index.ts';
+import {
+  DEFAULT_QUALITY,
+  makePlaceholderGround,
+  makePlaceholderProps,
+  PLACEHOLDER_GROUND_SIZE,
+  PLACEHOLDER_PROPS_SIZE,
+} from '../content/index.ts';
 import type { AudioOut, Gpu, ImageHandle, Platform, Transport } from '../contracts/index.ts';
 import { createRenderer } from '../render/frame/index.ts';
 import type { RenderModules } from '../render/frame/index.ts';
 import { createSliceScene } from '../scene/index.ts';
 import { createUi } from '../ui/index.ts';
 import { createFrameStats } from './frame-stats.ts';
-import { readoutLines } from './readout.ts';
+import { readoutLines, totalGpuMs } from './readout.ts';
+import { createRecorder } from './recorder.ts';
 
 export interface GameParts extends RenderModules {
   readonly platform: Platform;
@@ -35,10 +42,23 @@ export function startGame(parts: GameParts): void {
       filter: 'nearest',
       pixels: makePlaceholderGround(),
     }),
+    placeholderProps: gpu.createTexture({
+      width: PLACEHOLDER_PROPS_SIZE,
+      height: PLACEHOLDER_PROPS_SIZE,
+      filter: 'nearest',
+      pixels: makePlaceholderProps(),
+    }),
   };
   const renderer = createRenderer(gpu, parts, assets, slice.scene);
   const ui = createUi(gpu);
   const stats = createFrameStats();
+  const recorder = createRecorder();
+  platform.offerReport(() => {
+    const screen = platform.screenSize();
+    return recorder.report(
+      `B${parts.build}  ${screen.width}X${screen.height}\n${platform.deviceInfo()}\n${gpu.deviceName()}`,
+    );
+  });
   let lines: readonly string[] = [`B${parts.build}`];
   let shownRevision = 0;
 
@@ -52,10 +72,14 @@ export function startGame(parts: GameParts): void {
     renderer.frame(slice.scene, screen.width, screen.height);
     if (stats.revision !== shownRevision) {
       shownRevision = stats.revision;
-      lines = readoutLines(stats, gpu.passTimings(), parts.build, slice.note(), screen.width, screen.height);
+      const note = slice.note();
+      lines = readoutLines(stats, gpu.passTimings(), parts.build, note, screen.width, screen.height);
+      recorder.second(nowMs, stats, totalGpuMs(gpu.passTimings()), note);
     }
     ui.frame(lines, screen.width, screen.height);
     gpu.endFrame();
-    stats.addCpu(platform.now() - started);
+    const cpuMs = platform.now() - started;
+    stats.addCpu(cpuMs);
+    recorder.frame(nowMs, cpuMs);
   });
 }

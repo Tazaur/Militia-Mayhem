@@ -10,9 +10,12 @@ Status: `planned`, `built`, `TEMP (remove by stage N)`.
 | Drawing sprites | `gpu/` instanced draw via `render/layers/solid` | `spr`, `sprC`, `img`, `uiSpr`, `uiSprR`, GX | built: one list, list order. Depth comes with Stage 1 question 4 |
 | Upscale | `render/post` with `render/projection` GLSL | PIXEL LOCK | built: sharp bilinear with the camera fraction |
 | GPU time | `gpu/webgl2/timers`, shown by `app/readout` | `gpuOpen`, `gpuClose` | built: per pass with timer queries, else a whole-frame estimate |
+| Timing recorder and report | `app/recorder`, `platform.offerReport` | The old phone counter | built: last 2 minutes, a button copies a text report. Stage 7 decides how players reach it |
 | Atlas table | `assets/atlas.json` -> generated `content/atlas-table.ts` | `atlas.json` in the bundle | built |
 | Placeholder ground | `content/placeholder-ground`, drawn by `render/layers/terrain` | `GTEXP` | TEMP (remove by Stage 4) |
 | Slice scene | `scene/slice`, `content/slice-props`, `platform.takeTaps` | Nothing | TEMP (remove by Stage 2) |
+| Placeholder walls, roof and posts | `content/placeholder-props`, sprite flag bit 2, `uPlaceholder` in `render/layers/solid` | Coded walls | TEMP (remove when the atlas has wall art) |
+| Draw order by ground position | Insertion sort in `scene/slice` | `drawWorld` order | TEMP (Stage 1 question 4 decides depth or sort) |
 | What's in the frame | `scene/` -> `FrameScene` | `drawWorld` closures, `sunHeights`, fog redraw, `drawShadowLayer` | built for the slice |
 | World <-> screen, pixel grid | `render/projection` | `VZ`, `VOX`, `VOY`, `worldT` | built: grid size and the formula. Stage 1 extends |
 | Light and shadow | `render/lighting` (`LightingModel`) | `drawLight`, `drawLights`, sun passes, drop shadows, `!SUNNOW` fakes | planned |

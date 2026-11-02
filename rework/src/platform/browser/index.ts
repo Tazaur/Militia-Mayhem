@@ -64,6 +64,35 @@ export function createBrowserPlatform(): Platform {
         // Private windows can refuse storage. Settings then last only for this session.
       }
     },
+    deviceInfo() {
+      return `${navigator.userAgent}  ratio ${window.devicePixelRatio}`;
+    },
+    offerReport(make) {
+      const button = document.createElement('button');
+      button.textContent = 'COPY REPORT';
+      button.style.cssText =
+        'position:fixed;right:8px;bottom:8px;padding:12px;font:bold 14px monospace;' +
+        'color:#fff;background:#000a;border:1px solid #fff8';
+      button.addEventListener('click', () => {
+        const report = make();
+        // Clipboard access can be refused, so a text box the player can copy from by hand is the fallback.
+        navigator.clipboard
+          .writeText(report)
+          .then(() => {
+            button.textContent = 'COPIED';
+            setTimeout(() => (button.textContent = 'COPY REPORT'), 2000);
+          })
+          .catch(() => {
+            const box = document.createElement('textarea');
+            box.value = report;
+            box.style.cssText = 'position:fixed;inset:10%;width:80%;height:80%;font:12px monospace';
+            box.addEventListener('blur', () => box.remove());
+            document.body.append(box);
+            box.select();
+          });
+      });
+      document.body.append(button);
+    },
     fatal,
   };
 }

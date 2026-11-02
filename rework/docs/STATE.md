@@ -2,14 +2,16 @@
 
 Update at the end of every round. Replace old content; history belongs in `DECISIONS.md`.
 
-**Stage:** 1, questions 1 and 2 decided (`DECISIONS.md` D13, D15). Question 3, tilt, is next.
+**Stage:** 1, questions 1 and 2 decided (`DECISIONS.md` D13, D15). Question 3, tilt, is with the user.
 **Old game:** frozen at build 417 (`DECISIONS.md` D10), playable at the repo root.
 
 ## Next step
 
-Stage 1 question 3 in `PLAN.md`: tilt. Compare 0, 0.25 and 0.35 with a wall face, what is hidden behind walls, and whether vehicles need the side extrusion. The atlas has no wall, roof or building sprites by name, so read how the old game draws them first; the wall face may have to be a placeholder.
+Get the user's verdict on Stage 1 question 3 from the phone, at `/rework/`: tap cycles tilt 0, 0.25, 0.25 with vehicle sides, 0.35, 0.35 with vehicle sides. Which tilt, and are sides wanted? Ask them to press COPY REPORT and paste it. Record the result in `DECISIONS.md` (D6), then start question 4: depth buffer or sort. Art needs from the tilt go in `VISION.md`.
 
-Phone frame timing is unexplained (`DECISIONS.md` D14, D15): build 419 showed DROP 6 with a moving camera; build 420 showed DROP 0 with a still one. Bring the camera back in the next scene and read `DROP` and `EARLY` again.
+The atlas has no wall, roof or post art, so the test uses generated placeholders. The test has no shadows, so raised units float a little; lighting comes in question 5.
+
+Phone frame timing is unexplained (`DECISIONS.md` D14, D15): build 419 showed DROP 6 with a moving camera; build 420 showed DROP 0 with a still one. This scene's camera moves slowly: read the report's slowest frames and bins.
 
 ## Open questions for the user
 

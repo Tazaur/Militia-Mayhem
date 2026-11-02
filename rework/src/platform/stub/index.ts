@@ -4,6 +4,7 @@ import type { Platform } from '../../contracts/index.ts';
 export interface StubPlatform extends Platform {
   runFrames(count: number, frameMs: number): void;
   tap(): void;
+  takeReport(): string;
   readonly fatalMessages: readonly string[];
 }
 
@@ -14,6 +15,7 @@ export function createStubPlatform(width: number, height: number): StubPlatform 
   let frame: ((nowMs: number) => void) | null = null;
   let now = 0;
   let taps = 0;
+  let makeReport: () => string = () => '';
   return {
     surface: { __surface: true },
     screenSize: () => size,
@@ -34,6 +36,11 @@ export function createStubPlatform(width: number, height: number): StubPlatform 
     storageSet(key, value) {
       storage.set(key, value);
     },
+    deviceInfo: () => 'stub device',
+    offerReport(make) {
+      makeReport = make;
+    },
+    takeReport: () => makeReport(),
     fatal(message) {
       fatalMessages.push(message);
     },

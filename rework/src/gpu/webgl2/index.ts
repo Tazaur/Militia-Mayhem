@@ -198,5 +198,10 @@ export function createWebGl2Gpu(surface: RenderSurface): Gpu | null {
       timers.poll();
     },
     passTimings: () => timers.rows,
+    deviceName() {
+      // Plain RENDERER says only "WebKit WebGL" in Chrome.
+      const info = gl.getExtension('WEBGL_debug_renderer_info');
+      return String(gl.getParameter(info ? info.UNMASKED_RENDERER_WEBGL : gl.RENDERER));
+    },
   };
 }

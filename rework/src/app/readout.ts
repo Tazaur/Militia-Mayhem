@@ -2,6 +2,12 @@
 import type { PassTiming } from '../contracts/index.ts';
 import type { FrameStats } from './frame-stats.ts';
 
+export function totalGpuMs(timings: readonly PassTiming[]): number {
+  let total = 0;
+  for (const timing of timings) total += timing.ms;
+  return total;
+}
+
 export function readoutLines(
   stats: FrameStats,
   timings: readonly PassTiming[],
@@ -12,13 +18,11 @@ export function readoutLines(
 ): string[] {
   const frames = `DROP ${stats.dropped}  EARLY ${stats.early}  WORST ${Math.round(stats.worstMs)} MS`;
   const fps = `${Math.round(stats.fps)} FPS  ${frames}`;
-  let gpuTotal = 0;
   let passes = '';
   for (const timing of timings) {
-    gpuTotal += timing.ms;
     passes += `${timing.name.toUpperCase()} ${timing.ms.toFixed(1)}  `;
   }
-  const gpu = timings.length > 0 ? `GPU ${gpuTotal.toFixed(1)} MS` : 'GPU NO TIMERS';
+  const gpu = timings.length > 0 ? `GPU ${totalGpuMs(timings).toFixed(1)} MS` : 'GPU NO TIMERS';
   return [
     `${fps}  B${build}`,
     `CPU ${stats.cpuMs.toFixed(1)} MS  ${gpu}  SCREEN ${width}X${height}`,
