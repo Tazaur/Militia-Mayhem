@@ -554,8 +554,8 @@ function netMatchStarted() {
   netRoster();
 }
 /* the match settings both net headers (match start, lobby info) open with */
-function cfgPack(C) { return [C.mode, C.map, C.bots, C.limit, C.skill, C.ff ? 1 : 0, Math.max(0, WEATHERS.indexOf(C.weather))]; }
-function cfgUnpack(c) { return { mode: clamp(c[0] | 0, 0, MODES.length - 1), map: clamp(c[1] | 0, 0, MAPNAMES.length - 1), bots: c[2] | 0, limit: c[3] | 0, skill: c[4] | 0, ff: !!c[5], weather: WEATHERS[c[6]] || 'clear' }; }
+function cfgPack(C) { return [C.mode, C.map, C.bots, C.limit, C.skill, C.ff ? 1 : 0, Math.max(0, WEATHERS.indexOf(C.weather)), Math.max(0, TIMES.indexOf(C.time))]; }
+function cfgUnpack(c) { return { mode: clamp(c[0] | 0, 0, MODES.length - 1), map: clamp(c[1] | 0, 0, MAPNAMES.length - 1), bots: c[2] | 0, limit: c[3] | 0, skill: c[4] | 0, ff: !!c[5], weather: WEATHERS[c[6]] || 'clear', time: TIMES[c[7]] || 'day' }; }
 /* who is who: a player number (or a bot name), colour and team for every soldier, in order */
 function netRoster() {
   NET.names = {}; for (const s of M.sol) if (s.player) NET.names[s.player.id] = s.name;
@@ -660,6 +660,7 @@ function netClientLobby(L) {
     const me = PLAYERS.find(p => p.mine), W8 = NET.want, nw = performance.now(), hold = (k, v, set) => { if (!W8[k]) return; if (v() || nw - W8[k] > 2000) W8[k] = 0; else set(); };
     if (me) { hold('cT', () => me.color === W8.c, () => me.color = W8.c); hold('tT', () => me.team === W8.t, () => me.team = W8.t); hold('rT', () => me.ready === !!W8.r, () => me.ready = !!W8.r); }
     if (L.cfg && L.cfg[1] !== NET.demoMap) { NET.demoMap = L.cfg[1]; withHostCfg(() => demoMatch()); }
+    if (L.cfg) setTime(TIMES[L.cfg[7]]);
     if (NET.wasJoined && !mine) { netFail(504); return; }
     // not let in: a full game says so; a match under way gives the host a moment (it lets in late joiners, or a player it knows)
     const nw2 = performance.now(); if (!NET.firstL) NET.firstL = nw2;
@@ -677,8 +678,8 @@ function netClientToLobby() {
 /* match settings shown in a joiner's lobby are the host's, without touching the joiner's own saved settings */
 function withHostCfg(fn) {
   if (NET.role !== 'client' || !NET.lobby || !NET.lobby.cfg) return fn();
-  const keep = { mode: CFG.mode, map: CFG.map, bots: CFG.bots, limit: CFG.limit, skill: CFG.skill, ff: CFG.ff, board: CFG.board, weather: CFG.weather, teamColors: CFG.teamColors, midjoin: CFG.midjoin, pub: CFG.pub, fog: CFG.fog }, c = NET.lobby.cfg;
-  Object.assign(CFG, cfgUnpack(c), { teamColors: c[7] ? 'player' : 'classic', board: !!c[8], midjoin: c[9] === undefined ? true : !!c[9], pub: c[10] !== 0, fog: c[11] === 0 ? 'off' : 'los' });
+  const keep = { mode: CFG.mode, map: CFG.map, bots: CFG.bots, limit: CFG.limit, skill: CFG.skill, ff: CFG.ff, board: CFG.board, weather: CFG.weather, time: CFG.time, teamColors: CFG.teamColors, midjoin: CFG.midjoin, pub: CFG.pub, fog: CFG.fog }, c = NET.lobby.cfg;
+  Object.assign(CFG, cfgUnpack(c), { teamColors: c[8] ? 'player' : 'classic', board: !!c[9], midjoin: c[10] === undefined ? true : !!c[10], pub: c[11] !== 0, fog: c[12] === 0 ? 'off' : 'los' });
   try { return fn(); } finally { Object.assign(CFG, keep); }
 }
 /* the slow half: match header and roster (to start the match), scoreboard, items, crates, wrecks */
@@ -734,11 +735,11 @@ function netRecvSnap(g, pv) {
 function netClientStart(g) {
   const h = g.h || [], roster = readRoster(g.ro);
   if (NET.myPid < 0 || !roster.some(r => r.pid === NET.myPid)) return false;            // we're not in this match (yet)
-  const cfg = Object.assign(cfgUnpack(h), { teamColors: h[9] ? 'player' : 'classic', camera: CFG.camera, fog: h[10] === 0 ? 'off' : 'los' });
+  const cfg = Object.assign(cfgUnpack(h), { teamColors: h[10] ? 'player' : 'classic', camera: CFG.camera, fog: h[11] === 0 ? 'off' : 'los' });
   PLAYERS = roster.filter(r => r.pid >= 0).map(r => r.pid === NET.myPid ? { id: r.pid, dev: NET.dev, color: r.color, team: r.team, ready: true, kit: 0, var: 0 } : { id: r.pid, dev: { type: 'net', peer: '' }, color: r.color, team: r.team, ready: true });
   NET.me = PLAYERS.find(p => p.id === NET.myPid);
   newMatch(cfg, false);
-  const tc = [COLORS[h[7]] || 'blue', COLORS[h[8]] || 'red']; M.teamColor = tc; TEAMHEX = tc.map(c => CHEX[c]);
+  const tc = [COLORS[h[8]] || 'blue', COLORS[h[9]] || 'red']; M.teamColor = tc; TEAMHEX = tc.map(c => CHEX[c]);
   TEAMNAME = teamNames(cfg, false, M.ffa, tc); buildRings();
   M.sol = roster.map(r => {
     const pl = r.pid >= 0 ? PLAYERS.find(p => p.id === r.pid) : null;

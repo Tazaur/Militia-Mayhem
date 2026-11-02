@@ -526,6 +526,18 @@ function updateSettings(ins) {
   hoverUpdate(v => SET.sel = v);
   runClicks();
 }
+/* a list of rows that scroll when more than fit (a phone): drag or wheel, the selected row kept in view (S.follow), a thin bar at the right shows where. row(i, y, hit): drawn clipped; hit: only the part in view is pressable */
+function scrollRows(S, sel, n, rh, x, y, w, h, u, row) {
+  const over = Math.max(0, rh * n - h);
+  if (S.follow) { S.sy = clamp(S.sy, (sel + 1) * rh - h, sel * rh); S.follow = false; }
+  if (S === SET || !SET.open) { S.sy += SCROLL.dy; SCROLL.dy = 0; }     // settings open over a list: the scroll is theirs
+  S.sy = clamp(S.sy, 0, over);
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  if (over) { const bh = h * h / (h + over); ctx.fillStyle = 'rgba(242,230,196,0.1)'; ctx.fillRect(x + w - 6 * u, y, 3 * u, h); ctx.fillStyle = 'rgba(242,230,196,0.45)'; ctx.fillRect(x + w - 6 * u, y + (h - bh) * S.sy / over, 3 * u, bh); }
+  const hit = B => { const y0 = Math.max(B.y, y), y1 = Math.min(B.y + B.h, y + h); if (y1 - y0 > 4) UIB.push(Object.assign(B, { y: y0, h: y1 - y0 })); };
+  for (let i = 0; i < n; i++) { const ry = y + i * rh - S.sy; if (ry + rh >= y && ry <= y + h) row(i, ry, hit); }
+  ctx.restore();
+}
 function drawSettings() {
   screenT(); UIB = [];
   const u = uiU();
@@ -548,16 +560,9 @@ function drawSettings() {
   keyTag('prev', dv, { x: tx, y: ty, w: tw - 6, h: cs }, 'left'); keyTag('next', dv, { x: tx + (nt - 1) * tw, y: ty, w: tw - 6, h: cs }, 'right');
   const bodyY = ty + cs + 12 * u, bodyH = py + ph - bodyY - Math.max(28, 30 * u), rows = setRows();
   if (rows) {
-    // more rows than fit (a phone): they scroll under the page tabs (drag, wheel; the selected row kept in view), a bar at the right shows where
-    const rh = clamp(bodyH / rows.length, 34, 56 * u), over = Math.max(0, rh * rows.length - bodyH);
-    if (SET.follow) { SET.sy = clamp(SET.sy, (SET.sel + 1) * rh - bodyH, SET.sel * rh); SET.follow = false; }
-    SET.sy = clamp(SET.sy + SCROLL.dy, 0, over); SCROLL.dy = 0;
-    ctx.save(); ctx.beginPath(); ctx.rect(px, bodyY, pw, bodyH); ctx.clip();
-    if (over) { const bh = bodyH * bodyH / (bodyH + over); ctx.fillStyle = 'rgba(242,230,196,0.1)'; ctx.fillRect(px + pw - 6 * u, bodyY, 3 * u, bodyH); ctx.fillStyle = 'rgba(242,230,196,0.45)'; ctx.fillRect(px + pw - 6 * u, bodyY + (bodyH - bh) * SET.sy / over, 3 * u, bh); }
-    const hit = B => { const y0 = Math.max(B.y, bodyY), y1 = Math.min(B.y + B.h, bodyY + bodyH); if (y1 - y0 > 4) UIB.push(Object.assign(B, { y: y0, h: y1 - y0 })); };     // only the part in view is pressable
-    rows.forEach((k, i) => {
-      const y = bodyY + i * rh - SET.sy; if (y + rh < bodyY || y > bodyY + bodyH) return;
-      const sel = SET.sel === i, [lab, val, fill] = setLabel(k), x = px + pad, w = pw - pad * 2;
+    const rh = clamp(bodyH / rows.length, 34, 56 * u);
+    scrollRows(SET, SET.sel, rows.length, rh, px, bodyY, pw, bodyH, u, (i, y, hit) => {
+      const k = rows[i], sel = SET.sel === i, [lab, val, fill] = setLabel(k), x = px + pad, w = pw - pad * 2;
       if (sel) { ctx.fillStyle = 'rgba(255,224,138,0.13)'; ctx.fillRect(x, y + 2, w, rh - 4); ctx.fillStyle = '#ffe08a'; ctx.fillRect(x, y + 2, 4, rh - 4); }
       txt(lab, x + 16 * u, y + rh / 2, fpx(15, u, 13), sel ? '#fff' : '#c8d0b8', 'left', 'middle', FD);
       const aw = Math.max(40, rh * 0.95);
@@ -576,7 +581,6 @@ function drawSettings() {
       hit({ x: x + w * 0.55, y, w: w * 0.45, h: rh, focus: i, fs: k === 'fullscreen', fn: () => { SET.sel = i; SET.fsClick = true; setChange(k, 1); } });
       if (bar) { const [bx, bw] = bar, B = { x: bx - 6 * u, y, w: bw + 12 * u, h: rh, focus: i, fn: (d, c) => { SET.sel = i; setChange(k, 0, clamp((c.x / (B.k || 1) - bx) / bw, 0, 1)); } }; hit(B); }     // over the arrow halves
     });
-    ctx.restore();
   } else {
     const cols = pw > 620 ? 2 : 1, per = Math.ceil(CONTROLS.length / cols), rh = Math.min(bodyH / (per + 1), 34 * u), colW = (pw - pad * 2) / cols, fs = fpx(13, u, 11.5);
     for (let c = 0; c < cols; c++) {
@@ -592,8 +596,8 @@ function drawSettings() {
 }
 
 /* ================= local lobby ================= */
-const LOBBY = { sel: 0 };
-const MATCH_ROWS_ = ['mode', 'map', 'bots', 'limit', 'skill', 'ff', 'board', 'fog', 'weather'], MATCH_ROWS_NET = [...MATCH_ROWS_, 'midjoin', 'pub'];
+const LOBBY = { sel: 0, sy: 0, follow: false };
+const MATCH_ROWS_ = ['mode', 'map', 'bots', 'limit', 'skill', 'ff', 'board', 'fog', 'weather', 'time'], MATCH_ROWS_NET = [...MATCH_ROWS_, 'midjoin', 'pub'];
 const matchRows = () => (NET.role ? MATCH_ROWS_NET : MATCH_ROWS_).filter(k => !(k === 'bots' && MODES[CFG.mode].coop));   // co-op: the waves set the numbers      // online games also choose whether people can join mid-match
 function deviceKey(d) { return d.type + (d.index !== undefined ? d.index : '') + (d.peer || ''); }
 function devName(d) { return d.type === 'net' ? (d.peer ? 'ONLINE' : 'HOST') : d.type === 'kb' ? 'KEYBOARD + MOUSE' : d.type === 'pad' ? 'CONTROLLER ' + (d.index + 1) : 'TOUCH'; }
@@ -659,6 +663,7 @@ function changeSetting(key, d) {
   if (key === 'midjoin') C.midjoin = !C.midjoin;
   if (key === 'pub') C.pub = C.pub === false;
   if (key === 'weather') { C.weather = WEATHERS[(WEATHERS.indexOf(C.weather) + d + 3) % 3]; }
+  if (key === 'time') { C.time = TIMES[(TIMES.indexOf(C.time) + d + TIMES.length) % TIMES.length]; setTime(C.time); }     // the title battle behind just takes the new sun
   if (MODES[C.mode].id === 'ffa') C.bots = Math.min(C.bots, 6);
   saveCfg(); ev('menu');
   if (C.map !== prevMap || C.weather !== prevWeather) demoMatch();
@@ -677,12 +682,13 @@ function settingLabel(key) {
     case 'fog': return ['VISION', C.fog === 'off' ? 'SEE WHOLE MAP' : 'LINE OF SIGHT'];
     case 'midjoin': return ['JOIN MID-MATCH', C.midjoin ? 'ON' : 'OFF'];
     case 'pub': return ['SERVER LIST', C.pub === false ? 'HIDDEN' : 'SHOWN'];
+    case 'time': return ['TIME', C.time.toUpperCase()];
     case 'weather': return ['WEATHER', C.weather === 'clear' ? 'CLEAR' : C.weather === 'snow' ? 'SNOW' : MAPNAMES[C.map][0] === 'snowfield' ? 'STORM' : 'RAIN'];
   }
 }
 /* same settings again (a dev match keeps its own) */
 function rematch() { newMatch({ ...CFG }, false); setState('play'); }
-function demoMatch() { newMatch({ mode: 0, map: CFG.map, bots: 7, limit: 1, skill: 1, camera: 'shared', weather: CFG.weather }, true); }
+function demoMatch() { newMatch({ mode: 0, map: CFG.map, bots: 7, limit: 1, skill: 1, camera: 'shared', weather: CFG.weather, time: CFG.time }, true); }
 /* controllers have to ready up; keyboard and touch players are readied by pressing START themselves */
 const canStart = () => PLAYERS.length > 0 && PLAYERS.every(p => p.ready || (p.dev.type !== 'pad' && !isNet(p)));
 function tryStart() { if (canStart()) startBattle(); else ev('blocked'); }
@@ -708,7 +714,7 @@ function updateLobby(ins) {
     // bumpers: colour · D-pad / stick: match settings · Y: team · A: ready · Start: ready + start · B: un-ready, then leave
     const dc = st.tabR ? 1 : st.tabL ? -1 : 0;
     if (dc) cycleColor(p, dc);
-    if (st.navY) { LOBBY.sel = (LOBBY.sel + st.navY + nRows) % nRows; ev('menu'); }
+    if (st.navY) { LOBBY.sel = (LOBBY.sel + st.navY + nRows) % nRows; LOBBY.follow = true; ev('menu'); }
     if (st.navX && LOBBY.sel < matchRows().length) changeSetting(matchRows()[LOBBY.sel], st.navX);
     if ((dev.type === 'pad' ? st.interact : st.nadeCyc) && MODES[CFG.mode].team) toggleTeam(p);
     if (st.confirm && stateT > 0.3) { if (LOBBY.sel === matchRows().length) { p.ready = true; tryStart(); } else toggleReady(p); }
@@ -790,7 +796,7 @@ function drawMatchPanel(x, y, w, h, u) {
   if (nd) keyTag('nav', nd, { x: x + w - pad, y: y + fpx(18, u, 15) - 10, w: 0, h: 20 }, 'left');
   else txt(MODES[CFG.mode].n, x + w - pad, y + fpx(18, u, 15), fpx(13, u, 11), '#9a9a8a', 'right', 'middle', FD);
   // map preview of the live demo battlefield
-  const startH = Math.max(44, 46 * u), minRows = matchRows().length * Math.max(28, 32 * u), head = fpx(34, u, 28);
+  const startH = Math.max(44, 46 * u), minRows = matchRows().length * Math.max(34, 32 * u), head = fpx(34, u, 28);
   const mw = w - pad * 2, mh0 = Math.min(mw * WH / WW, h - head - minRows - startH - pad * 2 - 12 * u), mh = mh0 < 46 ? 0 : mh0, mx = x + pad, my = y + head;
   const k = Math.min(mw / WW, mh / WH), dw = WW * k, dh = WH * k, dx = mx + (mw - dw) / 2;
   if (mh) ctx.drawImage(groundMini(), 0, 0, groundMini().width, groundMini().height, dx, my, dw, dh);
@@ -799,15 +805,15 @@ function drawMatchPanel(x, y, w, h, u) {
   ctx.strokeStyle = 'rgba(242,230,196,0.3)'; ctx.strokeRect(dx + 0.5, my + 0.5, dw - 1, dh - 1);
   if (!cl) UIB.push({ x: dx, y: my, w: dw, h: dh, fn: () => changeSetting('map', 1) }); }
   // rows
-  const rowsTop = my + dh + 8 * u, rowsH = y + h - pad - startH - 8 * u - rowsTop, rh = clamp(rowsH / matchRows().length, 28, 44 * u);
-  matchRows().forEach((key, i) => {
-    const ry = rowsTop + i * rh, sel = navOn && LOBBY.sel === i, [lab, val] = settingLabel(key);
+  const rowsTop = my + dh + 8 * u, rowsH = y + h - pad - startH - 8 * u - rowsTop, rows = matchRows(), rh = clamp(rowsH / rows.length, 34, 44 * u);
+  scrollRows(LOBBY, LOBBY.sel, rows.length, rh, x, rowsTop, w, rowsH, u, (i, ry, hit) => {
+    const key = rows[i], sel = navOn && LOBBY.sel === i, [lab, val] = settingLabel(key);
     if (sel) { ctx.fillStyle = 'rgba(255,224,138,0.13)'; ctx.fillRect(x + 4, ry + 1, w - 8, rh - 2); ctx.fillStyle = '#ffe08a'; ctx.fillRect(x + 4, ry + 1, 3, rh - 2); }
     txt(lab, x + pad + 4, ry + rh / 2, fpx(12.5, u, 11.5), '#a8b098', 'left', 'middle', FD);
     txt(`‹ ${val} ›`, x + w - pad, ry + rh / 2, fpx(14, u, 12), sel ? '#ffe08a' : '#f0f0e0', 'right', 'middle', FD);
     if (cl) return;
-    UIB.push({ x: x + 4, y: ry, w: (w - 8) * 0.5, h: rh, fn: () => { LOBBY.sel = i; changeSetting(key, -1); } });
-    UIB.push({ x: x + 4 + (w - 8) * 0.5, y: ry, w: (w - 8) * 0.5, h: rh, fn: () => { LOBBY.sel = i; changeSetting(key, 1); } });
+    hit({ x: x + 4, y: ry, w: (w - 8) * 0.5, h: rh, fn: () => { LOBBY.sel = i; changeSetting(key, -1); } });
+    hit({ x: x + 4 + (w - 8) * 0.5, y: ry, w: (w - 8) * 0.5, h: rh, fn: () => { LOBBY.sel = i; changeSetting(key, 1); } });
   });
   const ok = canStart(), sel = navOn && LOBBY.sel === matchRows().length;
   if (cl) { button({ x: x + pad, y: y + h - pad - startH, w: w - pad * 2, h: startH, label: 'THE HOST STARTS THE BATTLE', off: true, size: fpx(14, u, 12) }); return; }
@@ -924,7 +930,7 @@ function drawEnd() {
   ctx.globalAlpha = 1;
 }
 /* ================= main loop ================= */
-function setState(s) { state = s; stateT = 0; }
+function setState(s) { state = s; stateT = 0; SCROLL.dy = 0; }
 function update(dt) {
   stateT += dt; pollPads();
   if (state === 'boot') { if (imgReady) { toMenu(); const m = /join=([a-z0-9]{4})/i.exec(typeof location !== 'undefined' ? location.hash || '' : ''); if (m) { openNetMenu({ type: TOUCH.active ? 'touch' : 'kb' }); NETM.entry = { mode: 'code', code: m[1].toLowerCase(), sel: 'JOIN' }; } } return; }

@@ -703,7 +703,7 @@ function rumble(pl, s, d) {
 function touchPlayer() { return PLAYERS.find(p => p.dev.type === 'touch'); }
 
 /* ---------------- settings ---------------- */
-const CFG = Object.assign({ mode: 0, map: 0, bots: 6, limit: 1, skill: 1, ff: false, board: false, midjoin: true, camera: 'split', style: 'classic', fogLook: 'grey', weather: 'clear', teamColors: 'player', fog: 'los', sound: 'exp', sun: true, clearLos: true,
+const CFG = Object.assign({ mode: 0, map: 0, bots: 6, limit: 1, skill: 1, ff: false, board: false, midjoin: true, camera: 'split', style: 'classic', fogLook: 'grey', weather: 'clear', time: 'day', teamColors: 'player', fog: 'los', sound: 'exp', sun: true, clearLos: true,
   res: 100, pix: false, lightQ: 1, lightA: false, mrt: true, shCache: 2, shLay: true, shLen: 128, shMem: true, shPt: true, lights: 'all', refl: true, fogQ: 'high', smk: 'high', trees: 'high', tops: 'lit', fps: 0, minimap: true, tSize: 100, tAlpha: 100, tFireX: 96, tFireY: 92, tLfire: true, volMaster: 100, volSfx: store.get('sfx', true) ? 100 : 0, volMus: store.get('mus', true) ? 100 : 0 }, store.get('cfg3', {}));
 /* settings › FOG OF WAR presets: [name, values] (drawn by fogLook / fogEdge) */
 const FOG_PRESETS = [['STANDARD', { fogD: 20, fogK: 20, fogE: 50, fogW: 16 }], ['GREYSCALE', { fogD: 100, fogK: 22, fogE: 0, fogW: 24 }], ['MUTED', { fogD: 50, fogK: 22, fogE: 0, fogW: 24 }],
@@ -731,7 +731,7 @@ let M = null, state = 'boot', stateT = 0;
 let PLAYERS = [];
 /* online play: remote players are PLAYERS with dev.type 'net'; only local ones get views, sound and HUD */
 const isNet = p => !!(p && p.dev && p.dev.type === 'net');
-const WEATHERS = ['clear', 'rain', 'snow'];
+const WEATHERS = ['clear', 'rain', 'snow'], TIMES = ['dawn', 'day', 'dusk', 'night'];
 function LOCALS() { return PLAYERS.filter(p => !isNet(p)); }
 /* living soldiers of this machine's players; of one view's players (the shared view: all of them); where one is (his vehicle if seated) */
 function localSols() { return LOCALS().map(p => p.sol).filter(s => s && s.alive); }

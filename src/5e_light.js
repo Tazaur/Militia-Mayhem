@@ -191,6 +191,9 @@ function drawLight(l) {
 const ROOF_Z = [36, 42];     // a tiled house's roof: a slab this high (px), over the walls' tops
 const SUN_MIN = Math.PI / 36, SUN_FADE = 9, sunEl = () => Math.max(SUN.el, SUN_MIN);     // shadows: never longer than at 5°, and gone by then: from SUN_FADE° down they fade as they still lengthen (sunTone s)
 const SUN = { az: -2.36, el: 0.7, tint: [0.46, 0.5, 0.64], warm: [1, 0.93, 0.8], sky: [0.56, 0.7, 0.9], skyRain: [0.5, 0.53, 0.58] };     // az: toward the sun (up-left); el: its height; sky: what reflective things mirror
+/* a match's TIME (lobby): the sun's height, direction. Dawn is dusk from the other side */
+const TIME_SUN = { dawn: [0.14, -0.34], day: [0.7, -2.36], dusk: [0.14, -2.8], night: [-0.26, -2.36] };
+const setTime = t => { [SUN.el, SUN.az] = TIME_SUN[t] || TIME_SUN.day; };
 /* the light's colours from the sun's height: day as set; low sun golden (and its shade bluer, purpler); below the horizon
    it all goes to the night's dim blue (sunlit = shade: no sun shadows), so only point lights light things. day: 0 night .. 1;
    s: the sun shadows' strength, 0 from SUN_MIN (where they stop lengthening) up to 1 at SUN_FADE: the shade goes to the sunlit colour */

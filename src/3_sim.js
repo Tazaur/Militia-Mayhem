@@ -33,7 +33,7 @@ for (const T of Object.values(VT)) if (T.art) { const [hl, hw] = artHalf(T.art);
 const wreckBox = type => artHalf(type === 'tank' ? 'hull4' : 'jeep4');
 
 function newMatch(cfg, demo) {
-  engineKillAll();
+  engineKillAll(); setTime(cfg.time);
   const mode = (MODES[cfg.mode] || MODES[0]).coop && demo ? MODES[1] : MODES[cfg.mode] || MODES[0];   // behind a co-op lobby the title battle is a plain team fight
   const ffa = mode.id === 'ffa', coop = !!mode.coop;
   const teamColor = pickTeamColors(cfg, demo, ffa);
