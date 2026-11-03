@@ -7,7 +7,7 @@ Update at the end of every round. Replace old content; history belongs in `DECIS
 
 ## Next step
 
-Get the user's verdict on Stage 1 question 4, depth or sort (`DECISIONS.md` D20), from build 430: how SLICE SORT and SLICE DEPTH look, and a report over the two BENCH modes. A tap cycles the four modes. Then delete the loser, `SpriteList.useDepth`, and the bench if nothing else needs it. Question 5, lighting, follows.
+Get the user's verdict on Stage 1 question 4, depth or sort (`DECISIONS.md` D20), from build 429: how SLICE SORT and SLICE DEPTH look, and a report over the two BENCH modes. A tap cycles the four modes. Then delete the loser, `SpriteList.useDepth`, and the bench if nothing else needs it. Question 5, lighting, follows.
 
 The atlas has no wall, roof or post art, so the slice uses generated placeholders. No shadows yet, so raised units float a little.
 
