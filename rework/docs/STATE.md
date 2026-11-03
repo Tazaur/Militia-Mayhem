@@ -11,7 +11,7 @@ Stage 1 question 4 in `PLAN.md`: depth buffer or sort, including cost on the pho
 
 A tap in the slice switches between tilt 0.25 and 0. The atlas has no wall, roof or post art, so the slice uses generated placeholders. No shadows yet, so raised units float a little; lighting comes in question 5.
 
-Phone frame timing is unexplained (`DECISIONS.md` D14, D15): build 419 showed DROP 6 with a moving camera; build 420 showed DROP 0 with a still one. Ask for a COPY REPORT paste from the phone: none has arrived yet, and the recorder has not run on a real phone.
+Phone frame timing: see `DECISIONS.md` D17. Not ours so far; the screen changes rate at touches. Plan for 120 Hz on the phone during play. The canvas cap for desktop-site mode has not run on the phone yet: the next report's first lines should show about 1079 wide and its page scale.
 
 ## Open questions for the user
 

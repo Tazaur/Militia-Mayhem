@@ -2,7 +2,8 @@
 const WINDOW_MS = 1000;
 // A frame taking 1.5x the average missed at least one refresh of the screen.
 const DROPPED_FACTOR = 1.5;
-// A frame this far under the average followed a late one: the browser delivered late and caught up, and lost nothing.
+// A frame this far under the average. On the S23 Ultra these are mostly the screen jumping to 120 Hz at a touch
+// (DECISIONS.md D17), so EARLY does not by itself mean a late frame was caught up.
 const EARLY_FACTOR = 0.6;
 
 export interface FrameStats {

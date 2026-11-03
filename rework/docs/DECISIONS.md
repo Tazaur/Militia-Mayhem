@@ -86,6 +86,15 @@ What a building hides is `0.25 x height`, north of its south edge: 36 px wall 9 
 
 D6's "whether to tilt, and how much" is answered by this entry until then. No frame report came with this verdict.
 
+## D17. First full phone recording (S23 Ultra, Adreno 740, build 423, 20 s, 12 taps)
+
+Interval p50 16.7, p95 16.8, p99 25.0, max 74.9 ms. Of 1215 frames, 1137 were near 16.7 ms and 48 near 8.3 ms. Slowest frames' CPU was at most 0.6 ms; GPU estimate 3.4 to 5.2 ms.
+
+- **The screen changes rate at a touch.** Seconds with a tap show 62 to 63 FPS and EARLY 3 to 7; seconds without show 60 and 0 to 1 (the 1 follows a tap). The 8.3 ms frames are 120 Hz. This also explains the 66 FPS reading in D15. It corrects D14: EARLY is mostly this, not late frames catching up. Touch controls will hold a finger down, so **assume 120 Hz, an 8.3 ms frame, during phone play** until tested. Stage 2's fixed tick must not depend on the refresh rate.
+- **Slow frames come in clusters:** page load, 2.9 to 4.8 s, and 19.4 to 19.8 s just before COPY REPORT was pressed, where the intervals run 15.3 ms, then 32.7, then 8.3. From 6 to 19 s no frame was over 17 ms in any second. Our reading: the rate change costs a frame or two, and our CPU and GPU are not the cause, since they stay far under budget. Not proven for the 2.9 to 4.8 s cluster, because the report does not record touches.
+- **The canvas was 2573x4641,** about 4.6x the pixels of the 1079x1948 runs. The browser identified as desktop Linux, which is the desktop-site user agent, so we take this as desktop-site mode. So these GPU numbers cover a far larger upscale than a normal run. `platform/browser` now caps the canvas by the page scale.
+- GPU estimate rose from 3.4 to 5.2 ms over 20 s with no matching change in settings. One run; could be heat. Watch it in longer recordings.
+
 ## Measured in the old game (do not re-try without a new reason)
 
 | Idea | Result | Source |

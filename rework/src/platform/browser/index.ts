@@ -7,7 +7,10 @@ export function createBrowserPlatform(): Platform {
 
   const size = { width: 1, height: 1 };
   const syncSize = () => {
-    const pixelRatio = window.devicePixelRatio || 1;
+    // In a browser's desktop-site mode the page is laid out wider than the screen and shrunk to fit. Without this the
+    // canvas gets more pixels than the screen has (measured on the S23 Ultra: 2573x4641 on a 1080 wide screen).
+    const shrink = Math.min(1, window.visualViewport?.scale ?? 1);
+    const pixelRatio = (window.devicePixelRatio || 1) * shrink;
     size.width = Math.max(1, Math.round(canvas.clientWidth * pixelRatio));
     size.height = Math.max(1, Math.round(canvas.clientHeight * pixelRatio));
     canvas.width = size.width;
@@ -15,6 +18,7 @@ export function createBrowserPlatform(): Platform {
   };
   syncSize();
   window.addEventListener('resize', syncSize);
+  window.visualViewport?.addEventListener('resize', syncSize);
 
   let taps = 0;
   canvas.addEventListener('pointerdown', () => taps++);
@@ -65,7 +69,7 @@ export function createBrowserPlatform(): Platform {
       }
     },
     deviceInfo() {
-      return `${navigator.userAgent}  ratio ${window.devicePixelRatio}`;
+      return `${navigator.userAgent}  ratio ${window.devicePixelRatio}  page scale ${window.visualViewport?.scale}`;
     },
     offerReport(make) {
       const button = document.createElement('button');
