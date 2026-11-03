@@ -21,6 +21,7 @@ interface InternalTexture extends TextureHandle {
 interface InternalTarget extends TargetHandle {
   readonly framebuffer: WebGLFramebuffer;
   readonly color: InternalTexture;
+  readonly depth: WebGLRenderbuffer | null;
   width: number;
   height: number;
 }
@@ -84,6 +85,22 @@ export function createWebGl2Gpu(surface: RenderSurface): Gpu | null {
     else gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
   };
 
+  const allocateDepth = (depth: WebGLRenderbuffer, width: number, height: number) => {
+    gl.bindRenderbuffer(gl.RENDERBUFFER, depth);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, width, height);
+    gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+  };
+
+  const setDepth = (pass: Pass, target: InternalTarget | null) => {
+    if (!pass.depthTest) {
+      gl.disable(gl.DEPTH_TEST);
+      return;
+    }
+    if (!target?.depth) throw new Error(`pass ${pass.name} tests depth on a target without any`);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LEQUAL);
+  };
+
   const setBlend = (blend: Pass['blend']) => {
     if (blend === 'none') {
       gl.disable(gl.BLEND);
@@ -116,12 +133,18 @@ export function createWebGl2Gpu(surface: RenderSurface): Gpu | null {
       const framebuffer = gl.createFramebuffer();
       gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, color.texture, 0);
+      const depth = desc.depth ? gl.createRenderbuffer() : null;
+      if (depth) {
+        allocateDepth(depth, desc.width, desc.height);
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depth);
+      }
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.bindTexture(gl.TEXTURE_2D, null);
       const target: InternalTarget = {
         __handle: 'target',
         framebuffer,
         color,
+        depth,
         width: desc.width,
         height: desc.height,
       };
@@ -134,13 +157,15 @@ export function createWebGl2Gpu(surface: RenderSurface): Gpu | null {
       gl.bindTexture(gl.TEXTURE_2D, target.color.texture);
       allocate(width, height, null);
       gl.bindTexture(gl.TEXTURE_2D, null);
+      if (target.depth) allocateDepth(target.depth, width, height);
     },
     targetTexture: (handle) => (handle as InternalTarget).color,
     createProgram: (desc) => createInternalProgram(gl, desc, cornerBuffer),
     clear(handle, color: Rgba) {
-      bindOutput(handle as InternalTarget | null, null);
+      const target = handle as InternalTarget | null;
+      bindOutput(target, null);
       gl.clearColor(color.r, color.g, color.b, color.a);
-      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.clear(target?.depth ? gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT : gl.COLOR_BUFFER_BIT);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     },
     draw(pass) {
@@ -156,6 +181,7 @@ export function createWebGl2Gpu(surface: RenderSurface): Gpu | null {
 
       bindOutput(target, pass);
       setBlend(pass.blend);
+      setDepth(pass, target);
       gl.useProgram(program.program);
 
       for (let unit = 0; unit < pass.inputs.length; unit++) {
@@ -192,6 +218,12 @@ export function createWebGl2Gpu(surface: RenderSurface): Gpu | null {
         gl.bindTexture(gl.TEXTURE_2D, null);
       }
       gl.activeTexture(gl.TEXTURE0);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    },
+    discardDepth(handle) {
+      const target = handle as InternalTarget;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
+      gl.invalidateFramebuffer(gl.FRAMEBUFFER, [gl.DEPTH_ATTACHMENT]);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     },
     endFrame() {

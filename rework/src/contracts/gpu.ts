@@ -38,6 +38,8 @@ export interface TargetDesc {
   readonly width: number;
   readonly height: number;
   readonly filter: Filter;
+  /** Gives the target a depth buffer. `clear` clears it too. */
+  readonly depth?: boolean;
 }
 
 export interface InstanceAttribute {
@@ -83,6 +85,8 @@ export interface Pass {
   readonly inputs: readonly PassInput[];
   readonly uniforms: readonly PassUniform[];
   readonly blend: BlendMode;
+  /** Tests and writes the target's depth; on equal depth the later draw wins. Throws if the target has none. */
+  readonly depthTest?: boolean;
   /** null draws one quad. */
   readonly instances: InstanceData | null;
 }
@@ -102,6 +106,8 @@ export interface Gpu {
   createProgram(desc: ProgramDesc): ProgramHandle;
   clear(target: TargetHandle | null, color: Rgba): void;
   draw(pass: Pass): void;
+  /** Call when nothing will read the depth again this frame, so a tile GPU need not write it to memory. */
+  discardDepth(target: TargetHandle): void;
   /** Call once per frame, after the last draw. */
   endFrame(): void;
   passTimings(): readonly PassTiming[];

@@ -1,4 +1,4 @@
-// Owns: drawing soldiers, vehicles, props and walls as one instanced draw. Order comes from the list for now.
+// Owns: drawing soldiers, vehicles, props and walls as one instanced draw, ordered by the list or by depth.
 import type { Camera, Gpu, Pass, SpriteList, TargetHandle, TextureHandle } from '../../contracts/index.ts';
 import { WORLD_TO_CLIP_GLSL } from '../projection/index.ts';
 import type { GridView } from '../projection/index.ts';
@@ -19,11 +19,15 @@ void main() {
   // A whole pivot keeps art 1:1 with the grid at angle 0, whichever way the atlas table rounded.
   vec2 local = (aCorner * aRect.zw - floor(aShape.xy + 0.5)) * aShape.z;
   int flags = int(aShape.w);
-  if ((flags & 1) != 0) local.y *= uTilt;
+  bool upright = (flags & 1) != 0;
+  // An upright sprite rises from its base: its top is as high as the art is tall.
+  float height = aPlace.z - (upright ? local.y : 0.0);
+  if (upright) local.y *= uTilt;
   float c = cos(aPlace.w);
   float s = sin(aPlace.w);
   vec2 turned = vec2(c * local.x - s * local.y, s * local.x + c * local.y);
   gl_Position = targetPixelToClip(worldToTargetPixel(aPlace.xyz) + turned);
+  gl_Position.z = heightToClipDepth(height);
   vAtlas = aRect.xy + aCorner * aRect.zw;
   vTint = aTint;
   vPlaceholder = (flags & 2) >> 1;
@@ -85,6 +89,7 @@ export function createSolidLayer(
     blend: 'none',
     instances,
   };
+  const depthPass: Pass = { ...pass, depthTest: true };
 
   return {
     draw(sprites, camera, view) {
@@ -108,7 +113,7 @@ export function createSolidLayer(
       size[0] = view.targetWidth;
       size[1] = view.targetHeight;
       tilt[0] = camera.tilt;
-      gpu.draw(pass);
+      gpu.draw(sprites.useDepth ? depthPass : pass);
     },
   };
 }

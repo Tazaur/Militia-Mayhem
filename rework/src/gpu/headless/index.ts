@@ -8,14 +8,16 @@ export interface HeadlessGpu extends Gpu {
 
 export function createHeadlessGpu(): HeadlessGpu {
   const targetTextures = new Map<TargetHandle, TextureHandle>();
+  const depthTargets = new Set<TargetHandle>();
   let passes: string[] = [];
   const newTexture = (): TextureHandle => ({ __handle: 'texture' });
   return {
     createTexture: newTexture,
     createImageTexture: newTexture,
-    createTarget() {
+    createTarget(desc) {
       const target: TargetHandle = { __handle: 'target' };
       targetTextures.set(target, newTexture());
+      if (desc.depth) depthTargets.add(target);
       return target;
     },
     resizeTarget() {},
@@ -33,8 +35,12 @@ export function createHeadlessGpu(): HeadlessGpu {
       for (const input of pass.inputs) {
         if (input.texture === output) throw new Error(`pass ${pass.name} reads the target it draws to`);
       }
+      if (pass.depthTest && !(pass.target && depthTargets.has(pass.target))) {
+        throw new Error(`pass ${pass.name} tests depth on a target without any`);
+      }
       passes.push(pass.name);
     },
+    discardDepth() {},
     endFrame() {},
     passTimings: () => [],
     deviceName: () => 'headless gpu',

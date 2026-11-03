@@ -114,7 +114,15 @@ Recording: S23 Ultra, Chrome with desktop mode, build 426, 77.6 s. Page scale 0.
 - **Desktop mode makes no difference to the timing,** as expected with the same pixel count.
 - **Every 60 FPS second is clean, and they follow a tap or page load.** After a tap the phone can hold exactly 16.7 ms for about 2 to 3 s, then moves to about 15.3 ms, with a few irregular frames in the change. All the missed-frame patches are in that faster state, though it also has long clean stretches (57 to 70 s here). Tilt shows no effect. This may be why D17's run, with 12 taps in 20 s, looked cleaner than D18's: taps may have held it at 60. A guess at the cause, unproven: the phone's adaptive refresh rate.
 - **The GPU estimate did not climb over 77 s** (3.5 falling to about 3.0), so D17's rise was not repeated. It shows no link to the missed frames, with the caveat in D18.
-- **Test added:** a third tap mode, NO DRAW, keeps the loop and recorder running and sends nothing to the GPU. If the patches continue, they are not caused by our drawing. If they stop, that is not proof either, since a page with no changes may be scheduled differently; the next test would be a clear-only frame.
+- **Paused by the user's call on importance:** the game is far under budget, and the cause may not be fixable. Come back only if the stutter can be felt in play. Commit 9975a89 has a NO DRAW test mode (loop and recorder run, nothing is sent to the GPU), removed from the main loop afterwards; a second test is the phone's Motion smoothness set to Standard. If NO DRAW also runs clean, that is not proof, since a page with no changes may be scheduled differently.
+
+## D20. Depth or sort: the test (Stage 1 question 4, no verdict yet)
+
+Depth is height alone (D9): for one screen pixel, the higher thing is nearer. An upright sprite's height rises along it, so a wall face is correct against something in front of or behind it. Ties go to the later draw, so list order settles them without flicker. 16-bit depth; discarded after the solid pass, so a tile GPU need not store it.
+
+What depth would remove: the sort, and the overhead key that keeps crowns on top. It would not remove splitting walls into tiles: that is how the art repeats. What changes on screen: a flat sprite is a flat plane at its height, so a soldier close south of a wall has the part of it that reaches into the wall hidden, where the sort drew all of it over the wall. Seen in a local screenshot: a soldier 6 px south of a wall loses the top of the sprite behind the wall face. Judge this by eye.
+
+Modes, by tap: SLICE SORT, SLICE DEPTH, BENCH 2000 SORT, BENCH 2000 DEPTH. The world target has its depth buffer in all four. In depth modes the list is deliberately unsorted. `SpriteList.useDepth` and the sort both go when this is decided.
 
 ## Measured in the old game (do not re-try without a new reason)
 

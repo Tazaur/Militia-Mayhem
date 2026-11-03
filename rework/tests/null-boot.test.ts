@@ -19,20 +19,17 @@ test('frames run on all null versions, in pass order', async () => {
   assert.deepEqual(platform.fatalMessages, []);
 });
 
-test('the no-draw test sends nothing to the GPU after the frame that names it, and a tap ends it', async () => {
+test('every test mode of the slice runs, and depth is asked for only on a target that has it', async () => {
   const platform = createStubPlatform(1764, 822);
   const gpu = createHeadlessGpu();
   const atlasImage = await platform.decodeImage('stub');
   startGame({ ...createNullParts(), platform, gpu, build: 0, atlasImage });
-  platform.runFrames(1, 1000 / 60);
-  platform.tap();
-  platform.tap();
-  gpu.takePasses();
-  platform.runFrames(100, 1000 / 60);
-  assert.equal(gpu.takePasses().length, 4);
-  platform.tap();
-  platform.runFrames(1, 1000 / 60);
-  assert.equal(gpu.takePasses().length, 4);
+  for (let mode = 0; mode < 4; mode++) {
+    platform.runFrames(2, 1000 / 60);
+    platform.tap();
+  }
+  assert.equal(gpu.takePasses().length, 8 * 4);
+  assert.deepEqual(platform.fatalMessages, []);
 });
 
 test('the loopback hands back what was sent, once', () => {

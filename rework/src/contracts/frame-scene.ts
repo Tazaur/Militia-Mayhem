@@ -43,6 +43,8 @@ export interface SpriteList {
    * Bit 2: from the placeholder sheet, until the atlas has wall art.
    */
   readonly flags: ReadonlyFloats;
+  /** Draw by depth instead of list order. Stage 1 question 4 tests both, then this goes (DECISIONS.md D20). */
+  readonly useDepth: boolean;
 }
 
 export interface CasterList {

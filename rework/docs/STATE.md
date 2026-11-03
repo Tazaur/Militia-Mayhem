@@ -2,18 +2,18 @@
 
 Update at the end of every round. Replace old content; history belongs in `DECISIONS.md`.
 
-**Stage:** 1, questions 1 to 3 decided (`DECISIONS.md` D13, D15, D16). Question 4, depth buffer or sort, is next.
+**Stage:** 1, questions 1 to 3 decided (`DECISIONS.md` D13, D15, D16). Question 4, depth buffer or sort, is on test.
 **Old game:** frozen at build 417 (`DECISIONS.md` D10), playable at the repo root.
 
 ## Next step
 
-Read the NO DRAW report (below), then Stage 1 question 4 in `PLAN.md`: depth buffer or sort, including cost on the phone. At one screen pixel, a higher `z` is always nearer the camera, so depth can be `z` alone (`DECISIONS.md` D9). That would remove the sort and the splitting of walls into tiles. Bench it with many sprites, because the slice's 50 say nothing about cost. Alpha test may be what costs on the phone.
+Get the user's verdict on Stage 1 question 4, depth or sort (`DECISIONS.md` D20), from build 430: how SLICE SORT and SLICE DEPTH look, and a report over the two BENCH modes. A tap cycles the four modes. Then delete the loser, `SpriteList.useDepth`, and the bench if nothing else needs it. Question 5, lighting, follows.
 
-A tap in the slice cycles tilt 0.25, tilt 0 and NO DRAW. The atlas has no wall, roof or post art, so the slice uses generated placeholders. No shadows yet, so raised units float a little; lighting comes in question 5.
-
-Phone frame timing: see `DECISIONS.md` D17 to D19. Missed-frame patches appear in the phone's 65 FPS state, not in the clean 60 FPS it holds for 2 to 3 s after a tap. Not explained, and not proven to be outside the game. Build 427 adds NO DRAW as a third tap mode. Ask for a report that stays in it for over a minute, and one with the phone's Motion smoothness set to Standard. Canvas cap confirmed in Chrome's desktop mode; not yet run in the Claude app's browser.
+The atlas has no wall, roof or post art, so the slice uses generated placeholders. No shadows yet, so raised units float a little.
 
 **Every input is a main way to play (D18):** touch, controller, keyboard and mouse. Do not design or budget for one alone.
+
+Phone frame timing is paused, by the user's call on importance: see D17 to D19. Come back only if stutter can be felt in play. The canvas cap is confirmed in Chrome's desktop mode, not in the Claude app's browser.
 
 ## Open questions for the user
 
@@ -28,6 +28,7 @@ Phone frame timing: see `DECISIONS.md` D17 to D19. Missed-frame patches appear i
 
 ## To resolve at their stage
 
+- **Measuring costs a little on every frame path:** the phone's GPU estimate stalls the page once a second, and COPY REPORT shows to everyone. Stage 7 decides how players reach them; off by default for players.
 - **WebGL context loss** is not handled: a phone that drops the context shows a black screen. `gpu/` keeps no descriptors to rebuild from yet. Add it before Stage 2.
 - **Rule A8 and two browser APIs:** A8 says browser code lives in `platform/` and `gpu/`, and the lint enforces that, but `ARCHITECTURE.md` plans Web Audio under `audio/` and WebRTC under `net/`. Decide in Stage 6 and Stage 8: move them under `platform/`, or ask the user to widen A8.
 - **The `nsh_` sprites draw black, and `bagarc` shows a solid fill,** in the slice. Find out what the old game does with them (tint, or a mask) when Stage 3 reads `drawSoldier` and the bag code. Both are left out of the slice for now.

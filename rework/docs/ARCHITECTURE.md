@@ -110,7 +110,7 @@ screenY = y - tilt * z
 Consequences:
 
 - **The sim stays 2D plus height.** Collision, bullets, nav and sight are unaffected by tilt.
-- **Occlusion is real depth, not sorted closures (TO PROVE).** Solid layers draw with a hardware depth buffer and alpha test, depth computed per vertex from `y` and `z`. A long tank beside a short wall resolves per pixel. At tilt 0 this reduces to the old "higher covers lower". Things that must fade use dither in solid layers, or live in overhead or air.
+- **Occlusion is real depth, not sorted closures (TO PROVE).** Solid layers draw with a hardware depth buffer and alpha test, depth computed per vertex from `z` alone (`DECISIONS.md` D9, D20); along an upright sprite, `z` rises with its height. A long tank beside a short wall resolves per pixel. At tilt 0 this reduces to the old "higher covers lower". Things that must fade use dither in solid layers, or live in overhead or air.
 - **Walls are geometry.** A wall run emits a top quad and a south-face quad, with art for both. Other sprites stay single quads at their part's height, so the turret parallaxes over the hull.
 - **Upright sprites** (`SpriteList.flags`, bit 1) stand on the ground, and tilt foreshortens them in the vertex shader: wall faces, posts, trunks. Nothing outside `render/` computes the foreshortening (rule A7).
 - **Rotating vehicles have no painted sides,** and no extrusion for now (`DECISIONS.md` D16).

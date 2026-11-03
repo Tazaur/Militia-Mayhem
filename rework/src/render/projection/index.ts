@@ -3,7 +3,7 @@ const TILE_PIXELS = 32;
 const TILES_ACROSS_SHORT_SIDE = 15;
 const SHORT_SIDE_PIXELS = TILE_PIXELS * TILES_ACROSS_SHORT_SIDE;
 /** Extra game pixels on each side of the target, so the fractional camera shift never shows an edge. */
-export const TARGET_MARGIN = 1;
+const TARGET_MARGIN = 1;
 
 export interface GridSize {
   width: number;
@@ -73,6 +73,11 @@ uniform vec2 uTarget;
 uniform float uTilt;
 vec2 worldToTargetPixel(vec3 world) {
   return floor(vec2(world.x, world.y - uTilt * world.z) - uOrigin + 0.5);
+}
+// At one screen pixel, whatever is higher is nearer the camera, so depth is height alone (DECISIONS.md D9). The 1024
+// spans more than any building; 16 bits over it is a 64th of a game pixel.
+float heightToClipDepth(float height) {
+  return 1.0 - 2.0 * clamp(height / 1024.0, 0.0, 1.0);
 }
 vec4 targetPixelToClip(vec2 pixel) {
   return vec4(pixel.x / uTarget.x * 2.0 - 1.0, 1.0 - pixel.y / uTarget.y * 2.0, 0.0, 1.0);

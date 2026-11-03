@@ -47,6 +47,28 @@ export interface SliceMover {
   readonly parts: readonly SlicePart[];
 }
 
+/** Far more than a fight should need, to find what depth costs a phone. About half lands on screen. */
+export const SPRITE_BENCH = {
+  count: 2000,
+  /** Width and height of the square they stand in, in game pixels. */
+  spread: 900,
+  /** Radius each one wanders, so sorting has work to do. */
+  wander: 12,
+  /** In turn; mostly soldiers, with enough vehicles to cover a lot of pixels. */
+  parts: [
+    { sprite: 'sol_stand', z: 14 },
+    { sprite: 'sol_rpg', z: 14 },
+    { sprite: 'sol_stand', z: 14 },
+    { sprite: 'hull0', z: 14 },
+    { sprite: 'sol_stand', z: 14 },
+    { sprite: 'sol_rpg', z: 14 },
+    { sprite: 'jeep0', z: 12 },
+    { sprite: 'sol_stand', z: 14 },
+    { sprite: 'tur', z: 24 },
+    { sprite: 'sol_stand', z: 14 },
+  ],
+} as const;
+
 export const SLICE_BOXES: readonly SliceBox[] = [
   { x: -80, y: -48, width: 160, depth: 96, height: 42, top: 'roof' },
   { x: -150, y: 112, width: 110, depth: 12, height: 36, top: 'concrete' },
@@ -90,7 +112,7 @@ export const SLICE_MOVERS: readonly SliceMover[] = [
     rate: -0.7,
     parts: [{ sprite: 'jeep0', z: 12, swing: 0 }],
   },
-  // Behind the long wall, then in front of it.
+  // Behind the long wall, then close in front of it: the second shows how depth and sort differ (DECISIONS.md D20).
   { x: -95, y: 100, radiusX: 50, radiusY: 0, rate: 1, parts: SOLDIER },
-  { x: -95, y: 140, radiusX: 40, radiusY: 0, rate: 1.3, parts: SOLDIER },
+  { x: -95, y: 130, radiusX: 40, radiusY: 0, rate: 1.3, parts: SOLDIER },
 ];

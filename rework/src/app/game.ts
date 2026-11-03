@@ -61,7 +61,6 @@ export function startGame(parts: GameParts): void {
   });
   let lines: readonly string[] = [`B${parts.build}`];
   let shownRevision = 0;
-  let drawnNote = '';
 
   platform.startLoop((nowMs) => {
     const started = platform.now();
@@ -70,24 +69,15 @@ export function startGame(parts: GameParts): void {
     audio.update();
     slice.update(nowMs, platform.takeTaps());
     const screen = platform.screenSize();
-    const note = slice.note();
-    const secondDone = stats.revision !== shownRevision;
-    // One frame is still drawn on entering a test that draws nothing, so the screen says which test it is.
-    const noteChanged = note !== drawnNote;
-    const drawing = slice.drawing() || noteChanged;
-    if (drawing) renderer.frame(slice.scene, screen.width, screen.height);
-    if (secondDone) {
+    renderer.frame(slice.scene, screen.width, screen.height);
+    if (stats.revision !== shownRevision) {
       shownRevision = stats.revision;
-      recorder.second(nowMs, stats, slice.drawing() ? totalGpuMs(gpu.passTimings()) : 0, note);
+      const note = slice.note();
+      lines = readoutLines(stats, gpu.passTimings(), parts.build, note, screen.width, screen.height);
+      recorder.second(nowMs, stats, totalGpuMs(gpu.passTimings()), note);
     }
-    if (drawing) {
-      if (secondDone || noteChanged) {
-        lines = readoutLines(stats, gpu.passTimings(), parts.build, note, screen.width, screen.height);
-      }
-      drawnNote = note;
-      ui.frame(lines, screen.width, screen.height);
-      gpu.endFrame();
-    }
+    ui.frame(lines, screen.width, screen.height);
+    gpu.endFrame();
     const cpuMs = platform.now() - started;
     stats.addCpu(cpuMs);
     recorder.frame(nowMs, cpuMs);

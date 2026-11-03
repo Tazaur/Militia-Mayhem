@@ -7,15 +7,15 @@ Status: `planned`, `built`, `TEMP (remove by stage N)`.
 | Job | Owner | Replaces in old game | Status |
 |---|---|---|---|
 | All GPU calls and state | `gpu/` | `0_gx.js`, manual units in `5e_light.js` | built: draw, targets, programs, timers |
-| Drawing sprites | `gpu/` instanced draw via `render/layers/solid` | `spr`, `sprC`, `img`, `uiSpr`, `uiSprR`, GX | built: one list, list order. Depth comes with Stage 1 question 4 |
+| Drawing sprites | `gpu/` instanced draw via `render/layers/solid` | `spr`, `sprC`, `img`, `uiSpr`, `uiSprR`, GX | built: one list |
 | Upscale | `render/post` with `render/projection` GLSL | PIXEL LOCK | built: sharp bilinear with the camera fraction |
 | GPU time | `gpu/webgl2/timers`, shown by `app/readout` | `gpuOpen`, `gpuClose` | built: per pass with timer queries, else a whole-frame estimate |
 | Timing recorder and report | `app/recorder`, `platform.offerReport` | The old phone counter | built: last 2 minutes, a button copies a text report. Stage 7 decides how players reach it |
 | Atlas table | `assets/atlas.json` -> generated `content/atlas-table.ts` | `atlas.json` in the bundle | built |
 | Placeholder ground | `content/placeholder-ground`, drawn by `render/layers/terrain` | `GTEXP` | TEMP (remove by Stage 4) |
-| Slice scene, with the NO DRAW timing test | `scene/slice`, `content/slice-props`, `platform.takeTaps`, the skip in `app/game` | Nothing | TEMP (remove by Stage 2) |
+| Slice scene and sprite bench | `scene/slice`, `content/slice-props`, `platform.takeTaps` | Nothing | TEMP (remove by Stage 2) |
 | Placeholder walls, roof and posts | `content/placeholder-props`, sprite flag bit 2, `uPlaceholder` in `render/layers/solid` | Coded walls | TEMP (remove when the atlas has wall art) |
-| Draw order by ground position | Insertion sort in `scene/slice` | `drawWorld` order | TEMP (Stage 1 question 4 decides depth or sort) |
+| Draw order | Insertion sort in `scene/slice`, or depth from `render/projection` by `SpriteList.useDepth` | `drawWorld` order | TEMP: both on test until Stage 1 question 4 decides (`DECISIONS.md` D20) |
 | What's in the frame | `scene/` -> `FrameScene` | `drawWorld` closures, `sunHeights`, fog redraw, `drawShadowLayer` | built for the slice |
 | World <-> screen, pixel grid | `render/projection` | `VZ`, `VOX`, `VOY`, `worldT` | built: grid size and the formula. Stage 1 extends |
 | Light and shadow | `render/lighting` (`LightingModel`) | `drawLight`, `drawLights`, sun passes, drop shadows, `!SUNNOW` fakes | planned |

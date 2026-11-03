@@ -1,4 +1,4 @@
-// Owns: Stage 1's hand-written scene: the tilt test, one block. Stage 2 replaces it with the sim.
+// Owns: Stage 1's hand-written scene: one block and a sprite bench, sorted or by depth. Stage 2 replaces it.
 import {
   ATLAS_SPRITES,
   PLACEHOLDER_RECTS,
@@ -6,9 +6,11 @@ import {
   SLICE_MOVERS,
   SLICE_POSTS,
   SLICE_STILLS,
+  SPRITE_BENCH,
 } from '../content/index.ts';
 import type { PlaceholderRect, SlicePart } from '../content/index.ts';
 import type { FrameScene } from '../contracts/index.ts';
+import { createRng } from '../core/index.ts';
 
 const CENTER = 2000;
 const FLAG_UPRIGHT = 1;
@@ -16,11 +18,12 @@ const FLAG_PLACEHOLDER = 2;
 const TILE = 32;
 // Sorts after every ground position: crowns and lamp heads are overhead. Stage 4's overhead layer replaces this.
 const OVERHEAD = 1e6;
+const WORKING_TILT = 0.25;
 const MODES = [
-  { tilt: 0.25, note: 'TILT 0.25  TAP', drawing: true },
-  { tilt: 0, note: 'TILT 0  TAP', drawing: true },
-  // Are missed frames ours? The loop goes on but nothing is sent to the GPU (DECISIONS.md D19).
-  { tilt: 0, note: 'NO DRAW  TAP', drawing: false },
+  { note: 'SLICE SORT  TAP', bench: false, useDepth: false },
+  { note: 'SLICE DEPTH  TAP', bench: false, useDepth: true },
+  { note: `BENCH ${SPRITE_BENCH.count} SORT  TAP`, bench: true, useDepth: false },
+  { note: `BENCH ${SPRITE_BENCH.count} DEPTH  TAP`, bench: true, useDepth: true },
 ];
 
 interface Item {
@@ -35,6 +38,12 @@ interface Item {
   sortY: number;
 }
 
+/** A list of things to draw, and the order that sorting them last left them in. */
+interface SortableItems {
+  readonly items: readonly Item[];
+  readonly order: Int32Array;
+}
+
 interface MovingPart {
   readonly item: Item;
   readonly swing: number;
@@ -45,8 +54,6 @@ export interface SliceScene {
   update(nowMs: number, taps: number): void;
   /** What the readout says about the current test. */
   note(): string;
-  /** False when the current test sends nothing to the GPU. */
-  drawing(): boolean;
 }
 
 function atlasItem(sprite: string, x: number, y: number, z: number, angle: number, sortY: number): Item {
@@ -125,28 +132,61 @@ function buildStillItems(): Item[] {
   return items;
 }
 
+function sortable(items: readonly Item[]): SortableItems {
+  return { items, order: new Int32Array(items.length).map((_, index) => index) };
+}
+
+/** Nearly sorted from the last frame, so this does almost no work. Equal keys keep their list order. */
+function sortByGround({ items, order }: SortableItems): void {
+  for (let i = 1; i < order.length; i++) {
+    const moving = order[i]!;
+    const key = items[moving]!.sortY;
+    let j = i - 1;
+    while (j >= 0 && items[order[j]!]!.sortY > key) {
+      order[j + 1] = order[j]!;
+      j--;
+    }
+    order[j + 1] = moving;
+  }
+}
+
+function buildBenchItems(): Item[] {
+  const rng = createRng(1);
+  const items: Item[] = [];
+  for (let i = 0; i < SPRITE_BENCH.count; i++) {
+    const part = SPRITE_BENCH.parts[i % SPRITE_BENCH.parts.length]!;
+    const x = CENTER + (rng.next() - 0.5) * SPRITE_BENCH.spread;
+    const y = CENTER + (rng.next() - 0.5) * SPRITE_BENCH.spread;
+    items.push(atlasItem(part.sprite, x, y, part.z, rng.next() * Math.PI * 2, y));
+  }
+  return items;
+}
+
 export function createSliceScene(): SliceScene {
-  const items = buildStillItems();
+  const sliceItems = buildStillItems();
   const moverParts: MovingPart[][] = SLICE_MOVERS.map((mover) =>
     mover.parts.map((part: SlicePart) => {
       const item = atlasItem(part.sprite, CENTER, CENTER, part.z, 0, CENTER);
-      items.push(item);
+      sliceItems.push(item);
       return { item, swing: part.swing };
     }),
   );
+  const slice = sortable(sliceItems);
+  const benchItems = buildBenchItems();
+  const bench = sortable(benchItems);
+  const benchHomes = Float32Array.from(benchItems.flatMap((item) => [item.x, item.y]));
 
-  const capacity = items.length;
+  const capacity = Math.max(sliceItems.length, benchItems.length);
   const atlasRect = new Float32Array(capacity * 4);
   const position = new Float32Array(capacity * 3);
   const pivot = new Float32Array(capacity * 2);
   const transform = new Float32Array(capacity * 2);
   const tint = new Float32Array(capacity * 4).fill(1);
   const flags = new Float32Array(capacity);
-  const order = new Int32Array(items.length).map((_, index) => index);
 
-  const camera = { x: CENTER, y: CENTER, tilt: 0, zoom: 1 };
+  const camera = { x: CENTER, y: CENTER, tilt: WORKING_TILT, zoom: 1 };
   const none = new Float32Array(0);
-  const sprites = { count: 0, atlasRect, position, pivot, transform, tint, flags };
+  const sprites = { count: 0, atlasRect, position, pivot, transform, tint, flags, useDepth: false };
   const scene: FrameScene = {
     camera,
     environment: {
@@ -180,60 +220,64 @@ export function createSliceScene(): SliceScene {
     flags[index] = item.flags;
   };
 
+  const moveSlice = (seconds: number) => {
+    for (let m = 0; m < SLICE_MOVERS.length; m++) {
+      const mover = SLICE_MOVERS[m]!;
+      const parts = moverParts[m]!;
+      const around = seconds * mover.rate;
+      const x = CENTER + mover.x + mover.radiusX * Math.cos(around);
+      const y = CENTER + mover.y + mover.radiusY * Math.sin(around);
+      const heading = Math.atan2(
+        mover.radiusY * Math.cos(around) * mover.rate,
+        -mover.radiusX * Math.sin(around) * mover.rate,
+      );
+      for (let p = 0; p < parts.length; p++) {
+        const { item, swing } = parts[p]!;
+        item.x = x;
+        item.y = y;
+        item.sortY = y;
+        item.angle = heading + swing * Math.sin(seconds * 0.9);
+      }
+    }
+  };
+
+  const moveBench = (seconds: number) => {
+    for (let i = 0; i < benchItems.length; i++) {
+      const item = benchItems[i]!;
+      const phase = seconds + i;
+      item.x = benchHomes[i * 2]! + SPRITE_BENCH.wander * Math.cos(phase);
+      item.y = benchHomes[i * 2 + 1]! + SPRITE_BENCH.wander * Math.sin(phase);
+      item.sortY = item.y;
+    }
+  };
+
   let mode = 0;
 
   return {
     scene,
     update(nowMs, taps) {
       mode = (mode + taps) % MODES.length;
+      const { bench: useBench, useDepth } = MODES[mode]!;
       const seconds = nowMs / 1000;
-      camera.tilt = MODES[mode]!.tilt;
-      // Slow, so the art can be studied, but moving, to read dropped frames against the still-camera build 420.
       camera.x = CENTER + 40 * Math.sin(seconds * 0.17);
       camera.y = CENTER + 20 + 25 * Math.sin(seconds * 0.23 + 1);
 
-      for (let m = 0; m < SLICE_MOVERS.length; m++) {
-        const mover = SLICE_MOVERS[m]!;
-        const parts = moverParts[m]!;
-        const around = seconds * mover.rate;
-        const x = CENTER + mover.x + mover.radiusX * Math.cos(around);
-        const y = CENTER + mover.y + mover.radiusY * Math.sin(around);
-        const heading = Math.atan2(
-          mover.radiusY * Math.cos(around) * mover.rate,
-          -mover.radiusX * Math.sin(around) * mover.rate,
-        );
-        for (let p = 0; p < parts.length; p++) {
-          const { item, swing } = parts[p]!;
-          item.x = x;
-          item.y = y;
-          item.sortY = y;
-          item.angle = heading + swing * Math.sin(seconds * 0.9);
-        }
-      }
+      if (useBench) moveBench(seconds);
+      else moveSlice(seconds);
+      const current = useBench ? bench : slice;
 
-      // Nearly sorted from the last frame, so insertion sort does almost no work. Equal keys keep their list order,
-      // which holds a turret on its hull.
-      for (let i = 1; i < order.length; i++) {
-        const moving = order[i]!;
-        const key = items[moving]!.sortY;
-        let j = i - 1;
-        while (j >= 0 && items[order[j]!]!.sortY > key) {
-          order[j + 1] = order[j]!;
-          j--;
-        }
-        order[j + 1] = moving;
-      }
-
+      sprites.useDepth = useDepth;
       sprites.count = 0;
-      for (let i = 0; i < order.length; i++) {
-        write(items[order[i]!]!);
+      if (useDepth) {
+        // List order, on purpose: if depth is right, order only settles exact ties.
+        for (let i = 0; i < current.items.length; i++) write(current.items[i]!);
+      } else {
+        sortByGround(current);
+        for (let i = 0; i < current.order.length; i++) write(current.items[current.order[i]!]!);
       }
     },
     note() {
       return MODES[mode]!.note;
-    },
-    drawing() {
-      return MODES[mode]!.drawing;
     },
   };
 }

@@ -40,7 +40,7 @@ const BACKGROUND: Rgba = { r: 0, g: 0, b: 0, a: 1 };
 
 export function createRenderer(gpu: Gpu, modules: RenderModules, assets: RenderAssets, first: FrameScene): Renderer {
   // Linear, because the sharp upscale blends across pixel edges. Sprites use texel lookups and never sample this.
-  const world = gpu.createTarget({ width: 1, height: 1, filter: 'linear' });
+  const world = gpu.createTarget({ width: 1, height: 1, filter: 'linear', depth: true });
   const worldTexture = gpu.targetTexture(world);
   const material = gpu.createTexture({ width: 1, height: 1, filter: 'nearest', pixels: new Uint8Array(4) });
   const surfaces: Surfaces = { color: worldTexture, material };
@@ -91,6 +91,7 @@ export function createRenderer(gpu: Gpu, modules: RenderModules, assets: RenderA
       gpu.clear(world, BACKGROUND);
       terrain.draw(view);
       solid.draw(scene.sprites, camera, view);
+      gpu.discardDepth(world);
 
       lightingInput.casters = scene.casters;
       lightingInput.lights = scene.lights;
