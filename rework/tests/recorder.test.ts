@@ -43,5 +43,5 @@ test('the game offers a report, and it holds the build, the device and the scene
   assert.match(report, /B7/);
   assert.match(report, /stub device/);
   assert.match(report, /headless gpu/);
-  assert.match(report, /# TILT 0 {2}TAP/);
+  assert.match(report, /# TILT 0\.25 {2}TAP/);
 });

@@ -38,3 +38,7 @@ Not everything in the goal is literal: the light wedges falling across the roof 
 - Ground textures: the atlas has none, so the old game and the slice both use coded placeholders. This is the biggest gap to `goal.png`.
 - Ground detail stamps.
 - Sizes: 32 px tile. Soldier about 1 tile (about 34 px in the goal at 480). A house about 13 tiles wide.
+
+## Art sizes from the tilt
+
+Working tilt 0.25, not final (`DECISIONS.md` D16). A wall face is `0.25 x height` tall on screen: a 36 px wall shows a 9 px face, a 96 px building 24 px. Vehicles keep their painted tops, with no side art. Re-judge the tilt before ordering a lot of wall art.

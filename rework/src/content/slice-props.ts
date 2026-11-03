@@ -34,8 +34,6 @@ export interface SlicePart {
   readonly z: number;
   /** Radians either way a turret swings from the way it is going. */
   readonly swing: number;
-  /** Fakes a side by repeating the silhouette below the top (ARCHITECTURE.md). */
-  readonly hasSides: boolean;
 }
 
 /** Goes round an ellipse. `radiusY` 0 is walking back and forth. */
@@ -68,7 +66,7 @@ export const SLICE_STILLS: readonly SliceStill[] = [
   { sprite: 'sol_stand', x: 110, y: 150, z: 14, angle: 3.6 },
 ];
 
-const SOLDIER: readonly SlicePart[] = [{ sprite: 'sol_stand', z: 14, swing: 0, hasSides: false }];
+const SOLDIER: readonly SlicePart[] = [{ sprite: 'sol_stand', z: 14, swing: 0 }];
 
 export const SLICE_MOVERS: readonly SliceMover[] = [
   // Tight round the house, so it passes behind the roof and in front of the south face. 0.6 is about the old 82 px/s.
@@ -79,9 +77,9 @@ export const SLICE_MOVERS: readonly SliceMover[] = [
     radiusY: 76,
     rate: 0.6,
     parts: [
-      { sprite: 'hull0', z: 14, swing: 0, hasSides: true },
-      { sprite: 'tur_gun', z: 22, swing: 0.6, hasSides: false },
-      { sprite: 'tur', z: 24, swing: 0.6, hasSides: false },
+      { sprite: 'hull0', z: 14, swing: 0 },
+      { sprite: 'tur_gun', z: 22, swing: 0.6 },
+      { sprite: 'tur', z: 24, swing: 0.6 },
     ],
   },
   {
@@ -90,7 +88,7 @@ export const SLICE_MOVERS: readonly SliceMover[] = [
     radiusX: 225,
     radiusY: 150,
     rate: -0.7,
-    parts: [{ sprite: 'jeep0', z: 12, swing: 0, hasSides: true }],
+    parts: [{ sprite: 'jeep0', z: 12, swing: 0 }],
   },
   // Behind the long wall, then in front of it.
   { x: -95, y: 100, radiusX: 50, radiusY: 0, rate: 1, parts: SOLDIER },

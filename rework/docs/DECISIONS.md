@@ -78,6 +78,14 @@ All three were built and then deleted. Commit e102718 has the edge shader (`rend
 
 Reading on the phone in build 420 (27 sprites, static camera, portrait 1079x1948): 66 FPS, DROP 0, EARLY 0, WORST 15 ms, CPU 0.2 ms, GPU estimate 3.6 ms. 66 FPS is above 60, so this display is not fixed at 60 Hz, and D14's "at most 54 FPS" reasoning assumed it was. Why build 419 showed drops and this reading does not is still unknown: one reading each, with a moving camera only in 419.
 
+## D16. Tilt 0.25, no vehicle sides, for now (user chose; reopens with real buildings)
+
+Judged on the S23 Ultra in build 423 against 0 and 0.35, with placeholder walls: "25 with no vehicle shadows, for now" (taken to mean the darkened side slices, the only vehicle option in the test). The user asked to re-judge it when there are buildings, out of concern for how much tall buildings hide.
+
+What a building hides is `0.25 x height`, north of its south edge: 36 px wall 9 px; 42 px roof 10.5 px; 96 px 24 px (about a whole soldier, whose sprite is 22 px); 192 px 48 px. Tools if that hides too much: lower buildings, fading a roof near the player (the old game fades roofs), a lower tilt. Art is drawn for one tilt, so re-judge before ordering a lot of wall art. Changing the number is one value, because upright sprites foreshorten by tilt in the shader.
+
+D6's "whether to tilt, and how much" is answered by this entry until then. No frame report came with this verdict.
+
 ## Measured in the old game (do not re-try without a new reason)
 
 | Idea | Result | Source |

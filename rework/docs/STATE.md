@@ -2,22 +2,22 @@
 
 Update at the end of every round. Replace old content; history belongs in `DECISIONS.md`.
 
-**Stage:** 1, questions 1 and 2 decided (`DECISIONS.md` D13, D15). Question 3, tilt, is with the user.
+**Stage:** 1, questions 1 to 3 decided (`DECISIONS.md` D13, D15, D16). Question 4, depth buffer or sort, is next.
 **Old game:** frozen at build 417 (`DECISIONS.md` D10), playable at the repo root.
 
 ## Next step
 
-Get the user's verdict on Stage 1 question 3 from the phone, at `/rework/`: tap cycles tilt 0, 0.25, 0.25 with vehicle sides, 0.35, 0.35 with vehicle sides. Which tilt, and are sides wanted? Ask them to press COPY REPORT and paste it. Record the result in `DECISIONS.md` (D6), then start question 4: depth buffer or sort. Art needs from the tilt go in `VISION.md`.
+Stage 1 question 4 in `PLAN.md`: depth buffer or sort, including cost on the phone. At one screen pixel, a higher `z` is always nearer the camera, so depth can be `z` alone (`DECISIONS.md` D9). That would remove the sort and the splitting of walls into tiles. Bench it with many sprites, because the slice's 50 say nothing about cost. Alpha test may be what costs on the phone.
 
-The atlas has no wall, roof or post art, so the test uses generated placeholders. The test has no shadows, so raised units float a little; lighting comes in question 5.
+A tap in the slice switches between tilt 0.25 and 0. The atlas has no wall, roof or post art, so the slice uses generated placeholders. No shadows yet, so raised units float a little; lighting comes in question 5.
 
-Phone frame timing is unexplained (`DECISIONS.md` D14, D15): build 419 showed DROP 6 with a moving camera; build 420 showed DROP 0 with a still one. This scene's camera moves slowly: read the report's slowest frames and bins.
+Phone frame timing is unexplained (`DECISIONS.md` D14, D15): build 419 showed DROP 6 with a moving camera; build 420 showed DROP 0 with a still one. Ask for a COPY REPORT paste from the phone: none has arrived yet, and the recorder has not run on a real phone.
 
 ## Open questions for the user
 
 | # | Question | Default until answered |
 |---|---|---|
-| 1 | Tilt: real oblique projection, or straight-down with no wall faces? | Build with `tilt` as a parameter; recommend from Stage 1 screenshots; the user decides |
+| 1 | Tilt with real buildings: is 0.25 still right, given how much tall buildings hide? (D16) | 0.25; judge again in Stage 4, or when building art arrives |
 | 2 | Split-screen and shared-screen fit: does each view keep the pixel size and show fewer tiles, or the tile count with smaller pixels? | Keep pixel size; review in Stage 7 |
 | 3 | Ultra-wide: cap the visible width, for fairness online? | Cap at about 21:9 |
 | 4 | Which weak phones must run the game? Is iPhone required? | Tiers exist; only the user's Android and laptop are tested |

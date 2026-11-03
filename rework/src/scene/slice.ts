@@ -16,15 +16,9 @@ const FLAG_PLACEHOLDER = 2;
 const TILE = 32;
 // Sorts after every ground position: crowns and lamp heads are overhead. Stage 4's overhead layer replaces this.
 const OVERHEAD = 1e6;
-const SIDE_SHADE = 0.5;
-// Enough for tilt 0.35 under the tallest part with sides.
-const MAX_SIDE_SLICES = 6;
 const MODES = [
-  { tilt: 0, sides: false, name: 'TILT 0' },
-  { tilt: 0.25, sides: false, name: 'TILT 0.25' },
-  { tilt: 0.25, sides: true, name: 'TILT 0.25  VEHICLE SIDES' },
-  { tilt: 0.35, sides: false, name: 'TILT 0.35' },
-  { tilt: 0.35, sides: true, name: 'TILT 0.35  VEHICLE SIDES' },
+  { tilt: 0.25, name: 'TILT 0.25' },
+  { tilt: 0, name: 'TILT 0' },
 ];
 
 interface Item {
@@ -37,7 +31,6 @@ interface Item {
   readonly z: number;
   angle: number;
   sortY: number;
-  readonly hasSides: boolean;
 }
 
 interface MovingPart {
@@ -52,19 +45,11 @@ export interface SliceScene {
   note(): string;
 }
 
-function atlasItem(
-  sprite: string,
-  x: number,
-  y: number,
-  z: number,
-  angle: number,
-  sortY: number,
-  sides: boolean,
-): Item {
+function atlasItem(sprite: string, x: number, y: number, z: number, angle: number, sortY: number): Item {
   const art = ATLAS_SPRITES[sprite];
   if (!art) throw new Error(`no sprite ${sprite}`);
   const rect = [art[0], art[1], art[2], art[3]] as const;
-  return { rect, pivotX: art[4], pivotY: art[5], flags: 0, x, y, z, angle, sortY, hasSides: sides };
+  return { rect, pivotX: art[4], pivotY: art[5], flags: 0, x, y, z, angle, sortY };
 }
 
 function placeholderItem(
@@ -80,7 +65,7 @@ function placeholderItem(
   sortY: number,
 ): Item {
   const rect = [art.x, art.y, width, height] as const;
-  return { rect, pivotX, pivotY, flags: FLAG_PLACEHOLDER | flags, x, y, z, angle: 0, sortY, hasSides: false };
+  return { rect, pivotX, pivotY, flags: FLAG_PLACEHOLDER | flags, x, y, z, angle: 0, sortY };
 }
 
 function buildStillItems(): Item[] {
@@ -122,7 +107,7 @@ function buildStillItems(): Item[] {
     const halfWidth = post.width / 2;
     items.push(placeholderItem(art, post.width, post.height, x, y, 0, FLAG_UPRIGHT, halfWidth, post.height, y));
     if (post.crownInAtlas) {
-      items.push(atlasItem(post.crown, x, y, post.height, 0, OVERHEAD, false));
+      items.push(atlasItem(post.crown, x, y, post.height, 0, OVERHEAD));
     } else {
       const head = PLACEHOLDER_RECTS.lampHead;
       items.push(
@@ -131,9 +116,7 @@ function buildStillItems(): Item[] {
     }
   }
   for (const still of SLICE_STILLS) {
-    items.push(
-      atlasItem(still.sprite, CENTER + still.x, CENTER + still.y, still.z, still.angle, CENTER + still.y, false),
-    );
+    items.push(atlasItem(still.sprite, CENTER + still.x, CENTER + still.y, still.z, still.angle, CENTER + still.y));
   }
   return items;
 }
@@ -142,18 +125,18 @@ export function createSliceScene(): SliceScene {
   const items = buildStillItems();
   const moverParts: MovingPart[][] = SLICE_MOVERS.map((mover) =>
     mover.parts.map((part: SlicePart) => {
-      const item = atlasItem(part.sprite, CENTER, CENTER, part.z, 0, CENTER, part.hasSides);
+      const item = atlasItem(part.sprite, CENTER, CENTER, part.z, 0, CENTER);
       items.push(item);
       return { item, swing: part.swing };
     }),
   );
 
-  const capacity = items.reduce((sum, item) => sum + 1 + (item.hasSides ? MAX_SIDE_SLICES : 0), 0);
+  const capacity = items.length;
   const atlasRect = new Float32Array(capacity * 4);
   const position = new Float32Array(capacity * 3);
   const pivot = new Float32Array(capacity * 2);
   const transform = new Float32Array(capacity * 2);
-  const tint = new Float32Array(capacity * 4);
+  const tint = new Float32Array(capacity * 4).fill(1);
   const flags = new Float32Array(capacity);
   const order = new Int32Array(items.length).map((_, index) => index);
 
@@ -177,7 +160,7 @@ export function createSliceScene(): SliceScene {
     worldOverlay: { count: 0, position: none, color: none },
   };
 
-  const write = (item: Item, z: number, shade: number) => {
+  const write = (item: Item) => {
     const index = sprites.count++;
     atlasRect[index * 4] = item.rect[0];
     atlasRect[index * 4 + 1] = item.rect[1];
@@ -185,15 +168,11 @@ export function createSliceScene(): SliceScene {
     atlasRect[index * 4 + 3] = item.rect[3];
     position[index * 3] = item.x;
     position[index * 3 + 1] = item.y;
-    position[index * 3 + 2] = z;
+    position[index * 3 + 2] = item.z;
     pivot[index * 2] = item.pivotX;
     pivot[index * 2 + 1] = item.pivotY;
     transform[index * 2] = item.angle;
     transform[index * 2 + 1] = 1;
-    tint[index * 4] = shade;
-    tint[index * 4 + 1] = shade;
-    tint[index * 4 + 2] = shade;
-    tint[index * 4 + 3] = 1;
     flags[index] = item.flags;
   };
 
@@ -203,9 +182,8 @@ export function createSliceScene(): SliceScene {
     scene,
     update(nowMs, taps) {
       mode = (mode + taps) % MODES.length;
-      const { tilt, sides } = MODES[mode]!;
       const seconds = nowMs / 1000;
-      camera.tilt = tilt;
+      camera.tilt = MODES[mode]!.tilt;
       // Slow, so the art can be studied, but moving, to read dropped frames against the still-camera build 420.
       camera.x = CENTER + 40 * Math.sin(seconds * 0.17);
       camera.y = CENTER + 20 + 25 * Math.sin(seconds * 0.23 + 1);
@@ -244,12 +222,7 @@ export function createSliceScene(): SliceScene {
 
       sprites.count = 0;
       for (let i = 0; i < order.length; i++) {
-        const item = items[order[i]!]!;
-        // One slice per game pixel of side: this much height moves one pixel up the screen at this tilt.
-        if (sides && item.hasSides) {
-          for (let z = 0; z < item.z; z += 1 / tilt) write(item, z, SIDE_SHADE);
-        }
-        write(item, item.z, 1);
+        write(items[order[i]!]!);
       }
     },
     note() {

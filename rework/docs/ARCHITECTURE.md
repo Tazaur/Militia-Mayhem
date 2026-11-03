@@ -105,7 +105,7 @@ screenX = x
 screenY = y - tilt * z
 ```
 
-`tilt = 0` is today's straight-down view. `tilt` around 0.25 to 0.35 shows south wall faces, stands lamp posts up, and lifts crowns and roofs. The value is **TO PROVE** in Stage 1; a fixed oblique keeps every world pixel moving by the same amount, so the art does not swim as a perspective camera would.
+`tilt = 0` is today's straight-down view. `tilt` around 0.25 to 0.35 shows south wall faces, stands lamp posts up, and lifts crowns and roofs. The working value is 0.25, to be judged again with real buildings (`DECISIONS.md` D16); a fixed oblique keeps every world pixel moving by the same amount, so the art does not swim as a perspective camera would.
 
 Consequences:
 
@@ -113,7 +113,7 @@ Consequences:
 - **Occlusion is real depth, not sorted closures (TO PROVE).** Solid layers draw with a hardware depth buffer and alpha test, depth computed per vertex from `y` and `z`. A long tank beside a short wall resolves per pixel. At tilt 0 this reduces to the old "higher covers lower". Things that must fade use dither in solid layers, or live in overhead or air.
 - **Walls are geometry.** A wall run emits a top quad and a south-face quad, with art for both. Other sprites stay single quads at their part's height, so the turret parallaxes over the hull.
 - **Upright sprites** (`SpriteList.flags`, bit 1) stand on the ground, and tilt foreshortens them in the vertex shader: wall faces, posts, trunks. Nothing outside `render/` computes the foreshortening (rule A7).
-- **Rotating vehicles have no painted sides.** Option to test: a short extrusion of the silhouette (3 to 5 darkened slices) to fake a side.
+- **Rotating vehicles have no painted sides,** and no extrusion for now (`DECISIONS.md` D16).
 - **Aiming.** The reticle and hits live on the world plane; screen offsets are small (`tilt * 16` is about 4 px). `scene` lifts visuals to gun height so tracers line up.
 - **Your own soldier behind a wall** can be shown as a faint silhouette through depth, if testing shows it is needed.
 

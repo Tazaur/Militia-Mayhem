@@ -29,7 +29,7 @@ Must answer, one small round each, with screenshots and phone numbers:
 6. **Vehicle zoom tween** (`DECISIONS.md` D11): how it looks on the grid, what level, and the cost at that level.
 7. **Cinematic pass:** grade, bloom, baked contact shadow, lit smoke. Measured against `VISION.md`.
 
-**Exit:** the user approves the look next to `reference/goal.png`, as far as current art allows. Budgets met on phone and laptop. Tilt, rotation and depth decisions LOCKED in `DECISIONS.md`. If budgets cannot be met here, this is where `DECISIONS.md` D3 (browser exit) is reconsidered.
+**Exit:** the user approves the look next to `reference/goal.png`, as far as current art allows. Budgets met on phone and laptop. Rotation and depth decisions recorded in `DECISIONS.md`; tilt has a working value, judged again in Stage 4 (D16). If budgets cannot be met here, this is where `DECISIONS.md` D3 (browser exit) is reconsidered.
 
 ## Stage 2: Sim core
 
@@ -55,7 +55,7 @@ Rig, Archetype, Light, Emitter, Projectile, Weapon, Occluder, Surface, Stain lay
 
 Terrain pages, stains, overhead layer with fades, fog of war with memory, smoke field and air, weather, destructible walls and roofs.
 
-**Exit:** all named bench scenes run in budget on phone and laptop. The null-version boot test passes.
+**Exit:** all named bench scenes run in budget on phone and laptop. The null-version boot test passes. The user has judged tilt again with real buildings, including tall ones (`DECISIONS.md` D16), or earlier if building art arrives first.
 
 ## Stage 5: Bots and modes
 
