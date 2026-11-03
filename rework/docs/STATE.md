@@ -11,7 +11,9 @@ Stage 1 question 4 in `PLAN.md`: depth buffer or sort, including cost on the pho
 
 A tap in the slice switches between tilt 0.25 and 0. The atlas has no wall, roof or post art, so the slice uses generated placeholders. No shadows yet, so raised units float a little; lighting comes in question 5.
 
-Phone frame timing: see `DECISIONS.md` D17. Not ours so far; the screen changes rate at touches. Plan for 120 Hz on the phone during play. The canvas cap for desktop-site mode has not run on the phone yet: the next report's first lines should show about 1079 wide and its page scale.
+Phone frame timing: see `DECISIONS.md` D17 and D18. In Chrome, 36 of 64 seconds held a frame of 29 ms or more. Not explained, and not proven to be outside the game; proposed test: record the same page drawing nothing. The canvas cap has not yet run in the Claude app's browser, where the 2573x4641 canvas appeared: a report from there should show about 1079 wide and its page scale.
+
+**Every input is a main way to play (D18):** touch, controller, keyboard and mouse. Do not design or budget for one alone.
 
 ## Open questions for the user
 

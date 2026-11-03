@@ -7,8 +7,8 @@ export function createBrowserPlatform(): Platform {
 
   const size = { width: 1, height: 1 };
   const syncSize = () => {
-    // In a browser's desktop-site mode the page is laid out wider than the screen and shrunk to fit. Without this the
-    // canvas gets more pixels than the screen has (measured on the S23 Ultra: 2573x4641 on a 1080 wide screen).
+    // A browser may lay the page out wider than the screen and shrink it to fit. Without this the canvas could get more
+    // pixels than the screen has (measured in the Claude app's browser, S23 Ultra: 2573x4641 on a 1080 wide screen).
     const shrink = Math.min(1, window.visualViewport?.scale ?? 1);
     const pixelRatio = (window.devicePixelRatio || 1) * shrink;
     size.width = Math.max(1, Math.round(canvas.clientWidth * pixelRatio));

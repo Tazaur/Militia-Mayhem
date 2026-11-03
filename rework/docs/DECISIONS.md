@@ -90,10 +90,21 @@ D6's "whether to tilt, and how much" is answered by this entry until then. No fr
 
 Interval p50 16.7, p95 16.8, p99 25.0, max 74.9 ms. Of 1215 frames, 1137 were near 16.7 ms and 48 near 8.3 ms. Slowest frames' CPU was at most 0.6 ms; GPU estimate 3.4 to 5.2 ms.
 
-- **The screen changes rate at a touch.** Seconds with a tap show 62 to 63 FPS and EARLY 3 to 7; seconds without show 60 and 0 to 1 (the 1 follows a tap). The 8.3 ms frames are 120 Hz. This also explains the 66 FPS reading in D15. It corrects D14: EARLY is mostly this, not late frames catching up. Touch controls will hold a finger down, so **assume 120 Hz, an 8.3 ms frame, during phone play** until tested. Stage 2's fixed tick must not depend on the refresh rate.
+- **The screen changes rate at a touch.** Seconds with a tap show 62 to 63 FPS and EARLY 3 to 7; seconds without show 60 and 0 to 1 (the 1 follows a tap). The 8.3 ms frames are 120 Hz. This also explains the 66 FPS reading in D15. It corrects D14: EARLY is mostly this, not late frames catching up. Stage 2's fixed tick must not depend on the refresh rate. (This entry first said to assume 120 Hz during phone play; D18 replaces that.)
 - **Slow frames come in clusters:** page load, 2.9 to 4.8 s, and 19.4 to 19.8 s just before COPY REPORT was pressed, where the intervals run 15.3 ms, then 32.7, then 8.3. From 6 to 19 s no frame was over 17 ms in any second. Our reading: the rate change costs a frame or two, and our CPU and GPU are not the cause, since they stay far under budget. Not proven for the 2.9 to 4.8 s cluster, because the report does not record touches.
-- **The canvas was 2573x4641,** about 4.6x the pixels of the 1079x1948 runs. The browser identified as desktop Linux, which is the desktop-site user agent, so we take this as desktop-site mode. So these GPU numbers cover a far larger upscale than a normal run. `platform/browser` now caps the canvas by the page scale.
+- **The canvas was 2573x4641,** about 4.6x the pixels of the 1079x1948 runs. The browser identified as desktop Linux. It was the browser built into the Claude app, opened from a link (this entry first guessed desktop-site mode). So these GPU numbers cover a far larger upscale than a normal run. `platform/browser` now caps the canvas by the page scale; not yet confirmed in that browser.
 - GPU estimate rose from 3.4 to 5.2 ms over 20 s with no matching change in settings. One run; could be heat. Watch it in longer recordings.
+
+## D18. Every input is a main way to play (user stated), and a Chrome recording
+
+**The game is played with touch, controller, and keyboard and mouse, on phone and computer. None is the main one or an afterthought.** Do not design, budget or tune for one of them alone. A phone can have a controller, so the input says nothing about the screen rate either. Frame budget: hold up at whatever rate the screen is running, which means 8.3 ms where it runs 120 Hz. Whether a held finger keeps the phone at 120 Hz is unmeasured and no longer a planning assumption.
+
+Recording: S23 Ultra, Chrome (mobile user agent), build 425, 1079x1948, page scale 1, 63.8 s. Interval p50 15.3, p95 28.7, p99 30.6, max 36.3 ms. Of 3872 frames, 3294 were 15 to 18 ms and 254 were 22 to 34 ms. CPU 0.2 to 0.4 ms per frame; GPU estimate 3.0 to 4.3 ms.
+
+- **The frame rate has three states:** a steady 65 FPS (15.3 ms, which is not 60 or 120 Hz; the once-a-second counts agree, so it is not a recorder artefact), a steady 60 FPS (16.7 ms, seen after some taps), and patches lasting seconds with frames of about 31 ms (two 15.3 ms refreshes). Unexplained.
+- **36 of 64 seconds held a frame of 29 ms or more,** and four seconds lost 15 to 17 frames (lowest 48 FPS). The 20 s run in the Claude app's browser (D17) had far fewer, though its canvas had about 4.6x the pixels and its GPU estimate was only slightly higher. One run each and different lengths, but pixel count does not look like the driver.
+- **Not proven to be outside the game.** JS time is far under budget, but the GPU estimate samples one frame in 60, so it can miss a slow patch, and it may not scale with real work. To separate the game from the browser and phone, record the same page drawing nothing.
+- This run had page scale 1, so it says nothing about the canvas cap.
 
 ## Measured in the old game (do not re-try without a new reason)
 

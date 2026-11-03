@@ -6,6 +6,8 @@
 - `reference/start.jpg`: where the old game was on the user's phone. The shot is rotated: the phone was in landscape. Its `0.7 / 4.2 MS` is CPU update / render time, not GPU; `WORST 30.6 MS` is the worst frame.
 - `reference/goal_at_480.png`: the target at the 480 px grid, proving the grid is big enough.
 
+**Played every way:** touch, controller, and keyboard and mouse, on phone and computer. Each is a main way to play (`DECISIONS.md` D18).
+
 ## What makes the goal look cinematic
 
 One reading of the picture, to be corrected by the user. Each item needs an owner, and its tier on lower presets.
