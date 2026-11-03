@@ -17,8 +17,10 @@ const TILE = 32;
 // Sorts after every ground position: crowns and lamp heads are overhead. Stage 4's overhead layer replaces this.
 const OVERHEAD = 1e6;
 const MODES = [
-  { tilt: 0.25, name: 'TILT 0.25' },
-  { tilt: 0, name: 'TILT 0' },
+  { tilt: 0.25, note: 'TILT 0.25  TAP', drawing: true },
+  { tilt: 0, note: 'TILT 0  TAP', drawing: true },
+  // Are missed frames ours? The loop goes on but nothing is sent to the GPU (DECISIONS.md D19).
+  { tilt: 0, note: 'NO DRAW  TAP', drawing: false },
 ];
 
 interface Item {
@@ -43,6 +45,8 @@ export interface SliceScene {
   update(nowMs: number, taps: number): void;
   /** What the readout says about the current test. */
   note(): string;
+  /** False when the current test sends nothing to the GPU. */
+  drawing(): boolean;
 }
 
 function atlasItem(sprite: string, x: number, y: number, z: number, angle: number, sortY: number): Item {
@@ -226,7 +230,10 @@ export function createSliceScene(): SliceScene {
       }
     },
     note() {
-      return `${MODES[mode]!.name}  TAP`;
+      return MODES[mode]!.note;
+    },
+    drawing() {
+      return MODES[mode]!.drawing;
     },
   };
 }

@@ -13,7 +13,7 @@ Status: `planned`, `built`, `TEMP (remove by stage N)`.
 | Timing recorder and report | `app/recorder`, `platform.offerReport` | The old phone counter | built: last 2 minutes, a button copies a text report. Stage 7 decides how players reach it |
 | Atlas table | `assets/atlas.json` -> generated `content/atlas-table.ts` | `atlas.json` in the bundle | built |
 | Placeholder ground | `content/placeholder-ground`, drawn by `render/layers/terrain` | `GTEXP` | TEMP (remove by Stage 4) |
-| Slice scene | `scene/slice`, `content/slice-props`, `platform.takeTaps` | Nothing | TEMP (remove by Stage 2) |
+| Slice scene, with the NO DRAW timing test | `scene/slice`, `content/slice-props`, `platform.takeTaps`, the skip in `app/game` | Nothing | TEMP (remove by Stage 2) |
 | Placeholder walls, roof and posts | `content/placeholder-props`, sprite flag bit 2, `uPlaceholder` in `render/layers/solid` | Coded walls | TEMP (remove when the atlas has wall art) |
 | Draw order by ground position | Insertion sort in `scene/slice` | `drawWorld` order | TEMP (Stage 1 question 4 decides depth or sort) |
 | What's in the frame | `scene/` -> `FrameScene` | `drawWorld` closures, `sunHeights`, fog redraw, `drawShadowLayer` | built for the slice |

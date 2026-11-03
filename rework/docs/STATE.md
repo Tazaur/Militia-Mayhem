@@ -7,11 +7,11 @@ Update at the end of every round. Replace old content; history belongs in `DECIS
 
 ## Next step
 
-Stage 1 question 4 in `PLAN.md`: depth buffer or sort, including cost on the phone. At one screen pixel, a higher `z` is always nearer the camera, so depth can be `z` alone (`DECISIONS.md` D9). That would remove the sort and the splitting of walls into tiles. Bench it with many sprites, because the slice's 50 say nothing about cost. Alpha test may be what costs on the phone.
+Read the NO DRAW report (below), then Stage 1 question 4 in `PLAN.md`: depth buffer or sort, including cost on the phone. At one screen pixel, a higher `z` is always nearer the camera, so depth can be `z` alone (`DECISIONS.md` D9). That would remove the sort and the splitting of walls into tiles. Bench it with many sprites, because the slice's 50 say nothing about cost. Alpha test may be what costs on the phone.
 
-A tap in the slice switches between tilt 0.25 and 0. The atlas has no wall, roof or post art, so the slice uses generated placeholders. No shadows yet, so raised units float a little; lighting comes in question 5.
+A tap in the slice cycles tilt 0.25, tilt 0 and NO DRAW. The atlas has no wall, roof or post art, so the slice uses generated placeholders. No shadows yet, so raised units float a little; lighting comes in question 5.
 
-Phone frame timing: see `DECISIONS.md` D17 and D18. In Chrome, 36 of 64 seconds held a frame of 29 ms or more. Not explained, and not proven to be outside the game; proposed test: record the same page drawing nothing. The canvas cap has not yet run in the Claude app's browser, where the 2573x4641 canvas appeared: a report from there should show about 1079 wide and its page scale.
+Phone frame timing: see `DECISIONS.md` D17 to D19. Missed-frame patches appear in the phone's 65 FPS state, not in the clean 60 FPS it holds for 2 to 3 s after a tap. Not explained, and not proven to be outside the game. Build 427 adds NO DRAW as a third tap mode. Ask for a report that stays in it for over a minute, and one with the phone's Motion smoothness set to Standard. Canvas cap confirmed in Chrome's desktop mode; not yet run in the Claude app's browser.
 
 **Every input is a main way to play (D18):** touch, controller, keyboard and mouse. Do not design or budget for one alone.
 

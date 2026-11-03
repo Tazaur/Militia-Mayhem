@@ -102,9 +102,19 @@ Interval p50 16.7, p95 16.8, p99 25.0, max 74.9 ms. Of 1215 frames, 1137 were ne
 Recording: S23 Ultra, Chrome (mobile user agent), build 425, 1079x1948, page scale 1, 63.8 s. Interval p50 15.3, p95 28.7, p99 30.6, max 36.3 ms. Of 3872 frames, 3294 were 15 to 18 ms and 254 were 22 to 34 ms. CPU 0.2 to 0.4 ms per frame; GPU estimate 3.0 to 4.3 ms.
 
 - **The frame rate has three states:** a steady 65 FPS (15.3 ms, which is not 60 or 120 Hz; the once-a-second counts agree, so it is not a recorder artefact), a steady 60 FPS (16.7 ms, seen after some taps), and patches lasting seconds with frames of about 31 ms (two 15.3 ms refreshes). Unexplained.
-- **36 of 64 seconds held a frame of 29 ms or more,** and four seconds lost 15 to 17 frames (lowest 48 FPS). The 20 s run in the Claude app's browser (D17) had far fewer, though its canvas had about 4.6x the pixels and its GPU estimate was only slightly higher. One run each and different lengths, but pixel count does not look like the driver.
+- **36 of 64 seconds held a frame of 29 ms or more,** and four seconds lost 15 to 17 frames (lowest 48 FPS). The 20 s run in the Claude app's browser (D17) had far fewer, though its canvas had about 4.6x the pixels and its GPU estimate was only slightly higher. One run each and different lengths, but pixel count does not look like the driver. (That run also had 12 taps in 20 s, which D19 shows may explain it.)
 - **Not proven to be outside the game.** JS time is far under budget, but the GPU estimate samples one frame in 60, so it can miss a slow patch, and it may not scale with real work. To separate the game from the browser and phone, record the same page drawing nothing.
 - This run had page scale 1, so it says nothing about the canvas cap.
+
+## D19. Chrome with desktop mode on; the canvas cap works; stutter belongs to the faster state
+
+Recording: S23 Ultra, Chrome with desktop mode, build 426, 77.6 s. Page scale 0.42, canvas 1080x1949. Interval p50 15.3, p95 29.2, p99 30.6 ms. 342 of 4670 frames (7.3%) were 22 to 34 ms; D18 had 6.6%.
+
+- **The canvas cap works in Chrome's desktop mode.** The page is laid out 980 wide: 980 x 2.625 = 2573, the oversized width in D17, and the cap brings it to 1080. The same width in D17 suggests the Claude app's browser does the same; the cap has not run there.
+- **Desktop mode makes no difference to the timing,** as expected with the same pixel count.
+- **Every 60 FPS second is clean, and they follow a tap or page load.** After a tap the phone can hold exactly 16.7 ms for about 2 to 3 s, then moves to about 15.3 ms, with a few irregular frames in the change. All the missed-frame patches are in that faster state, though it also has long clean stretches (57 to 70 s here). Tilt shows no effect. This may be why D17's run, with 12 taps in 20 s, looked cleaner than D18's: taps may have held it at 60. A guess at the cause, unproven: the phone's adaptive refresh rate.
+- **The GPU estimate did not climb over 77 s** (3.5 falling to about 3.0), so D17's rise was not repeated. It shows no link to the missed frames, with the caveat in D18.
+- **Test added:** a third tap mode, NO DRAW, keeps the loop and recorder running and sends nothing to the GPU. If the patches continue, they are not caused by our drawing. If they stop, that is not proof either, since a page with no changes may be scheduled differently; the next test would be a clear-only frame.
 
 ## Measured in the old game (do not re-try without a new reason)
 
