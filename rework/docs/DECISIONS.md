@@ -122,7 +122,13 @@ Depth is height alone (D9): for one screen pixel, the higher thing is nearer. An
 
 What depth would remove: the sort, and the overhead key that keeps crowns on top. It would not remove splitting walls into tiles: that is how the art repeats. What changes on screen: a flat sprite is a flat plane at its height, so a soldier close south of a wall has the part of it that reaches into the wall hidden, where the sort drew all of it over the wall. Seen in a local screenshot: a soldier 6 px south of a wall loses the top of the sprite behind the wall face. Judge this by eye.
 
+Laptop (Intel UHD, build 429, 12 s per mode, timer queries, frame rate unchanged at about 128): GPU total 0.8 to 0.9 ms with the sort, 0.9 to 1.0 ms with depth; CPU 0.3 to 0.4 ms against 0.3 ms. The phone's tile GPU and the look are still open.
+
 Modes, by tap: SLICE SORT, SLICE DEPTH, BENCH 2000 SORT, BENCH 2000 DEPTH. The world target has its depth buffer in all four. In depth modes the list is deliberately unsorted. `SpriteList.useDepth` and the sort both go when this is decided.
+
+## D21. Lighting, in rounds (Stage 1 question 5)
+
+Round 1, build 430: real lamps at night through `LightingModel`, as a shade map multiplied in a combine pass. Pixels are lit as if on the ground, so nothing uses height yet, and there are no shadows. Next rounds, one visual change each: height and wall faces, then shadows through the caster map, then cones and budgets. Shade is 8-bit and clamps at full light; highlight and glow are still black.
 
 ## Measured in the old game (do not re-try without a new reason)
 

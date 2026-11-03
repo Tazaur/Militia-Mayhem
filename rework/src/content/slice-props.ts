@@ -19,6 +19,8 @@ export interface SlicePost {
   readonly width: number;
   readonly crown: string;
   readonly crownInAtlas: boolean;
+  /** Carries a lamp at its top, at night. */
+  readonly lamp?: boolean;
 }
 
 export interface SliceStill {
@@ -79,8 +81,16 @@ export const SLICE_POSTS: readonly SlicePost[] = [
   { x: -200, y: -105, height: 60, width: 6, crown: 'tree1', crownInAtlas: true },
   { x: 205, y: 20, height: 40, width: 4, crown: 'tree2', crownInAtlas: true },
   { x: -215, y: 25, height: 70, width: 8, crown: 'tree0', crownInAtlas: true },
-  { x: 25, y: 170, height: 64, width: 4, crown: 'lampHead', crownInAtlas: false },
+  { x: 25, y: 170, height: 64, width: 4, crown: 'lampHead', crownInAtlas: false, lamp: true },
+  { x: -120, y: 75, height: 64, width: 4, crown: 'lampHead', crownInAtlas: false, lamp: true },
+  { x: 125, y: -70, height: 64, width: 4, crown: 'lampHead', crownInAtlas: false, lamp: true },
 ];
+
+/** Warm against the night's cool ambient, the contrast in `reference/goal.png`. */
+export const SLICE_LAMP = { color: { r: 1, g: 0.68, b: 0.34 }, reach: 200, intensity: 2.4 } as const;
+
+export const SLICE_DAY = { sunColor: { r: 1, g: 1, b: 1 }, ambientColor: { r: 0.05, g: 0.06, b: 0.05 } } as const;
+export const SLICE_NIGHT = { sunColor: { r: 0, g: 0, b: 0 }, ambientColor: { r: 0.11, g: 0.14, b: 0.24 } } as const;
 
 export const SLICE_STILLS: readonly SliceStill[] = [
   { sprite: 'sol_stand', x: 30, y: 135, z: 14, angle: 0.5 },

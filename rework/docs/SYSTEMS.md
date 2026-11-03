@@ -18,7 +18,7 @@ Status: `planned`, `built`, `TEMP (remove by stage N)`.
 | Draw order | Insertion sort in `scene/slice`, or depth from `render/projection` by `SpriteList.useDepth` | `drawWorld` order | TEMP: both on test until Stage 1 question 4 decides (`DECISIONS.md` D20) |
 | What's in the frame | `scene/` -> `FrameScene` | `drawWorld` closures, `sunHeights`, fog redraw, `drawShadowLayer` | built for the slice |
 | World <-> screen, pixel grid | `render/projection` | `VZ`, `VOX`, `VOY`, `worldT` | built: grid size and the formula. Stage 1 extends |
-| Light and shadow | `render/lighting` (`LightingModel`) | `drawLight`, `drawLights`, sun passes, drop shadows, `!SUNNOW` fakes | planned |
+| Light and shadow | `render/lighting` (`LightingModel`), multiplied in by `render/layers/combine` | `drawLight`, `drawLights`, sun passes, drop shadows, `!SUNNOW` fakes | built in part: ambient, sun and lamps on the ground; no shadows (`DECISIONS.md` D21) |
 | CPU light query | `LightingModel.query` | `lightAir`, `litAt`, `spotK` | planned |
 | Light emitters | Light rows on archetypes and feedback rules | `lampsOn`, `tailLights`, `light()` in draw code, `flashAt` | planned |
 | Heights | Atlas material, plus one shape table | `SUNH`, `LH`, `ZH`, `SUNB`, `SUNP`, `ROOF_Z` | planned |

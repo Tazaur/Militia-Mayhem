@@ -1,3 +1,3 @@
 // Owns: the LightingModel implementations. app/ picks one.
-// render/lighting/unlit exists now; height-march comes in Stage 1.
+// render/lighting/unlit is the null version; render/lighting/height-march is the real one.
 export {};

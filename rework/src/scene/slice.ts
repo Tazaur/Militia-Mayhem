@@ -3,13 +3,16 @@ import {
   ATLAS_SPRITES,
   PLACEHOLDER_RECTS,
   SLICE_BOXES,
+  SLICE_DAY,
+  SLICE_LAMP,
   SLICE_MOVERS,
+  SLICE_NIGHT,
   SLICE_POSTS,
   SLICE_STILLS,
   SPRITE_BENCH,
 } from '../content/index.ts';
 import type { PlaceholderRect, SlicePart } from '../content/index.ts';
-import type { FrameScene } from '../contracts/index.ts';
+import type { FrameScene, Rgb } from '../contracts/index.ts';
 import { createRng } from '../core/index.ts';
 
 const CENTER = 2000;
@@ -20,10 +23,11 @@ const TILE = 32;
 const OVERHEAD = 1e6;
 const WORKING_TILT = 0.25;
 const MODES = [
-  { note: 'SLICE SORT  TAP', bench: false, useDepth: false },
-  { note: 'SLICE DEPTH  TAP', bench: false, useDepth: true },
-  { note: `BENCH ${SPRITE_BENCH.count} SORT  TAP`, bench: true, useDepth: false },
-  { note: `BENCH ${SPRITE_BENCH.count} DEPTH  TAP`, bench: true, useDepth: true },
+  { note: 'NIGHT LAMPS  TAP', bench: false, useDepth: false, night: true },
+  { note: 'SLICE SORT  TAP', bench: false, useDepth: false, night: false },
+  { note: 'SLICE DEPTH  TAP', bench: false, useDepth: true, night: false },
+  { note: `BENCH ${SPRITE_BENCH.count} SORT  TAP`, bench: true, useDepth: false, night: false },
+  { note: `BENCH ${SPRITE_BENCH.count} DEPTH  TAP`, bench: true, useDepth: true, night: false },
 ];
 
 interface Item {
@@ -186,17 +190,24 @@ export function createSliceScene(): SliceScene {
 
   const camera = { x: CENTER, y: CENTER, tilt: WORKING_TILT, zoom: 1 };
   const none = new Float32Array(0);
+  const lamps = SLICE_POSTS.filter((post) => post.lamp);
+  const lightPosition = Float32Array.from(lamps.flatMap((post) => [CENTER + post.x, CENTER + post.y, post.height]));
+  const { color: lampColor, reach, intensity } = SLICE_LAMP;
+  const lightColor = Float32Array.from(lamps.flatMap(() => [lampColor.r, lampColor.g, lampColor.b]));
+  const lightShape = Float32Array.from(lamps.flatMap(() => [reach, intensity, 0, Math.PI * 2]));
+  const lights = { count: 0, position: lightPosition, color: lightColor, shape: lightShape };
+  const environment: { sunDirection: readonly [number, number, number]; sunColor: Rgb; ambientColor: Rgb } = {
+    sunDirection: [0, 0, 1],
+    sunColor: SLICE_DAY.sunColor,
+    ambientColor: SLICE_DAY.ambientColor,
+  };
   const sprites = { count: 0, atlasRect, position, pivot, transform, tint, flags, useDepth: false };
   const scene: FrameScene = {
     camera,
-    environment: {
-      sunDirection: [0, 0, 1],
-      sunColor: { r: 1, g: 1, b: 1 },
-      ambientColor: { r: 0.05, g: 0.06, b: 0.05 },
-    },
+    environment,
     sprites,
     casters: { count: 0, atlasRect: none, position: none, transform: none },
-    lights: { count: 0, position: none, color: none, shape: none },
+    lights,
     particles: { count: 0, position: none, color: none },
     volumes: { width: 0, height: 0, density: none },
     stains: [],
@@ -257,7 +268,11 @@ export function createSliceScene(): SliceScene {
     scene,
     update(nowMs, taps) {
       mode = (mode + taps) % MODES.length;
-      const { bench: useBench, useDepth } = MODES[mode]!;
+      const { bench: useBench, useDepth, night } = MODES[mode]!;
+      const sky = night ? SLICE_NIGHT : SLICE_DAY;
+      environment.sunColor = sky.sunColor;
+      environment.ambientColor = sky.ambientColor;
+      lights.count = night ? lamps.length : 0;
       const seconds = nowMs / 1000;
       camera.x = CENTER + 40 * Math.sin(seconds * 0.17);
       camera.y = CENTER + 20 + 25 * Math.sin(seconds * 0.23 + 1);

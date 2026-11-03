@@ -14,7 +14,7 @@ import type {
   Surfaces,
   TextureHandle,
 } from '../../contracts/index.ts';
-import { createSolidLayer, createTerrainLayer } from '../layers/index.ts';
+import { createCombineLayer, createSolidLayer, createTerrainLayer } from '../layers/index.ts';
 import { createGridView, updateGridView } from '../projection/index.ts';
 
 export interface RenderModules {
@@ -39,13 +39,16 @@ type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 const BACKGROUND: Rgba = { r: 0, g: 0, b: 0, a: 1 };
 
 export function createRenderer(gpu: Gpu, modules: RenderModules, assets: RenderAssets, first: FrameScene): Renderer {
-  // Linear, because the sharp upscale blends across pixel edges. Sprites use texel lookups and never sample this.
-  const world = gpu.createTarget({ width: 1, height: 1, filter: 'linear', depth: true });
+  const world = gpu.createTarget({ width: 1, height: 1, filter: 'nearest', depth: true });
   const worldTexture = gpu.targetTexture(world);
+  // Linear, because the sharp upscale blends across pixel edges.
+  const lit = gpu.createTarget({ width: 1, height: 1, filter: 'linear' });
+  const litTexture = gpu.targetTexture(lit);
   const material = gpu.createTexture({ width: 1, height: 1, filter: 'nearest', pixels: new Uint8Array(4) });
   const surfaces: Surfaces = { color: worldTexture, material };
   const terrain = createTerrainLayer(gpu, world, assets.ground);
   const solid = createSolidLayer(gpu, world, assets.atlas, assets.placeholderProps);
+  const combine = createCombineLayer(gpu, lit, worldTexture);
   const view = createGridView();
   let targetWidth = 1;
   let targetHeight = 1;
@@ -57,17 +60,21 @@ export function createRenderer(gpu: Gpu, modules: RenderModules, assets: RenderA
     lights: first.lights,
     environment: first.environment,
     camera: first.camera,
+    targetWidth: 1,
+    targetHeight: 1,
+    originX: 0,
+    originY: 0,
   };
   const airInput: Mutable<AirInput> = {
-    target: world,
+    target: lit,
     volumes: first.volumes,
     particles: first.particles,
     lightMaps: { shade: material, highlight: material, glow: material },
     camera: first.camera,
   };
-  const fogInput: Mutable<FogInput> = { target: world, visibility: first.visibility, camera: first.camera };
+  const fogInput: Mutable<FogInput> = { target: lit, visibility: first.visibility, camera: first.camera };
   const postInput: Mutable<PostInput> = {
-    world: worldTexture,
+    world: litTexture,
     glow: material,
     screenWidth: 1,
     screenHeight: 1,
@@ -87,6 +94,7 @@ export function createRenderer(gpu: Gpu, modules: RenderModules, assets: RenderA
         targetWidth = view.targetWidth;
         targetHeight = view.targetHeight;
         gpu.resizeTarget(world, targetWidth, targetHeight);
+        gpu.resizeTarget(lit, targetWidth, targetHeight);
       }
       gpu.clear(world, BACKGROUND);
       terrain.draw(view);
@@ -97,7 +105,12 @@ export function createRenderer(gpu: Gpu, modules: RenderModules, assets: RenderA
       lightingInput.lights = scene.lights;
       lightingInput.environment = scene.environment;
       lightingInput.camera = camera;
+      lightingInput.targetWidth = targetWidth;
+      lightingInput.targetHeight = targetHeight;
+      lightingInput.originX = view.originX;
+      lightingInput.originY = view.originY;
       const lightMaps = modules.lighting.render(lightingInput);
+      combine.draw(lightMaps.shade);
 
       airInput.volumes = scene.volumes;
       airInput.particles = scene.particles;

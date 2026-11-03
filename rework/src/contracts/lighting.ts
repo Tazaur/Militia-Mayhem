@@ -15,6 +15,11 @@ export interface LightingInput {
   readonly lights: LightList;
   readonly environment: Environment;
   readonly camera: Camera;
+  /** The world target's size, and the world position of its top-left pixel. Light maps match it. */
+  readonly targetWidth: number;
+  readonly targetHeight: number;
+  readonly originX: number;
+  readonly originY: number;
 }
 
 export interface LightMaps {

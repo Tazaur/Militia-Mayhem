@@ -2,12 +2,16 @@
 
 Update at the end of every round. Replace old content; history belongs in `DECISIONS.md`.
 
-**Stage:** 1, questions 1 to 3 decided (`DECISIONS.md` D13, D15, D16). Question 4, depth buffer or sort, is on test.
+**Stage:** 1, questions 1 to 3 decided (`DECISIONS.md` D13, D15, D16). Question 4, depth or sort, is on test. Question 5, lighting, has begun.
 **Old game:** frozen at build 417 (`DECISIONS.md` D10), playable at the repo root.
 
 ## Next step
 
-Get the user's verdict on Stage 1 question 4, depth or sort (`DECISIONS.md` D20), from build 429: how SLICE SORT and SLICE DEPTH look, and a report over the two BENCH modes. A tap cycles the four modes. Then delete the loser, `SpriteList.useDepth`, and the bench if nothing else needs it. Question 5, lighting, follows.
+Stage 1 question 5, lighting, round by round (`DECISIONS.md` D21). Round 1, lamps at night, is in build 430 and awaits the user's look. Round 2: surfaces store height, so roofs and wall faces are lit where they really are.
+
+Question 4, depth or sort (D20), is open: the laptop shows about 0.1 ms between them. Still needed from the user when convenient: how SLICE SORT and SLICE DEPTH look, and a phone report over the BENCH modes. Then delete the loser, `SpriteList.useDepth`, and the bench if nothing else needs it. It does not block lighting.
+
+A tap cycles the night mode, then the four depth test modes.
 
 The atlas has no wall, roof or post art, so the slice uses generated placeholders. No shadows yet, so raised units float a little.
 

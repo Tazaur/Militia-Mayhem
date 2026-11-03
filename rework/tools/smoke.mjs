@@ -1,5 +1,6 @@
 // Owns: loading the built page in headless Chrome at phone size: any error fails, and a screenshot is saved to look at.
-//   node tools/smoke.mjs [--out dir] [--size 844x390] [--scale 2.09] [--no-timers] [--taps n]
+//   node tools/smoke.mjs [--out dir] [--size 844x390] [--scale 2.09] [--no-timers]
+//     [--taps n] [--settle ms] [--real-gpu]
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
@@ -37,8 +38,8 @@ const browser = spawn(chrome, [
   '--headless=new',
   `--remote-debugging-port=${debugPort}`,
   `--user-data-dir=${path.join(out, '.profile')}`,
-  '--use-angle=swiftshader',
-  '--enable-unsafe-swiftshader',
+  // The software renderer gives the same picture on any machine; --real-gpu times the machine's own GPU.
+  ...(process.argv.includes('--real-gpu') ? [] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader']),
   'about:blank',
 ]);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -112,7 +113,7 @@ try {
     await evaluate(`for (let i = 0; i < ${taps}; i++) {
       document.querySelector('canvas').dispatchEvent(new PointerEvent('pointerdown'));
     }`);
-    await sleep(1500);
+    await sleep(Number(option('settle', '1500')));
   }
   const reportText = await evaluate(`(() => {
     let copied = null;
